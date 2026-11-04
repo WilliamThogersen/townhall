@@ -1,4 +1,5 @@
 import type { Task, TaskState } from "../../../api/types";
+import { taskView } from "../session/taskRows";
 
 export type TaskGlyphState = "queued" | "working" | "waiting" | "ci" | "merged" | "dead" | "error";
 
@@ -13,40 +14,14 @@ const GLYPH: Readonly<Record<TaskState, TaskGlyphState>> = {
   error: "error",
 };
 
-const WORDS: Readonly<Record<TaskState, string>> = {
-  queued: "queued",
-  working: "working",
-  needsYou: "needs you",
-  inCi: "in ci",
-  inReview: "in review",
-  merged: "merged",
-  ended: "ended",
-  error: "failed",
-};
-
 const FINISHED: ReadonlySet<TaskState> = new Set(["merged", "ended", "error"]);
-const DONE_BEFORE: ReadonlySet<TaskState> = new Set(["merged", "ended"]);
 
 export function taskGlyph(state: TaskState): TaskGlyphState {
   return GLYPH[state];
 }
 
-function waitingFor(task: Task, tasks: readonly Task[]): readonly string[] {
-  return task.after.filter((name) => {
-    const before = tasks.find((other) => other.name === name);
-    return before === undefined || !DONE_BEFORE.has(before.state);
-  });
-}
-
 export function taskWords(task: Task, tasks: readonly Task[]): string {
-  if (task.pr?.checks === "failed" && (task.state === "error" || task.state === "inCi")) {
-    return "checks failed";
-  }
-  if (task.state === "queued") {
-    const open = waitingFor(task, tasks);
-    if (open.length > 0) return `after ${open.join(", ")}`;
-  }
-  return WORDS[task.state];
+  return taskView(task, tasks).words;
 }
 
 export function unfinishedCount(tasks: readonly Task[]): number {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aTask } from "../../../api/fixtures";
 import type { TaskState } from "../../../api/types";
+import { taskView } from "../session/taskRows";
 import { needsYouCount, taskBlockHead, taskGlyph, taskWords, unfinishedCount } from "./taskView";
 
 describe("taskGlyph", () => {
@@ -27,6 +28,25 @@ describe("taskWords", () => {
     const pr = { number: 41, url: null, checks: "failed" as const };
     expect(taskWords(aTask({ state: "error", pr }), [])).toBe("checks failed");
     expect(taskWords(aTask({ state: "inCi", pr }), [])).toBe("checks failed");
+  });
+
+  it("uses the session panel's words for every task", () => {
+    const pr = (checks: "passed" | "failed") => ({ number: 41, url: null, checks });
+    const tasks = [
+      aTask({ name: "Fix-Login", state: "working" }),
+      aTask({ name: "broken", state: "error" }),
+      aTask({ name: "green", state: "inCi", pr: pr("passed") }),
+      aTask({ name: "red", state: "error", pr: pr("failed") }),
+      aTask({ name: "logout", state: "queued", after: ["fix-login"] }),
+    ];
+    expect(tasks.map((task) => taskWords(task, tasks))).toEqual(tasks.map((task) => taskView(task, tasks).words));
+    expect(tasks.map((task) => taskWords(task, tasks))).toEqual([
+      "working",
+      "failed",
+      "checks passed",
+      "checks failed",
+      "after fix-login",
+    ]);
   });
 
   it("names the unfinished tasks a queued task waits for", () => {

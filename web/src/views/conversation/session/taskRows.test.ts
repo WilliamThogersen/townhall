@@ -63,7 +63,7 @@ describe("taskView", () => {
     ["inReview", "in review", "ci", null],
     ["merged", "merged", "merged", "merged"],
     ["ended", "ended", "dead", "dead"],
-    ["error", "error", "error", "error"],
+    ["error", "failed", "error", "error"],
   ])("shows %s as %s", (state, words, glyph, tone) => {
     const v = view(named("t", state));
     expect(v.words).toBe(words);
@@ -152,7 +152,7 @@ describe("taskSummary", () => {
       named("g", "needsYou"),
     ];
     expect(taskSummary(tasks)).toBe(
-      "7 tasks · 1 needs you · 1 error · 1 working · 1 queued · 1 in ci · 1 in review · 1 merged",
+      "7 tasks · 1 needs you · 1 failed · 1 working · 1 queued · 1 in ci · 1 in review · 1 merged",
     );
   });
 
