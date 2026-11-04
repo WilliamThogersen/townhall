@@ -1,6 +1,6 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { anEntry, aTask, aYouEntry } from "../../../api/fixtures";
 import type { EntryBody, ThreadEntry } from "../../../api/types";
 import { Thread } from "./Thread";
@@ -186,6 +186,8 @@ describe("Thread repo question", () => {
 });
 
 describe("Thread scrolling", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   function sizeBox(box: HTMLElement, sizes: { scrollHeight: number; clientHeight: number }) {
     Object.defineProperty(box, "scrollHeight", { configurable: true, get: () => sizes.scrollHeight });
     Object.defineProperty(box, "clientHeight", { configurable: true, get: () => sizes.clientHeight });
@@ -215,5 +217,33 @@ describe("Thread scrolling", () => {
     sizes.scrollHeight = 1600;
     rerender([...first, aYouEntry(2, "two"), aYouEntry(3, "three"), aYouEntry(4, "four")]);
     expect(box.scrollTop).toBe(1600);
+  });
+
+  it("stays at the bottom when the thread box itself gets shorter", () => {
+    const resize = { observed: [] as Element[], callback: () => undefined as void };
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize.callback = callback;
+        }
+        observe(target: Element) {
+          resize.observed.push(target);
+        }
+        disconnect() {}
+      },
+    );
+    renderThread([aYouEntry(1, "one")]);
+    const box = screen.getByRole("log");
+    const sizes = { scrollHeight: 1000, clientHeight: 400 };
+    sizeBox(box, sizes);
+    box.scrollTop = 600;
+    act(() => {
+      box.dispatchEvent(new Event("scroll"));
+    });
+    expect(resize.observed).toContain(box);
+    sizes.clientHeight = 320;
+    act(() => resize.callback());
+    expect(box.scrollTop).toBe(1000);
   });
 });

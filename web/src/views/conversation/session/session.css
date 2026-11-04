@@ -5,3 +5,12 @@
 .th-session-files .th-msg-files {
   display: grid;
 }
+
+.th-session-line[data-line="repo"] {
+  flex-wrap: wrap;
+}
+
+.th-session-line[data-line="repo"] > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

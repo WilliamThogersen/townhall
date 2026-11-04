@@ -22,7 +22,7 @@ interface StateLook {
 
 const LOOKS: Readonly<Record<TaskState, StateLook>> = {
   needsYou: { glyph: "waiting", tone: "waiting", words: "needs you", rank: 0 },
-  error: { glyph: "error", tone: "error", words: "error", rank: 1 },
+  error: { glyph: "error", tone: "error", words: "failed", rank: 1 },
   working: { glyph: "working", tone: null, words: "working", rank: 2 },
   queued: { glyph: "queued", tone: null, words: "queued", rank: 3 },
   inCi: { glyph: "ci", tone: null, words: "in ci", rank: 4 },

@@ -30,9 +30,11 @@ export function useStickToBottom(content: unknown, tail: unknown) {
   useLayoutEffect(stick, [content, tail, stick]);
 
   useEffect(() => {
+    const box = scrollRef.current;
     const inner = contentRef.current;
-    if (inner === null || typeof ResizeObserver === "undefined") return;
+    if (box === null || inner === null || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(stick);
+    observer.observe(box);
     observer.observe(inner);
     return () => observer.disconnect();
   }, [stick]);

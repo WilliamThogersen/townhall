@@ -50,6 +50,7 @@ describe("ConversationHeader", () => {
     const toggle = screen.getByRole("button", { name: "2 · session" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveClass("th-rail-toggle");
+    expect(toggle).toHaveAttribute("aria-controls", "th-session-panel");
     expect(toggle.querySelector(".th-status[data-state='waiting']")).not.toBeNull();
     await userEvent.click(toggle);
     expect(props.onToggleRail).toHaveBeenCalled();

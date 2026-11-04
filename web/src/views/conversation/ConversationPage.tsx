@@ -6,6 +6,7 @@ import { Button } from "../../ui/Button";
 import { EmptyState } from "../../ui/EmptyState";
 import { Loading } from "../../ui/Loading";
 import { ConversationView } from "./ConversationView";
+import { useAttachmentRefresh } from "./useAttachmentRefresh";
 
 const WAITING_KEYS = [NEW_CONVERSATION_HINT, SEARCH_HINT];
 const DAEMON_DOWN = "cannot reach the daemon";
@@ -64,6 +65,7 @@ function ConversationLoading() {
 
 export function ConversationPage({ id }: { readonly id: string }) {
   const { detail, loading, error, reload } = useConversation(id);
+  useAttachmentRefresh(detail, reload);
   if (detail !== null) return <ConversationView key={id} id={id} detail={detail} />;
   if (loading || error === null) return <ConversationLoading />;
   return <ConversationProblem id={id} error={error} onRetry={reload} />;

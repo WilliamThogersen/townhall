@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { isTextField } from "../../shell/globalKeys";
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
+import { CLOSE_TERMINAL_HINT, SESSION_KEY_HINTS } from "./session";
 
 export const REPLY_HINT: KeyHint = { keys: "r", label: "reply" };
 export const SESSION_HINT: KeyHint = { keys: "s", label: "session panel" };
@@ -16,6 +17,16 @@ export const CONVERSATION_HINTS: readonly KeyHint[] = [
 export interface ConversationKeys {
   readonly onToggleSession: () => void;
   readonly onFocusComposer: () => void;
+  readonly panelKeys: boolean;
+  readonly terminalOpen: boolean;
+}
+
+export function conversationHints(panelKeys: boolean, terminalOpen: boolean): readonly KeyHint[] {
+  return [
+    ...CONVERSATION_HINTS,
+    ...(panelKeys ? SESSION_KEY_HINTS : []),
+    ...(terminalOpen ? [CLOSE_TERMINAL_HINT] : []),
+  ];
 }
 
 function inDialog(target: EventTarget | null): boolean {
@@ -29,7 +40,7 @@ function ignored(e: KeyboardEvent): boolean {
 }
 
 export function useConversationKeys(keys: ConversationKeys): void {
-  useKeyHints(CONVERSATION_HINTS);
+  useKeyHints(conversationHints(keys.panelKeys, keys.terminalOpen));
   const latest = useRef(keys);
   useEffect(() => {
     latest.current = keys;

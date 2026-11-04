@@ -5,7 +5,7 @@ import { aDetail, aTask } from "../../../api/fixtures";
 import type { Task } from "../../../api/types";
 import { useKeyHints, type KeyHint } from "../../../shell/keyHints";
 import { renderWithHints, shownHints } from "../../../test/renderWithHints";
-import { SessionPanel } from "./index";
+import { SESSION_KEY_HINTS, SessionPanel } from "./index";
 
 const PAGE_HINTS: readonly KeyHint[] = [{ keys: "r", label: "reply" }];
 
@@ -34,22 +34,21 @@ function PageHints() {
 const row = (name: string) => document.querySelector<HTMLButtonElement>(`button[data-task="${name}"]`)!;
 
 describe("SessionPanel keys", () => {
-  it("shows the task keys in the key bar while there are tasks", () => {
+  it("leaves the key bar to the page, which lists the panel's keys", () => {
     const { unmount } = renderPanel();
-    expect(shownHints()).toBe("j k ⏎");
-    unmount();
-    renderPanel(null, []);
     expect(shownHints()).toBe("");
-  });
-
-  it("leaves the page's hints alone without tasks", () => {
+    unmount();
     renderWithHints(
       <>
         <PageHints />
-        <SessionPanel detail={aDetail({ tasks: [] })} openTask={null} onOpenTask={vi.fn()} />
+        <SessionPanel detail={aDetail({ tasks })} openTask={null} onOpenTask={vi.fn()} />
       </>,
     );
     expect(shownHints()).toBe("r");
+  });
+
+  it("exports its keys for the page", () => {
+    expect(SESSION_KEY_HINTS.map((hint) => hint.keys)).toEqual(["j k", "⏎"]);
   });
 
   it("moves through the rows with j and k and stops at the ends", async () => {

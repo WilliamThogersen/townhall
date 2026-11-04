@@ -27,7 +27,7 @@ describe("noTerminalText", () => {
     ["inReview", pr, "in review: #41"],
     ["inReview", null, "in review"],
     ["ended", null, "ended: no terminal left"],
-    ["error", null, "error: no terminal left"],
+    ["error", null, "failed: no terminal left"],
     ["working", null, "working: no terminal yet"],
     ["needsYou", null, "needs you: no terminal yet"],
   ])("says %s with %o as %s", (state, taskPr, text) => {

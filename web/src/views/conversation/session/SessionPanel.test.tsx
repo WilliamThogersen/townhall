@@ -155,6 +155,11 @@ describe("SessionPanel repo, files and context", () => {
     expect(line.children[1]).toHaveTextContent("you named it");
   });
 
+  it("marks the repo line so a long reason wraps under the repo", () => {
+    renderPanel();
+    expect(lineAfter(/^repo$/)).toHaveAttribute("data-line", "repo");
+  });
+
   it("says no repo yet before townhall picked one", () => {
     renderPanel(fullDetail({ entries: [] }));
     expect(lineAfter(/^repo$/)).toHaveTextContent("no repo yet");

@@ -16,7 +16,7 @@ export function RepoSection({ detail }: { readonly detail: ConversationDetail })
   const line = repoLine(detail);
   if (line === null) return <FaintLine text="no repo yet" />;
   return (
-    <div className="th-session-line">
+    <div className="th-session-line" data-line="repo">
       <span>{line.label}</span>
       <span>{line.reason}</span>
     </div>

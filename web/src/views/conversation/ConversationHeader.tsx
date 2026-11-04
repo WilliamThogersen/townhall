@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { ConversationDetail } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { Spinner } from "../../ui/Spinner";
+import { SESSION_PANEL_ID } from "./session";
 import { needsYouCount, unfinishedCount } from "./thread/taskView";
 import { conversationStatus, endQuestion, type StatusWords } from "./thread/threadModel";
 
@@ -73,6 +74,7 @@ function RailToggle({ open, needsYou, onToggle }: { readonly open: boolean; read
       size="sm"
       className="th-rail-toggle"
       aria-expanded={open}
+      aria-controls={SESSION_PANEL_ID}
       title="Show or hide the session panel (s)"
       onClick={onToggle}
     >
