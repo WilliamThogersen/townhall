@@ -1,7 +1,8 @@
 //! The one-time import of phase 1's `~/.townhall/config.json` (`{ "repo": "<path>" }`):
 //! the repo goes into `repos` (when it is still a git repo) and becomes the desktop app's
-//! repo, any known `settings` go into `settings`, and the file is renamed to
-//! `config.json.imported`. Never deleted; existing rows are never overridden.
+//! repo, and the file is renamed to `config.json.imported`. Never deleted; existing rows are
+//! never overridden. Only `repo` is read: settings, `skip all` above all, change only
+//! through `PUT /api/settings/{key}`, never through a file.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,7 +11,7 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use super::{repos, settings};
-use crate::model::{Repo, SettingKey};
+use crate::model::Repo;
 use crate::repos::{inspect, names};
 use crate::{Error, Home, Result};
 
@@ -21,19 +22,6 @@ fn importable(path: &Path) -> Result<Repo> {
         .canonicalize()
         .map_err(|e| Error::io(format!("repo path {}", path.display()), e))?;
     inspect(&canonical, names::from_folder(&canonical), None)
-}
-
-fn known_settings(raw: &Value) -> Vec<(SettingKey, Value)> {
-    let Some(saved) = raw.get("settings") else {
-        return vec![];
-    };
-    SettingKey::ALL
-        .into_iter()
-        .filter_map(|key| {
-            let value = saved.get(key.as_str())?;
-            key.check(value).ok().map(|v| (key, v))
-        })
-        .collect()
 }
 
 /// `config.json.imported`, or `config.json.imported-2` ... when that name is taken.
@@ -78,9 +66,6 @@ pub(super) fn config_json(conn: &mut Connection, home: &Home) -> Result<bool> {
     if let Some(p) = saved_repo {
         settings::put_missing(&tx, settings::DESKTOP_REPO, &Value::String(p.into()))?;
     }
-    for (key, value) in known_settings(&raw) {
-        settings::put_missing(&tx, key.as_str(), &value)?;
-    }
     tx.commit()?;
     let dest = imported_path(&path);
     fs::rename(&path, &dest).map_err(|e| Error::io(format!("rename {}", path.display()), e))?;
@@ -104,15 +89,5 @@ mod tests {
             imported_path(&path),
             dir.path().join("config.json.imported-2")
         );
-    }
-
-    #[test]
-    fn only_valid_known_settings_are_kept() {
-        let raw = serde_json::json!({"settings": {"agentsAtOnce": 9, "notifyWhen": "x", "theme": "dark"}});
-        assert_eq!(
-            known_settings(&raw),
-            vec![(SettingKey::AgentsAtOnce, serde_json::json!(9))]
-        );
-        assert!(known_settings(&serde_json::json!({"repo": "/x"})).is_empty());
     }
 }
