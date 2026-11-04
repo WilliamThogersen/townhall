@@ -3,7 +3,9 @@ import {
   AGENTS_AT_ONCE_MAX,
   AGENTS_AT_ONCE_MIN,
   DEFAULT_SETTINGS,
+  isSettingValue,
   parseSettings,
+  SETTING_KEYS,
   type Settings,
 } from "./settings";
 
@@ -81,5 +83,40 @@ describe("parseSettings", () => {
 
   it("returns a frozen object", () => {
     expect(Object.isFrozen(parseSettings(custom))).toBe(true);
+  });
+});
+
+describe("SETTING_KEYS", () => {
+  it("lists every setting once", () => {
+    expect([...SETTING_KEYS].sort()).toEqual(Object.keys(DEFAULT_SETTINGS).sort());
+    expect(new Set(SETTING_KEYS).size).toBe(SETTING_KEYS.length);
+  });
+
+  it("is frozen", () => {
+    expect(Object.isFrozen(SETTING_KEYS)).toBe(true);
+  });
+});
+
+describe("isSettingValue", () => {
+  it("accepts the values the daemon accepts", () => {
+    SETTING_KEYS.forEach((key) => {
+      expect(isSettingValue(key, custom[key])).toBe(true);
+      expect(isSettingValue(key, DEFAULT_SETTINGS[key])).toBe(true);
+    });
+    expect(isSettingValue("permissionMode", "bypassPermissions")).toBe(true);
+    expect(isSettingValue("agentsAtOnce", 1)).toBe(true);
+    expect(isSettingValue("agentsAtOnce", 50)).toBe(true);
+  });
+
+  it("refuses wrong types and values outside the choices", () => {
+    expect(isSettingValue("permissionMode", "yolo")).toBe(false);
+    expect(isSettingValue("permissionMode", undefined)).toBe(false);
+    expect(isSettingValue("workWithoutAsking", "true")).toBe(false);
+    expect(isSettingValue("sessionPanelOpen", 1)).toBe(false);
+    expect(isSettingValue("repoUnclear", "always")).toBe(false);
+    expect(isSettingValue("notifyWhen", null)).toBe(false);
+    [0, 51, 2.5, "6", Number.NaN].forEach((value) => {
+      expect(isSettingValue("agentsAtOnce", value)).toBe(false);
+    });
   });
 });
