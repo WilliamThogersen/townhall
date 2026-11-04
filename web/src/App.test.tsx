@@ -37,11 +37,11 @@ describe("App routes", () => {
     await waitFor(() => expect(client.listAgents).toHaveBeenCalled());
   });
 
-  it("/townhall shows the legacy control center", async () => {
+  it("/townhall shows the control center", async () => {
     window.history.replaceState(null, "", "/townhall");
     render(<App />);
-    expect(heading("townhall")).toBeInTheDocument();
-    expect(await screen.findByText("No agents yet. Create one above.")).toBeInTheDocument();
+    expect(heading("control center")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "no agents yet" })).toBeInTheDocument();
   });
 
   it("switches screens on navigate and keeps one shell", async () => {

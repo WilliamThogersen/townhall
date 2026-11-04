@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { AgentsProvider } from "./agents/AgentsProvider";
 import { useRoute } from "./router";
 import { Shell } from "./shell/Shell";
-import { LegacyControlCenter } from "./views/LegacyControlCenter";
+import { ControlCenterPage } from "./views/control/ControlCenterPage";
 import { ReposPage } from "./views/repos/ReposPage";
 import { SettingsPage } from "./views/settings/SettingsPage";
 import {
@@ -20,7 +20,7 @@ function Screen() {
     case "conversation":
       return <ConversationPlaceholder id={route.params.id ?? ""} />;
     case "control":
-      return <LegacyControlCenter />;
+      return <ControlCenterPage />;
     case "repos":
       return <ReposPage />;
     case "settings":
