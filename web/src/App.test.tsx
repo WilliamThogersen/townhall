@@ -62,10 +62,12 @@ describe("App routes", () => {
   });
 
   it("/townhall shows the control center", async () => {
+    vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([]);
+    vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
     window.history.replaceState(null, "", "/townhall");
     render(<App />);
     expect(heading("control center")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "no agents yet" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "nothing ran today" })).toBeInTheDocument();
   });
 
   it("switches screens on navigate and keeps one shell", async () => {

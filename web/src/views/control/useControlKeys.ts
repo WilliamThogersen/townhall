@@ -3,20 +3,21 @@ import { isTextField } from "../../shell/globalKeys";
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 
 export const ROWS_HINT: KeyHint = { keys: "↑↓", label: "rows" };
-export const OPEN_HINT: KeyHint = { keys: "⏎", label: "open agent" };
-export const CLOSE_HINT: KeyHint = { keys: "esc", label: "close pane" };
+export const FOLD_HINT: KeyHint = { keys: "←→", label: "fold" };
+export const OPEN_HINT: KeyHint = { keys: "⏎", label: "open conversation" };
+export const FILTER_HINT: KeyHint = { keys: "f", label: "filter repo" };
 
 const ROW_KEYS: ReadonlySet<string> = new Set(["ArrowDown", "ArrowUp"]);
+export const FILTER_KEY = "f";
 
-export function controlHints(hasRows: boolean, paneOpen: boolean): readonly KeyHint[] {
-  return [...(hasRows ? [ROWS_HINT, OPEN_HINT] : []), ...(paneOpen ? [CLOSE_HINT] : [])];
+export function controlHints(hasRows: boolean): readonly KeyHint[] {
+  return hasRows ? [ROWS_HINT, FOLD_HINT, OPEN_HINT, FILTER_HINT] : [FILTER_HINT];
 }
 
 export interface ControlKeys {
   readonly hasRows: boolean;
-  readonly paneOpen: boolean;
-  readonly onClosePane: () => void;
   readonly onFocusRows: () => void;
+  readonly onFilter: () => void;
 }
 
 function isPlainKey(e: KeyboardEvent): boolean {
@@ -30,15 +31,15 @@ export function useControlKeys(keys: ControlKeys): void {
   useEffect(() => {
     latest.current = keys;
   });
-  useKeyHints(controlHints(keys.hasRows, keys.paneOpen));
+  useKeyHints(controlHints(keys.hasRows));
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!isPlainKey(e)) return;
-      const { paneOpen, hasRows, onClosePane, onFocusRows } = latest.current;
-      if (e.key === "Escape" && paneOpen) {
+      const { hasRows, onFocusRows, onFilter } = latest.current;
+      if (e.key === FILTER_KEY) {
         e.preventDefault();
-        onClosePane();
+        onFilter();
       } else if (ROW_KEYS.has(e.key) && hasRows && e.target === document.body) {
         e.preventDefault();
         onFocusRows();
