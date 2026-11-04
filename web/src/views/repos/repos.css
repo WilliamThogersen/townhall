@@ -7,3 +7,32 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+
+.th-repos {
+  container-type: inline-size;
+}
+
+@container (max-width: 760px) {
+  .th-repos .th-repo {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: var(--th-space-1);
+  }
+
+  .th-repos .th-repo-name {
+    grid-area: 1 / 1;
+  }
+
+  .th-repos .th-repo > a {
+    grid-area: 1 / 2;
+  }
+
+  .th-repos .th-repo-count {
+    grid-area: 2 / 1;
+  }
+
+  .th-repos .th-repo-agents {
+    grid-area: 2 / 2;
+    justify-self: end;
+    margin-right: var(--th-space-2);
+  }
+}

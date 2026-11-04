@@ -1,6 +1,7 @@
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 import { AgentsGroup, AppearanceGroup, ConversationsGroup } from "./SettingGroups";
 import "./cap.css";
+import "./settings.css";
 
 export const SETTINGS_HINTS: readonly KeyHint[] = [
   { keys: "tab", label: "next setting" },

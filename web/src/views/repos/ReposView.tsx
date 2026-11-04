@@ -42,7 +42,11 @@ export function ReposView({ repo, action, problem }: ReposViewProps) {
       </header>
       <div className="th-page-body">
         <Problem repo={repo} problem={problem} />
-        {info ? <RepoRow info={info} agents={agents} /> : null}
+        {info ? (
+          <div className="th-repos">
+            <RepoRow info={info} agents={agents} />
+          </div>
+        ) : null}
         {!info && repo.loading ? (
           <div className="th-empty">
             <Loading verb="loading repos" />

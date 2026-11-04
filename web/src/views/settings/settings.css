@@ -1,0 +1,11 @@
+@container (max-width: 680px) {
+  .th-setting-row > :last-child {
+    justify-self: start;
+  }
+}
+
+@container (max-width: 400px) {
+  .th-setting-row .th-segmented span {
+    padding: 0 var(--th-space-2);
+  }
+}

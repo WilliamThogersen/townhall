@@ -5,11 +5,18 @@ import { Link, PATHS } from "../../router";
 import { GlyphCounts } from "../../ui/StatusGlyph";
 
 function AgentSummary({ agents }: { readonly agents: readonly Agent[] }) {
-  if (agents.length === 0) return <span className="th-cap">no agents</span>;
+  if (agents.length === 0) {
+    return (
+      <div className="th-repo-meta th-repo-agents">
+        <span>no agents</span>
+      </div>
+    );
+  }
   return (
-    <span className="th-cap">
-      <GlyphCounts counts={countByState(agents)} className="th-glyphs" /> {agents.length} agent{agents.length === 1 ? "" : "s"}
-    </span>
+    <div className="th-repo-meta th-repo-agents">
+      <GlyphCounts counts={countByState(agents)} className="th-nav-count" />
+      <span>{`${agents.length} agent${agents.length === 1 ? "" : "s"}`}</span>
+    </div>
   );
 }
 
@@ -25,7 +32,7 @@ export function RepoRow({ info, agents }: RepoRowProps) {
         <b>{repoName(info.repo)}</b>
         <span title={info.repo}>{shortRepoPath(info.repo, userHomeOf(info.home))}</span>
       </div>
-      <div className="th-repo-meta">
+      <div className="th-repo-meta th-repo-count">
         <span>{conversationCount(0)}</span>
       </div>
       <AgentSummary agents={agents} />
