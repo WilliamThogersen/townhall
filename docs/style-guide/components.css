@@ -1,6 +1,7 @@
 /*
  * townhall shared components, v2. Depends on tokens.css. Page layouts live in pages.css.
- * Every class is .th-*. No hard-coded colors or sizes. Not imported by web/ yet.
+ * Every class is .th-*. No hard-coded colors or sizes.
+ * Copied to web/src/styles/components.css: change both together.
  */
 
 *,

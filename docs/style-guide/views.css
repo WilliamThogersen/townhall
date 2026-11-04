@@ -1,6 +1,7 @@
 /*
  * townhall views, v2: trace (conveyor belt), home with shipped stats, repos.
- * Depends on tokens.css and components.css. Not imported by web/ yet.
+ * Depends on tokens.css and components.css.
+ * Copied to web/src/styles/views.css: change both together.
  */
 
 /* ---------- trace (conveyor belt) ---------- */

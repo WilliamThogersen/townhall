@@ -1,6 +1,6 @@
 # townhall style guide, v2: terminal-native
 
-Monospace everywhere, monochrome chrome, one amber accent. Conversations are the product: every agent starts from one. Nothing here changes the running app yet: `web/` does not import these files.
+Monospace everywhere, monochrome chrome, one amber accent. Conversations are the product: every agent starts from one. `web/src/styles/` holds copies of these CSS files: change a file here and its copy there together.
 
 Start with [preview.html](preview.html) (open it in a browser, flip dark and light at the top right).
 

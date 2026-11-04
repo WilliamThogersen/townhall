@@ -1,6 +1,7 @@
 /*
  * townhall conversation view, v2: layout, header, thread, session rail, tasks, composer, menu.
- * Depends on tokens.css and components.css. Not imported by web/ yet.
+ * Depends on tokens.css and components.css.
+ * Copied to web/src/styles/conversation.css: change both together.
  */
 
 .th-convo-view {

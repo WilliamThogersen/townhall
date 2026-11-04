@@ -1,6 +1,7 @@
 /*
  * townhall attachments, v2: image thumbnails, file chips, upload states, drop zone, lightbox.
- * Depends on tokens.css and components.css. Not imported by web/ yet.
+ * Depends on tokens.css and components.css.
+ * Copied to web/src/styles/attachments.css: change both together.
  */
 
 /* ---------- thumbnails ---------- */

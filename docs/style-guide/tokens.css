@@ -1,6 +1,6 @@
 /*
  * townhall design tokens, v2: terminal-native.
- * Single source of truth. Not imported by web/ yet.
+ * Single source of truth, copied to web/src/styles/tokens.css: change both together.
  *
  * Structure:
  *   :root                     dark theme (the default) + every theme-independent token
