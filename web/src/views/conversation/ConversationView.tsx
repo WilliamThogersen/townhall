@@ -41,7 +41,12 @@ export function ConversationView({ id, detail }: ConversationViewProps) {
   const { repos } = useRepos();
   const composer = useRef<ComposerHandle>(null);
   const drop = useFileDrop((files) => composer.current?.addFiles(files));
-  useConversationKeys({ onToggleSession: rail.toggle, onFocusComposer: () => composer.current?.focus() });
+  useConversationKeys({
+    onToggleSession: rail.toggle,
+    onFocusComposer: () => composer.current?.focus(),
+    panelKeys: rail.visible && detail.tasks.length > 0,
+    terminalOpen: pane.task !== null,
+  });
   const { conversation } = detail;
   return (
     <div

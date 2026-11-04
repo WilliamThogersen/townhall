@@ -1,5 +1,5 @@
 import { useEffect, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
-import { useKeyHints, type KeyHint } from "../../../shell/keyHints";
+import type { KeyHint } from "../../../shell/keyHints";
 import { isPlainKey } from "./keys";
 
 export const TASK_ROWS_HINT: KeyHint = { keys: "j k", label: "tasks" };
@@ -32,11 +32,6 @@ export function onTaskListKeyDown(e: ReactKeyboardEvent<HTMLElement>): void {
   if (step === undefined || !(e.target instanceof HTMLButtonElement) || !e.target.matches(ROW_SELECTOR)) return;
   e.preventDefault();
   stepTaskFocus(e.currentTarget, step);
-}
-
-export function TaskKeyHints() {
-  useKeyHints(SESSION_KEY_HINTS);
-  return null;
 }
 
 export function useTaskKeys(listRef: RefObject<HTMLElement | null>): void {

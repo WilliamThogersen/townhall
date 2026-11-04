@@ -5,7 +5,7 @@ import { LoopStrip } from "./LoopStrip";
 import { ContextSection, FilesSection, RepoSection, TasksEmpty } from "./SessionSections";
 import { TaskList } from "./TaskList";
 import { taskCount, taskSummary, taskViews } from "./taskRows";
-import { TaskKeyHints, useTaskKeys } from "./useTaskKeys";
+import { useTaskKeys } from "./useTaskKeys";
 import "./session.css";
 
 export const SESSION_PANEL_ID = "th-session-panel";
@@ -40,7 +40,6 @@ export function SessionPanel({ detail, openTask, onOpenTask }: SessionPanelProps
 
   return (
     <aside className="th-session" id={SESSION_PANEL_ID} aria-label="Session">
-      {tasks.length > 0 && <TaskKeyHints />}
       <SessionHead conversationId={conversation.id} tasks={tasks} />
       <div className="th-session-body">
         <LoopStrip tasks={tasks} />

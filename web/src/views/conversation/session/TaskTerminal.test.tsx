@@ -64,10 +64,10 @@ describe("TaskTerminal with a live agent", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("closes on esc and shows the hint", async () => {
+  it("closes on esc and leaves the hint to the page", async () => {
     const { onClose } = renderTerminal(login);
     await screen.findByTestId("terminal");
-    expect(document.querySelector("output")).toHaveTextContent("esc");
+    expect(document.querySelector("output")).toHaveTextContent(/^$/);
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
   });

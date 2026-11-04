@@ -15,7 +15,8 @@ import { SettingsStoreContext } from "../../settings/useSettings";
 import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
 import { ConversationPage } from "./ConversationPage";
 
-vi.mock("./session", () => ({
+vi.mock("./session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./session")>()),
   SessionPanel: (props: { detail: ConversationDetail; openTask: string | null; onOpenTask: (n: string) => void }) => (
     <aside className="th-session" aria-label="Session">
       <span>open: {props.openTask ?? "none"}</span>
@@ -216,6 +217,28 @@ describe("ConversationPage terminal and session panel", () => {
     expect(window.location.search).toBe("");
     await waitFor(() => expect(layout()).not.toHaveAttribute("data-rail"));
     expect(screen.getByRole("complementary", { name: "Session" })).toBeInTheDocument();
+  });
+});
+
+describe("ConversationPage key hints", () => {
+  const PAGE_HINTS = "r=reply s=session panel ⏎=send ⇧⏎=new line esc=leave input";
+
+  it("adds the panel's keys while it shows and the close key while a terminal is open", async () => {
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
+    renderPage();
+    const hints = screen.getByTestId("hints");
+    await waitFor(() => expect(hints.textContent).toBe(`${PAGE_HINTS} j k=tasks ⏎=open terminal`));
+    await userEvent.keyboard("s");
+    await waitFor(() => expect(hints.textContent).toBe(PAGE_HINTS));
+    await userEvent.click(screen.getByRole("button", { name: "open fix-login" }));
+    await waitFor(() => expect(hints.textContent).toBe(`${PAGE_HINTS} esc=close terminal`));
+  });
+
+  it("leaves the panel's keys out without tasks", async () => {
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue({ ...detail, tasks: [] });
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("button", { name: "session" })).toHaveAttribute("aria-expanded", "true"));
+    expect(screen.getByTestId("hints").textContent).toBe(PAGE_HINTS);
   });
 });
 
