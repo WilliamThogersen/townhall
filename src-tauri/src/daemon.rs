@@ -182,32 +182,40 @@ mod tests {
         l.local_addr().unwrap()
     }
 
+    /// A probed ephemeral port can be grabbed by another process before we bind it, or while
+    /// a restart has it released (seen on macOS), which reads as External. Retry with a
+    /// fresh port until a start and a restart both stay embedded.
+    async fn embedded_through_a_restart(
+        home: &Home,
+        store: &Store,
+        repo: &Path,
+    ) -> (SocketAddr, Controller) {
+        for _ in 0..10 {
+            let addr = free_addr();
+            let c = Controller::new(addr, home.clone(), Some(store.clone()));
+            if c.start(repo).await.unwrap() != Mode::Embedded {
+                continue;
+            }
+            assert!(
+                TcpListener::bind(addr).await.is_err(),
+                "port should be held"
+            );
+            if c.restart(repo).await.unwrap() == Mode::Embedded {
+                return (addr, c);
+            }
+            c.stop().await;
+        }
+        panic!("no port stayed ours through a restart after 10 tries");
+    }
+
     // One test, in this order: re-binding a port a test just released is unreliable on macOS,
     // so the adopt scenario runs last and never feeds its port to the lifecycle scenario.
     #[tokio::test(flavor = "multi_thread")]
     async fn lifecycle_then_adopt_existing() {
         let dir = tempfile::tempdir().unwrap();
-        // A probed ephemeral port can be grabbed by another process before we bind it
-        // (seen on macOS), which reads as External. Retry with a fresh port.
         let home = Home::at(dir.path().join(".townhall"));
         let store = Store::open(&home, EventBus::new()).unwrap();
-        let (addr, c) = {
-            let mut found = None;
-            for _ in 0..10 {
-                let addr = free_addr();
-                let c = Controller::new(addr, home.clone(), Some(store.clone()));
-                if c.start(dir.path()).await.unwrap() == Mode::Embedded {
-                    found = Some((addr, c));
-                    break;
-                }
-            }
-            found.expect("no free port after 10 tries")
-        };
-        assert!(
-            TcpListener::bind(addr).await.is_err(),
-            "port should be held"
-        );
-        assert_eq!(c.restart(dir.path()).await.unwrap(), Mode::Embedded);
+        let (addr, c) = embedded_through_a_restart(&home, &store, dir.path()).await;
         c.stop().await;
         assert_eq!(c.mode().await, Mode::Stopped);
         TcpListener::bind(addr)
