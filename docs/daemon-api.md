@@ -39,6 +39,7 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 | POST | `/conversations/{id}/messages` | `NewMessage` | `ThreadEntry` (yours). Clears `ended`, starts a turn | 400, 404, 409 a turn is running | 2.2 |
 | POST | `/conversations/{id}/stop` | | `Conversation`: interrupts the running turn | 404 | 2.2 |
 | POST | `/conversations/{id}/end` | | `Conversation` with `ended: true`; tasks keep running | 404 | 2.2 |
+| GET | `/search?q=&limit=` | | `SearchHit[]`, newest activity first, at most `limit` (default 50) | 400 `search needs 1 to 200 characters` (`q` trimmed), `limit needs to be a whole number from 1 to 200` | 3.3 |
 | GET (ws) | `/events` | | `ServerEvent` JSON text frames, see below | 403 origin | 2.2 |
 | POST | `/conversations/{id}/mcp` | JSON-RPC 2.0, see MCP | JSON-RPC answer, or `202` with no body for notifications | 404 | 2.3 |
 | GET | `/tasks?conversation=&repo=&state=` | | `Task[]`, oldest first | | 2.3 |
@@ -82,6 +83,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 - `Attachment { id, conversationId, name, mime, size, kind: "image" | "file", createdAt }`. `kind` is `image` for `image/*`. At most 20 MB (`MAX_ATTACHMENT_BYTES`).
 - `Step { id, tool, summary, startedAt, endedAt: string | null, result: "running" | "ok" | "error" }` and `ShippedDay { date: "YYYY-MM-DD", fixes, features, lines, agents }`: the Rust types belong to 2.7 (`steps/`, `stats/`); `types.ts` already mirrors them.
 - `CreateTaskInput`, `NewTask`, `NewMessage`, `ConversationPatch`, `AddRepo`, `PutSetting`: request bodies, see the routes and MCP.
+- `SearchHit { conversationId, title, match: "title" | "message", entryId: number | null, snippet: string | null, updatedAt }` (`townhall_core::search`, mirrored in `web/src/api/search.ts`): one per conversation whose title or one of whose `you` and `townhall` entries holds `q`, ignoring case (every letter, not only ASCII) and runs of whitespace; `%` and `_` are plain characters. A title match wins and has `entryId` and `snippet` `null`; else `entryId` is the newest matching entry and `snippet` that entry on one line, about 80 characters around the first match, cut between words where it can, with `…` where it was cut. `updatedAt` is the conversation's.
 
 ## Attachments
 
@@ -306,6 +308,7 @@ Routes and units call these typed async functions; they never write SQL. A unit 
 | thread | `append_entry(conversation_id, body)`, `entries(conversation_id)` |
 | tasks | `create_task(conversation_id, NewTask)`, `tasks(conversation_id)`, `all_tasks()`, `find_task(name)`, `update_task(name, change)`; 2.3: `note_task_created(conversation_id, name)`, `record_launch(TaskLaunch)`, `task_launch(name)`, `task_launches()` (`scheduler::TaskLaunch`) |
 | attachments | `save_attachment(conversation_id, name, mime, bytes)`, `attachments(conversation_id)`, `attachment(conversation_id, id)` (record and file path) |
+| search | `search(SearchQuery)` (3.3, `store/search.rs`, read only): `SearchQuery::parse(q, limit)` checks the text and limit |
 
 `change` closures take a copy and return the new value; they must not call the store. `update_conversation` keeps `id`, `createdAt` and `tasks` and sets `updatedAt`; `update_task` keeps `name`, `conversationId` and `createdAt`. `create_task` checks the name (`InvalidName`), that it is free ignoring case (`Conflict`), that every `after` task and attachment exists (`InvalidInput`), and dedups both lists.
 
