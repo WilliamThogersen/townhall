@@ -19,9 +19,18 @@ export function StatusGlyph({ state }: StatusGlyphProps) {
   );
 }
 
+export const AGENT_STATE_WORDS: Readonly<Record<AgentState, string>> = {
+  waiting: "waiting",
+  error: "error",
+  working: "working",
+  alive: "running",
+  dead: "ended",
+};
+
 export interface GlyphCountsProps {
   readonly counts: AgentStateCounts;
   readonly className?: string;
+  readonly labelled?: boolean;
 }
 
 interface StateCount {
@@ -35,22 +44,41 @@ function presentCounts(counts: AgentStateCounts): readonly StateCount[] {
   );
 }
 
-export function GlyphCounts({ counts, className }: GlyphCountsProps) {
-  const present = presentCounts(counts);
-  if (present.length === 0) return null;
-  const spoken = present.map(({ state, count }) => `${count} ${state}`).join(", ");
+function spokenCounts(present: readonly StateCount[]): string {
+  return present.map(({ state, count }) => `${count} ${AGENT_STATE_WORDS[state]}`).join(", ");
+}
+
+function LabelledCounts({ present }: { readonly present: readonly StateCount[] }) {
   return (
-    <span className={className ? `th-glyphs ${className}` : "th-glyphs"}>
-      <span aria-hidden="true">
-        {present.map(({ state, count }, index) => (
-          <Fragment key={state}>
-            {index > 0 ? " " : null}
-            <StatusGlyph state={state} />
-            {count}
-          </Fragment>
-        ))}
-      </span>
-      <span className="th-sr-only">{spoken}</span>
+    <>
+      {present.map(({ state, count }) => (
+        <span key={state} aria-hidden="true">
+          <StatusGlyph state={state} />
+          {`${count} ${AGENT_STATE_WORDS[state]}`}
+        </span>
+      ))}
+      <span className="th-sr-only">{spokenCounts(present)}</span>
+    </>
+  );
+}
+
+function BareCounts({ present, className }: { readonly present: readonly StateCount[]; readonly className?: string }) {
+  const last = present.length - 1;
+  return (
+    <span className={className}>
+      {present.map(({ state, count }, index) => (
+        <Fragment key={state}>
+          <StatusGlyph state={state} />
+          <span aria-hidden="true">{index < last ? `${count} ` : `${count}`}</span>
+        </Fragment>
+      ))}
+      <span className="th-sr-only">{spokenCounts(present)}</span>
     </span>
   );
+}
+
+export function GlyphCounts({ counts, className, labelled = false }: GlyphCountsProps) {
+  const present = presentCounts(counts);
+  if (present.length === 0) return null;
+  return labelled ? <LabelledCounts present={present} /> : <BareCounts present={present} className={className} />;
 }
