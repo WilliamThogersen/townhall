@@ -1,6 +1,6 @@
 import type { Agent } from "../api/types";
-import { StopButton } from "./StopButton";
-import { TerminalPanel } from "./TerminalPanel";
+import { AgentPane } from "./AgentPane";
+import "./AgentCard.css";
 
 interface Props {
   readonly agent: Agent;
@@ -10,8 +10,20 @@ interface Props {
 }
 
 export function AgentCard({ agent, open, onToggle, onStopped }: Props) {
+  const toggle = () => onToggle(agent.name);
+
+  if (open) {
+    return (
+      <li className="card open">
+        <div className="card-pane">
+          <AgentPane agent={agent} onClose={toggle} onStopped={onStopped} />
+        </div>
+      </li>
+    );
+  }
+
   return (
-    <li className={`card${open ? " open" : ""}`}>
+    <li className="card">
       <div className="card-head">
         <span className={`dot ${agent.alive ? "alive" : "dead"}`} aria-hidden="true" />
         <div className="card-title">
@@ -20,12 +32,8 @@ export function AgentCard({ agent, open, onToggle, onStopped }: Props) {
         </div>
         <span className="badge">{agent.alive ? "alive" : "dead"}</span>
         {agent.kind && <span className="badge muted">{agent.kind}</span>}
-        <button onClick={() => onToggle(agent.name)} aria-expanded={open}>
-          {open ? "Close" : "Open"}
-        </button>
-        <StopButton name={agent.name} onStopped={onStopped} />
+        <button onClick={toggle}>Open</button>
       </div>
-      {open && <TerminalPanel name={agent.name} />}
     </li>
   );
 }

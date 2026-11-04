@@ -1,0 +1,4 @@
+.card-pane {
+  display: grid;
+  height: calc(var(--th-pane-min-h) * 1.5);
+}
