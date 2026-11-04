@@ -1,0 +1,17 @@
+.th-stats-head > h2:only-child {
+  order: 0;
+}
+
+.th-stats-note {
+  margin: 0;
+  padding: var(--th-space-5) var(--th-space-4);
+  border: var(--th-border) solid var(--th-line);
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+  text-align: center;
+}
+
+.th-heat-grid .th-heat-cell[data-active] {
+  outline: var(--th-border) solid var(--th-fg);
+  outline-offset: 1px;
+}
