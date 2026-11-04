@@ -53,6 +53,11 @@ describe("headCaption", () => {
     expect(headCaption([{ ...ENTRIES[1]!, tasks: [aTask()] }], null, axis(true))).toBe("1 conversation · 1 repo · today");
   });
 
+  it("shows just the window when there is nothing", () => {
+    expect(headCaption([], null, axis(true))).toBe("today");
+    expect(headCaption([], null, axis(false))).toBe("since 2 nov");
+  });
+
   it("names the one conversation it is filtered to", () => {
     expect(headCaption(ENTRIES.slice(0, 1), "c1", axis(true))).toBe("login redirect loop · today");
     expect(headCaption([], "c9", axis(true))).toBe("today");

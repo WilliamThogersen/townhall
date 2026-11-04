@@ -50,6 +50,7 @@ export function headCaption(
     const title = entries[0]?.conversation.title;
     return [title, windowLabel(axis)].filter((part) => part).join(" · ");
   }
+  if (entries.length === 0) return windowLabel(axis);
   const conversations = counted(entries.length, "conversation", "conversations");
   return [conversations, counted(repoCount(entries), "repo", "repos"), windowLabel(axis)].join(" · ");
 }

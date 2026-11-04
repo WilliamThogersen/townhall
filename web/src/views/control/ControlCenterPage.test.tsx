@@ -174,6 +174,7 @@ describe("ControlCenterPage empty, loading and errors", () => {
     expect(await screen.findByRole("heading", { name: "nothing ran today" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "new conversation" })).toHaveAttribute("href", "/");
     expect(screen.queryByLabelText("Tasks per stage")).toBeNull();
+    expect(document.querySelector(".th-control-cap")).toHaveTextContent(/^today$/);
     expect(shownHints()).toBe("f");
   });
 
