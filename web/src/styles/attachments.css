@@ -253,6 +253,7 @@ a.th-file:hover {
 .th-lightbox-stage {
   position: relative;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   min-height: 0;
   padding: var(--th-space-5) var(--th-space-7);
