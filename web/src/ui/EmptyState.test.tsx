@@ -24,6 +24,14 @@ describe("EmptyState", () => {
     expect(screen.getByRole("button", { name: "add repository…" })).toHaveClass("th-btn--primary");
   });
 
+  it("shows the pixel logo at 108px above the title", () => {
+    const { container } = render(<EmptyState logo title="add your first repository" />);
+    const logo = container.querySelector(".th-empty > svg.th-logo");
+    expect(logo).toHaveAttribute("width", "108");
+    expect(logo).toHaveAttribute("aria-hidden", "true");
+    expect(container.firstElementChild?.firstElementChild).toBe(logo);
+  });
+
   it("leaves out the body and the logo when not given", () => {
     const { container } = render(<EmptyState title="nothing here" />);
     expect(container.querySelector("p")).toBeNull();
