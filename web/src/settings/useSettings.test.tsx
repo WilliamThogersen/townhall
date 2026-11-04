@@ -5,7 +5,7 @@ import { ApiError } from "../api/errors";
 import type { PutSetting } from "./browserImport";
 import { DEFAULT_SETTINGS, type Settings } from "./settings";
 import { createSettingsStore, type SettingsStore } from "./settingsStore";
-import { SettingsStoreContext, useSettings } from "./useSettings";
+import { SettingsStoreContext, useLoadSettings, useSettings } from "./useSettings";
 
 function fakeStore(initial: Partial<Settings> = {}) {
   let daemon: Settings = { ...DEFAULT_SETTINGS, ...initial };
@@ -106,5 +106,18 @@ describe("useSettings", () => {
     const hook = renderHook(() => fresh.useSettings());
     await waitFor(() => expect(hook.result.current.settings.agentsAtOnce).toBe(12));
     expect(fetch).toHaveBeenCalledWith("/api/settings", expect.objectContaining({ method: "GET" }));
+  });
+});
+
+describe("useLoadSettings", () => {
+  it("loads the store once, without reading it", async () => {
+    localStorage.setItem("th-settings", JSON.stringify({ agentsAtOnce: 9 }));
+    const { store, load, put } = fakeStore();
+    const hook = renderHook(() => useLoadSettings(), { wrapper: wrapperFor(store) });
+    hook.rerender();
+    await waitFor(() => expect(store.getState().settings.agentsAtOnce).toBe(9));
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(put.mock.calls).toEqual([["agentsAtOnce", 9]]);
+    expect(localStorage.getItem("th-settings")).toBeNull();
   });
 });

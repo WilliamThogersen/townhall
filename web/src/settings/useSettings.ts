@@ -13,10 +13,15 @@ export interface SettingsControls {
 
 export const SettingsStoreContext = createContext<SettingsStore>(createSettingsStore());
 
+export function useLoadSettings(): void {
+  const store = useContext(SettingsStoreContext);
+  useEffect(() => store.ensureLoaded(), [store]);
+}
+
 export function useSettings(): SettingsControls {
   const store = useContext(SettingsStoreContext);
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
-  useEffect(() => store.ensureLoaded(), [store]);
+  useLoadSettings();
   return useMemo(
     () => ({ ...state, update: store.update, retry: store.reload, dismissProblem: store.dismissProblem }),
     [state, store],
