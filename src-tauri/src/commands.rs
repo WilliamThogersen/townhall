@@ -105,9 +105,12 @@ pub async fn repo_status(state: State<'_, SharedState>) -> Result<RepoStatus, St
 /// The native folder picker. `None` when it was cancelled.
 async fn ask_folder(app: &AppHandle, title: &str) -> Result<Option<PathBuf>, String> {
     let (tx, rx) = oneshot::channel();
-    app.dialog().file().set_title(title).pick_folder(move |picked| {
-        let _ = tx.send(picked);
-    });
+    app.dialog()
+        .file()
+        .set_title(title)
+        .pick_folder(move |picked| {
+            let _ = tx.send(picked);
+        });
     let picked = rx
         .await
         .map_err(|_| "folder dialog closed unexpectedly".to_string())?;

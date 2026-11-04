@@ -69,10 +69,11 @@ npm run tauri build          # packaged app; add `-- --debug` for a faster debug
 
 Output lands under `target/`. How it behaves:
 
-- **First launch** opens a native folder picker. It must be the top folder of a git repo. The
-  choice is saved in `~/.townhall/townhall.db` (an old `settings.json` in the app
-  config dir or an old `config.json` is imported on first launch) and can be changed
-  with "Change repo" in the header; the in-process daemon restarts on the new path.
+- **First launch** with no repo opens home on `add your first repository`. `add repository…`
+  there and on the repos page opens a native folder picker; the folder must be the top
+  folder of a git repo and is added through `POST /api/repos`, so the daemon keeps running.
+  A repo chosen by an older version (saved in `~/.townhall/townhall.db`, or imported from an
+  old `settings.json` or `config.json`) stays the daemon's startup repo.
 - **Port 7777 taken** (a daemon running separately): the app uses that daemon, and
   the repo is whatever it was started with.
 - **Closing the window** hides it to the tray; use "Quit" in the tray menu to exit.

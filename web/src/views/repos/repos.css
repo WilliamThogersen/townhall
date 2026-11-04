@@ -24,6 +24,7 @@
 .th-repo-confirm {
   grid-column: 2 / -1;
   justify-content: flex-end;
+  font-size: var(--th-text-sm);
 }
 
 .th-repo-add {
@@ -89,5 +90,11 @@
   .th-repo-add .th-repo-field--path,
   .th-repo-add .th-repo-add-actions {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-height: 599px) {
+  .th-empty:has(> .th-repo-add) > .th-logo {
+    display: none;
   }
 }

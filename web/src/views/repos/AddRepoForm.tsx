@@ -69,10 +69,10 @@ export function AddRepoForm({ busy, error, focusToken, layout = "row", onSubmit,
       <Field label="name" value={draft.name} placeholder="folder name" onChange={set("name")} />
       <Field label="base branch" value={draft.baseBranch} placeholder="auto" onChange={set("baseBranch")} />
       <div className="th-repo-add-actions">
-        <Button type="submit" size="sm" busy={busy} busyLabel="adding…" disabled={!canSubmit(draft)}>
+        <Button type="submit" busy={busy} busyLabel="adding…" disabled={!canSubmit(draft)}>
           add
         </Button>
-        <Button variant="ghost" size="sm" disabled={busy} onClick={onCancel}>
+        <Button variant="ghost" disabled={busy} onClick={onCancel}>
           cancel
         </Button>
       </div>
