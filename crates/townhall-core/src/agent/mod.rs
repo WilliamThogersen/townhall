@@ -1,5 +1,6 @@
 //! Agent lifecycle: one worktree plus one tmux session per agent.
-//! Nothing is stored; state is rediscovered from git and tmux.
+//! Nothing is stored; state is rediscovered from git and tmux. A session whose process
+//! exited stays as a dead pane (it keeps the exit code) until `stop` kills it.
 
 mod adapter;
 mod claude;
@@ -106,7 +107,8 @@ async fn delete_orphan_branch(ws: &Workspace, name: &str) -> Result<bool> {
     }
 }
 
-/// Worktrees joined with live sessions. A worktree without a session is `alive: false`.
+/// Worktrees joined with live sessions. A worktree whose session is missing or dead is
+/// `alive: false`.
 pub async fn list(ws: &Workspace) -> Result<Vec<Agent>> {
     let (worktrees, sessions) = (worktree::list(ws).await?, tmux::list(ws.key()).await?);
     Ok(worktrees
@@ -126,16 +128,17 @@ fn missing_session(name: &str, e: Error) -> Error {
     }
 }
 
-/// Type text into the agent's session and press Enter.
+/// Type text into the agent's session and press Enter. A dead session is `NotFound`.
 pub async fn send(ws: &Workspace, name: &str, text: &str) -> Result<()> {
     tmux::send(ws.key(), name, text)
         .await
         .map_err(|e| missing_session(name, e))
 }
 
-/// Current pane contents of the agent's session.
+/// Current pane contents of the agent's session. A dead session is `NotFound`, as phase 1
+/// answered once the session was gone, so the stream still ends when the agent does.
 pub async fn output(ws: &Workspace, name: &str) -> Result<String> {
-    tmux::capture(ws.key(), name)
+    tmux::capture_live(ws.key(), name)
         .await
         .map_err(|e| missing_session(name, e))
 }
