@@ -345,4 +345,3 @@ A unit edits only the files it owns. Shared files (`lib.rs`, `routes/mod.rs`, `m
 ## Open items
 
 - The storage plan asks about backups (`VACUUM INTO`) and per-repo settings; neither is built.
-- `GET /api/info` adds `userName`; `types.ts` has it as optional and phase 1's guard does not read it yet (3.1 does).
