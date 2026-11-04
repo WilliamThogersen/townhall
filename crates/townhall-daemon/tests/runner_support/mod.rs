@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 //! A fake `claude` for townhall's own session, and helpers to drive conversations.
-//! The fake logs its argv (NUL-separated), cwd and stdin per turn and picks a script by a word in
+//! The fake logs its argv (NUL-separated), cwd, environment and stdin per turn and picks a script by a word in
 //! the message: `SLOW` waits for the interrupt, `HANG` ignores it, `TOOL` asks for a
 //! disallowed and an allowed tool, `CRASH` dies before it starts, `KIDS` leaves a
 //! `sleep 31` holding its stdout (`ESCAPE` in its own process group) and ignores the
@@ -28,6 +28,7 @@ echo "$n" > "$dir/count"
 printf '%s\0' "$@" > "$dir/argv-$n"
 pwd -P > "$dir/cwd-$n"
 echo "$$" > "$dir/pid-$n"
+env > "$dir/env.tmp-$n" && mv "$dir/env.tmp-$n" "$dir/env-$n"
 IFS= read -r first || exit 4
 printf '%s\n' "$first" > "$dir/stdin-$n"
 log() { printf '%s\n' "$1" >> "$dir/stdin-$n"; }
@@ -120,6 +121,18 @@ impl Fake {
     pub fn cwd(&self, turn: usize) -> PathBuf {
         let text = std::fs::read_to_string(self.dir.join(format!("cwd-{turn}"))).unwrap();
         PathBuf::from(text.trim())
+    }
+
+    /// The turn's environment, `NAME=value` lines, once the fake has written it.
+    pub async fn env(&self, turn: usize) -> String {
+        let file = self.dir.join(format!("env-{turn}"));
+        for _ in 0..250 {
+            if let Ok(text) = std::fs::read_to_string(&file) {
+                return text;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("the fake never wrote the environment of turn {turn}");
     }
 
     /// Every stdin line of the turn, parsed.

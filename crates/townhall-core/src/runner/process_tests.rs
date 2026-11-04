@@ -30,6 +30,24 @@ async fn gone(pid: &str) -> bool {
     false
 }
 
+#[test]
+fn claude_goes_without_exactly_the_outer_sessions_variables() {
+    let built = command("/bin/sh", &[], Path::new("/"));
+    let changed: Vec<_> = built.as_std().get_envs().collect();
+    assert!(
+        changed.iter().all(|(_, value)| value.is_none()),
+        "{changed:?}"
+    );
+    let mut removed: Vec<String> = changed
+        .iter()
+        .map(|(name, _)| name.to_string_lossy().into_owned())
+        .collect();
+    removed.sort();
+    let mut want = crate::agent::OUTER_SESSION_ENV.map(String::from).to_vec();
+    want.sort();
+    assert_eq!(removed, want);
+}
+
 /// A script that starts `sleep 31` holding its stdout, says `ready`, then ignores stdin.
 fn with_kid(dir: &Path, own_group: bool) -> (Proc, PathBuf) {
     let kid = dir.join("kid");

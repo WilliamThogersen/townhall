@@ -1,3 +1,4 @@
+use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
 use townhall_core::agent::{AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter};
@@ -20,13 +21,11 @@ fn argv(options: &LaunchOptions) -> Vec<String> {
     let dir = tempfile::tempdir().unwrap();
     let echo = dir.path().join("echo-args");
     std::fs::write(&echo, "#!/bin/sh\nprintf '%s|' \"$@\"\n").unwrap();
+    std::fs::set_permissions(&echo, std::fs::Permissions::from_mode(0o755)).unwrap();
     let command = ClaudeCodeAdapter::new(echo.to_string_lossy())
         .launch_command(options)
         .unwrap();
-    let out = Command::new("sh")
-        .args(["-c", &format!("sh {command}")])
-        .output()
-        .unwrap();
+    let out = Command::new("sh").args(["-c", &command]).output().unwrap();
     let text = String::from_utf8(out.stdout).unwrap();
     let words: Vec<String> = text.split('|').map(str::to_string).collect();
     words[..words.len() - 1].to_vec()

@@ -127,7 +127,7 @@ claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
 - `model`, `session_id` (a UUID) and each `allowed_tools` entry are refused (`InvalidInput`) when they start with `-` or hold control characters; a tool may not hold a comma. The system prompt may hold anything, since it sits inside its own `--append-system-prompt=` element. Blank values add no flag; no prompt means no `--`.
 - `permission_mode`: `default`, `acceptEdits`, `plan` and `auto` become `--permission-mode=<mode>`; `bypassPermissions` becomes `--dangerously-skip-permissions`. `claude` 2.1.318 lists `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` and no longer lists `default`, but still accepts it, so `default` is passed as is for now.
 - Checked against the installed `claude` 2.1.318 (empty environment, throwaway `HOME`, an invalid `--session-id` so it stops right after parsing): `-- --no-such-flag` reaches the session-id check while `--no-such-flag` alone is `unknown option`, and `--allowedTools=Read,Bash(git diff:*),Edit` and the `--name=value` forms parse.
-- `ClaudeCodeAdapter::args(&options)` returns the same argv unquoted, for a caller that spawns `claude` without a shell (2.2's runner).
+- The launch command puts `env -u <name>` for each of `agent::OUTER_SESSION_ENV` in front of `claude` (see Environment below). `ClaudeCodeAdapter::args(&options)` returns the argv after the program unquoted, without that prefix, for a caller that spawns `claude` without a shell (2.2's runner, which removes the same variables itself).
 - Townhall's own session (`runner/args.rs`) follows the same rules, spawned without a shell: `claude -p --output-format=stream-json --verbose --input-format=stream-json --permission-prompt-tool=stdio --include-partial-messages (--session-id=ID | --resume=ID) --permission-mode=default --append-system-prompt=P --strict-mcp-config --mcp-config=JSON --allowedTools=T1,T2 --disallowedTools=T1,T2 [--add-dir=D ...]`. The session id, the MCP config and each folder are refused (`InvalidInput`, the turn fails) when they start with `-` or hold control characters, a folder also unless absolute and UTF-8. The system prompt may hold newlines.
 
 `permission_mode` always comes from `Context::settings()`, never from a request body or a tool call: `POST /api/agents` ignores any such field. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
@@ -200,7 +200,7 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
 - Start: writes the task's brief, `# <title>`, the prompt and, with attachments, `Files attached to this task:` and one `- <path>` each, to `<home>/tasks/<name>/brief.md` (never the repo or the worktree), then `agent::start` in the task repo's workspace, name = the task name, base = the commit `baseBranch` is at, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `permission_mode` from settings, a new session id, `add_dirs` = the brief's folder plus, with attachments, the conversation's `files` folder. Then `working`. A prompt of any size fits, since tmux takes the command as one argument of at most about 16 k. The agent runs:
 
   ```
-  claude --permission-mode=<mode> --session-id=<uuid> --add-dir=<home>/tasks/<name> [--add-dir=<home>/conversations/<id>/files] -- 'read your task brief at <home>/tasks/<name>/brief.md and do it. it is the full task.'
+  env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude --permission-mode=<mode> --session-id=<uuid> --add-dir=<home>/tasks/<name> [--add-dir=<home>/conversations/<id>/files] -- 'read your task brief at <home>/tasks/<name>/brief.md and do it. it is the full task.'
   ```
 
   (`--dangerously-skip-permissions` instead of `--permission-mode` for `skip all`). The prompt's own text only ever reaches claude through the brief.
@@ -229,6 +229,8 @@ Unit 2.5, `agent/state.rs` and `agent/watch.rs`.
 | `TOWNHALL_TMUX_SOCKET` | a private tmux server for every tmux call townhall makes (`tmux -L <name>`): letters, digits, `.`, `_` and `-`, anything else is refused. Every test harness sets it once per test process (`townhall-test-<pid>-<nanos>`, `tests/common/tmux_server.rs`) and kills that server at exit, so tests never share the default server, or its stale environment, with real agents | the default server |
 
 Every new session also gets `-e PWD=<worktree>`, so a pane never inherits the `PWD` of whoever started the tmux server.
+
+No claude townhall starts sees the variables a running Claude Code sets for its children (`agent::OUTER_SESSION_ENV`: `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_EFFORT`), so a daemon started from inside Claude Code does not make its agents part of that session (`CLAUDE_EFFORT=xhigh` changed how they ran). Townhall's own session removes them from the process it spawns (`runner/process.rs`). A tmux agent's command starts with `env -u <each>` (`ClaudeCodeAdapter::launch_command`, `agent/claude.rs`), since tmux starts it with the tmux server's environment, which can hold them even when the daemon has none. Every other `CLAUDE_*` and `ANTHROPIC_*` variable passes through: it can carry the user's auth or provider setup.
 
 ## Storage: `~/.townhall`
 
@@ -317,7 +319,7 @@ Shared code around the store:
 | `townhall_core::Context` | `startup()`, `store()`, `registry()`, `bus()`, `base_url()`, `claude_bin()`, `settings()`, `ensure_startup_repo()`, `startup_repo_name()`, `repos()`, `repo(name)`, `workspace(&repo)`. Built by `AppState`; core units get it from `start(ctx)` |
 | `townhall_core::repos::RepoRegistry` | `list`, `get`, `add(&AddRepo)`, `ensure(path)`, `remove`; `resolve_path`, `inspect`, `names::*` |
 | `townhall_core::fleet` | `list(ctx)` every `AgentInfo`, `holders(ctx, name)`, `locate(ctx, name, repo)`, `unregister(ctx, name)` |
-| `townhall_core::agent` | `start`, `stop`, `list`, `send`, `output`, `LaunchOptions`, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `ClaudeCodeAdapter::args`, `state::detect(ws, agent)`, `state::detect_in(projects, ws, agent)`, `state::choices(question)`, `state::IDLE_SETTLE_MS` |
+| `townhall_core::agent` | `start`, `stop`, `list`, `send`, `send_key`, `output`, `OUTER_SESSION_ENV`, `LaunchOptions`, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `ClaudeCodeAdapter::args`, `state::detect(ws, agent)`, `state::detect_in(projects, ws, agent)`, `state::choices(question)`, `state::IDLE_SETTLE_MS` |
 | `townhall_core::mcp` | names, `tools()`, `allowed_tools()`, `config_json()` |
 | `townhall_daemon` | `AppState` (`new`, `with_options`, `open`, `with_store`, `ctx()`), `start_background(&state)`, `extract::JsonBody`, `error::ApiError::NotImplemented`, `cors::origin_allowed` |
 
