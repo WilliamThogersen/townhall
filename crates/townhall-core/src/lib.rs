@@ -5,6 +5,7 @@ pub mod agent;
 pub mod clock;
 pub mod cmd;
 pub mod context;
+pub mod definitions;
 pub mod error;
 pub mod events;
 pub mod fleet;

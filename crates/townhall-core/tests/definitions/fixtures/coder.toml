@@ -1,0 +1,11 @@
+# the coder from the agents and workflows plan
+name = "coder"
+description = "implements a spec, tests first"
+adapter = "claude"
+model = "sonnet"
+permission_mode = "acceptEdits"
+tools = ["Read", "Edit", "Write", "Bash"]
+prompt = """
+You implement the spec you are given.
+Write tests first. Commit when the tests pass.
+"""
