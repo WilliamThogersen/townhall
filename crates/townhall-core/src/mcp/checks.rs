@@ -134,13 +134,14 @@ pub(super) async fn base_branch(repo: &Repo, wanted: Option<&str>) -> Checked<St
     Ok(branch)
 }
 
-/// No agent in any repo and no branch `townhall/<name>` in this one has the name yet.
+/// No agent in any repo (ignoring case) and no branch `townhall/<name>` in this one has the
+/// name yet.
 pub(super) async fn name_is_free(ctx: &Context, repo: &Repo, name: &str) -> Checked<()> {
     let held = fleet::holders(ctx, name).await.map_err(|e| e.to_string())?;
     if let Some(found) = held.first() {
         return Err(format!(
-            "an agent named `{name}` already exists in repo `{}`: pick another name",
-            found.repo
+            "an agent named `{}` already exists in repo `{}`: pick another name",
+            found.name, found.repo
         ));
     }
     let branch = format!("refs/heads/{TASK_BRANCH_PREFIX}{name}");
