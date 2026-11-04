@@ -16,7 +16,7 @@ interface PaneHeadProps {
 function StreamStatus({ view }: { view: PaneStreamView }) {
   return (
     <span className="th-stream" data-status={view.status} role="status">
-      {view.glyph === null ? <Spinner /> : <span aria-hidden="true">{view.glyph}</span>}
+      {view.glyph === null ? <Spinner /> : <span aria-hidden="true">{view.glyph}</span>}{" "}
       {view.label}
     </span>
   );
