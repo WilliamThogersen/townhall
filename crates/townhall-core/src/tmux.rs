@@ -1,9 +1,12 @@
 //! tmux sessions, one per agent. Sessions are created with `remain-on-exit`, so a pane
 //! whose process exited stays (dead) until it is killed and tells how it exited.
 //! Targets use tmux's exact form (`=name`), so `a` never matches a session `ab`.
+//! Every call goes to the server `TOWNHALL_TMUX_SOCKET` names (`tmux -L <name>`), else to
+//! the default one.
 
 mod panes;
 
+use std::ffi::OsString;
 use std::path::Path;
 
 pub use panes::{Exit, Pane};
@@ -12,6 +15,42 @@ use crate::cmd::{run, validate_name};
 use crate::{Error, Result};
 
 const SESSION_PREFIX: &str = "townhall-";
+
+/// Names a private tmux server (`tmux -L <name>`) for every tmux call. Unset or empty
+/// means the default server. Tests set it so they never share the server of real agents.
+pub const SOCKET_ENV: &str = "TOWNHALL_TMUX_SOCKET";
+
+fn socket_args(value: Option<OsString>) -> Result<Vec<String>> {
+    let Some(value) = value.filter(|v| !v.is_empty()) else {
+        return Ok(vec![]);
+    };
+    let plain = |n: &&str| {
+        n.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    };
+    match value.to_str().filter(plain) {
+        Some(name) => Ok(vec!["-L".into(), name.into()]),
+        None => Err(Error::InvalidInput(format!(
+            "{SOCKET_ENV} {value:?} may hold only letters, digits, `.`, `_` and `-`"
+        ))),
+    }
+}
+
+/// `-L <name>` when [`SOCKET_ENV`] names a server, else nothing.
+pub fn server_args() -> Result<Vec<String>> {
+    socket_args(std::env::var_os(SOCKET_ENV))
+}
+
+/// Runs `tmux args...` on townhall's server.
+async fn run_tmux(args: &[&str]) -> Result<String> {
+    let server = server_args()?;
+    let all: Vec<&str> = server
+        .iter()
+        .map(String::as_str)
+        .chain(args.iter().copied())
+        .collect();
+    run("tmux", &all, None).await
+}
 
 /// Prefix shared by every session of one repo: `townhall-<repo-key>-`.
 fn repo_prefix(key: &str) -> String {
@@ -73,7 +112,7 @@ async fn run_new_session(args: &[String]) -> Result<String> {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut attempt = 1;
     loop {
-        match run("tmux", &args, None).await {
+        match run_tmux(&args).await {
             Err(e) if server_was_exiting(&e) && attempt < SPAWN_ATTEMPTS => {
                 attempt += 1;
                 tokio::time::sleep(SPAWN_PAUSE).await;
@@ -154,7 +193,7 @@ async fn dead(key: &str, name: &str) -> Result<bool> {
         &pane_target(key, name),
         "#{pane_dead}",
     ];
-    Ok(run("tmux", &args, None).await?.trim() == "1")
+    Ok(run_tmux(&args).await?.trim() == "1")
 }
 
 /// A dead pane answers like a missing session.
@@ -168,30 +207,21 @@ pub async fn send(key: &str, name: &str, text: &str) -> Result<()> {
     if dead(key, name).await? {
         return Err(gone(name));
     }
-    run(
-        "tmux",
-        &["send-keys", "-t", &pane_target(key, name), text, "Enter"],
-        None,
-    )
-    .await?;
+    run_tmux(&["send-keys", "-t", &pane_target(key, name), text, "Enter"]).await?;
     Ok(())
 }
 
 /// Snapshot of the visible pane plus scrollback, dead or alive.
 pub async fn capture(key: &str, name: &str) -> Result<String> {
     validate_name(name)?;
-    run(
-        "tmux",
-        &[
-            "capture-pane",
-            "-p",
-            "-S",
-            "-",
-            "-t",
-            &pane_target(key, name),
-        ],
-        None,
-    )
+    run_tmux(&[
+        "capture-pane",
+        "-p",
+        "-S",
+        "-",
+        "-t",
+        &pane_target(key, name),
+    ])
     .await
 }
 
@@ -199,24 +229,20 @@ pub async fn capture(key: &str, name: &str) -> Result<String> {
 pub async fn capture_live(key: &str, name: &str) -> Result<String> {
     validate_name(name)?;
     let target = pane_target(key, name);
-    let out = run(
-        "tmux",
-        &[
-            "display-message",
-            "-p",
-            "-t",
-            &target,
-            "#{pane_dead}",
-            ";",
-            "capture-pane",
-            "-p",
-            "-S",
-            "-",
-            "-t",
-            &target,
-        ],
-        None,
-    )
+    let out = run_tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        &target,
+        "#{pane_dead}",
+        ";",
+        "capture-pane",
+        "-p",
+        "-S",
+        "-",
+        "-t",
+        &target,
+    ])
     .await?;
     match out.split_once('\n') {
         Some(("1", _)) => Err(gone(name)),
@@ -229,22 +255,12 @@ pub async fn capture_live(key: &str, name: &str) -> Result<String> {
 /// The visible screen only, wrapped lines joined: what an agent shows right now.
 pub async fn screen(key: &str, name: &str) -> Result<String> {
     validate_name(name)?;
-    run(
-        "tmux",
-        &["capture-pane", "-p", "-J", "-t", &pane_target(key, name)],
-        None,
-    )
-    .await
+    run_tmux(&["capture-pane", "-p", "-J", "-t", &pane_target(key, name)]).await
 }
 
 pub async fn kill(key: &str, name: &str) -> Result<()> {
     validate_name(name)?;
-    let killed = run(
-        "tmux",
-        &["kill-session", "-t", &session_target(key, name)],
-        None,
-    )
-    .await;
+    let killed = run_tmux(&["kill-session", "-t", &session_target(key, name)]).await;
     panes::invalidate();
     killed.map(|_| ())
 }
@@ -263,5 +279,20 @@ mod tests {
         assert!(server_was_exiting(&failed("server exited unexpectedly")));
         assert!(!server_was_exiting(&failed("duplicate session: x")));
         assert!(!server_was_exiting(&crate::Error::InvalidInput("x".into())));
+    }
+
+    #[test]
+    fn a_socket_name_picks_a_private_server() {
+        let args = |v: Option<&str>| socket_args(v.map(OsString::from));
+        assert!(args(None).unwrap().is_empty());
+        assert!(args(Some("")).unwrap().is_empty());
+        assert_eq!(
+            args(Some("townhall-test-1.a_b")).unwrap(),
+            ["-L", "townhall-test-1.a_b"]
+        );
+        for bad in ["a/b", "a b", "a\nb", "../x"] {
+            let error = args(Some(bad)).unwrap_err();
+            assert!(error.to_string().contains(SOCKET_ENV), "{error}");
+        }
     }
 }

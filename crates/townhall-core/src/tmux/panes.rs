@@ -5,7 +5,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::cmd::run;
 use crate::{Error, Result};
 
 const FORMAT: &str = "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{session_created}|\
@@ -101,7 +100,7 @@ fn store(panes: Arc<Vec<Pane>>) {
 
 /// Asks tmux now and keeps the answer for the next lookups. No server means no panes.
 pub(super) async fn fetch() -> Result<Arc<Vec<Pane>>> {
-    let panes = match run("tmux", &["list-panes", "-a", "-F", FORMAT], None).await {
+    let panes = match super::run_tmux(&["list-panes", "-a", "-F", FORMAT]).await {
         Ok(out) => Arc::new(parse(&out)),
         Err(e) if no_server(&e) => Arc::new(vec![]),
         Err(e) => return Err(e),
