@@ -1,0 +1,89 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: 8.30.0
+  MERGE_CHECKS_COMMENTS_EXCLUDE: ^\.github/ci/
+
+jobs:
+  secret-detection:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install gitleaks
+        run: |
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+      - name: Scan the commits this PR adds
+        env:
+          SECRET_DETECTION_BASE: ${{ github.event.pull_request.base.sha }}
+          CI_MERGE_REQUEST_SOURCE_BRANCH_SHA: ${{ github.event.pull_request.head.sha }}
+        run: .github/ci/check-secrets.sh
+
+  no-added-comments:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Judge the lines this PR adds
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_MERGE_REQUEST_SOURCE_BRANCH_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          base="$(git merge-base "$BASE_SHA" HEAD)"
+          git -c core.quotePath=false diff -U0 "$base" HEAD | node .github/ci/check-no-comments.mjs
+
+  tree-hygiene:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/ci/check-tree-hygiene.sh
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/ci/check-shellcheck.sh
+
+  npm-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit the web lockfile
+        working-directory: web
+        run: npm audit --audit-level=high --package-lock-only
+
+  cargo-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit

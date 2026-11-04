@@ -1,0 +1,15 @@
+#!
+@ts-expect-error
+shellcheck
+eslint-disable
+v8 ignore
+/// <reference
+@vitest-environment
+@var
+@phpstan-
+@psalm-
+phpcs:
+@codeCoverageIgnore
+yaml-language-server:
+yamllint
+drop-safe:
