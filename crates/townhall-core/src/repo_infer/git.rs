@@ -4,12 +4,15 @@
 use std::path::Path;
 use std::process::{Output, Stdio};
 
-use tokio::process::{Child, Command};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::{Child, ChildStdout, Command};
 use tokio::time::{timeout_at, Instant};
 
 use crate::{Error, Result};
 
-/// Files per token-regex run, well under the argument length limit.
+/// Files the prefilter lists before it stops. Up to this many get the token
+/// regex by name (well under the argument length limit); more get one pass
+/// over the whole repo that stops at the first hit.
 pub(crate) const BATCH: usize = 128;
 const REGEX_SPECIAL: &str = "\\.[](){}*+?|^$";
 /// Before a name (`kill_on_drop`): `.`, `:` and `/` may come first.
@@ -131,43 +134,88 @@ pub(crate) fn token_pattern(needle: &str) -> String {
 }
 
 /// The first tracked text file under `dir` that has `needle` as a whole token.
-/// A fixed-string pass finds the files that hold it at all; only those get
-/// the slower token regex, a batch at a time, in git's file order.
+/// A fixed-string prefilter finds whether any file holds it at all; only then
+/// does the slower token regex run, on those files or, when there are many,
+/// over the repo until its first hit.
 pub(crate) async fn grep_first(dir: &Path, needle: &str, deadline: Instant) -> Result<Grep> {
     let prefilter = ["grep", "-l", "-z", "-F", "-I", "-e", needle];
-    let Some(files) = grep_files(dir, &prefilter, deadline).await? else {
+    let Some(files) = list_names(dir, &prefilter, BATCH + 1, deadline).await? else {
         return Ok(Grep::TimedOut);
     };
-    let pattern = token_pattern(needle);
-    let regex = ["--literal-pathspecs", "grep", "-l", "-z", "-E", "-I"];
-    for batch in files.chunks(BATCH) {
-        let args: Vec<&str> = regex
-            .into_iter()
-            .chain(["-e", &pattern, "--"])
-            .chain(batch.iter().map(String::as_str))
-            .collect();
-        match grep_files(dir, &args, deadline).await? {
-            None => return Ok(Grep::TimedOut),
-            Some(found) => {
-                if let Some(file) = found.into_iter().next() {
-                    return Ok(Grep::Hit(file));
-                }
-            }
-        }
+    if files.is_empty() {
+        return Ok(Grep::Miss);
     }
-    Ok(Grep::Miss)
+    let pattern = token_pattern(needle);
+    let regex = [
+        "--literal-pathspecs",
+        "grep",
+        "-l",
+        "-z",
+        "-E",
+        "-I",
+        "-e",
+        &pattern,
+    ];
+    let args: Vec<&str> = if files.len() <= BATCH {
+        let names = files.iter().map(String::as_str);
+        regex.into_iter().chain(["--"]).chain(names).collect()
+    } else {
+        regex.to_vec()
+    };
+    Ok(match list_names(dir, &args, 1, deadline).await? {
+        None => Grep::TimedOut,
+        Some(found) => found.into_iter().next().map_or(Grep::Miss, Grep::Hit),
+    })
 }
 
-/// The files a `git grep -l -z` names; empty when nothing matches (exit 1),
-/// `None` when out of time.
-async fn grep_files(dir: &Path, args: &[&str], deadline: Instant) -> Result<Option<Vec<String>>> {
-    let Some(out) = output(dir, args, deadline).await? else {
+/// Up to `max` of the names a `git grep -l -z` prints, read as they come; the
+/// child is killed at `max`. Empty when nothing matches, `None` when out of time.
+pub(crate) async fn list_names(
+    dir: &Path,
+    args: &[&str],
+    max: usize,
+    deadline: Instant,
+) -> Result<Option<Vec<String>>> {
+    if Instant::now() >= deadline {
+        return Ok(None);
+    }
+    let mut child = spawn(dir, args).map_err(spawn_error)?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io_error(dir, std::io::Error::other("git grep has no stdout")))?;
+    let Ok(names) = timeout_at(deadline, read_names(stdout, max)).await else {
         return Ok(None);
     };
+    let names = names.map_err(|source| io_error(dir, source))?;
+    if names.len() >= max {
+        return Ok(Some(names));
+    }
+    let Ok(out) = timeout_at(deadline, child.wait_with_output()).await else {
+        return Ok(None);
+    };
+    let out = out.map_err(|source| io_error(dir, source))?;
     match out.status.code() {
-        Some(0 | 1) => Ok(Some(nul_list(&out.stdout))),
+        Some(0 | 1) => Ok(Some(names)),
         _ => Err(failed(args, &out)),
     }
+}
+
+async fn read_names(stdout: ChildStdout, max: usize) -> std::io::Result<Vec<String>> {
+    let mut reader = BufReader::new(stdout);
+    let mut names = Vec::new();
+    let mut name = Vec::new();
+    while names.len() < max {
+        name.clear();
+        if reader.read_until(b'\0', &mut name).await? == 0 {
+            break;
+        }
+        let bytes = name.strip_suffix(b"\0").unwrap_or(&name);
+        if !bytes.is_empty() {
+            names.push(String::from_utf8_lossy(bytes).into_owned());
+        }
+    }
+    Ok(names)
 }
 
 #[cfg(test)]

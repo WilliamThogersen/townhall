@@ -171,3 +171,35 @@ async fn a_backtick_name_used_after_a_dot_hits() {
         assert_eq!(got, found("app", Rule::Code, &reason), "{message}");
     }
 }
+
+#[tokio::test]
+async fn a_hint_in_many_files_but_one_token_stays_found() {
+    let decoys: Vec<(String, &str)> = (0..3000)
+        .map(|i| (format!("d/{i:04}.txt"), "xmanyhint\n"))
+        .collect();
+    let mut files: Vec<(&str, &str)> = decoys.iter().map(|(p, b)| (p.as_str(), *b)).collect();
+    files.push(("z/last.ts", "use(manyhint)\n"));
+    let many = repo("many", &files).await;
+    let alpha = repo("alpha", &[("README.md", "alpha\n")]).await;
+    let candidates = [alpha.candidate(), many.candidate()];
+    let start = Instant::now();
+    let got = infer("rename `manyhint`", &candidates).await.unwrap();
+    assert_eq!(
+        got,
+        found("many", Rule::Code, "it has manyhint in z/last.ts")
+    );
+    assert!(start.elapsed() < Duration::from_secs(3));
+}
+
+#[tokio::test]
+async fn reasons_hold_no_control_characters() {
+    let odd = repo("odd", &[("a\nb/query.ts", "x\n")]).await;
+    let alpha = repo("alpha", &[("README.md", "alpha\n")]).await;
+    let candidates = [alpha.candidate(), odd.candidate()];
+    let got = infer("see query.ts", &candidates).await.unwrap();
+    assert_eq!(got, found("odd", Rule::Code, "it has a b/query.ts"));
+    assert_eq!(
+        event_text(&got, "main").as_deref(),
+        Some("~ repo odd · main, it has a b/query.ts")
+    );
+}

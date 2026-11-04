@@ -16,9 +16,17 @@ fn count(n: usize) -> String {
         .map_or_else(|| n.to_string(), |word| word.to_string())
 }
 
+/// Copy never holds control characters: a file or repo name with a newline
+/// shows a space there.
+fn clean(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
+}
+
 /// The code rule's reason: `it has src/search/query.ts`.
 pub(crate) fn has(hit: &str) -> String {
-    format!("it has {hit}")
+    format!("it has {}", clean(hit))
 }
 
 pub(crate) fn named_several(n: usize) -> String {
@@ -40,14 +48,14 @@ pub(crate) fn unreachable(names: &[String]) -> String {
         [rest @ .., last] => (format!("{} and {last}", rest.join(", ")), "are"),
         [] => (String::new(), "are"),
     };
-    format!("{list} {verb} not reachable. which one?")
+    format!("{} {verb} not reachable. which one?", clean(&list))
 }
 
 /// `~ repo shop · develop, it has src/search/query.ts` for a found repo.
 pub(crate) fn event_text(inference: &Inference, base_branch: &str) -> Option<String> {
     match inference {
         Inference::Found { repo, reason, .. } => {
-            Some(format!("~ repo {repo} · {base_branch}, {reason}"))
+            Some(clean(&format!("~ repo {repo} · {base_branch}, {reason}")))
         }
         Inference::Ask { .. } | Inference::NoRepos => None,
     }
@@ -63,6 +71,24 @@ mod tests {
         assert_eq!(named_several(9), "you named nine repos. which one?");
         assert_eq!(share(12, "query.ts"), "12 repos have query.ts. which one?");
         assert_eq!(has("src/a.ts"), "it has src/a.ts");
+    }
+
+    #[test]
+    fn control_characters_become_spaces() {
+        assert_eq!(has("a\nb/query.ts"), "it has a b/query.ts");
+        assert_eq!(
+            unreachable(&["town\thall".to_string()]),
+            "town hall is not reachable. which one?"
+        );
+        let found = Inference::Found {
+            repo: "sh\rop".into(),
+            rule: crate::repo_infer::Rule::Code,
+            reason: "it has x\u{1b}y".into(),
+        };
+        assert_eq!(
+            event_text(&found, "ma\nin").as_deref(),
+            Some("~ repo sh op · ma in, it has x y")
+        );
     }
 
     #[test]

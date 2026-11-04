@@ -4,7 +4,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::Instant;
 
-use super::{grep_first, is_work_tree, ls_files, token_pattern, Grep, BATCH};
+use super::{grep_first, is_work_tree, list_names, ls_files, token_pattern, Grep, BATCH};
 use crate::cmd::run;
 use crate::Error;
 
@@ -166,4 +166,25 @@ async fn the_prefilter_gives_the_same_answers_as_the_regex_alone() {
         .await
         .unwrap();
     assert_eq!(got, Grep::Hit("z.txt".to_string()));
+}
+
+#[tokio::test]
+async fn a_listing_stops_after_max_names_or_runs_to_the_end() {
+    let git = repo().await;
+    for i in 0..300 {
+        std::fs::write(git.path().join(format!("m{i:03}.txt")), "xhint\n").unwrap();
+    }
+    run("git", &["add", "-A"], Some(git.path())).await.unwrap();
+    let args = ["grep", "-l", "-z", "-F", "-e", "xhint"];
+    let cut = list_names(git.path(), &args, 129, soon()).await.unwrap();
+    assert_eq!(cut.map(|names| names.len()), Some(129));
+    let all = list_names(git.path(), &args, 1000, soon()).await.unwrap();
+    assert_eq!(all.map(|names| names.len()), Some(300));
+    let none = ["grep", "-l", "-z", "-F", "-e", "absent-thing"];
+    let empty = list_names(git.path(), &none, 10, soon()).await.unwrap();
+    assert_eq!(empty, Some(vec![]));
+    let late = list_names(git.path(), &args, 10, Instant::now())
+        .await
+        .unwrap();
+    assert_eq!(late, None);
 }
