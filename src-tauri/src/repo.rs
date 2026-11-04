@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Accepts a path only if it is a directory inside a git work tree.
-/// Returns the canonical path.
+/// Accepts a path only if it is the top folder of a git work tree, as the daemon's
+/// registry does: it refuses a subfolder, so the picker must too. Returns the canonical path.
 pub fn validate_repo(path: &Path) -> Result<PathBuf, String> {
     let canonical = path
         .canonicalize()
@@ -13,13 +13,18 @@ pub fn validate_repo(path: &Path) -> Result<PathBuf, String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(&canonical)
-        .args(["rev-parse", "--is-inside-work-tree"])
+        .args(["rev-parse", "--show-toplevel"])
         .output()
         .map_err(|e| format!("cannot run git (is it installed?): {e}"))?;
-    if out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "true" {
+    let top = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let top = Path::new(&top).canonicalize().ok();
+    if out.status.success() && top.as_deref() == Some(canonical.as_path()) {
         Ok(canonical)
     } else {
-        Err(format!("{} is not a git repository", canonical.display()))
+        Err(format!(
+            "{} is not the top folder of a git repo",
+            canonical.display()
+        ))
     }
 }
 
@@ -33,11 +38,33 @@ mod tests {
         assert!(err.contains("cannot open"), "{err}");
     }
 
+    fn git_init(dir: &Path) {
+        let ok = Command::new("git").arg("init").arg(dir).output().unwrap();
+        assert!(ok.status.success());
+    }
+
     #[test]
     fn rejects_plain_directory() {
         let dir = tempfile::tempdir().unwrap();
         let err = validate_repo(dir.path()).unwrap_err();
-        assert!(err.contains("not a git repository"), "{err}");
+        assert!(
+            err.ends_with("is not the top folder of a git repo"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn rejects_a_subfolder_of_a_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        git_init(dir.path());
+        let sub = dir.path().join("src");
+        std::fs::create_dir(&sub).unwrap();
+        let err = validate_repo(&sub).unwrap_err();
+        assert!(
+            err.ends_with("is not the top folder of a git repo"),
+            "{err}"
+        );
+        assert!(validate_repo(&dir.path().join(".git")).is_err());
     }
 
     #[test]
@@ -53,12 +80,7 @@ mod tests {
     #[test]
     fn accepts_git_repo() {
         let dir = tempfile::tempdir().unwrap();
-        let ok = Command::new("git")
-            .arg("init")
-            .arg(dir.path())
-            .output()
-            .unwrap();
-        assert!(ok.status.success());
+        git_init(dir.path());
         let got = validate_repo(dir.path()).unwrap();
         assert_eq!(got, dir.path().canonicalize().unwrap());
     }

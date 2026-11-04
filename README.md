@@ -67,7 +67,7 @@ npm run tauri build          # packaged app; add `-- --debug` for a faster debug
 
 Output lands under `target/`. How it behaves:
 
-- **First launch** opens a native folder picker. The repo must be a git repo. The
+- **First launch** opens a native folder picker. It must be the top folder of a git repo. The
   choice is saved in `~/.townhall/townhall.db` (an old `settings.json` in the app
   config dir or an old `config.json` is imported on first launch) and can be changed
   with "Change repo" in the header; the in-process daemon restarts on the new path.
