@@ -1,6 +1,6 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Terminal, toTerminalText } from "./Terminal";
+import { Terminal, TERMINAL_CELL_PX, TERMINAL_LINE_HEIGHT, TERMINAL_ROW_PX, toTerminalText } from "./Terminal";
 
 interface FakeTerm {
   options: Record<string, unknown>;
@@ -92,6 +92,18 @@ describe("toTerminalText", () => {
   });
 });
 
+describe("terminal row height", () => {
+  it("gives 18.2px rows, 13px text at 1.4 like the preview", () => {
+    expect(TERMINAL_ROW_PX).toBeCloseTo(13 * 1.4, 5);
+  });
+
+  it("scales xterm's measured 17px cell to the row height", () => {
+    expect(TERMINAL_CELL_PX).toBe(17);
+    expect(TERMINAL_LINE_HEIGHT).toBeCloseTo(1.0706, 4);
+    expect(TERMINAL_CELL_PX * TERMINAL_LINE_HEIGHT).toBeCloseTo(18.2, 5);
+  });
+});
+
 describe("Terminal", () => {
   it("opens xterm with the token theme, font and metrics", async () => {
     const { container } = render(<Terminal snapshot="hello" />);
@@ -100,7 +112,7 @@ describe("Terminal", () => {
       disableStdin: true,
       fontFamily: '"JetBrains Mono",monospace',
       fontSize: 13,
-      lineHeight: 1.4,
+      lineHeight: TERMINAL_LINE_HEIGHT,
       theme: { background: "#0b0b0c", red: "#ff6b6b" },
     });
     expect(term.host).toBe(container.querySelector(".th-term-host"));

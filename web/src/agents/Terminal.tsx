@@ -6,8 +6,12 @@ import { readTerminalFont, useTerminalTheme } from "./terminalTheme";
 
 const CLEAR = "\x1b[2J\x1b[3J\x1b[H";
 const FONT_SIZE = 13;
-const LINE_HEIGHT = 1.4;
+const DESIGN_LINE_HEIGHT = 1.4;
 const SCROLLBACK = 2000;
+
+export const TERMINAL_ROW_PX = FONT_SIZE * DESIGN_LINE_HEIGHT;
+export const TERMINAL_CELL_PX = 17;
+export const TERMINAL_LINE_HEIGHT = TERMINAL_ROW_PX / TERMINAL_CELL_PX;
 
 export function toTerminalText(snapshot: string): string {
   return CLEAR + snapshot.replace(/\r?\n/g, "\r\n");
@@ -34,7 +38,7 @@ function mountTerminal(host: HTMLElement, theme: ITheme, fontFamily: string): Mo
     scrollback: SCROLLBACK,
     fontFamily: fontFamily || undefined,
     fontSize: FONT_SIZE,
-    lineHeight: LINE_HEIGHT,
+    lineHeight: TERMINAL_LINE_HEIGHT,
     theme,
   });
   const fit = new FitAddon();
