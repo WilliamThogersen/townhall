@@ -8,7 +8,7 @@ import {
   vouchForOwnOrigin,
   type OutgoingRequest,
   type ProxiedRequest,
-} from "./daemonProxy";
+} from "../../vite.config";
 
 function outgoing(): OutgoingRequest & { readonly set: Record<string, string> } {
   const set: Record<string, string> = {};
