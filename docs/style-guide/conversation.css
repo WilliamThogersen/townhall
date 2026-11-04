@@ -1,6 +1,7 @@
 /*
  * townhall conversation view, v2: layout, header, thread, session rail, tasks, composer, menu.
- * Depends on tokens.css and components.css. Not imported by web/ yet.
+ * Depends on tokens.css and components.css.
+ * Copied to web/src/styles/conversation.css: change both together.
  */
 
 .th-convo-view {
@@ -602,6 +603,7 @@
   cursor: pointer;
 }
 
+.th-option[aria-checked="true"]::before,
 .th-option[aria-selected="true"]::before {
   content: "\2713";
   color: var(--th-accent);
@@ -611,6 +613,10 @@
 .th-option:hover,
 .th-option[data-active="true"] {
   background: var(--th-surface-2);
+}
+
+.th-option:focus-visible {
+  outline-offset: calc(-1 * var(--th-focus-width));
 }
 
 .th-option > span:nth-child(1) {

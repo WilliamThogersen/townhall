@@ -1,0 +1,9 @@
+.th-repos-note {
+  display: -webkit-box;
+  min-width: 0;
+  margin: 0 var(--th-space-2) 0 auto;
+  overflow: hidden;
+  text-align: right;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}

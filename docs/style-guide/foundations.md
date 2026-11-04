@@ -211,8 +211,13 @@ const theme = {
   brightCyan: v("ansi-bright-cyan"), brightWhite: v("ansi-bright-white"),
 };
 
-new XTerm({ theme, fontFamily: v("font"), fontSize: 13, lineHeight: 1.4 });
+const rowPx = 13 * 1.4;
+const cellPx = 17;
+
+new XTerm({ theme, fontFamily: v("font"), fontSize: 13, lineHeight: rowPx / cellPx });
 ```
+
+Rows are 18.2px: 13px text at line height 1.4, the same rhythm as `.th-term`. xterm's `lineHeight` is not a CSS line height: it multiplies the cell height xterm measures from the font (17px for JetBrains Mono at 13px), not the font size. So the value is 18.2 / 17, about 1.07. Passing 1.4 would give 23px rows.
 
 In the light theme ANSI white maps to a mid grey and bright white to near black, so programs that print "white" text stay readable on a light background. Watch `data-theme` on `<html>` with a `MutationObserver` and set `term.options.theme` again when it changes.
 

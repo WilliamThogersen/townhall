@@ -1,48 +1,90 @@
 import { useEffect, useRef } from "react";
-import { Terminal as XTerm } from "@xterm/xterm";
+import { Terminal as XTerm, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { readTerminalFont, useTerminalTheme } from "./terminalTheme";
 
 const CLEAR = "\x1b[2J\x1b[3J\x1b[H";
+const FONT_SIZE = 13;
+const DESIGN_LINE_HEIGHT = 1.4;
+const SCROLLBACK = 2000;
 
-/** Renders full-pane snapshots: clear, then rewrite. */
+export const TERMINAL_ROW_PX = FONT_SIZE * DESIGN_LINE_HEIGHT;
+export const TERMINAL_CELL_PX = 17;
+export const TERMINAL_LINE_HEIGHT = TERMINAL_ROW_PX / TERMINAL_CELL_PX;
+
 export function toTerminalText(snapshot: string): string {
   return CLEAR + snapshot.replace(/\r?\n/g, "\r\n");
+}
+
+async function whenFontReady(fontFamily: string): Promise<void> {
+  if (!("fonts" in document) || fontFamily === "") return;
+  try {
+    await document.fonts.load(`${FONT_SIZE}px ${fontFamily}`);
+  } catch (e) {
+    console.warn("terminal font not loaded", e);
+  }
+}
+
+interface MountedTerminal {
+  readonly term: XTerm;
+  readonly dispose: () => void;
+}
+
+function mountTerminal(host: HTMLElement, theme: ITheme, fontFamily: string): MountedTerminal {
+  const term = new XTerm({
+    disableStdin: true,
+    convertEol: false,
+    scrollback: SCROLLBACK,
+    fontFamily: fontFamily || undefined,
+    fontSize: FONT_SIZE,
+    lineHeight: TERMINAL_LINE_HEIGHT,
+    theme,
+  });
+  const fit = new FitAddon();
+  term.loadAddon(fit);
+  term.open(host);
+  const refit = () => {
+    try {
+      fit.fit();
+    } catch (e) {
+      console.error("terminal fit failed", e);
+    }
+  };
+  refit();
+  const observer = new ResizeObserver(refit);
+  observer.observe(host);
+  return {
+    term,
+    dispose: () => {
+      observer.disconnect();
+      term.dispose();
+    },
+  };
 }
 
 export function Terminal({ snapshot }: { snapshot: string }) {
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<XTerm | null>(null);
-  const latest = useRef(snapshot);
-  latest.current = snapshot;
+  const theme = useTerminalTheme();
+  const latest = useRef({ snapshot, theme });
+  latest.current = { snapshot, theme };
 
   useEffect(() => {
-    if (!host.current) return;
-    const t = new XTerm({
-      disableStdin: true,
-      convertEol: false,
-      scrollback: 2000,
-      fontSize: 13,
-      theme: { background: "#0b0d10", foreground: "#d7dae0" },
+    const el = host.current;
+    if (!el) return;
+    const fontFamily = readTerminalFont();
+    let cancelled = false;
+    let mounted: MountedTerminal | null = null;
+    void whenFontReady(fontFamily).then(() => {
+      if (cancelled) return;
+      mounted = mountTerminal(el, latest.current.theme, fontFamily);
+      mounted.term.write(toTerminalText(latest.current.snapshot));
+      term.current = mounted.term;
     });
-    const fit = new FitAddon();
-    t.loadAddon(fit);
-    t.open(host.current);
-    term.current = t;
-    const doFit = () => {
-      try {
-        fit.fit();
-      } catch (e) {
-        console.error("terminal fit failed", e);
-      }
-    };
-    doFit();
-    t.write(toTerminalText(latest.current));
-    const obs = new ResizeObserver(doFit);
-    obs.observe(host.current);
     return () => {
-      obs.disconnect();
-      t.dispose();
+      cancelled = true;
+      mounted?.dispose();
       term.current = null;
     };
   }, []);
@@ -51,5 +93,9 @@ export function Terminal({ snapshot }: { snapshot: string }) {
     term.current?.write(toTerminalText(snapshot));
   }, [snapshot]);
 
-  return <div className="terminal" ref={host} aria-label="Agent terminal" />;
+  useEffect(() => {
+    if (term.current) term.current.options.theme = theme;
+  }, [theme]);
+
+  return <div className="th-term-host" ref={host} />;
 }

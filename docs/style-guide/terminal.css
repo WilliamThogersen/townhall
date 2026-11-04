@@ -1,6 +1,7 @@
 /*
  * townhall agent terminal panes, v2: pane, stream status, xterm host, prompt.
- * Depends on tokens.css and components.css. Not imported by web/ yet.
+ * Depends on tokens.css and components.css.
+ * Copied to web/src/styles/terminal.css: change both together.
  */
 
 /* ---------- agent panes ---------- */

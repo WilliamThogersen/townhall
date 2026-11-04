@@ -1,6 +1,7 @@
 /*
  * townhall views, v2: trace (conveyor belt), home with shipped stats, repos.
- * Depends on tokens.css and components.css. Not imported by web/ yet.
+ * Depends on tokens.css and components.css.
+ * Copied to web/src/styles/views.css: change both together.
  */
 
 /* ---------- trace (conveyor belt) ---------- */
@@ -541,6 +542,29 @@
   .th-trace-body {
     --th-trace-label: 220px;
   }
+
+  .th-repo {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: var(--th-space-1);
+  }
+
+  .th-repo-name {
+    grid-area: 1 / 1;
+  }
+
+  .th-repo > :last-child {
+    grid-area: 1 / 2;
+  }
+
+  .th-repo > :nth-child(2) {
+    grid-area: 2 / 1;
+  }
+
+  .th-repo > :nth-child(3) {
+    grid-area: 2 / 2;
+    justify-self: end;
+    margin-right: var(--th-space-2);
+  }
 }
 
 @container (max-height: 529px) {
@@ -718,6 +742,22 @@
   }
 }
 
+@container (max-width: 400px) {
+  .th-setting-row .th-segmented span {
+    padding: 0 var(--th-space-2);
+  }
+}
+
+@container (max-width: 359px) {
+  .th-setting-row {
+    padding-inline: var(--th-space-3);
+  }
+
+  .th-setting-row .th-segmented span {
+    padding: 0 var(--th-space-1);
+  }
+}
+
 .th-switch {
   position: relative;
   flex: none;
@@ -752,6 +792,7 @@
 
 .th-stepper {
   display: inline-flex;
+  width: max-content;
   height: var(--th-control);
   border: var(--th-border) solid var(--th-line-control);
 }

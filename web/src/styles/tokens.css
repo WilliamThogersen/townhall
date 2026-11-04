@@ -1,0 +1,216 @@
+/*
+ * townhall design tokens, v2: terminal-native.
+ * Copy of docs/style-guide/tokens.css: change both together.
+ *
+ * Structure:
+ *   :root                     dark theme (the default) + every theme-independent token
+ *   :root[data-theme="light"] light overrides (colors only)
+ *   media queries             coarse pointer sizes, reduced motion
+ *
+ * Rule: color means state. Chrome is monochrome. Amber means "you":
+ * your focus, your cursor, your selection, and agents waiting on you.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --th-bg: #0b0b0c;
+  --th-surface: #111113;
+  --th-surface-2: #18181b;
+  --th-surface-3: #212125;
+  --th-line: #26262a;
+  --th-line-strong: #38383e;
+  --th-line-control: #6a6a72;
+
+  --th-fg: #e8e6e1;
+  --th-fg-muted: #a8a6a0;
+  --th-fg-faint: #8a8882;
+  --th-on-inverse: #0b0b0c;
+
+  --th-accent: #ffb238;
+  --th-accent-strong: #ffc870;
+  --th-on-accent: #0b0b0c;
+  --th-accent-tint: rgba(255, 178, 56, 0.1);
+
+  --th-ok: #5fd38d;
+  --th-ok-tint: rgba(95, 211, 141, 0.1);
+  --th-danger: #ff6b6b;
+  --th-danger-strong: #ff9090;
+  --th-on-danger: #0b0b0c;
+  --th-danger-tint: rgba(255, 107, 107, 0.1);
+  --th-info: #6cb6ff;
+  --th-info-tint: rgba(108, 182, 255, 0.1);
+
+  --th-status-alive: var(--th-ok);
+  --th-status-working: var(--th-info);
+  --th-status-waiting: var(--th-accent);
+  --th-status-error: var(--th-danger);
+  --th-status-dead: var(--th-fg-faint);
+
+  --th-selection: rgba(255, 178, 56, 0.28);
+  --th-backdrop: rgba(0, 0, 0, 0.62);
+  --th-shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.55);
+
+  --th-lightbox-bg: rgba(8, 8, 9, 0.97);
+
+  --th-heat-0: #18181b;
+  --th-heat-1: #1c4a2f;
+  --th-heat-2: #287a4a;
+  --th-heat-3: #42ad6b;
+  --th-heat-4: #72e6a0;
+
+  --th-term-bg: #0b0b0c;
+  --th-term-fg: #e8e6e1;
+  --th-term-cursor: #ffb238;
+  --th-term-selection: rgba(255, 178, 56, 0.28);
+  --th-ansi-black: #26262a;
+  --th-ansi-red: #ff6b6b;
+  --th-ansi-green: #5fd38d;
+  --th-ansi-yellow: #ffb238;
+  --th-ansi-blue: #6cb6ff;
+  --th-ansi-magenta: #d79bff;
+  --th-ansi-cyan: #5fd7d7;
+  --th-ansi-white: #c8c6c0;
+  --th-ansi-bright-black: #6a6a72;
+  --th-ansi-bright-red: #ff9090;
+  --th-ansi-bright-green: #8ae6ad;
+  --th-ansi-bright-yellow: #ffc870;
+  --th-ansi-bright-blue: #9acdff;
+  --th-ansi-bright-magenta: #e6bdff;
+  --th-ansi-bright-cyan: #8ae6e6;
+  --th-ansi-bright-white: #f6f4ef;
+
+  --th-font: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --th-text-xs: 11px;
+  --th-text-sm: 12px;
+  --th-text-md: 13px;
+  --th-text-lg: 15px;
+  --th-text-xl: 20px;
+  --th-leading-xs: 16px;
+  --th-leading-sm: 18px;
+  --th-leading-md: 20px;
+  --th-leading-lg: 22px;
+  --th-leading-xl: 28px;
+  --th-weight-normal: 400;
+  --th-weight-bold: 700;
+
+  --th-space-1: 4px;
+  --th-space-2: 8px;
+  --th-space-3: 12px;
+  --th-space-4: 16px;
+  --th-space-5: 24px;
+  --th-space-6: 32px;
+  --th-space-7: 48px;
+
+  --th-control-sm: 24px;
+  --th-control: 28px;
+  --th-control-lg: 32px;
+  --th-row: 28px;
+  --th-bar: 36px;
+  --th-keybar: 24px;
+  --th-sidebar: 272px;
+  --th-thread-min: 420px;
+  --th-measure: 76ch;
+  --th-pane-min: 440px;
+  --th-pane-min-h: 320px;
+  --th-composer-max: 172px;
+  --th-home: 720px;
+  --th-rail: 320px;
+  --th-thumb-h: 104px;
+  --th-heat-cell: 10px;
+  --th-heat-gap: 3px;
+
+  --th-radius: 0;
+  --th-border: 1px;
+  --th-focus-width: 2px;
+  --th-focus-offset: 2px;
+
+  --th-dur-fast: 80ms;
+  --th-dur: 140ms;
+  --th-ease: cubic-bezier(0.2, 0, 0, 1);
+  --th-spin-frame: 80ms;
+
+  --th-z-sticky: 10;
+  --th-z-overlay: 100;
+  --th-z-toast: 200;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --th-bg: #f4f3ef;
+  --th-surface: #fbfbf8;
+  --th-surface-2: #ecebe6;
+  --th-surface-3: #e2e1db;
+  --th-line: #deddd6;
+  --th-line-strong: #c9c7bf;
+  --th-line-control: #8c8a82;
+
+  --th-fg: #191917;
+  --th-fg-muted: #52514c;
+  --th-fg-faint: #6b6a64;
+  --th-on-inverse: #f4f3ef;
+
+  --th-accent: #955700;
+  --th-accent-strong: #7a4700;
+  --th-on-accent: #ffffff;
+  --th-accent-tint: rgba(196, 122, 0, 0.12);
+
+  --th-ok: #1b7543;
+  --th-ok-tint: rgba(27, 117, 67, 0.1);
+  --th-danger: #c02b2b;
+  --th-danger-strong: #9e2020;
+  --th-on-danger: #ffffff;
+  --th-danger-tint: rgba(192, 43, 43, 0.08);
+  --th-info: #1c5cbb;
+  --th-info-tint: rgba(28, 92, 187, 0.08);
+
+  --th-selection: rgba(196, 122, 0, 0.22);
+  --th-backdrop: rgba(25, 25, 23, 0.4);
+  --th-shadow-overlay: 0 24px 64px rgba(25, 25, 23, 0.18);
+
+  --th-lightbox-bg: rgba(244, 243, 239, 0.97);
+
+  --th-heat-0: #e5e4de;
+  --th-heat-1: #b5e0c2;
+  --th-heat-2: #74c290;
+  --th-heat-3: #36975a;
+  --th-heat-4: #1a663a;
+
+  --th-term-bg: #fbfbf8;
+  --th-term-fg: #191917;
+  --th-term-cursor: #955700;
+  --th-term-selection: rgba(196, 122, 0, 0.22);
+  --th-ansi-black: #191917;
+  --th-ansi-red: #c02b2b;
+  --th-ansi-green: #1b7543;
+  --th-ansi-yellow: #955700;
+  --th-ansi-blue: #1c5cbb;
+  --th-ansi-magenta: #8a3db5;
+  --th-ansi-cyan: #0e727c;
+  --th-ansi-white: #6b6a64;
+  --th-ansi-bright-black: #52514c;
+  --th-ansi-bright-red: #9e2020;
+  --th-ansi-bright-green: #145c34;
+  --th-ansi-bright-yellow: #7a4700;
+  --th-ansi-bright-blue: #164a98;
+  --th-ansi-bright-magenta: #702f94;
+  --th-ansi-bright-cyan: #0a5a62;
+  --th-ansi-bright-white: #3a3a36;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --th-control-sm: 44px;
+    --th-control: 44px;
+    --th-control-lg: 44px;
+    --th-row: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --th-dur-fast: 0ms;
+    --th-dur: 0ms;
+  }
+}

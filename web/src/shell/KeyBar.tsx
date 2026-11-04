@@ -1,0 +1,23 @@
+import { useAgentsContext } from "../agents/AgentsProvider";
+import { countByState } from "../agents/agentState";
+import { Kbd } from "../ui/Kbd";
+import { GlyphCounts } from "../ui/StatusGlyph";
+import { useCurrentKeyHints } from "./keyHints";
+
+export function KeyBar() {
+  const hints = useCurrentKeyHints();
+  const { agents } = useAgentsContext();
+  return (
+    <footer className="th-keybar">
+      {hints.map((hint) => (
+        <span key={`${hint.keys} ${hint.label}`}>
+          <Kbd>{hint.keys}</Kbd>
+          {hint.label}
+        </span>
+      ))}
+      <span className="th-keybar-status">
+        <GlyphCounts counts={countByState(agents)} labelled />
+      </span>
+    </footer>
+  );
+}

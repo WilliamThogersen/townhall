@@ -1,6 +1,7 @@
 /*
  * townhall shared components, v2. Depends on tokens.css. Page layouts live in pages.css.
- * Every class is .th-*. No hard-coded colors or sizes. Not imported by web/ yet.
+ * Every class is .th-*. No hard-coded colors or sizes.
+ * Copied to web/src/styles/components.css: change both together.
  */
 
 *,
@@ -513,6 +514,11 @@ textarea {
 .th-btn--danger-solid:hover:not(:disabled) {
   border-color: var(--th-danger-strong);
   background: var(--th-danger-strong);
+}
+
+.th-btn--danger-solid:disabled {
+  border-color: var(--th-line-strong);
+  background: var(--th-surface-3);
 }
 
 .th-btn--sm {
