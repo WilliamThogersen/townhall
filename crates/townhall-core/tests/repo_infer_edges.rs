@@ -148,3 +148,26 @@ async fn names_come_back_trimmed() {
     let got = infer("see query.ts", &two).await.unwrap();
     assert_eq!(got, found("shop", Rule::Code, "it has src/search/query.ts"));
 }
+
+#[tokio::test]
+async fn a_backtick_name_used_after_a_dot_hits() {
+    let app = repo(
+        "app",
+        &[(
+            "code.js",
+            "child.kill_on_drop(true); React.useState(0); this.handleClick();\n",
+        )],
+    )
+    .await;
+    let other = repo("other", &[("README.md", "other\n")]).await;
+    let candidates = [other.candidate(), app.candidate()];
+    for (message, name) in [
+        ("rename `kill_on_drop`", "kill_on_drop"),
+        ("replace `useState` here", "useState"),
+        ("fix `handleClick`", "handleClick"),
+    ] {
+        let got = infer(message, &candidates).await.unwrap();
+        let reason = format!("it has {name} in code.js");
+        assert_eq!(got, found("app", Rule::Code, &reason), "{message}");
+    }
+}

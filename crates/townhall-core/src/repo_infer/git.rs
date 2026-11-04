@@ -1,16 +1,24 @@
 //! Bounded git calls: each runs against a deadline, and a child that outlives
 //! its call is killed.
 
-use std::future::poll_fn;
 use std::path::Path;
-use std::pin::Pin;
 use std::process::{Output, Stdio};
 
-use tokio::io::{AsyncRead, ReadBuf};
-use tokio::process::{Child, ChildStdout, Command};
+use tokio::process::{Child, Command};
 use tokio::time::{timeout_at, Instant};
 
 use crate::{Error, Result};
+
+/// Files per token-regex run, well under the argument length limit.
+pub(crate) const BATCH: usize = 128;
+const REGEX_SPECIAL: &str = "\\.[](){}*+?|^$";
+/// Before a name (`kill_on_drop`): `.`, `:` and `/` may come first.
+const BEFORE_NAME: &str = "[^[:alnum:]_@-]";
+/// Before anything else (`/info`): a `.` makes it another path (`./info`).
+const BEFORE_OTHER: &str = "[^[:alnum:]_./@-]";
+/// After: `/` may follow (`@shop/ui/button`); a full stop ends the token
+/// unless more of a name follows (`query.ts.bak`).
+const AFTER: &str = "($|[^[:alnum:]_.@-]|[.]($|[^[:alnum:]_]))";
 
 /// The first file `git grep` found, no file, or out of time.
 #[derive(Debug, PartialEq, Eq)]
@@ -54,49 +62,55 @@ fn failed(args: &[&str], out: &Output) -> Error {
     }
 }
 
+fn nul_list(stdout: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(stdout)
+        .split('\0')
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Run git to completion; `None` when out of time.
+async fn output(dir: &Path, args: &[&str], deadline: Instant) -> Result<Option<Output>> {
+    if Instant::now() >= deadline {
+        return Ok(None);
+    }
+    let child = spawn(dir, args).map_err(spawn_error)?;
+    let Ok(out) = timeout_at(deadline, child.wait_with_output()).await else {
+        return Ok(None);
+    };
+    out.map(Some).map_err(|source| io_error(dir, source))
+}
+
 /// Whether `dir` is a git work tree. A missing folder, a folder outside git
 /// or a repo that does not answer in time is not.
 pub(crate) async fn is_work_tree(dir: &Path, deadline: Instant) -> Result<bool> {
     if !dir.is_dir() {
         return Ok(false);
     }
-    let child = match spawn(dir, &["rev-parse", "--is-inside-work-tree"]) {
-        Ok(child) => child,
-        Err(_) if !dir.is_dir() => return Ok(false),
-        Err(source) => return Err(spawn_error(source)),
+    let out = match output(dir, &["rev-parse", "--is-inside-work-tree"], deadline).await {
+        Ok(out) => out,
+        Err(Error::Spawn { .. }) if !dir.is_dir() => return Ok(false),
+        Err(e) => return Err(e),
     };
-    let Ok(out) = timeout_at(deadline, child.wait_with_output()).await else {
-        return Ok(false);
-    };
-    let out = out.map_err(|source| io_error(dir, source))?;
-    Ok(out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "true")
+    Ok(out.is_some_and(|out| {
+        out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "true"
+    }))
 }
 
 /// Tracked paths under `dir`, or `None` when out of time.
 pub(crate) async fn ls_files(dir: &Path, deadline: Instant) -> Result<Option<Vec<String>>> {
     let args = ["ls-files", "-z"];
-    let child = spawn(dir, &args).map_err(spawn_error)?;
-    let Ok(out) = timeout_at(deadline, child.wait_with_output()).await else {
+    let Some(out) = output(dir, &args, deadline).await? else {
         return Ok(None);
     };
-    let out = out.map_err(|source| io_error(dir, source))?;
     if !out.status.success() {
         return Err(failed(&args, &out));
     }
-    let files = String::from_utf8_lossy(&out.stdout)
-        .split('\0')
-        .filter(|file| !file.is_empty())
-        .map(str::to_string)
-        .collect();
-    Ok(Some(files))
+    Ok(Some(nul_list(&out.stdout)))
 }
 
-/// Characters that continue a token, so a hit must not touch one.
-const TOKEN_CHARS: &str = "[:alnum:]_./@-";
-const REGEX_SPECIAL: &str = "\\.[](){}*+?|^$";
-
-/// An extended regex for `needle` as a whole token. A full stop after it
-/// still ends it, unless more of a name follows (`query.ts.bak`).
+/// An extended regex for `needle` as a whole token.
 pub(crate) fn token_pattern(needle: &str) -> String {
     let escaped: String = needle
         .chars()
@@ -108,67 +122,52 @@ pub(crate) fn token_pattern(needle: &str) -> String {
                 .chain([c])
         })
         .collect();
-    format!("(^|[^{TOKEN_CHARS}]){escaped}($|[^{TOKEN_CHARS}]|[.]($|[^[:alnum:]_]))")
+    let name = needle
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphanumeric() || c == '_');
+    let before = if name { BEFORE_NAME } else { BEFORE_OTHER };
+    format!("(^|{before}){escaped}{AFTER}")
 }
 
 /// The first tracked text file under `dir` that has `needle` as a whole token.
+/// A fixed-string pass finds the files that hold it at all; only those get
+/// the slower token regex, a batch at a time, in git's file order.
 pub(crate) async fn grep_first(dir: &Path, needle: &str, deadline: Instant) -> Result<Grep> {
-    if Instant::now() >= deadline {
-        return Ok(Grep::TimedOut);
-    }
-    let pattern = token_pattern(needle);
-    let args = ["grep", "-l", "-E", "-I", "--max-count=1", "-e", &pattern];
-    let mut child = spawn(dir, &args).map_err(spawn_error)?;
-    let mut stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| io_error(dir, std::io::Error::other("git grep has no stdout")))?;
-    match timeout_at(deadline, first_line(&mut stdout)).await {
-        Err(_) => Ok(Grep::TimedOut),
-        Ok(Err(source)) => Err(io_error(dir, source)),
-        Ok(Ok(Some(file))) => Ok(Grep::Hit(file)),
-        Ok(Ok(None)) => finish_grep(child, dir, &args, deadline).await,
-    }
-}
-
-/// `git grep` exits 1 when nothing matches; any other failure is an error.
-async fn finish_grep(child: Child, dir: &Path, args: &[&str], deadline: Instant) -> Result<Grep> {
-    let Ok(out) = timeout_at(deadline, child.wait_with_output()).await else {
+    let prefilter = ["grep", "-l", "-z", "-F", "-I", "-e", needle];
+    let Some(files) = grep_files(dir, &prefilter, deadline).await? else {
         return Ok(Grep::TimedOut);
     };
-    let out = out.map_err(|source| io_error(dir, source))?;
+    let pattern = token_pattern(needle);
+    let regex = ["--literal-pathspecs", "grep", "-l", "-z", "-E", "-I"];
+    for batch in files.chunks(BATCH) {
+        let args: Vec<&str> = regex
+            .into_iter()
+            .chain(["-e", &pattern, "--"])
+            .chain(batch.iter().map(String::as_str))
+            .collect();
+        match grep_files(dir, &args, deadline).await? {
+            None => return Ok(Grep::TimedOut),
+            Some(found) => {
+                if let Some(file) = found.into_iter().next() {
+                    return Ok(Grep::Hit(file));
+                }
+            }
+        }
+    }
+    Ok(Grep::Miss)
+}
+
+/// The files a `git grep -l -z` names; empty when nothing matches (exit 1),
+/// `None` when out of time.
+async fn grep_files(dir: &Path, args: &[&str], deadline: Instant) -> Result<Option<Vec<String>>> {
+    let Some(out) = output(dir, args, deadline).await? else {
+        return Ok(None);
+    };
     match out.status.code() {
-        Some(0 | 1) => Ok(Grep::Miss),
+        Some(0 | 1) => Ok(Some(nul_list(&out.stdout))),
         _ => Err(failed(args, &out)),
     }
-}
-
-/// Output up to the first newline; `None` when the output ends empty.
-async fn first_line(stdout: &mut ChildStdout) -> std::io::Result<Option<String>> {
-    let mut line = Vec::new();
-    let mut chunk = [0u8; 4096];
-    loop {
-        let read = read_some(stdout, &mut chunk).await?;
-        if read == 0 {
-            break;
-        }
-        line.extend_from_slice(&chunk[..read]);
-        if let Some(end) = line.iter().position(|&b| b == b'\n') {
-            return Ok(Some(String::from_utf8_lossy(&line[..end]).into_owned()));
-        }
-    }
-    Ok((!line.is_empty()).then(|| String::from_utf8_lossy(&line).into_owned()))
-}
-
-/// One read into `buf` (tokio's `io-util` helpers are not enabled here).
-async fn read_some(stdout: &mut ChildStdout, buf: &mut [u8]) -> std::io::Result<usize> {
-    poll_fn(|cx| {
-        let mut filled = ReadBuf::new(buf);
-        Pin::new(&mut *stdout)
-            .poll_read(cx, &mut filled)
-            .map_ok(|()| filled.filled().len())
-    })
-    .await
 }
 
 #[cfg(test)]
