@@ -1,0 +1,7 @@
+.th-composer-attachments div.th-thumb {
+  cursor: default;
+}
+
+.th-file .th-thumb-remove {
+  position: static;
+}
