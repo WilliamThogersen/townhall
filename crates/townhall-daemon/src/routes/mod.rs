@@ -6,8 +6,10 @@ mod attachments;
 mod conversations;
 mod events;
 mod info;
+mod library;
 mod mcp;
 mod repos;
+mod runs;
 mod settings;
 mod stats;
 mod steps;
@@ -58,6 +60,27 @@ fn conversation_routes() -> Router<AppState> {
         )
 }
 
+fn library_routes() -> Router<AppState> {
+    Router::new()
+        .route("/library/agents", get(library::list_agents))
+        .route(
+            "/library/agents/{name}",
+            get(library::get_agent)
+                .put(library::put_agent)
+                .delete(library::delete_agent),
+        )
+        .route("/library/workflows", get(library::list_workflows))
+        .route(
+            "/library/workflows/{name}",
+            get(library::get_workflow)
+                .put(library::put_workflow)
+                .delete(library::delete_workflow),
+        )
+        .route("/library/import", post(library::import))
+        .route("/workflows/{name}/runs", post(runs::start))
+        .route("/runs/{id}", get(runs::get))
+}
+
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/info", get(info::info))
@@ -70,6 +93,7 @@ pub fn router(state: AppState) -> Router {
         .route("/stats", get(stats::get))
         .route("/events", get(events::socket))
         .merge(agent_routes())
-        .merge(conversation_routes());
+        .merge(conversation_routes())
+        .merge(library_routes());
     Router::new().nest("/api", api).with_state(state)
 }

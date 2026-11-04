@@ -2,6 +2,10 @@
 //! (no SSE) at `POST /api/conversations/{id}/mcp`, like Hive's `src/main/plan/mcp.ts`.
 //! This module fixes the names, the tool schemas and the `--mcp-config` the runner (2.2)
 //! passes. Unit 2.3 answers the requests (`initialize`, `ping`, `tools/list`, `tools/call`).
+//! Units 2.8b and 2.8c add their tools in `library.rs` and `runs.rs`.
+
+mod library;
+mod runs;
 
 use serde_json::{json, Value};
 
@@ -43,11 +47,11 @@ pub fn config_json(base_url: &str, conversation_id: &str) -> String {
     .to_string()
 }
 
-/// `--allowedTools` for townhall's session: only its own two tools.
+/// `--allowedTools` for townhall's session: only its own tools.
 pub fn allowed_tools() -> Vec<String> {
-    [CREATE_TASK, SET_TITLE]
+    tools()
         .iter()
-        .map(|t| format!("mcp__{SERVER_NAME}__{t}"))
+        .map(|t| format!("mcp__{SERVER_NAME}__{}", t.name))
         .collect()
 }
 
@@ -103,7 +107,12 @@ fn set_title_schema() -> Value {
     })
 }
 
+/// Every tool townhall's session gets, in `tools/list` order.
 pub fn tools() -> Vec<ToolDef> {
+    [task_tools(), library::tools(), runs::tools()].concat()
+}
+
+fn task_tools() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: CREATE_TASK,
