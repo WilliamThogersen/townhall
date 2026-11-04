@@ -1,5 +1,6 @@
 //! Shipped stats: what reached a repo's base branch from `townhall/*` branches.
 
+mod cache;
 mod log;
 
 use std::collections::BTreeMap;
@@ -11,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use crate::cmd::run;
 use crate::{Error, Result};
 use log::{kind, parse_merges, Kind, Merge, MERGE_FORMAT};
+
+pub use cache::{CacheKey, ShippedCache, FRESH_FOR, REUSE_FOR};
 
 /// The widest window, 100 years; larger `since_days` are capped to it.
 pub const MAX_SINCE_DAYS: u32 = 36_500;
@@ -32,10 +35,20 @@ pub struct ShippedDay {
 /// [`MAX_SINCE_DAYS`]), ascending. A merge counts on its committer's local date; its
 /// commits are `merge^1..merge^2`.
 pub async fn shipped(repo: &Path, base_branch: &str, since_days: u32) -> Result<Vec<ShippedDay>> {
+    let head = base_sha(repo, base_branch).await?;
+    shipped_at(repo, &head, since_days).await
+}
+
+/// The commit `base_branch` points at in `repo`. An error names a missing repo or branch.
+pub async fn base_sha(repo: &Path, base_branch: &str) -> Result<String> {
     check_branch_name(base_branch)?;
     check_repo(repo).await?;
-    check_branch(repo, base_branch).await?;
-    let merges = list_merges(repo, base_branch, since_days).await?;
+    resolve_branch(repo, base_branch).await
+}
+
+/// [`shipped`] from the commit `head` (a sha from [`base_sha`]) instead of a branch.
+async fn shipped_at(repo: &Path, head: &str, since_days: u32) -> Result<Vec<ShippedDay>> {
+    let merges = list_merges(repo, head, since_days).await?;
     let mut days = Vec::with_capacity(merges.len());
     for merge in &merges {
         days.push(ship(repo, merge).await?);
@@ -95,7 +108,7 @@ async fn check_repo(repo: &Path) -> Result<()> {
     }
 }
 
-async fn check_branch(repo: &Path, base: &str) -> Result<()> {
+async fn resolve_branch(repo: &Path, base: &str) -> Result<String> {
     let rev = format!("{base}^{{commit}}");
     let args = ["rev-parse", "--verify", "--quiet", &rev];
     match run("git", &args, Some(repo)).await {
@@ -103,7 +116,7 @@ async fn check_branch(repo: &Path, base: &str) -> Result<()> {
             "branch `{base}` not found in repo `{}`",
             repo.display()
         ))),
-        other => other.map(drop),
+        other => other,
     }
 }
 
