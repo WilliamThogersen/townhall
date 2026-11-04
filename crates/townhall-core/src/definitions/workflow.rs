@@ -4,6 +4,9 @@ use super::error::{DefKind, DefinitionError};
 use super::parse::{parse, Parsed};
 use super::validate::validate_workflow;
 
+/// The most steps a workflow may have. Validation is quadratic in the step count.
+pub const MAX_STEPS: usize = 200;
+
 /// Which agents run, in what order, and what each one gets as input.
 /// TOML writes steps as `[[step]]`, JSON output as `steps`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -63,38 +63,42 @@ impl<'a> Graph<'a> {
     /// waits for a. Each starts at its lowest index, so the first step written leads.
     pub(crate) fn cycles(&self) -> Vec<Vec<usize>> {
         let mut marks = vec![Mark::New; self.deps.len()];
-        let mut path = Vec::new();
         let mut found = Vec::new();
         for start in 0..self.deps.len() {
             if marks[start] == Mark::New {
-                self.visit(start, &mut marks, &mut path, &mut found);
+                self.walk(start, &mut marks, &mut found);
             }
         }
         let canonical: Vec<Vec<usize>> = found.into_iter().map(rotate_to_lowest).collect();
         unique(canonical)
     }
 
-    fn visit(
-        &self,
-        node: usize,
-        marks: &mut [Mark],
-        path: &mut Vec<usize>,
-        found: &mut Vec<Vec<usize>>,
-    ) {
-        marks[node] = Mark::Open;
-        path.push(node);
-        for &next in &self.deps[node] {
+    /// Depth first from `start` on an explicit stack of `(step, next dep to try)`,
+    /// so a long chain of steps cannot overflow the thread's stack.
+    fn walk(&self, start: usize, marks: &mut [Mark], found: &mut Vec<Vec<usize>>) {
+        marks[start] = Mark::Open;
+        let mut path: Vec<(usize, usize)> = vec![(start, 0)];
+        while let Some(&(node, edge)) = path.last() {
+            let Some(&next) = self.deps[node].get(edge) else {
+                marks[node] = Mark::Done;
+                path.pop();
+                continue;
+            };
+            if let Some(top) = path.last_mut() {
+                top.1 += 1;
+            }
             match marks[next] {
-                Mark::New => self.visit(next, marks, path, found),
+                Mark::New => {
+                    marks[next] = Mark::Open;
+                    path.push((next, 0));
+                }
                 Mark::Open => {
-                    let at = path.iter().position(|&n| n == next).unwrap_or(0);
-                    found.push(path[at..].to_vec());
+                    let at = path.iter().position(|&(n, _)| n == next).unwrap_or(0);
+                    found.push(path[at..].iter().map(|&(n, _)| n).collect());
                 }
                 Mark::Done => {}
             }
         }
-        path.pop();
-        marks[node] = Mark::Done;
     }
 
     /// Steps in waves: each wave starts once every earlier wave it waits on has finished.
@@ -136,4 +140,49 @@ fn rotate_to_lowest(cycle: Vec<usize>) -> Vec<usize> {
         .chain(&cycle[..lowest])
         .copied()
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `s{i}` waits for `s{i+1}`; with `close`, the last step waits for `s0`.
+    fn chain(size: usize, close: bool) -> Vec<Step> {
+        (0..size)
+            .map(|i| Step {
+                id: format!("s{i}"),
+                agent: "coder".into(),
+                after: match (i + 1 < size, close) {
+                    (true, _) => vec![format!("s{}", i + 1)],
+                    (false, true) => vec!["s0".into()],
+                    (false, false) => Vec::new(),
+                },
+                from: None,
+                prompt: None,
+            })
+            .collect()
+    }
+
+    fn on_small_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(f)
+            .unwrap()
+            .join()
+            .unwrap()
+    }
+
+    #[test]
+    fn walks_a_deep_chain_without_recursion() {
+        let found = on_small_stack(|| Graph::new(&chain(100_000, false)).cycles().len());
+        assert_eq!(found, 0);
+    }
+
+    #[test]
+    fn finds_a_deep_cycle_without_recursion() {
+        let cycles = on_small_stack(|| Graph::new(&chain(100_000, true)).cycles());
+        assert_eq!(cycles.len(), 1);
+        assert_eq!(cycles[0].len(), 100_000);
+        assert_eq!(cycles[0][..3], [0, 1, 2]);
+    }
 }

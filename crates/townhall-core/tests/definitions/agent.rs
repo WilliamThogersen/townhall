@@ -163,7 +163,10 @@ fn every_agent_error_is_returned() {
 
 #[test]
 fn adapter_kinds_match_the_adapters() {
-    assert_eq!(AdapterKind::Claude.as_str(), ClaudeCodeAdapter.kind());
+    assert_eq!(
+        AdapterKind::Claude.as_str(),
+        ClaudeCodeAdapter::default().kind()
+    );
     assert_eq!(AdapterKind::Shell.as_str(), ShellAdapter.kind());
 }
 

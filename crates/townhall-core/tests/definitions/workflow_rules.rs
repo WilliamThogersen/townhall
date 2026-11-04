@@ -52,6 +52,18 @@ fn step_ids_are_unique() {
 }
 
 #[test]
+fn step_ids_differ_by_more_than_case() {
+    assert_eq!(
+        workflow_errors(&workflow(&[("build", &[], ""), ("build-2", &[], "")])),
+        none()
+    );
+    assert_eq!(
+        workflow_errors(&workflow(&[("build", &[], ""), ("Build", &[], "")])),
+        ["error: workflow \"w\" step \"Build\": id \"Build\" clashes with \"build\": ids must differ by more than case"]
+    );
+}
+
+#[test]
 fn a_workflow_has_steps() {
     assert_eq!(
         workflow_errors("name = \"w\"\n"),

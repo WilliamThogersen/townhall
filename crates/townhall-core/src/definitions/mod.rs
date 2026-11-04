@@ -10,6 +10,7 @@ mod order;
 mod parse;
 mod validate;
 mod vars;
+mod words;
 mod workflow;
 
 pub use agent::{check_agent, parse_agent, validate_agent, AdapterKind, AgentDef, PermissionMode};
@@ -20,4 +21,4 @@ pub use order::start_order;
 pub use parse::Parsed;
 pub use validate::validate_workflow;
 pub use vars::{render, variables, TemplateError, Values, Var};
-pub use workflow::{check_workflow, parse_workflow, Step, WorkflowDef};
+pub use workflow::{check_workflow, parse_workflow, Step, WorkflowDef, MAX_STEPS};

@@ -3,14 +3,18 @@ use std::collections::HashSet;
 use super::error::{into_result, invalid_name, DefKind, DefinitionError};
 use super::graph::Graph;
 use super::vars::{tokens, Token, Var};
-use super::workflow::{Step, WorkflowDef};
+use super::workflow::{Step, WorkflowDef, MAX_STEPS};
 
 /// Check a workflow against every rule and return all errors found, workflow
-/// level first, then each step in written order.
+/// level first, then each step in written order. Over `MAX_STEPS` steps, only
+/// the workflow level is checked.
 pub fn validate_workflow(
     def: &WorkflowDef,
     known_agents: &[&str],
 ) -> Result<(), Vec<DefinitionError>> {
+    if def.steps.len() > MAX_STEPS {
+        return into_result(workflow_errors(def));
+    }
     let graph = Graph::new(&def.steps);
     let cycles = graph.cycles();
     let steps = (0..def.steps.len()).flat_map(|index| {
@@ -31,11 +35,15 @@ fn workflow_errors(def: &WorkflowDef) -> Vec<DefinitionError> {
         DefinitionError::field(DefKind::Workflow, &def.name, field, message)
     };
     let name = invalid_name(&def.name).map(|m| error("name", m));
-    let empty = def
-        .steps
-        .is_empty()
-        .then(|| error("step", "is missing: add at least one [[step]]".to_string()));
-    name.into_iter().chain(empty).collect()
+    let count = def.steps.len();
+    let steps = match count {
+        0 => Some("is missing: add at least one [[step]]".to_string()),
+        n if n > MAX_STEPS => Some(format!("count {n} is over the limit of {MAX_STEPS}")),
+        _ => None,
+    };
+    name.into_iter()
+        .chain(steps.map(|m| error("step", m)))
+        .collect()
 }
 
 struct StepCheck<'a> {
@@ -73,8 +81,14 @@ impl StepCheck<'_> {
         let invalid = invalid_name(id);
         let duplicate = self.def.steps[..self.index]
             .iter()
-            .any(|s| &s.id == id)
-            .then(|| format!("\"{id}\" is used by more than one step"));
+            .find(|s| s.id.eq_ignore_ascii_case(id))
+            .map(|s| match &s.id == id {
+                true => format!("\"{id}\" is used by more than one step"),
+                false => format!(
+                    "\"{id}\" clashes with \"{}\": ids must differ by more than case",
+                    s.id
+                ),
+            });
         invalid
             .into_iter()
             .chain(duplicate)

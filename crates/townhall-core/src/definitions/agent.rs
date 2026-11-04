@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::error::{into_result, invalid_name, DefKind, DefinitionError};
 use super::parse::{parse, Parsed};
+use super::words::{model_problem, tool_problem};
 
 /// The adapter an agent runs with, matching `AgentAdapter::kind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,8 +92,15 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
         DefinitionError::field(DefKind::Agent, &def.name, field, message)
     };
     let name = invalid_name(&def.name).map(|m| error("name", m));
+    let model = def.model.as_deref().and_then(model_problem);
+    let tools = def.tools.iter().filter_map(|tool| tool_problem(tool));
     let command = command_problem(def).map(|m| error("command", m.to_string()));
-    into_result(name.into_iter().chain(command).collect())
+    let errors = name
+        .into_iter()
+        .chain(model.map(|m| error("model", m)))
+        .chain(tools.map(|m| error("tools", m)))
+        .chain(command);
+    into_result(errors.collect())
 }
 
 /// Parse, then validate: what every save, import and load runs.
