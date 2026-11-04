@@ -7,8 +7,9 @@ use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, Mutex};
-use townhall_core::{Home, Workspace};
-use townhall_daemon::{router_with_cors, serve, AppState};
+use townhall_core::store::Store;
+use townhall_core::{ContextOptions, Home, Workspace};
+use townhall_daemon::{router_with_cors, serve, start_background, AppState, Background};
 
 pub const BIND: &str = "127.0.0.1:7777";
 const REBIND_ATTEMPTS: u32 = 20;
@@ -28,6 +29,7 @@ pub enum Mode {
 struct Running {
     shutdown: oneshot::Sender<()>,
     handle: JoinHandle<()>,
+    background: Background,
 }
 
 struct Slot {
@@ -40,14 +42,17 @@ struct Slot {
 pub struct Controller {
     addr: SocketAddr,
     home: Home,
+    /// Opened once by the app and kept across restarts. `None` when another townhall holds it.
+    store: Option<Store>,
     slot: Mutex<Slot>,
 }
 
 impl Controller {
-    pub fn new(addr: SocketAddr, home: Home) -> Self {
+    pub fn new(addr: SocketAddr, home: Home, store: Option<Store>) -> Self {
         Self {
             addr,
             home,
+            store,
             slot: Mutex::new(Slot {
                 mode: Mode::Stopped,
                 running: None,
@@ -65,7 +70,7 @@ impl Controller {
         if slot.mode != Mode::Stopped {
             return Err("daemon is already started".into());
         }
-        start_locked(&mut slot, self.addr, &self.home, repo).await
+        start_locked(&mut slot, self, repo).await
     }
 
     /// Marks the daemon external when something already listens on the port.
@@ -92,7 +97,7 @@ impl Controller {
         }
         stop_locked(&mut slot).await;
         wait_released(self.addr).await;
-        start_locked(&mut slot, self.addr, &self.home, repo).await
+        start_locked(&mut slot, self, repo).await
     }
 
     pub async fn stop(&self) {
@@ -111,12 +116,8 @@ async fn wait_released(addr: SocketAddr) {
     }
 }
 
-async fn start_locked(
-    slot: &mut Slot,
-    addr: SocketAddr,
-    home: &Home,
-    repo: &Path,
-) -> Result<Mode, String> {
+async fn start_locked(slot: &mut Slot, c: &Controller, repo: &Path) -> Result<Mode, String> {
+    let addr = c.addr;
     let listener = match TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
@@ -125,9 +126,15 @@ async fn start_locked(
         }
         Err(e) => return Err(format!("cannot bind {addr}: {e}")),
     };
-    let workspace = Workspace::new(home.clone(), repo).map_err(|e| e.to_string())?;
+    let store = c
+        .store
+        .clone()
+        .ok_or("townhall.db is in use by another townhall")?;
+    let workspace = Workspace::new(c.home.clone(), repo).map_err(|e| e.to_string())?;
     let (tx, rx) = oneshot::channel::<()>();
-    let app = router_with_cors(AppState::new(workspace));
+    let state = AppState::with_store(workspace, ContextOptions::for_addr(addr), store);
+    let background = start_background(&state).await;
+    let app = router_with_cors(state);
     let handle = tauri::async_runtime::spawn(async move {
         let shutdown = async {
             let _ = rx.await;
@@ -139,6 +146,7 @@ async fn start_locked(
     slot.running = Some(Running {
         shutdown: tx,
         handle,
+        background,
     });
     slot.mode = Mode::Embedded;
     Ok(Mode::Embedded)
@@ -148,8 +156,10 @@ async fn stop_locked(slot: &mut Slot) {
     if let Some(Running {
         shutdown,
         mut handle,
+        background,
     }) = slot.running.take()
     {
+        background.stop();
         // A send error means the server task already ended.
         let _ = shutdown.send(());
         // Open websockets can hold a graceful shutdown forever, so cap the wait.
@@ -165,6 +175,7 @@ async fn stop_locked(slot: &mut Slot) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use townhall_core::events::EventBus;
 
     fn free_addr() -> SocketAddr {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -178,11 +189,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // A probed ephemeral port can be grabbed by another process before we bind it
         // (seen on macOS), which reads as External. Retry with a fresh port.
+        let home = Home::at(dir.path().join(".townhall"));
+        let store = Store::open(&home, EventBus::new()).unwrap();
         let (addr, c) = {
             let mut found = None;
             for _ in 0..10 {
                 let addr = free_addr();
-                let c = Controller::new(addr, Home::at(dir.path().join(".townhall")));
+                let c = Controller::new(addr, home.clone(), Some(store.clone()));
                 if c.start(dir.path()).await.unwrap() == Mode::Embedded {
                     found = Some((addr, c));
                     break;
@@ -202,10 +215,7 @@ mod tests {
             .expect("port released after stop");
 
         let taken = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let c = Controller::new(
-            taken.local_addr().unwrap(),
-            Home::at(dir.path().join(".townhall")),
-        );
+        let c = Controller::new(taken.local_addr().unwrap(), home, None);
         assert_eq!(c.start(dir.path()).await.unwrap(), Mode::External);
         let err = c.restart(dir.path()).await.unwrap_err();
         assert!(err.contains("already running"), "{err}");

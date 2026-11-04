@@ -5,7 +5,9 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::{oneshot, Mutex};
-use townhall_core::Home;
+use townhall_core::events::EventBus;
+use townhall_core::store::Store;
+use townhall_core::{Error, Home};
 
 use crate::daemon::{Controller, Mode};
 use crate::repo::validate_repo;
@@ -15,7 +17,8 @@ use crate::settings::{self, Settings};
 pub struct Shared {
     pub controller: Controller,
     pub settings: Mutex<Settings>,
-    pub home: Home,
+    /// `None` when another townhall (a daemon started on its own) holds the database.
+    pub store: Option<Store>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,7 +76,11 @@ pub async fn apply_repo(shared: &Shared, path: &Path) -> Result<(), String> {
         }
     }
     let next = Settings { repo: Some(repo) };
-    settings::save(&shared.home, &next)?;
+    let store = shared
+        .store
+        .as_ref()
+        .ok_or("townhall.db is in use by another townhall")?;
+    settings::save(store, &next).await?;
     *shared.settings.lock().await = next;
     Ok(())
 }
@@ -108,16 +115,34 @@ pub async fn choose_repo(
     Ok(status(&state).await)
 }
 
+/// Opens the store, unless another townhall holds it: then the app uses that daemon.
+fn open_store(home: &Home) -> Result<Option<Store>, String> {
+    match Store::open(home, EventBus::new()) {
+        Ok(store) => Ok(Some(store)),
+        Err(Error::Unavailable(msg)) => {
+            eprintln!("townhall-app: info: {msg}, using the daemon that holds it");
+            Ok(None)
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 pub fn build_shared(app: &AppHandle) -> Result<SharedState, String> {
     let home = Home::from_env().map_err(|e| format!("townhall home: {e}"))?;
     let legacy_dir = app.path().app_config_dir().ok();
-    let loaded = settings::load(&home, legacy_dir.as_deref())?;
+    let store = open_store(&home)?;
+    let loaded = match &store {
+        Some(store) => {
+            tauri::async_runtime::block_on(settings::load(store, legacy_dir.as_deref()))?
+        }
+        None => Settings::default(),
+    };
     let addr = crate::daemon::BIND
         .parse()
         .map_err(|e| format!("bind address: {e}"))?;
     Ok(Arc::new(Shared {
-        controller: Controller::new(addr, home.clone()),
+        controller: Controller::new(addr, home, store.clone()),
         settings: Mutex::new(loaded),
-        home,
+        store,
     }))
 }

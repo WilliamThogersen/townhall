@@ -1,4 +1,4 @@
-use axum::http::{HeaderValue, Method};
+use axum::http::{header, HeaderMap, HeaderValue, Method};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 /// Origins allowed to call the API from a browser context: the desktop shell
@@ -18,6 +18,40 @@ pub fn cors_layer() -> CorsLayer {
         .collect();
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
-        .allow_methods([Method::GET, Method::POST, Method::DELETE])
-        .allow_headers([axum::http::header::CONTENT_TYPE])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
+        .allow_headers([header::CONTENT_TYPE])
+}
+
+/// False when a browser page from another origin sent the request. CORS does not cover
+/// websockets or form-like posts (multipart), so `/api/events` and uploads check this.
+/// No `Origin` header (curl, claude's MCP client) is allowed.
+pub fn origin_allowed(headers: &HeaderMap) -> bool {
+    match headers.get(header::ORIGIN) {
+        None => true,
+        Some(origin) => ALLOWED_ORIGINS.iter().any(|o| origin == o),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn origin_check() {
+        let with = |o: &'static str| {
+            let mut h = HeaderMap::new();
+            h.insert(header::ORIGIN, HeaderValue::from_static(o));
+            h
+        };
+        assert!(origin_allowed(&HeaderMap::new()));
+        assert!(origin_allowed(&with("tauri://localhost")));
+        assert!(origin_allowed(&with("http://localhost:5173")));
+        assert!(!origin_allowed(&with("https://evil.example")));
+    }
 }

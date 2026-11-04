@@ -1,0 +1,178 @@
+//! Embedded SQL migrations. Each unit owns a number range and lists its migrations in its
+//! own `unit_*.rs` file, so parallel units never pick the same number or edit a shared list.
+//! Applied ones are recorded in `schema_migrations`, so a range that lands later is still
+//! applied; `user_version` holds the highest applied number. A database with a migration
+//! this build does not know is from a newer townhall and is refused.
+
+use std::ops::RangeInclusive;
+
+use rusqlite::{params, Connection};
+
+use super::{unit_2_2, unit_2_3, unit_2_5, unit_2_6, unit_2_7, unit_2_8b, unit_2_8c};
+use crate::{clock, Error, Result};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Migration {
+    pub id: u32,
+    /// The file name without `.sql`, starting with the zero-padded id: `0002_conversations`.
+    pub name: &'static str,
+    pub sql: &'static str,
+}
+
+const BASE: &[Migration] = &[
+    Migration {
+        id: 1,
+        name: "0001_init",
+        sql: include_str!("migrations/0001_init.sql"),
+    },
+    Migration {
+        id: 2,
+        name: "0002_conversations",
+        sql: include_str!("migrations/0002_conversations.sql"),
+    },
+];
+
+/// Who owns which numbers. Ask the orchestrator for a range before adding a unit.
+pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 8] = [
+    ("2.0 storage, 2.1 contract", 1..=99, BASE),
+    ("2.2 conversations", 100..=199, unit_2_2::MIGRATIONS),
+    ("2.3 tasks", 200..=299, unit_2_3::MIGRATIONS),
+    ("2.5 agent states", 500..=599, unit_2_5::MIGRATIONS),
+    ("2.6 attachments", 600..=699, unit_2_6::MIGRATIONS),
+    ("2.7 steps and stats", 700..=799, unit_2_7::MIGRATIONS),
+    ("2.8b library", 800..=849, unit_2_8b::MIGRATIONS),
+    ("2.8c runs", 850..=899, unit_2_8c::MIGRATIONS),
+];
+
+pub const NEWER: &str = "townhall.db is from a newer townhall";
+
+const LEDGER: &str = "create table if not exists schema_migrations (
+  id         integer primary key,
+  name       text not null,
+  applied_at text not null
+)";
+
+/// Every known migration, in number order.
+pub fn all() -> Vec<Migration> {
+    let mut list: Vec<Migration> = RANGES
+        .iter()
+        .flat_map(|(_, _, m)| m.iter().copied())
+        .collect();
+    list.sort_by_key(|m| m.id);
+    list
+}
+
+fn applied(conn: &Connection) -> Result<Vec<u32>> {
+    let mut stmt = conn.prepare("select id from schema_migrations order by id")?;
+    let ids = stmt.query_map([], |r| r.get::<_, u32>(0))?;
+    Ok(ids.collect::<rusqlite::Result<Vec<u32>>>()?)
+}
+
+fn user_version(conn: &Connection) -> Result<u32> {
+    Ok(conn.pragma_query_value(None, "user_version", |r| r.get(0))?)
+}
+
+/// Applies every missing migration, each in its own transaction. Returns how many ran.
+pub fn apply(conn: &mut Connection, known: &[Migration]) -> Result<usize> {
+    conn.execute_batch(LEDGER)?;
+    let done = applied(conn)?;
+    let max_known = known.iter().map(|m| m.id).max().unwrap_or(0);
+    let unknown = done.iter().any(|id| !known.iter().any(|m| m.id == *id));
+    let mut top = user_version(conn)?;
+    if unknown || top > max_known {
+        return Err(Error::Unavailable(NEWER.into()));
+    }
+    let pending: Vec<&Migration> = known.iter().filter(|m| !done.contains(&m.id)).collect();
+    for m in &pending {
+        top = top.max(m.id);
+        let tx = conn.transaction()?;
+        tx.execute_batch(m.sql)
+            .map_err(|e| Error::Database(format!("migration {} failed: {e}", m.name)))?;
+        tx.execute(
+            "insert into schema_migrations (id, name, applied_at) values (?1, ?2, ?3)",
+            params![m.id, m.name, clock::now_rfc3339()],
+        )?;
+        tx.pragma_update(None, "user_version", top)?;
+        tx.commit()?;
+    }
+    Ok(pending.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_migration_is_in_its_units_range_and_named_by_its_number() {
+        let mut seen = vec![];
+        for (unit, range, list) in RANGES {
+            for m in list {
+                assert!(
+                    range.contains(&m.id),
+                    "{unit}: {} outside {range:?}",
+                    m.name
+                );
+                assert!(m.name.starts_with(&format!("{:04}_", m.id)), "{}", m.name);
+                assert!(!seen.contains(&m.id), "{} used twice", m.id);
+                seen.push(m.id);
+            }
+        }
+        let ranges: Vec<_> = RANGES.iter().map(|(_, r, _)| r.clone()).collect();
+        for (i, a) in ranges.iter().enumerate() {
+            for b in &ranges[i + 1..] {
+                assert!(a.end() < b.start(), "{a:?} overlaps {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn applies_once_and_late_ranges_still_apply() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let early = [BASE[0]];
+        assert_eq!(apply(&mut conn, &early).unwrap(), 1);
+        let late = Migration {
+            id: 150,
+            name: "0150_x",
+            sql: "create table x (a integer)",
+        };
+        let mut both = vec![BASE[0], late];
+        assert_eq!(apply(&mut conn, &both).unwrap(), 1);
+        both.insert(1, BASE[1]);
+        assert_eq!(apply(&mut conn, &both).unwrap(), 1, "0002 lands after 0150");
+        assert_eq!(apply(&mut conn, &both).unwrap(), 0);
+        assert_eq!(user_version(&conn).unwrap(), 150);
+    }
+
+    #[test]
+    fn a_newer_database_is_refused() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply(&mut conn, &all()).unwrap();
+        conn.pragma_update(None, "user_version", 9999).unwrap();
+        let err = apply(&mut conn, &all()).unwrap_err();
+        assert_eq!(err.to_string(), NEWER);
+        let mut other = Connection::open_in_memory().unwrap();
+        let extra = Migration {
+            id: 98,
+            name: "0098_y",
+            sql: "create table y (a integer)",
+        };
+        apply(&mut other, &[BASE[0], extra]).unwrap();
+        assert!(matches!(
+            apply(&mut other, &[BASE[0]]),
+            Err(Error::Unavailable(_))
+        ));
+    }
+
+    #[test]
+    fn a_failing_migration_changes_nothing() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let bad = Migration {
+            id: 3,
+            name: "0003_bad",
+            sql: "create table z (a); nonsense",
+        };
+        assert!(apply(&mut conn, &[BASE[0], bad]).is_err());
+        assert_eq!(applied(&conn).unwrap(), vec![1]);
+        assert_eq!(user_version(&conn).unwrap(), 1);
+    }
+}
