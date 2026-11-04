@@ -53,7 +53,7 @@ async fn after_and_attachments_must_exist() {
         .await
         .unwrap();
     let waits = NewTask {
-        after: vec!["first".into(), "first".into()],
+        after: vec!["first".into(), "FIRST".into()],
         ..new_task("second")
     };
     assert_eq!(

@@ -99,7 +99,25 @@ fn dedup(names: &[String]) -> Vec<String> {
     })
 }
 
-fn check_new(tx: &Transaction<'_>, conversation_id: &str, new: &NewTask) -> Result<()> {
+/// The `after` names as stored: each must be another existing task (matched ignoring case).
+fn resolve_after(tx: &Transaction<'_>, new: &NewTask) -> Result<Vec<String>> {
+    let mut after = vec![];
+    for name in &new.after {
+        if name.eq_ignore_ascii_case(&new.name) {
+            return Err(Error::InvalidInput(format!(
+                "task `{name}` cannot wait for itself"
+            )));
+        }
+        let found = find(tx, name)?.ok_or_else(|| {
+            Error::InvalidInput(format!("`after` names an unknown task `{name}`"))
+        })?;
+        after.push(found.name);
+    }
+    Ok(after)
+}
+
+/// Checks the new task and returns its `after` list with each task's stored name.
+fn check_new(tx: &Transaction<'_>, conversation_id: &str, new: &NewTask) -> Result<Vec<String>> {
     validate_name(&new.name)?;
     if new.title.trim().is_empty() {
         return Err(Error::InvalidInput("a task needs a title".into()));
@@ -110,18 +128,7 @@ fn check_new(tx: &Transaction<'_>, conversation_id: &str, new: &NewTask) -> Resu
             new.name
         )));
     }
-    for after in &new.after {
-        if after.eq_ignore_ascii_case(&new.name) {
-            return Err(Error::InvalidInput(format!(
-                "task `{after}` cannot wait for itself"
-            )));
-        }
-        if find(tx, after)?.is_none() {
-            return Err(Error::InvalidInput(format!(
-                "`after` names an unknown task `{after}`"
-            )));
-        }
-    }
+    let after = resolve_after(tx, new)?;
     for id in &new.attachments {
         let known: Option<i64> = tx
             .query_row(
@@ -134,7 +141,7 @@ fn check_new(tx: &Transaction<'_>, conversation_id: &str, new: &NewTask) -> Resu
             return Err(Error::InvalidInput(format!("unknown attachment `{id}`")));
         }
     }
-    Ok(())
+    Ok(after)
 }
 
 fn insert(tx: &Transaction<'_>, t: &Task) -> Result<()> {
@@ -208,8 +215,8 @@ impl Store {
         self.call(move |conn| {
             get(conn, &cid)?;
             let tx = conn.transaction()?;
-            check_new(&tx, &cid, &new)?;
-            let task = queued(&cid, new);
+            let after = check_new(&tx, &cid, &new)?;
+            let task = queued(&cid, NewTask { after, ..new });
             insert(&tx, &task)?;
             tx.execute(
                 "update conversations set updated_at = ?2 where id = ?1",
