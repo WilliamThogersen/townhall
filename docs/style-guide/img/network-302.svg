@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600" font-family="Menlo, monospace" font-size="13">
+  <rect width="960" height="600" fill="#202124"/>
+  <rect width="960" height="32" fill="#292a2d"/>
+  <text x="16" y="21" fill="#9aa0a6">Elements   Console   Sources</text><text x="268" y="21" fill="#8ab4f8">Network</text>
+  <line x1="268" y1="30" x2="330" y2="30" stroke="#8ab4f8" stroke-width="2"/>
+  <rect y="32" width="960" height="28" fill="#202124"/>
+  <text x="16" y="51" fill="#9aa0a6">Name</text><text x="360" y="51" fill="#9aa0a6">Status</text><text x="460" y="51" fill="#9aa0a6">Type</text><text x="580" y="51" fill="#9aa0a6">Location</text>
+  <line x1="0" y1="60" x2="960" y2="60" stroke="#3c4043"/>
+  <g fill="#e8eaed">
+    <text x="16" y="84">login</text><text x="360" y="84" fill="#fdd663">302</text><text x="460" y="84">document</text><text x="580" y="84" fill="#9aa0a6">/</text>
+    <text x="16" y="112">localhost</text><text x="360" y="112" fill="#fdd663">302</text><text x="460" y="112">document</text><text x="580" y="112" fill="#9aa0a6">/login</text>
+    <text x="16" y="140">login</text><text x="360" y="140" fill="#fdd663">302</text><text x="460" y="140">document</text><text x="580" y="140" fill="#9aa0a6">/</text>
+    <text x="16" y="168">localhost</text><text x="360" y="168" fill="#fdd663">302</text><text x="460" y="168">document</text><text x="580" y="168" fill="#9aa0a6">/login</text>
+    <text x="16" y="196">login</text><text x="360" y="196" fill="#fdd663">302</text><text x="460" y="196">document</text><text x="580" y="196" fill="#9aa0a6">/</text>
+    <text x="16" y="224">localhost</text><text x="360" y="224" fill="#fdd663">302</text><text x="460" y="224">document</text><text x="580" y="224" fill="#9aa0a6">/login</text>
+    <text x="16" y="252">login</text><text x="360" y="252" fill="#f28b82">(failed)</text><text x="460" y="252">document</text><text x="580" y="252" fill="#f28b82">net::ERR_TOO_MANY_REDIRECTS</text>
+  </g>
+  <line x1="0" y1="96" x2="960" y2="96" stroke="#2f3033"/><line x1="0" y1="124" x2="960" y2="124" stroke="#2f3033"/>
+  <line x1="0" y1="152" x2="960" y2="152" stroke="#2f3033"/><line x1="0" y1="180" x2="960" y2="180" stroke="#2f3033"/>
+  <line x1="0" y1="208" x2="960" y2="208" stroke="#2f3033"/><line x1="0" y1="236" x2="960" y2="236" stroke="#2f3033"/>
+  <rect y="572" width="960" height="28" fill="#292a2d"/>
+  <text x="16" y="590" fill="#9aa0a6">21 requests  |  0 B transferred  |  20 redirects</text>
+</svg>

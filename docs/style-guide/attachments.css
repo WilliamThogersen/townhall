@@ -1,0 +1,319 @@
+/*
+ * townhall attachments, v2: image thumbnails, file chips, upload states, drop zone, lightbox.
+ * Depends on tokens.css and components.css. Not imported by web/ yet.
+ */
+
+/* ---------- thumbnails ---------- */
+
+.th-thumb {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 64px;
+  height: 48px;
+  padding: 0;
+  overflow: hidden;
+  border: var(--th-border) solid var(--th-line-strong);
+  background: var(--th-surface-2);
+  cursor: zoom-in;
+}
+
+.th-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.th-thumb:hover {
+  border-color: var(--th-fg-muted);
+}
+
+.th-thumb:focus-visible {
+  outline-offset: 1px;
+}
+
+.th-thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: var(--th-border) solid var(--th-line-strong);
+  background: var(--th-bg);
+  color: var(--th-fg-muted);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.th-thumb-remove:hover {
+  color: var(--th-fg);
+}
+
+.th-thumb[data-state="uploading"] img {
+  opacity: 0.5;
+}
+
+.th-thumb[data-state="uploading"]::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--progress, 0%);
+  height: 2px;
+  background: var(--th-info);
+}
+
+.th-thumb[data-state="error"] {
+  border-color: var(--th-danger);
+}
+
+.th-thumb[data-state="error"]::after {
+  content: "\00D7";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--th-danger-tint);
+  color: var(--th-danger);
+  font-weight: var(--th-weight-bold);
+}
+
+.th-thumb-more {
+  display: grid;
+  place-items: center;
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-sm);
+}
+
+/* ---------- file chips ---------- */
+
+.th-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 1ch;
+  max-width: 300px;
+  height: var(--th-control);
+  padding: 0 var(--th-space-1) 0 6px;
+  border: var(--th-border) solid var(--th-line-strong);
+  background: var(--th-surface);
+  color: var(--th-fg);
+  font-size: var(--th-text-sm);
+  text-decoration: none;
+}
+
+a.th-file:hover {
+  border-color: var(--th-fg-muted);
+}
+
+.th-file-ext {
+  flex: none;
+  padding: 0 3px;
+  border: var(--th-border) solid var(--th-line-control);
+  color: var(--th-fg-muted);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.th-file-name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-file-size {
+  flex: none;
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+}
+
+.th-file[data-state="error"] {
+  border-color: var(--th-danger);
+}
+
+.th-file[data-state="error"] .th-file-size {
+  color: var(--th-danger);
+}
+
+/* ---------- in messages and the composer ---------- */
+
+.th-msg-images,
+.th-msg-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--th-space-2);
+}
+
+.th-msg-images .th-thumb {
+  width: auto;
+  height: var(--th-thumb-h);
+  max-width: 240px;
+}
+
+.th-msg-images .th-thumb img {
+  width: auto;
+  max-width: 240px;
+}
+
+.th-msg-images .th-thumb-more {
+  width: 72px;
+}
+
+.th-msg--you .th-msg-images .th-thumb {
+  border-color: var(--th-line-control);
+}
+
+.th-composer-attachments {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--th-space-2);
+  padding: var(--th-space-2) var(--th-space-2) 0;
+}
+
+.th-drop {
+  position: absolute;
+  inset: var(--th-space-2);
+  z-index: var(--th-z-overlay);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--th-space-1);
+  border: var(--th-border) dashed var(--th-accent);
+  background: var(--th-accent-tint);
+  color: var(--th-accent);
+  font-size: var(--th-text-sm);
+  pointer-events: none;
+}
+
+.th-drop span {
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-xs);
+}
+
+/* ---------- lightbox ---------- */
+
+.th-lightbox {
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--th-lightbox-bg);
+  color: var(--th-fg);
+}
+
+.th-lightbox[open] {
+  display: grid;
+  grid-template-rows: var(--th-bar) minmax(0, 1fr) auto;
+}
+
+.th-lightbox::backdrop {
+  background: transparent;
+}
+
+.th-lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  min-width: 0;
+  padding: 0 var(--th-space-2) 0 var(--th-space-4);
+  border-bottom: var(--th-border) solid var(--th-line);
+  background: var(--th-surface);
+  font-size: var(--th-text-sm);
+  white-space: nowrap;
+}
+
+.th-lightbox-name {
+  overflow: hidden;
+  font-weight: var(--th-weight-bold);
+  text-overflow: ellipsis;
+}
+
+.th-lightbox-meta {
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+}
+
+.th-lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--th-space-1);
+  margin-left: auto;
+}
+
+.th-lightbox-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: var(--th-space-5) var(--th-space-7);
+}
+
+.th-lightbox-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  border: var(--th-border) solid var(--th-line-strong);
+  background: var(--th-bg);
+  object-fit: contain;
+}
+
+.th-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  width: 36px;
+  height: 48px;
+  border: var(--th-border) solid var(--th-line-strong);
+  background: var(--th-surface);
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-lg);
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.th-lightbox-nav:hover:not(:disabled) {
+  border-color: var(--th-fg-muted);
+  color: var(--th-fg);
+}
+
+.th-lightbox-nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.th-lightbox-nav[data-dir="prev"] { left: var(--th-space-3); }
+.th-lightbox-nav[data-dir="next"] { right: var(--th-space-3); }
+
+.th-lightbox-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--th-space-4);
+  padding: var(--th-space-2) var(--th-space-4);
+  border-top: var(--th-border) solid var(--th-line);
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+}
+
+.th-lightbox-strip {
+  display: flex;
+  gap: var(--th-space-1);
+}
+
+.th-lightbox-strip .th-thumb {
+  width: 48px;
+  height: 36px;
+  cursor: pointer;
+}
+
+.th-lightbox-strip .th-thumb[aria-current="true"] {
+  border-color: var(--th-accent);
+  box-shadow: 0 0 0 1px var(--th-accent);
+}

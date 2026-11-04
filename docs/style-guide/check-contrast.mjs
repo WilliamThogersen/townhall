@@ -1,62 +1,76 @@
-// Contrast check for tokens.css. Usage: node docs/style-guide/check-contrast.mjs
-// Parses the light and dark blocks, checks WCAG 2.x ratios, verifies the two dark blocks match.
-// Exit code 1 on any failure. No dependencies.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const css = readFileSync(fileURLToPath(new URL("./tokens.css", import.meta.url)), "utf8");
-const vars = (block) => Object.fromEntries([...block.matchAll(/--th-([\w-]+):\s*(#[0-9a-f]{6})\s*;/gi)].map((m) => [m[1], m[2]]));
-const light = vars(css.slice(css.indexOf(":root {"), css.indexOf(':root[data-density="compact"]')));
-const darkMedia = vars(css.slice(css.indexOf("@media (prefers-color-scheme: dark)")));
-const darkForced = vars(css.slice(css.indexOf(':root[data-theme="dark"]')));
-const dark = { ...light, ...darkForced };
 
-const lum = (hex) => {
-  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
-    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-};
-const ratio = (a, b) => {
-  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
-  return (x + 0.05) / (y + 0.05);
-};
+const TEXT = 4.5;
+const UI = 3;
 
-const surfaces = ["bg", "surface", "surface-raised", "surface-sunken"];
-const statuses = ["ok", "working", "waiting", "danger", "dead"];
-const pairs = []; // [fg, bg, min, label]
-for (const s of surfaces) {
-  pairs.push(["text", s, 4.5], ["text-muted", s, 4.5]);
-}
-pairs.push(["text-subtle", "bg", 4.5], ["text-subtle", "surface", 4.5], ["text-subtle", "surface-raised", 4.5]);
-pairs.push(["accent-text", "bg", 4.5], ["accent-text", "surface", 4.5], ["accent-text", "accent-subtle", 4.5], ["text", "accent-subtle", 4.5]);
-for (const a of ["accent", "accent-hover", "accent-active"]) pairs.push(["on-accent", a, 4.5]);
-for (const a of ["danger-solid", "danger-solid-hover"]) pairs.push(["on-danger", a, 4.5]);
-for (const st of statuses) {
-  pairs.push([st, "surface", 4.5], [st, "bg", 4.5], [st, `${st}-bg`, 4.5], [`${st}`, "surface-raised", 4.5]);
-}
-// Non-text 3:1
-pairs.push(["border-strong", "bg", 3], ["border-strong", "surface", 3], ["border-strong", "surface-raised", 3]);
-pairs.push(["focus", "bg", 3], ["focus", "surface", 3], ["focus", "surface-sunken", 3], ["accent", "bg", 3], ["accent", "surface", 3]);
-// Terminal
-for (const c of ["fg", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "bright-black", "bright-red", "bright-green", "bright-yellow", "bright-blue", "bright-magenta", "bright-cyan", "bright-white", "cursor"]) {
-  pairs.push([`term-${c}`, "term-bg", c === "cursor" ? 3 : 4.5]);
-}
-pairs.push(["term-black", "term-bg", 3]); // ANSI black is deliberately dim on dark; still >= 3
-pairs.push(["term-fg", "term-selection", 4.5]);
+const PAIRS = [
+  ["fg", "bg", TEXT],
+  ["fg", "surface-2", TEXT],
+  ["fg-muted", "bg", TEXT],
+  ["fg-muted", "surface", TEXT],
+  ["fg-muted", "surface-2", TEXT],
+  ["fg-faint", "bg", TEXT],
+  ["fg-faint", "surface", TEXT],
+  ["fg-faint", "surface-2", TEXT],
+  ["on-inverse", "fg", TEXT],
+  ["on-inverse", "fg-muted", TEXT],
+  ["accent", "bg", TEXT],
+  ["accent", "surface", TEXT],
+  ["on-accent", "accent", TEXT],
+  ["ok", "bg", TEXT],
+  ["ok", "surface", TEXT],
+  ["danger", "bg", TEXT],
+  ["danger", "surface", TEXT],
+  ["on-danger", "danger", TEXT],
+  ["on-danger", "danger-strong", TEXT],
+  ["info", "bg", TEXT],
+  ["info", "surface", TEXT],
+  ["line-control", "bg", UI],
+  ["line-control", "surface", UI],
+  ["accent", "surface-2", UI],
+];
 
-let fail = 0;
-for (const [name, theme] of [["light", light], ["dark", dark]]) {
-  console.log(`\n== ${name} ==`);
-  for (const [fg, bg, min] of pairs) {
-    if (!theme[fg] || !theme[bg]) { console.log(`MISSING ${fg} / ${bg}`); fail++; continue; }
-    const r = ratio(theme[fg], theme[bg]);
-    const ok = r >= min;
-    if (!ok) fail++;
-    console.log(`${ok ? "pass" : "FAIL"} ${r.toFixed(2).padStart(5)} (min ${min})  ${fg} on ${bg}`);
+function block(selector) {
+  const start = css.indexOf(`${selector} {`);
+  if (start < 0) throw new Error(`missing block ${selector}`);
+  const end = css.indexOf("\n}", start);
+  const tokens = {};
+  for (const [, name, value] of css.slice(start, end).matchAll(/--th-([\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)) {
+    tokens[name] = value;
+  }
+  return tokens;
+}
+
+function luminance(hex) {
+  const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const [r, g, b] = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function ratio(a, b) {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+const dark = block(":root");
+const themes = { dark, light: { ...dark, ...block(':root[data-theme="light"]') } };
+
+let failed = 0;
+for (const [theme, tokens] of Object.entries(themes)) {
+  console.log(`\n${theme}`);
+  for (const [fg, bg, min] of PAIRS) {
+    const value = ratio(tokens[fg], tokens[bg]);
+    const ok = value >= min;
+    if (!ok) failed++;
+    console.log(`  ${ok ? "pass" : "FAIL"}  ${value.toFixed(2).padStart(5)}:1  ${fg} on ${bg} (min ${min})`);
   }
 }
-const same = JSON.stringify(darkMedia) === JSON.stringify(Object.fromEntries(Object.entries(darkForced)));
-console.log(`\ndark blocks identical: ${same ? "yes" : "NO"}`);
-if (!same) fail++;
-console.log(fail ? `\n${fail} failure(s)` : "\nall checks pass");
-process.exit(fail ? 1 : 0);
+
+if (failed > 0) {
+  console.error(`\n${failed} pair(s) below the minimum`);
+  process.exit(1);
+}
+console.log("\nall pairs pass");

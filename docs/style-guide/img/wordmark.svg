@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="264" height="56" viewBox="0 0 264 56" shape-rendering="crispEdges">
+  <style>
+    .ink { fill: #191917; }
+    .slash { fill: #955700; }
+    text { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 34px; font-weight: 700; }
+    @media (prefers-color-scheme: dark) { .ink { fill: #e8e6e1; } .slash { fill: #ffb238; } }
+  </style>
+  <g transform="translate(0 7) scale(3)"><path class="ink" d="M8 0h2v1h-2zM6 1h6v1h-6zM4 2h10v1h-10zM2 3h14v1h-14zM1 4h16v1h-16zM2 6h2v5h-2zM6 6h2v5h-2zM10 6h2v5h-2zM14 6h2v5h-2zM1 12h16v1h-16zM0 13h18v1h-18z"/></g>
+  <text x="70" y="40"><tspan class="slash">/</tspan><tspan class="ink">townhall</tspan></text>
+</svg>

@@ -1,153 +1,225 @@
 # Foundations
 
-Direction: **match the town hall icon**. The app icon is a flat black civic building: pediment, entablature, four rounded columns, a thin base rule. The interface borrows its calm, its rounded stone slabs and its thin rules, nothing more. Marble and basalt neutrals, one brass accent.
+Every value lives in [tokens.css](tokens.css). Names below are the real custom properties, without the `--th-` prefix where a table says so. See them rendered in [preview.html](preview.html).
 
-All values live in [tokens.css](tokens.css). Names below are the real custom properties. The reference rendering is [preview.html](preview.html).
+## Color
 
-## Principles
+Dark is the default (`:root`). Light overrides colors only, under `:root[data-theme="light"]`.
 
-1. **Scan first.** The product watches 10-50 agents. Name, state and last line of output must be readable in one glance per card or row. Civic does not mean sparse.
-2. **State is shape plus text plus color.** Never color alone (see Status).
-3. **One accent.** Brass means "you can act on this". It is used for the primary button, the current tab and links. Nothing else is brass.
-4. **Quiet by default, loud on need.** Only two states ask for attention: waiting (needs input) and error. Everything else is neutral or muted.
-5. **Borders over shadows.** Surfaces are separated by 1px stone lines. Shadows are for things that float (dialog, toast).
-6. **Columns, not cards-in-space.** The agent grid reads as a row of columns; each card carries a slim vertical state bar, echoing the icon's columns.
-7. **Accessible by construction.** AA contrast, visible focus, reduced motion, status without color, minimum targets.
+### Neutrals
 
-## Theme
+| Token | Dark | Light | Use |
+|-------|------|-------|-----|
+| `bg` | `#0b0b0c` | `#f4f3ef` | App background, terminal, inputs |
+| `surface` | `#111113` | `#fbfbf8` | Sidebar, headers, key bar, your messages, composer area |
+| `surface-2` | `#18181b` | `#ecebe6` | Hover, current row, focused prompt, toast |
+| `surface-3` | `#212125` | `#e2e1db` | Pressed, disabled primary fill, finished trace step |
+| `line` | `#26262a` | `#deddd6` | Dividers between regions and panes, trace ticks |
+| `line-strong` | `#38383e` | `#c9c7bf` | Task blocks, tags, menus, toasts, kbd, disabled borders |
+| `line-control` | `#6a6a72` | `#8c8a82` | Input, button and segmented borders (3:1, WCAG 1.4.11) |
+| `fg` | `#e8e6e1` | `#191917` | Text, primary button fill |
+| `fg-muted` | `#a8a6a0` | `#52514c` | Secondary text, kind, branch, stat labels |
+| `fg-faint` | `#8a8882` | `#6b6a64` | Meta, hints, placeholders, timestamps, events, dead agents |
+| `on-inverse` | `#0b0b0c` | `#f4f3ef` | Text on an `fg` fill (primary button, checked segment) |
 
-- `:root` is light ("marble"). Dark ("basalt") applies under `prefers-color-scheme: dark` unless `<html data-theme="light">`, and always under `<html data-theme="dark">`.
-- `data-theme` absent means follow the OS. Persist the override as `localStorage["th-theme"]` (`light` | `dark`; remove for auto), read before first paint.
-- `color-scheme` is set per theme so native controls and scrollbars match.
+Inputs use `bg`, one step darker than the `surface` they sit on, like a terminal prompt.
 
-## Color tokens
+### Accent and state
 
-Ratios are WCAG 2.x, from `node docs/style-guide/check-contrast.mjs` (all pass). "On" means the text or glyph color drawn on that surface.
+| Token | Dark | Light | Means |
+|-------|------|-------|-------|
+| `accent` | `#ffb238` | `#955700` | You: your messages, focus ring, caret, cursor, selection, active pane, current row and tab, now on the timeline, waiting agents, primary hover |
+| `ok` | `#5fd38d` | `#1b7543` | Alive, live stream, passed, shipped, positive deltas |
+| `danger` | `#ff6b6b` | `#c02b2b` | Error, stop, invalid field |
+| `info` | `#6cb6ff` | `#1c5cbb` | Working spinner, running trace step, info banner |
 
-### Surfaces and borders
+Each has a `*-tint` (10% alpha) for row and banner backgrounds, and `accent`, `danger` have `*-strong` for hover. `on-accent` and `on-danger` are the text colors on solid fills.
 
-| Token | Light | Dark | Use |
-|-------|-------|------|-----|
-| `--th-bg` | `#f3f1ec` | `#111213` | Page background |
-| `--th-surface` | `#faf9f6` | `#181a1b` | Cards, feed, header, panels |
-| `--th-surface-raised` | `#ffffff` | `#202224` | Inputs, dialogs, toasts, hovered cards |
-| `--th-surface-sunken` | `#e9e6df` | `#0c0d0e` | Last-output strip, group headings, skeleton base, hover on secondary buttons |
-| `--th-border` | `#d5d0c5` | `#2e3033` | Decorative dividers, card outlines (not required for comprehension) |
-| `--th-border-strong` | `#8f897c` | `#6a6d70` | Input and button outlines, header rule. 3.1:1 / 3.6:1 on bg (meets 3:1 non-text) |
+Status aliases point at these: `status-alive` = ok, `status-working` = info, `status-waiting` = accent, `status-error` = danger, `status-dead` = fg-faint. Components use the aliases, so a state can change color in one place.
 
-### Text
+Rules:
 
-| Token | Light | Dark | Use | Ratio on bg (L / D) |
-|-------|-------|------|-----|------|
-| `--th-text` | `#1c1b19` | `#ebe8e2` | Body, names | 15.3 / 15.3 |
-| `--th-text-muted` | `#57534b` | `#a6a39b` | Secondary text, labels, branch | 6.8 / 7.4 |
-| `--th-text-subtle` | `#6b665c` | `#8f8c85` | Placeholders, disabled text, hints | 5.1 / 5.6 |
+- Never use a state color for decoration. If it is green, something is alive or passed.
+- Amber is never used for warnings that are not about you. A daemon warning uses `warn:` with the accent tint because it limits what you can do.
+- Dead is not an error. It is faint grey with a hollow circle. Red is only for things that went wrong.
 
-All three pass 4.5:1 on bg, surface and surface-raised. On `surface-sunken`: text 13.8 / 15.9, muted 6.1 / 7.7.
+### Heat ramp
 
-### Brass accent
+`heat-0` to `heat-4`: one green hue from empty to most, used only by the shipped heatmap. It is sequential, so each theme has its own steps: in dark the scale climbs from near-black to bright green, in light from pale to deep green.
 
-| Token | Light | Dark | Use |
-|-------|-------|------|-----|
-| `--th-accent` | `#7a5a14` | `#d2a64a` | Primary button fill, current-tab underline, selected marker |
-| `--th-accent-hover` | `#6a4e10` | `#dfb55e` | Primary hover |
-| `--th-accent-active` | `#5a420c` | `#c4962f` | Primary pressed |
-| `--th-on-accent` | `#ffffff` | `#1a1407` | Text on the three above: 6.4 / 7.8 / 9.5 light, 8.1 / 9.5 / 6.8 dark |
-| `--th-accent-text` | `#7a5a14` | `#dcb25a` | Links, accent text on bg: 5.6 / 9.4 |
-| `--th-accent-subtle` | `#efe6cf` | `#2b2410` | Tint behind accent badges. Text on it: 5.1 / 7.8 |
+| Step | Dark | Light |
+|------|------|-------|
+| `heat-0` (none) | `#18181b` | `#e5e4de` |
+| `heat-1` | `#1c4a2f` | `#b5e0c2` |
+| `heat-2` | `#287a4a` | `#74c290` |
+| `heat-3` | `#42ad6b` | `#36975a` |
+| `heat-4` | `#72e6a0` | `#1a663a` |
 
-### Focus
+A day's level is `ceil(value / max * 4)` over the visible period, 0 when nothing shipped. Every cell has a hover tooltip with the exact number, and the same numbers exist as a table for screen readers, so color is never the only way in.
 
-`--th-focus`: `#1c1b19` light, `#f1eee8` dark (15.3 / 16.2 on bg). Ink, not brass, so focus never looks like a hover or selected state.
+### Contrast
 
-### Status
+From `node docs/style-guide/check-contrast.mjs`. Text needs 4.5:1, control borders and the focus ring need 3:1.
 
-Foreground tokens color text, glyphs and the state bar; `-bg` tokens tint rows and banners. Every foreground passes 4.5:1 on bg, surface, raised and its own `-bg`.
+| Pair | Dark | Light |
+|------|------|-------|
+| fg on bg | 15.77 | 15.86 |
+| fg-muted on surface | 7.75 | 7.67 |
+| fg-faint on surface-2 (worst case) | 5.00 | 4.54 |
+| on-inverse on fg (primary button) | 15.77 | 15.86 |
+| accent on bg | 10.94 | 5.19 |
+| on-accent on accent (primary hover) | 10.94 | 5.77 |
+| ok on surface | 10.05 | 5.52 |
+| danger on surface | 6.80 | 5.59 |
+| on-danger on danger (confirm button) | 7.09 | 5.80 |
+| info on surface | 8.78 | 6.14 |
+| line-control on surface (borders) | 3.52 | 3.34 |
 
-| Token | Light fg / bg | Dark fg / bg | Meaning | fg on surface (L / D) |
-|-------|---------------|--------------|---------|------|
-| `--th-ok` / `--th-ok-bg` | `#1f6b3a` / `#dfeee3` | `#5fc084` / `#12261a` | alive, finished, success | 6.2 / 7.8 |
-| `--th-working` / `-bg` | `#1f4f8a` / `#dde8f5` | `#7fb0ec` / `#14233a` | working, in progress, info | 7.8 / 7.8 |
-| `--th-waiting` / `-bg` | `#9a4a06` / `#f8e6d2` | `#f0a24f` / `#33220f` | needs input (the one that asks you to act) | 5.9 / 8.3 |
-| `--th-danger` / `-bg` | `#a52a22` / `#f6dcd9` | `#f0766c` / `#35171a` | error, destructive outline and text | 6.8 / 6.3 |
-| `--th-dead` / `-bg` | `#57534b` / `#e9e6df` | `#a6a39b` / `#202224` | session ended (neutral, not an error) | 7.3 / 6.9 |
-| `--th-danger-solid` | `#a52a22` | `#c93c33` | Fill of the confirming destructive button |  |
-| `--th-danger-solid-hover` | `#8f221b` | `#b3332b` | its hover |  |
-| `--th-on-danger` | `#ffffff` | `#ffffff` | Text on solid danger: 7.1 / 5.0 (hover also passes) |  |
+Change a color, then rerun the script. It exits non-zero if any pair drops below its minimum.
 
-### Terminal
+## Type
 
-`--th-term-bg`, `--th-term-fg`, `--th-term-cursor`, `--th-term-selection` and 16 ANSI colors `--th-term-{black,red,green,yellow,blue,magenta,cyan,white}` plus `--th-term-bright-*`. Mapping to xterm is in [components-agents.md](components-agents.md). Every text color is at least 4.5:1 on `--th-term-bg` (light: fg 15.0, red 6.8, green 6.2, yellow 6.1, blue 7.9, magenta 7.3, cyan 6.4; dark: fg 14.1, red 7.0, green 8.7, yellow 9.8, blue 8.6, magenta 7.8, cyan 9.4). Dark `black` is deliberately dim (3.8:1) because programs use it for de-emphasis.
+One family: `--th-font`, JetBrains Mono with the system monospace stack as fallback. Ligatures off (`font-variant-ligatures: none`), so `->` and `!=` stay as typed.
 
-### Shadows and scrim
+| Token | Size / line | Weight | Use |
+|-------|-------------|--------|-----|
+| `text-xl` | 20 / 28 | 700 | First-run and empty-state title only |
+| `text-lg` | 15 / 22 | 700 | Empty-state title in a pane |
+| `text-md` | 13 / 20 | 400 | Default: body, rows, inputs, terminal |
+| `text-sm` | 12 / 18 | 400 | Buttons, labels, pane header, row meta, counts |
+| `text-xs` | 11 / 16 | 400 | Key hints, section rules, help and error text, kbd |
 
-`--th-shadow-sm | md | lg` and `--th-scrim` (dialog backdrop). Warm-tinted in light, black in dark.
+- Two weights only: 400 and 700. Bold marks the one thing to read first: an open agent's name, a pane title, a primary button.
+- No uppercase, no letter-spacing, no italics.
+- Numbers are already tabular in a monospace font, so counts and columns line up for free.
+- The terminal is 13px at line height 1.4, a little denser than the UI.
 
-## Typography
+Self-host the font in the app (the Tauri CSP has no remote `font-src`):
 
-| Token | Stack | Use |
+```ts
+import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/700.css";
+```
+
+## Space and size
+
+A 4px grid: `space-1` 4, `space-2` 8, `space-3` 12, `space-4` 16, `space-5` 24, `space-6` 32, `space-7` 48. Gaps between inline items inside a row are `1ch`, so text keeps its character grid.
+
+| Token | Value | Use |
 |-------|-------|-----|
-| `--th-font-display` | Iowan Old Style, Palatino Linotype, Palatino, Book Antiqua, Georgia, Times New Roman, serif | Wordmark, page titles, dialog titles, empty-state titles. Never for controls or data |
-| `--th-font-ui` | ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif | Everything else: labels, buttons, body, badges |
-| `--th-font-mono` | ui-monospace, SF Mono, Menlo, Consolas, Liberation Mono, monospace | Agent names, branches, commands, timestamps, last-output, terminal |
+| `bar` | 36px | Sidebar top, conversation header, pane header, page header, sidebar foot |
+| `row` | 28px | Agent strip, agent line in a block, trace span |
+| `control` | 28px | Button, nav item, picker |
+| `control-sm` | 24px | Button in headers, blocks, toasts |
+| `control-lg` | 32px | Input, pane prompt, banner minimum |
+| `keybar` | 24px | Key hint bar |
+| `sidebar` | 272px | Sidebar (232px under 1024px) |
+| `measure` | 76ch | Max width of thread text and composer |
+| `thread-min` | 420px | Thread width before the split stacks |
+| `pane-min` | 440px | Agent pane width in the split |
+| `pane-min-h` | 320px | Shortest pane before the pane column scrolls |
+| `home` | 720px | Home column: greeting, composer, stats |
+| `rail` | 320px | Session panel on the right of a conversation |
+| `thumb-h` | 104px | Image thumbnail height in messages |
+| `heat-cell` | 10px | Legend cell (grid cells are fluid and square) |
+| `composer-max` | 172px | Composer grows to 8 lines, then scrolls |
 
-All stacks resolve to installed fonts on macOS, Windows and Linux, so the app works offline and in the Tauri webview. If web fonts are adopted later they must be self-hosted woff2 files under `web/public/fonts/` loaded with `@font-face` and `font-display: swap`, never a CDN or Google Fonts link. The suggested set is Source Serif 4, Inter and JetBrains Mono; the system stack stays as fallback.
+Touch screens (`pointer: coarse`) get 44px for every control and row. Mouse density stays at 24 to 32px: the WCAG 2.2 AA target floor is 24px.
 
-| Token | Size | Use |
-|-------|------|-----|
-| `--th-text-xs` | 12px | Badges, status labels (caps), timestamps in feed, captions |
-| `--th-text-sm` | 13px | Dense UI, card meta, last output, messages, compact body |
-| `--th-text-md` | 14px | Default body and controls |
-| `--th-text-lg` | 16px | Dialog body, section titles |
-| `--th-text-xl` | 20px | Wordmark, page title (display) |
-| `--th-text-2xl` | 24px | Empty-state title (display) |
-| `--th-text-3xl` | 32px | First-run hero (display) |
+## Lines, corners, elevation
 
-Line heights: `--th-leading-tight` 1.2 (display), `--th-leading-snug` 1.35 (dense rows), `--th-leading-normal` 1.5 (body). Weights: `--th-weight-regular` 400, `--th-weight-medium` 500 (buttons, tabs, labels), `--th-weight-semibold` 600 (names, display, status labels). `--th-tracking-caps` 0.06em on uppercase 12px labels. Use `font-variant-numeric: tabular-nums` for counts and times. Minimum text size is 12px.
+- Borders are 1px (`--th-border`). Regions are separated by `line`. Panes are separated by a 1px gap with a `line` outline, like tmux.
+- Corners are square (`--th-radius: 0`). No exceptions.
+- No shadows on anything that sits in the layout. Only menus and toasts float, and they use `--th-shadow-overlay`.
 
-## Spacing
+## Focus
 
-4px base; use only these. `--th-space-1` 2px, `-2` 4px, `-3` 8px, `-4` 12px, `-5` 16px, `-6` 24px, `-7` 32px, `-8` 48px. Inside a component use 2-4 (tight) to 5; between components 4-6; between page sections 7-8. Density tokens (`--th-gap`, `--th-card-pad`, `--th-control-h`, `--th-row-h`) are listed in [layout.md](layout.md).
-
-## Radii and borders
-
-`--th-radius-xs` 2px (bars, skeleton ends), `-sm` 4px (badges, last-output strip), `-md` 6px (buttons, inputs, cards, feed), `-lg` 10px (dialogs, empty state, well), `-pill` (count badges, filter chips). Rounded slabs, never fully round except chips and the working glyph.
-
-`--th-border-width` 1px for outlines and dividers. `--th-rule-width` 2px for the "base rule" motif: header underline, dialog top edge, section heading underline in the preview. `--th-bar-width` 4px for state bars (cards, feed rows, toasts, banners).
-
-## Elevation
-
-Flat by default: surface plus 1px border. `--th-shadow-sm` is rarely needed. `--th-shadow-md` toasts and menus. `--th-shadow-lg` plus `--th-scrim` dialogs.
+- Every focusable element shows a 2px `accent` outline with a 2px offset (`:focus-visible`).
+- Rows draw the outline inset (`outline-offset: -2px`) so it does not overlap the next row.
+- Inputs turn their border amber and add a 1px inset ring, so the box reads as 2px thick.
+- The pane you are in gets an amber 1px frame (`.th-pane:focus-within`). That is the "active pane", same as tmux.
+- Current things get a 2px amber edge: the left edge of the current conversation row and the open task row, the bottom edge of the chosen stat tile.
+- The caret is amber in every input (`caret-color: var(--th-accent)`).
 
 ## Motion
 
 | Token | Value | Use |
 |-------|-------|-----|
-| `--th-dur-fast` | 90ms | hover color changes |
-| `--th-dur-base` | 160ms | expand, tab change, chip toggle |
-| `--th-dur-slow` | 280ms | dialog and toast enter, new feed row |
-| `--th-ease-out` | `cubic-bezier(0.2, 0.7, 0.2, 1)` | entering, hover |
-| `--th-ease-in-out` | `cubic-bezier(0.45, 0, 0.2, 1)` | moving, resizing |
+| `dur-fast` | 80ms | Hover background and border |
+| `dur` | 140ms | Menu and toast in |
+| `ease` | `cubic-bezier(0.2, 0, 0, 1)` | All transitions |
+| `spin-frame` | 80ms | One frame of the working spinner |
 
-Animate only `opacity`, `transform`, color. Exit animations are shorter than enters or skipped.
+- Nothing blinks, pulses or slides on a loop.
+- The working spinner cycles `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` from one shared timer, not one timer per agent.
+- `prefers-reduced-motion: reduce` sets both durations to 0 and freezes the spinner on `⠿`.
 
-**Reduced motion rule:** under `prefers-reduced-motion: reduce` the duration tokens collapse to ~0, and every looping animation (spinner, working glyph, shimmer, cursor blink) is turned off. Information carried by motion must also be carried by text or shape (the working state keeps its dashed bar and label). Do not rely on `:hover` animation for meaning.
+## Logo
 
-## Iconography
+The pixel town hall: an 18 by 14 grid (pediment, four columns, two-step base), drawn as one SVG path with `shape-rendering="crispEdges"`. The source is [img/logo.svg](img/logo.svg); in the UI it is inline SVG with `fill="currentColor"`.
 
-16px grid, 2px stroke, round caps and joins, `currentColor`, no fills except the "alive" dot. Inline SVG via `<symbol>`; icons inherit text color. Glyphs in use: alive (dot), working (arc), waiting (diamond with mark), dead (box with X), error (triangle with mark), check, close, plus, terminal, info. An icon-only control needs `aria-label`. The wordmark uses the town hall silhouette filled in `currentColor`.
+| Where | Size | Color |
+|-------|------|-------|
+| Sidebar, next to `/townhall` | 18 × 14 (1px per cell) | `fg` |
+| Home greeting | 36 × 28 (2px per cell) | `accent` |
+| First run and full-window empty states | 108 × 84 (6px per cell) | `fg-faint` |
+| Favicon and app icon | from `img/logo.svg`, light and dark aware | `fg` on transparent |
+| Repo README | `img/wordmark.svg`: logo at 3px per cell and `/townhall`, light and dark aware | `fg`, amber `/` |
 
-## Focus
+- Scale only by whole numbers (1, 2, 3, 6), so every cell stays a sharp square. Never smooth, round, outline or recolor parts of it.
+- Clear space around it: at least one cell on every side.
 
-Every interactive element shows `:focus-visible`: `outline: var(--th-focus-width) solid var(--th-focus); outline-offset: var(--th-focus-offset)` (2px, 2px). Inside clipped containers (tabs, segmented controls) use a negative offset so the ring is not cut. Never `outline: none` without this replacement. Focus ring is never the hover style.
+## Glyphs
 
-## Z layers
+No icon library. Every symbol is a text glyph, so it inherits color, size and the character grid.
 
-`--th-z-base` 0, `-sticky` 10 (header, feed group headings), `-dropdown` 20, `-overlay` 30 (scrim), `-dialog` 40, `-toast` 50, `-tooltip` 60. Do not use raw z-index numbers.
+| Glyph | Meaning |
+|-------|---------|
+| `●` | alive (filled circle) |
+| `⠋` spinner | working |
+| `◆` | waiting on you |
+| `×` | error |
+| `○` | dead / ended (hollow circle) |
+| `›` | prompt sign in the pane input |
+| `/` | the amber slash of the wordmark `/townhall`, which is also the control center's route |
+| `+ / ~ $` | sidebar nav: new conversation, search, repos, control center. `~` also marks a repo |
+| `▾ ▸` | expanded and folded groups and spans |
+| `✓ → ×` | event lines: passed, sent, failed |
+| `·` | separator in a pane header |
+| `⏎ ↑ ↓ esc` | keys, always inside `.th-kbd` |
 
-## Accessibility baseline
+Every state has its own shape, so status still reads without color. The glyph is `aria-hidden`; the state is also spoken through the row's text or an `.th-sr-only` label.
 
-- Text 4.5:1, large text and UI boundaries 3:1; verified by `check-contrast.mjs`.
-- Status never by color alone: glyph shape, text label, and bar pattern (solid, dashed, dotted, outline).
-- Hit targets: 36px comfortable, 28px compact (exception, above the 24px WCAG 2.2 AA floor), 44px on coarse pointers regardless of density.
-- Live updates: toasts and banners use `role="status"` or `role="alert"`; the feed is an ordered list, new rows do not steal focus.
+## Terminal theme
+
+xterm.js needs literal colors, so read them from the tokens at mount and again when the theme changes:
+
+```ts
+const css = getComputedStyle(document.documentElement);
+const v = (name: string) => css.getPropertyValue(`--th-${name}`).trim();
+
+const theme = {
+  background: v("term-bg"),
+  foreground: v("term-fg"),
+  cursor: v("term-cursor"),
+  selectionBackground: v("term-selection"),
+  black: v("ansi-black"), red: v("ansi-red"), green: v("ansi-green"), yellow: v("ansi-yellow"),
+  blue: v("ansi-blue"), magenta: v("ansi-magenta"), cyan: v("ansi-cyan"), white: v("ansi-white"),
+  brightBlack: v("ansi-bright-black"), brightRed: v("ansi-bright-red"),
+  brightGreen: v("ansi-bright-green"), brightYellow: v("ansi-bright-yellow"),
+  brightBlue: v("ansi-bright-blue"), brightMagenta: v("ansi-bright-magenta"),
+  brightCyan: v("ansi-bright-cyan"), brightWhite: v("ansi-bright-white"),
+};
+
+new XTerm({ theme, fontFamily: v("font"), fontSize: 13, lineHeight: 1.4 });
+```
+
+In the light theme ANSI white maps to a mid grey and bright white to near black, so programs that print "white" text stay readable on a light background. Watch `data-theme` on `<html>` with a `MutationObserver` and set `term.options.theme` again when it changes.
+
+## Z-index
+
+| Token | Value | Use |
+|-------|-------|-----|
+| `z-sticky` | 10 | Sticky control center axis |
+| `z-overlay` | 100 | Conversation menu |
+| `z-toast` | 200 | Toast stack |

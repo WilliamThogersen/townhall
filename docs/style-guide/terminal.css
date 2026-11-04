@@ -1,0 +1,148 @@
+/*
+ * townhall agent terminal panes, v2: pane, stream status, xterm host, prompt.
+ * Depends on tokens.css and components.css. Not imported by web/ yet.
+ */
+
+/* ---------- agent panes ---------- */
+
+.th-panes {
+  display: grid;
+  grid-auto-rows: minmax(var(--th-pane-min-h), 1fr);
+  gap: var(--th-border);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--th-line);
+}
+
+.th-pane {
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--th-bar) minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--th-term-bg);
+}
+
+.th-pane::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: var(--th-border) solid transparent;
+  pointer-events: none;
+}
+
+.th-pane:focus-within::after,
+.th-pane[data-active="true"]::after {
+  border-color: var(--th-accent);
+}
+
+.th-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  min-width: 0;
+  padding: 0 var(--th-space-1) 0 var(--th-space-3);
+  border-bottom: var(--th-border) solid var(--th-line);
+  background: var(--th-surface);
+  font-size: var(--th-text-sm);
+  white-space: nowrap;
+}
+
+.th-pane-head[data-confirm="true"] {
+  background: var(--th-danger-tint);
+}
+
+.th-pane-title {
+  font-weight: var(--th-weight-bold);
+}
+
+.th-pane-meta {
+  flex: none;
+  color: var(--th-fg-muted);
+}
+
+.th-pane-branch {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--th-fg-muted);
+  text-overflow: ellipsis;
+}
+
+.th-sep {
+  color: var(--th-fg-faint);
+}
+
+.th-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--th-space-1);
+  margin-left: auto;
+}
+
+.th-stream {
+  display: inline-flex;
+  gap: 6px;
+  padding-right: var(--th-space-2);
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+}
+
+.th-stream[data-status="open"] { color: var(--th-ok); }
+.th-stream[data-status="ended"] { color: var(--th-fg-muted); }
+.th-stream[data-status="error"] { color: var(--th-danger); }
+
+.th-term {
+  min-height: 0;
+  margin: 0;
+  padding: var(--th-space-2) var(--th-space-3);
+  overflow: hidden;
+  background: var(--th-term-bg);
+  color: var(--th-term-fg);
+  font-size: var(--th-text-md);
+  line-height: 1.4;
+  white-space: pre;
+}
+
+.th-prompt {
+  display: flex;
+  align-items: center;
+  height: var(--th-control-lg);
+  border-top: var(--th-border) solid var(--th-line);
+  background: var(--th-surface);
+}
+
+.th-prompt:focus-within {
+  background: var(--th-surface-2);
+}
+
+.th-prompt-sign {
+  padding-left: var(--th-space-3);
+  color: var(--th-fg-faint);
+}
+
+.th-prompt:focus-within .th-prompt-sign {
+  color: var(--th-accent);
+}
+
+.th-prompt-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 1ch;
+  border: 0;
+  background: transparent;
+  caret-color: var(--th-accent);
+}
+
+.th-prompt-input:focus-visible {
+  outline: none;
+}
+
+.th-prompt-input::placeholder {
+  color: var(--th-fg-faint);
+}
+
+.th-prompt .th-btn {
+  margin-right: var(--th-space-1);
+}
