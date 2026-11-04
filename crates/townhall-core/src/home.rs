@@ -38,6 +38,7 @@ impl Home {
         &self.root
     }
 
+    /// Phase 1's `config.json`: only read, once, by the store's import, which then renames it.
     pub fn config_file(&self) -> PathBuf {
         self.root.join(CONFIG_FILE)
     }

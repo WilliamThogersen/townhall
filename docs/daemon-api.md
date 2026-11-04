@@ -23,7 +23,7 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 | POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a plain folder, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found; 409 path registered, name taken ignoring case | 2.1 |
 | DELETE | `/repos/{name}` | | the removed `Repo`. Only unregisters: folder, worktrees and branches stay | 404; 409 it has live agents (tmux sessions), or it is the daemon's startup repo | 2.1 |
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
-| POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400 bad name, `base branch `x` not found`; 404 repo; 409 the name exists in any repo, ignoring case | phase 1, 2.1 |
+| POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400 bad name, ``base branch `x` not found``; 404 repo; 409 the name exists in any repo, ignoring case | phase 1, 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` | the name. When the agent is a task's, adds an `agent` `sent` entry to its conversation | 400, 404, 409 | phase 1, 2.1 |
 | GET | `/agents/{name}/output` | | the pane text | 400, 404, 409 | phase 1, 2.1 |
