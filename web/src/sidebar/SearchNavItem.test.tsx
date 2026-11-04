@@ -89,6 +89,7 @@ describe("sidebar search", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(`${window.location.pathname}${window.location.search}`).toBe("/search?q=coupon%20rounding");
     expect(field()).toHaveValue("coupon rounding");
+    expect(field()).not.toHaveFocus();
     fireEvent.keyDown(field(), { key: "Escape" });
     expect(searchLink()).toHaveAttribute("aria-current", "page");
     expect(rowTitles()).toHaveLength(5);

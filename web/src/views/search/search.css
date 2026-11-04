@@ -25,8 +25,7 @@
   outline-offset: calc(var(--th-focus-width) * -1);
 }
 
-.th-hit-title,
-.th-hit-text {
+.th-hit-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -40,6 +39,7 @@
 
 .th-hit-text {
   grid-column: 1 / -1;
+  overflow-wrap: anywhere;
   color: var(--th-fg-faint);
   font-size: var(--th-text-sm);
   line-height: var(--th-leading-sm);

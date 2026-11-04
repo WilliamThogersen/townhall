@@ -68,7 +68,9 @@ export function useSidebarSearch(): SidebarSearch {
     if (query.trim() === "") clear();
   }, [query, clear]);
   const submit = useCallback(() => {
-    if (query.trim() !== "") navigate(searchPath(query));
+    if (query.trim() === "") return;
+    navigate(searchPath(query));
+    inputRef.current?.blur();
   }, [query]);
   useSlashKey(start);
   return { query, open, inputRef, setQuery, start, clear, leave, submit };
