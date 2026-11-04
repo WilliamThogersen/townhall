@@ -1,0 +1,3 @@
+.th-composer-tools .th-help[data-tone="error"] {
+  color: var(--th-danger);
+}

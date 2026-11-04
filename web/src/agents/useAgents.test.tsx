@@ -4,7 +4,9 @@ import * as client from "../api/client";
 import { ApiError } from "../api/errors";
 import { useAgents } from "./useAgents";
 
-const a = { name: "a", kind: null, branch: "b", worktree: "/w", alive: true };
+const a = {
+  name: "a", kind: null, branch: "b", worktree: "/w", alive: true, repo: "demo", state: { kind: "working" },
+} as const;
 
 afterEach(() => vi.restoreAllMocks());
 

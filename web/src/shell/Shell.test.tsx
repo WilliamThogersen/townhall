@@ -4,14 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { AgentsProvider } from "../agents/AgentsProvider";
 import * as client from "../api/client";
 import { ApiError } from "../api/errors";
-import type { Agent } from "../api/types";
+import type { AgentInfo } from "../api/types";
 import { navigate } from "../router";
 import { useKeyHints } from "./keyHints";
 import { daemonErrorText } from "./DaemonBanner";
 import { Shell } from "./Shell";
 
-const mk = (name: string, alive: boolean): Agent => ({
+const mk = (name: string, alive: boolean): AgentInfo => ({
   name, kind: "shell", branch: `townhall/${name}`, worktree: `/w/${name}`, alive,
+  repo: "demo", state: { kind: alive ? "working" : "ended" },
 });
 const info = { home: "/h/.townhall", repo: "/r/demo", repoKey: "demo-0123abcd" };
 

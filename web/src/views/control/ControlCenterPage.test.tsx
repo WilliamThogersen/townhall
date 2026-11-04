@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { AgentsProvider } from "../../agents/AgentsProvider";
 import * as client from "../../api/client";
-import type { Agent } from "../../api/types";
+import type { Agent, AgentInfo } from "../../api/types";
 import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
 import { ControlCenterPage } from "./ControlCenterPage";
 
@@ -20,12 +20,14 @@ vi.mock("../../agents/AgentPane", () => ({
   ),
 }));
 
-const mk = (name: string, alive = true): Agent => ({
+const mk = (name: string, alive = true): AgentInfo => ({
   name,
   kind: "shell",
   branch: `townhall/${name}`,
   worktree: `/w/${name}`,
   alive,
+  repo: "demo",
+  state: { kind: alive ? "working" : "ended" },
 });
 
 function HintsProbe() {
@@ -77,7 +79,7 @@ describe("ControlCenterPage list", () => {
   });
 
   it("shows loading agents… until the first list arrives", async () => {
-    list.mockReturnValue(new Promise<readonly Agent[]>(() => undefined));
+    list.mockReturnValue(new Promise<readonly AgentInfo[]>(() => undefined));
     show();
     expect(await screen.findByText("loading agents…", {}, { timeout: 1000 })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "agents" })).toBeNull();

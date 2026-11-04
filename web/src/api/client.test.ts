@@ -3,6 +3,7 @@ import { createAgent, getInfo, listAgents, sendText, streamUrl } from "./client"
 import { ApiError } from "./errors";
 
 const agent = { name: "a", kind: "shell", branch: "townhall/a", worktree: "/w/a", alive: true };
+const agentInfo = { ...agent, repo: "shop", state: { kind: "waiting", question: "go?" } };
 
 function mockFetch(status: number, body: unknown) {
   const fn = vi.fn().mockResolvedValue(
@@ -15,15 +16,23 @@ function mockFetch(status: number, body: unknown) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("api client", () => {
-  it("unwraps the envelope and validates agents", async () => {
+  it("unwraps the envelope and validates agents with their repo and state", async () => {
+    mockFetch(200, { success: true, data: [agentInfo], error: null });
+    expect(await listAgents()).toEqual([agentInfo]);
     mockFetch(200, { success: true, data: [agent], error: null });
-    expect(await listAgents()).toEqual([agent]);
+    await expect(listAgents()).rejects.toMatchObject({ kind: "protocol" });
   });
 
-  it("validates the info payload", async () => {
-    const info = { home: "/h/.townhall", repo: "/r", repoKey: "r-0123abcd" };
+  it("validates the info payload and reads the user name", async () => {
+    const info = { home: "/h/.townhall", repo: "/r", repoKey: "r-0123abcd", userName: "Ada Lovelace" };
     mockFetch(200, { success: true, data: info, error: null });
     expect(await getInfo()).toEqual(info);
+    mockFetch(200, { success: true, data: { ...info, userName: null }, error: null });
+    expect(await getInfo()).toEqual({ ...info, userName: null });
+    mockFetch(200, { success: true, data: { ...info, userName: undefined }, error: null });
+    expect(await getInfo()).toEqual({ ...info, userName: null });
+    mockFetch(200, { success: true, data: { ...info, userName: 4 }, error: null });
+    await expect(getInfo()).rejects.toMatchObject({ kind: "protocol" });
     mockFetch(200, { success: true, data: { home: "/h" }, error: null });
     await expect(getInfo()).rejects.toMatchObject({ kind: "protocol" });
   });
