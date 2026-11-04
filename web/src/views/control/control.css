@@ -1,11 +1,3 @@
-.th-control {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-}
-
 .th-control-cap {
   overflow: hidden;
   color: var(--th-fg-faint);
@@ -15,42 +7,41 @@
   white-space: nowrap;
 }
 
-.th-control-trace {
-  overflow-y: auto;
+.th-control .th-page-head-actions {
+  flex: none;
 }
 
-.th-control-trace > .th-trace-body {
-  min-height: calc(var(--th-row) * 3);
+.th-control-filter {
+  position: relative;
 }
 
-.th-control-rows > .th-span {
-  grid-template-columns: minmax(0, 1fr);
+.th-control-filter > .th-menu {
+  position: absolute;
+  top: calc(100% + var(--th-space-1));
+  right: 0;
+  z-index: var(--th-z-overlay);
 }
 
-.th-control-rows .th-span-label {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--th-fg);
-  text-align: left;
+.th-control .th-trace > .th-empty {
+  flex: 1;
+}
+
+.th-control .th-loop-stage--you .th-status {
+  width: auto;
+}
+
+.th-control .th-span:not(.th-span--axis) {
   cursor: pointer;
 }
 
-.th-control-rows .th-span-label:focus-visible {
+.th-control .th-span:focus-visible {
   outline-offset: calc(var(--th-focus-width) * -1);
 }
 
-.th-control-rows .th-span-label[aria-current="true"] {
-  background: var(--th-surface-2);
-  box-shadow: inset 2px 0 0 var(--th-accent);
+.th-control .th-span-label .th-tag {
+  margin-left: auto;
 }
 
-@media (min-width: 1024px) and (max-width: 1199px) {
-  .th-control.th-convo-layout[data-pane="true"] {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .th-control.th-convo-layout > .th-convo-view {
-    border-right: var(--th-border) solid var(--th-line);
-  }
+.th-control .th-span[data-kind="note"] .th-span-name {
+  color: var(--th-fg-faint);
 }

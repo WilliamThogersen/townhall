@@ -1,10 +1,12 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "./api/client";
+import * as conversationsApi from "./api/conversations";
 import * as events from "./api/events";
 import { aRepo, someStats } from "./api/fixtures";
 import * as reposApi from "./api/repos";
 import * as statsApi from "./api/stats";
+import * as tasksApi from "./api/tasks";
 import { App } from "./App";
 import { navigate } from "./router";
 import { DEFAULT_SETTINGS } from "./settings/settings";
@@ -57,10 +59,12 @@ describe("App routes", () => {
   });
 
   it("/townhall shows the control center", async () => {
+    vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([]);
+    vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
     window.history.replaceState(null, "", "/townhall");
     render(<App />);
     expect(heading("control center")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "no agents yet" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "nothing ran today" })).toBeInTheDocument();
   });
 
   it("switches screens on navigate and keeps one shell", async () => {

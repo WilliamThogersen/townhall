@@ -1,4 +1,5 @@
-import type { ControlStat } from "./controlModel";
+import { compactNumber } from "../home/format";
+import type { ControlStat } from "./traceStats";
 
 export function ControlStats({ stats }: { readonly stats: readonly ControlStat[] }) {
   return (
@@ -6,7 +7,7 @@ export function ControlStats({ stats }: { readonly stats: readonly ControlStat[]
       {stats.map((stat) => (
         <div key={stat.label} className="th-trace-stat">
           <span>{stat.label}</span>
-          <b>{stat.value}</b>
+          <b>{compactNumber(stat.value)}</b>
         </div>
       ))}
     </div>
