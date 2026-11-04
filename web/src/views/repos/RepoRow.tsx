@@ -7,13 +7,13 @@ import { GlyphCounts } from "../../ui/StatusGlyph";
 function AgentSummary({ agents }: { readonly agents: readonly Agent[] }) {
   if (agents.length === 0) {
     return (
-      <div className="th-repo-meta th-repo-agents">
+      <div className="th-repo-meta">
         <span>no agents</span>
       </div>
     );
   }
   return (
-    <div className="th-repo-meta th-repo-agents">
+    <div className="th-repo-meta">
       <GlyphCounts counts={countByState(agents)} className="th-nav-count" />
       <span>{`${agents.length} agent${agents.length === 1 ? "" : "s"}`}</span>
     </div>
@@ -32,7 +32,7 @@ export function RepoRow({ info, agents }: RepoRowProps) {
         <b>{repoName(info.repo)}</b>
         <span title={info.repo}>{shortRepoPath(info.repo, userHomeOf(info.home))}</span>
       </div>
-      <div className="th-repo-meta th-repo-count">
+      <div className="th-repo-meta">
         <span>{conversationCount(0)}</span>
       </div>
       <AgentSummary agents={agents} />
