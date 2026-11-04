@@ -304,7 +304,7 @@ async fn a_dead_session_of_the_same_name_is_replaced_on_spawn() {
     let name = unique("respawn");
     let _sessions = Sessions(vec![tmux::session_name(fx.ws.key(), &name)]);
     let dir = TempDir::new().unwrap();
-    tmux::spawn(fx.ws.key(), &name, dir.path(), "true")
+    tmux::spawn(fx.ws.key(), &name, dir.path(), "true", "shell")
         .await
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -317,11 +317,11 @@ async fn a_dead_session_of_the_same_name_is_replaced_on_spawn() {
         assert!(Instant::now() < deadline, "the pane never died");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    tmux::spawn(fx.ws.key(), &name, dir.path(), "sleep 30")
+    tmux::spawn(fx.ws.key(), &name, dir.path(), "sleep 30", "shell")
         .await
         .unwrap();
     assert_eq!(tmux::list(fx.ws.key()).await.unwrap(), vec![name.clone()]);
-    let live = tmux::spawn(fx.ws.key(), &name, dir.path(), "sleep 30").await;
+    let live = tmux::spawn(fx.ws.key(), &name, dir.path(), "sleep 30", "shell").await;
     assert!(matches!(live, Err(Error::Command { .. })), "{live:?}");
     tmux::kill(fx.ws.key(), &name).await.unwrap();
 }
@@ -333,7 +333,7 @@ async fn a_name_never_matches_a_longer_session() {
     let short = &long[..long.len() - 1];
     let _sessions = Sessions(vec![tmux::session_name(fx.ws.key(), &long)]);
     let dir = TempDir::new().unwrap();
-    tmux::spawn(fx.ws.key(), &long, dir.path(), "sleep 30")
+    tmux::spawn(fx.ws.key(), &long, dir.path(), "sleep 30", "shell")
         .await
         .unwrap();
     assert!(tmux::capture(fx.ws.key(), short).await.is_err());

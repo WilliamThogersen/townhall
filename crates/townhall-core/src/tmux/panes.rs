@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use crate::{Error, Result};
 
 const FORMAT: &str = "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{session_created}|\
-                      #{window_activity}|#{pane_id}|#{session_name}";
+                      #{window_activity}|#{pane_id}|#{@townhall_kind}|#{session_name}";
 /// How long a snapshot answers lookups before tmux is asked again.
 const FRESH_FOR: Duration = Duration::from_secs(1);
 
@@ -35,6 +35,8 @@ pub struct Pane {
     pub created: u64,
     /// When the pane last printed, in unix seconds.
     pub activity: u64,
+    /// The adapter that started it (`claude`, `shell`); unknown for older sessions.
+    pub kind: Option<String>,
 }
 
 impl Pane {
@@ -57,8 +59,8 @@ fn exit_of(dead: &str, status: &str, signal: &str) -> Option<Exit> {
 }
 
 fn line(text: &str) -> Option<Pane> {
-    let fields: Vec<&str> = text.splitn(7, '|').collect();
-    let [dead, status, signal, created, activity, id, session] = fields.as_slice() else {
+    let fields: Vec<&str> = text.splitn(8, '|').collect();
+    let [dead, status, signal, created, activity, id, kind, session] = fields.as_slice() else {
         return None;
     };
     if session.is_empty() {
@@ -70,6 +72,7 @@ fn line(text: &str) -> Option<Pane> {
         exit: exit_of(dead, status, signal),
         created: created.parse().ok()?,
         activity: activity.parse().ok()?,
+        kind: Some(kind.to_string()).filter(|k| !k.is_empty()),
     })
 }
 
@@ -136,11 +139,11 @@ mod tests {
 
     #[test]
     fn reads_live_exited_and_signalled_panes() {
-        let out = "0|||100|105|%1|townhall-k-a\n\
-                   1|3||100|101|%2|townhall-k-b\n\
-                   1|0||100|101|%3|townhall-k-c\n\
-                   1||term|100|101|%4|townhall-k-d\n\
-                   1|||100|101|%5|townhall-k-e";
+        let out = "0|||100|105|%1|claude|townhall-k-a\n\
+                   1|3||100|101|%2||townhall-k-b\n\
+                   1|0||100|101|%3||townhall-k-c\n\
+                   1||term|100|101|%4||townhall-k-d\n\
+                   1|||100|101|%5|shell|townhall-k-e";
         let panes = parse(out);
         let exits: Vec<Option<Exit>> = panes.iter().map(|p| p.exit.clone()).collect();
         assert_eq!(
@@ -161,14 +164,19 @@ mod tests {
                 exit: None,
                 created: 100,
                 activity: 105,
+                kind: Some("claude".into()),
             }
         );
         assert!(!panes[0].dead() && panes[1].dead());
+        assert_eq!(
+            (panes[1].kind.as_deref(), panes[4].kind.as_deref()),
+            (None, Some("shell"))
+        );
     }
 
     #[test]
     fn keeps_the_first_pane_of_a_session_and_skips_bad_lines() {
-        let out = "0|||1|2|%1|s\n1|1||1|2|%2|s\ngarbage\n0|||x|2|%3|t\n0|||1|2|%4|a|b";
+        let out = "0|||1|2|%1||s\n1|1||1|2|%2||s\ngarbage\n0|||x|2|%3||t\n0|||1|2|%4||a|b";
         let panes = parse(out);
         assert_eq!(panes.len(), 2);
         assert_eq!((panes[0].id.as_str(), panes[0].dead()), ("%1", false));

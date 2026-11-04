@@ -96,6 +96,7 @@ async fn full_lifecycle_over_http() {
 
     let (_, v) = call(&app, "GET", "/api/agents", None).await;
     assert_eq!(v["data"][0]["name"], name.as_str());
+    assert_eq!(v["data"][0]["kind"], "shell", "{v}");
 
     let uri = format!("/api/agents/{name}/send");
     let (s, _) = call(&app, "POST", &uri, Some(json!({"text": "hello-api"}))).await;
