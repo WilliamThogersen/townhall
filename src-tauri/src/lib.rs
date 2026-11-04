@@ -32,7 +32,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             commands::repo_status,
-            commands::choose_repo
+            commands::choose_repo,
+            commands::pick_folder
         ])
         .setup(|app| {
             let shared = commands::build_shared(app.handle())?;

@@ -73,19 +73,6 @@ impl Controller {
         start_locked(&mut slot, self, repo).await
     }
 
-    /// Marks the daemon external when something already listens on the port.
-    pub async fn detect_external(&self) -> Mode {
-        let mut slot = self.slot.lock().await;
-        if slot.mode == Mode::Stopped {
-            if let Err(e) = TcpListener::bind(self.addr).await {
-                if e.kind() == ErrorKind::AddrInUse {
-                    slot.mode = Mode::External;
-                }
-            }
-        }
-        slot.mode
-    }
-
     /// Restarts the in-process daemon on a new repo. Refuses when the daemon is external.
     pub async fn restart(&self, repo: &Path) -> Result<Mode, String> {
         let mut slot = self.slot.lock().await;
