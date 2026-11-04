@@ -100,16 +100,18 @@ A missing or invalid stored value reads as its default. The store also keeps `de
 
 ## Permission mode
 
-`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
+`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt, add_dirs`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
 
 ```
 claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
-       [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2] [-- PROMPT]
+       [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2]
+       [--add-dir=D ...] [-- PROMPT]
 ```
 
 - Every option and its value is one argv element (`--name=value`), and the launch command shell-quotes every element, so no value can split or start a new flag. `--allowedTools` is one comma-joined element, so its position does not matter.
 - The prompt is the only positional, after the end-of-options `--`. A prompt such as `--dangerously-skip-permissions`, `-p`, `--permission-mode=bypassPermissions` or `--` arrives as the prompt, never as a flag.
 - `claude` still runs a subcommand when the first positional equals its name, even after `--` (`claude -- mcp` runs `claude mcp`). A prompt without any whitespace therefore gets a trailing newline; no subcommand name has one.
+- `add_dirs` are folders outside the worktree claude may read without a permission prompt (in `default`, `acceptEdits` and `plan` its Read asks for anything outside the working directory and `--add-dir` folders): one `--add-dir=<folder>` each, refused unless absolute and UTF-8, and when it starts with `-` or holds control characters.
 - `model`, `session_id` (a UUID) and each `allowed_tools` entry are refused (`InvalidInput`) when they start with `-` or hold control characters; a tool may not hold a comma. The system prompt may hold anything, since it sits inside its own `--append-system-prompt=` element. Blank values add no flag; no prompt means no `--`.
 - `permission_mode`: `default`, `acceptEdits`, `plan` and `auto` become `--permission-mode=<mode>`; `bypassPermissions` becomes `--dangerously-skip-permissions`. `claude` 2.1.318 lists `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` and no longer lists `default`, but still accepts it, so `default` is passed as is for now.
 - Checked against the installed `claude` 2.1.318 (empty environment, throwaway `HOME`, an invalid `--session-id` so it stops right after parsing): `-- --no-such-flag` reaches the session-id check while `--no-such-flag` alone is `unknown option`, and `--allowedTools=Read,Bash(git diff:*),Edit` and the `--name=value` forms parse.
@@ -124,12 +126,12 @@ One socket per client. Each text frame is one `ServerEvent`, tagged by `type`:
 | type | fields | published by |
 |------|--------|--------------|
 | `conversationUpdated` | `conversation` | every conversation write, each appended entry, each created task |
-| `entryAppended` | `conversationId, entry` | `Store::append_entry` |
+| `entryAppended` | `conversationId, entry` | `Store::append_entry`, and `Store::note_task_created` when it adds a task to the turn's `tasksCreated` entry (same `id`) |
 | `taskUpdated` | `task` | `Store::create_task`, `Store::update_task` |
 | `agentUpdated` | `agent: AgentInfo` | the agent watcher (2.5) when a state changes |
 | `resync` | | the socket itself, when its bus receiver lagged (`RecvError::Lagged`): refetch everything |
 
-Store writes publish on `Context::bus()` (`townhall_core::events::EventBus`, a tokio broadcast of capacity 1024) while they hold the connection, so events arrive in write order. An append publishes `entryAppended`, then `conversationUpdated`; a created task publishes `taskUpdated`, then `conversationUpdated`. The socket handler (2.2) subscribes with `ctx.bus().subscribe()` and forwards each event as `serde_json::to_string(&event)`. A client puts entries in order by `id`.
+Store writes publish on `Context::bus()` (`townhall_core::events::EventBus`, a tokio broadcast of capacity 1024) while they hold the connection, so events arrive in write order. An append publishes `entryAppended`, then `conversationUpdated`; a created task publishes `taskUpdated`, then `conversationUpdated`. The socket handler (2.2) subscribes with `ctx.bus().subscribe()` and forwards each event as `serde_json::to_string(&event)`. A client puts entries in order by `id`, and an `entryAppended` whose `id` it already has replaces that entry.
 
 ## MCP: `POST /api/conversations/{id}/mcp`
 
@@ -164,7 +166,9 @@ The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`
 }
 ```
 
-`repo` defaults to the conversation's `linkedRepo`, else the repo of its latest `repo` entry; none of those is a tool error that lists the repos. `baseBranch` defaults to the repo's. 2.3 resolves both into a `NewTask`, calls `Store::create_task`, then appends one `tasksCreated` entry per turn. No tool takes a permission mode.
+`repo` defaults to the conversation's `linkedRepo`, else the repo of its latest `repo` entry; none of those is a tool error that lists the repos. `baseBranch` defaults to the repo's. 2.3 resolves both into a `NewTask`, calls `Store::create_task`, then `Store::note_task_created`. No tool takes a permission mode.
+
+One `tasksCreated` entry per turn: a turn is everything after the conversation's latest `you` entry (the whole thread before the first). The turn's first task appends a `tasksCreated` entry; each later task of that turn is added to it in place (same `id` and `at`), and the entry is sent again as `entryAppended`. Calls are serialized, so tasks created at the same time still share the entry. Each refusal (`name` taken by a task, an agent or a branch `townhall/<name>`, unknown `repo`, `baseBranch`, `after` task or attachment, over a schema limit, an unknown field) is a result with `isError: true` and a text that says what to change. A notification runs nothing; an empty batch is `-32600`, an unknown method `-32601`, `tools/call` without `params.name` `-32602`.
 
 `set_title` (result the `Conversation`):
 
@@ -175,14 +179,31 @@ The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`
 
 2.8b adds `list_agents`, `list_workflows`, `read_definition`, `save_agent` and `save_workflow` in `mcp/library.rs`; 2.8c adds `run_workflow` in `mcp/runs.rs`. `tools()` and `allowed_tools()` pick them up.
 
+## Scheduler
+
+`scheduler::start(ctx)` runs a pass on every `taskUpdated` and every 2 s (`scheduler::TICK`); tests call `scheduler::run_once(ctx)`. A pass:
+
+- starts queued tasks oldest first, each once every `after` task is `ended` or `merged` (an `error` one holds it) and while fewer than `agentsAtOnce` tasks are `working` or `needsYou` with a live session (an interactive claude stays alive after its work, so an `ended` task frees its slot; agents that are no task's do not count).
+- Start: writes the task's brief, `# <title>`, the prompt and, with attachments, `Files attached to this task:` and one `- <path>` each, to `<home>/tasks/<name>/brief.md` (never the repo or the worktree), then `agent::start` in the task repo's workspace, name = the task name, base = the commit `baseBranch` is at, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `permission_mode` from settings, a new session id, `add_dirs` = the brief's folder plus, with attachments, the conversation's `files` folder. Then `working`. A prompt of any size fits, since tmux takes the command as one argument of at most about 16 k. The agent runs:
+
+  ```
+  claude --permission-mode=<mode> --session-id=<uuid> --add-dir=<home>/tasks/<name> [--add-dir=<home>/conversations/<id>/files] -- 'read your task brief at <home>/tasks/<name>/brief.md and do it. it is the full task.'
+  ```
+
+  (`--dangerously-skip-permissions` instead of `--permission-mode` for `skip all`). The prompt's own text only ever reaches claude through the brief.
+- sets `error` with an `agent` `failed` entry (`could not start: <reason>`, at most 300 characters) when the start fails, or when another agent has the task's name (in another repo, or in another case).
+- adopts a queued task whose own agent (its exact name, in its repo) exists already (a start cut short by a restart) as `working`, never starting a second agent; a `working` task is never touched.
+- marks an `ended` task `merged`, with an `agent` `passed` entry (`merged into <base>`), when `townhall/<name>` is reachable from its base branch (`git for-each-ref --merged=<base>`) and its tip is not the commit it started from (a branch with no commits of its own is not merged). Read only: it never merges or deletes.
+
 ## Storage: `~/.townhall`
 
 ```
-~/.townhall/                                  (or $TOWNHALL_HOME, mode 0700)
+~/.townhall/                                  (or $TOWNHALL_HOME made absolute, mode 0700)
   townhall.db                                 every repo, setting, conversation, entry and task
   townhall.db-wal, townhall.db-shm            SQLite's WAL files
   townhall.lock                               held while a townhall owns the database (holds its pid)
-  conversations/<id>/files/<attachment>/<name>   attachment bytes, the only other files
+  conversations/<id>/files/<attachment>/<name>   attachment bytes
+  tasks/<name>/brief.md                       a task's whole prompt, written when its agent starts
   worktrees/<repo-key>/<agent>/               one git worktree per agent, unchanged
   config.json.imported                        phase 1's config.json after its one-time import
 ```
@@ -232,6 +253,8 @@ create unique index repos_name_nocase on repos (name collate nocase);
 | `tasks` | `name` pk `collate nocase`, `conversation_id`, `title`, `prompt`, `repo`, `base_branch`, `after` (JSON names), `state`, `attachments` (JSON ids), `pr_number`, `pr_url`, `pr_checks`, `created_at` | indexed by conversation and by state |
 | `attachments` | `id` pk, `conversation_id`, `name`, `mime`, `size`, `kind`, `created_at` | the bytes are files, see the layout |
 
+`0201_task_launches` (2.3): `task_launches (name pk collate nocase references tasks (name) on delete cascade, start_commit, session_id, launched_at)`: what each task's agent started from. `start_commit` tells `merged` from a branch that never got a commit; `session_id` is the agent's `--session-id` (`null` for an agent adopted after a restart).
+
 Every `conversation_id` references `conversations (id) on delete cascade`. Enum columns hold the serde names (`yourTurn`, `needsYou`, `inCi`).
 
 ## Store functions
@@ -245,7 +268,7 @@ Routes and units call these typed async functions; they never write SQL. A unit 
 | settings | `settings()`, `set_setting(key, value)`, `desktop_repo()`, `set_desktop_repo(path)` |
 | conversations | `create_conversation()`, `conversation(id)`, `conversations()`, `update_conversation(id, change)`, `detail(id)` |
 | thread | `append_entry(conversation_id, body)`, `entries(conversation_id)` |
-| tasks | `create_task(conversation_id, NewTask)`, `tasks(conversation_id)`, `all_tasks()`, `find_task(name)`, `update_task(name, change)` |
+| tasks | `create_task(conversation_id, NewTask)`, `tasks(conversation_id)`, `all_tasks()`, `find_task(name)`, `update_task(name, change)`; 2.3: `note_task_created(conversation_id, name)`, `record_launch(TaskLaunch)`, `task_launch(name)`, `task_launches()` (`scheduler::TaskLaunch`) |
 | attachments | `save_attachment(conversation_id, name, mime, bytes)`, `attachments(conversation_id)`, `attachment(conversation_id, id)` (record and file path) |
 
 `change` closures take a copy and return the new value; they must not call the store. `update_conversation` keeps `id`, `createdAt` and `tasks` and sets `updatedAt`; `update_task` keeps `name`, `conversationId` and `createdAt`. `create_task` checks the name (`InvalidName`), that it is free ignoring case (`Conflict`), that every `after` task and attachment exists (`InvalidInput`), and dedups both lists.
@@ -261,7 +284,7 @@ Shared code around the store:
 | `townhall_core::mcp` | names, `tools()`, `allowed_tools()`, `config_json()` |
 | `townhall_daemon` | `AppState` (`new`, `with_options`, `open`, `with_store`, `ctx()`), `start_background(&state)`, `extract::JsonBody`, `error::ApiError::NotImplemented`, `cors::origin_allowed` |
 
-`start_background(&state)` (daemon `main.rs` and the desktop app's in-process daemon) registers the startup repo, then calls `runner::start(ctx)`, `scheduler::start(ctx)` and `agent::watch::start(ctx)`. Each returns `Option<JoinHandle<()>>`, `None` today; `Background::stop()` aborts them when the desktop app restarts its daemon.
+`start_background(&state)` (daemon `main.rs` and the desktop app's in-process daemon) registers the startup repo, then calls `runner::start(ctx)`, `scheduler::start(ctx)` and `agent::watch::start(ctx)`. Each returns `Option<JoinHandle<()>>`, `None` until its unit lands (the scheduler runs since 2.3); `Background::stop()` aborts them when the desktop app restarts its daemon.
 
 ## Ownership map
 

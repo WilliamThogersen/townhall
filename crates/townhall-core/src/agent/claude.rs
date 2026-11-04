@@ -1,7 +1,8 @@
 //! `ClaudeCodeAdapter`: the `claude` command line for one agent.
 //!
 //! `claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
-//! [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2] [-- PROMPT]`
+//! [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2] [--add-dir=D ...]
+//! [-- PROMPT]`
 //!
 //! Every option is one argv element (`--name=value`) and every element is shell-quoted, so
 //! no value can split or start a flag. The prompt is the only positional, after `--`.
@@ -108,6 +109,26 @@ fn tools(options: &LaunchOptions) -> Result<Vec<String>> {
     })
 }
 
+/// One `--add-dir=<folder>` per folder: absolute, UTF-8, never option-like.
+fn add_dirs(options: &LaunchOptions) -> Result<Vec<String>> {
+    options
+        .add_dirs
+        .iter()
+        .map(|dir| {
+            let text = dir
+                .to_str()
+                .ok_or_else(|| Error::InvalidInput(format!("folder {dir:?} is not UTF-8")))?;
+            plain("folder", text)?;
+            if !dir.is_absolute() {
+                return Err(Error::InvalidInput(format!(
+                    "folder {text:?} must be an absolute path"
+                )));
+            }
+            Ok(format!("--add-dir={text}"))
+        })
+        .collect()
+}
+
 fn prompt(options: &LaunchOptions) -> Vec<String> {
     match options.prompt.as_deref().filter(|p| !p.is_empty()) {
         Some(p) if p.chars().any(char::is_whitespace) => vec![END_OF_OPTIONS.into(), p.into()],
@@ -130,6 +151,7 @@ impl ClaudeCodeAdapter {
             system_prompt(options),
             session(options)?,
             tools(options)?,
+            add_dirs(options)?,
             prompt(options),
         ]
         .concat())

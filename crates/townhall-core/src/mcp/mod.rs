@@ -1,13 +1,31 @@
 //! Townhall's MCP server for its own Claude session: JSON-RPC 2.0 over plain HTTP JSON
 //! (no SSE) at `POST /api/conversations/{id}/mcp`, like Hive's `src/main/plan/mcp.ts`.
 //! This module fixes the names, the tool schemas and the `--mcp-config` the runner (2.2)
-//! passes. Unit 2.3 answers the requests (`initialize`, `ping`, `tools/list`, `tools/call`).
-//! Units 2.8b and 2.8c add their tools in `library.rs` and `runs.rs`.
+//! passes; `handle` answers the requests (`rpc.rs`) with the task tools (`task_tools.rs`).
+//! Units 2.8b and 2.8c add their tools in `library.rs` and `runs.rs`, and a match arm for
+//! each in `TaskTools::call`.
 
+mod checks;
 mod library;
+mod rpc;
 mod runs;
+mod task_tools;
 
 use serde_json::{json, Value};
+
+use crate::context::Context;
+
+pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
+
+/// Answers one JSON-RPC message or batch for the conversation `conversation_id` (which the
+/// route checked exists). `None` when there is nothing to send back: the route answers `202`.
+pub async fn handle(ctx: &Context, conversation_id: &str, body: Value) -> Option<Value> {
+    let tools = task_tools::TaskTools {
+        ctx,
+        conversation_id,
+    };
+    rpc::answer(body, &tools).await
+}
 
 pub const SERVER_NAME: &str = "townhall";
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
