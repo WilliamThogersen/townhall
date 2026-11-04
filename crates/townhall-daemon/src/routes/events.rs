@@ -17,6 +17,7 @@ use crate::envelope::failure;
 use crate::state::AppState;
 
 pub const FOREIGN_ORIGIN: &str = "origin not allowed";
+pub const NOT_UPGRADED: &str = "this route needs a websocket upgrade";
 const CLOSE_WAIT: Duration = Duration::from_secs(5);
 
 pub async fn socket(
@@ -29,7 +30,7 @@ pub async fn socket(
     }
     let ws = match upgrade {
         Ok(ws) => ws,
-        Err(rejection) => return failure(rejection.status(), rejection.body_text()),
+        Err(rejection) => return failure(rejection.status(), NOT_UPGRADED.into()),
     };
     let events = state.ctx().bus().subscribe();
     ws.on_upgrade(move |socket| forward(socket, events))
