@@ -25,7 +25,10 @@ async fn start_background_registers_the_startup_repo() {
     let env = Env::new("alpha").await;
     let state = env.state();
     let background = start_background(&state).await;
-    assert!(background.running() >= 1, "the task scheduler (2.3) runs");
+    assert!(
+        background.running() >= 1,
+        "the task scheduler (2.3) and the conversation runner (2.2) run"
+    );
     background.stop();
     let stored = state.ctx().store().unwrap().repos().await.unwrap();
     assert_eq!(stored[0].path, env.startup);

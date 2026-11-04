@@ -14,17 +14,9 @@ mod common;
 use common::{call, unique, Env};
 
 const STUBS: &[(&str, &str)] = &[
-    ("GET", "/api/conversations"),
-    ("POST", "/api/conversations"),
-    ("GET", "/api/conversations/abc"),
-    ("PATCH", "/api/conversations/abc"),
-    ("POST", "/api/conversations/abc/messages"),
-    ("POST", "/api/conversations/abc/stop"),
-    ("POST", "/api/conversations/abc/end"),
     ("GET", "/api/conversations/abc/attachments"),
     ("POST", "/api/conversations/abc/attachments"),
     ("GET", "/api/conversations/abc/attachments/def"),
-    ("GET", "/api/events"),
     ("GET", "/api/library/agents"),
     ("GET", "/api/library/agents/coder"),
     ("PUT", "/api/library/agents/coder"),

@@ -33,12 +33,41 @@ async fn run(config: Config) -> Result<(), String> {
         config.bind
     );
     let background = start_background(&state).await;
-    let shutdown = async {
-        if let Err(e) = tokio::signal::ctrl_c().await {
-            eprintln!("townhall-daemon: signal handler failed: {e}");
-        }
-    };
-    let served = serve(listener, router_with_cors(state), shutdown).await;
+    let served = serve(listener, router_with_cors(state), stop_signal()).await;
     background.stop();
     served
+}
+
+/// Ctrl-C or SIGTERM (`kill <pid>`): either runs the clean shutdown, which stops the
+/// background units and so every running turn of townhall's own session.
+async fn stop_signal() {
+    let interrupt = async {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            eprintln!("townhall-daemon: ctrl-c handler failed: {e}");
+            std::future::pending::<()>().await;
+        }
+    };
+    tokio::select! {
+        () = interrupt => {}
+        () = terminate() => {}
+    }
+}
+
+#[cfg(unix)]
+async fn terminate() {
+    use tokio::signal::unix::{signal, SignalKind};
+    match signal(SignalKind::terminate()) {
+        Ok(mut term) => {
+            term.recv().await;
+        }
+        Err(e) => {
+            eprintln!("townhall-daemon: SIGTERM handler failed: {e}");
+            std::future::pending::<()>().await;
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn terminate() {
+    std::future::pending::<()>().await;
 }

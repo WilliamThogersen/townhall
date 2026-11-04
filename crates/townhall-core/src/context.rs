@@ -11,6 +11,7 @@ use crate::agent::DEFAULT_CLAUDE_BIN;
 use crate::events::EventBus;
 use crate::model::{Repo, Settings};
 use crate::repos::{names, RepoRegistry};
+use crate::runner::Turns;
 use crate::store::Store;
 use crate::{Error, Home, Result, Workspace};
 
@@ -58,6 +59,7 @@ struct Inner {
     bus: EventBus,
     options: ContextOptions,
     startup_name: OnceCell<Option<String>>,
+    turns: Turns,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +101,7 @@ impl Context {
             bus,
             options,
             startup_name: OnceCell::new(),
+            turns: Turns::default(),
         };
         Self {
             inner: Arc::new(inner),
@@ -136,6 +139,11 @@ impl Context {
 
     pub fn claude_bin(&self) -> &str {
         &self.inner.options.claude_bin
+    }
+
+    /// The turns of townhall's own session running now (unit 2.2's runner).
+    pub fn turns(&self) -> &Turns {
+        &self.inner.turns
     }
 
     pub async fn settings(&self) -> Result<Settings> {
