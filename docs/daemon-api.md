@@ -109,12 +109,12 @@ One socket per client. Each text frame is one `ServerEvent`, tagged by `type`:
 | type | fields | published by |
 |------|--------|--------------|
 | `conversationUpdated` | `conversation` | every conversation write, each appended entry, each created task |
-| `entryAppended` | `conversationId, entry` | `Store::append_entry` |
+| `entryAppended` | `conversationId, entry` | `Store::append_entry`, and `Store::note_task_created` when it adds a task to the turn's `tasksCreated` entry (same `id`) |
 | `taskUpdated` | `task` | `Store::create_task`, `Store::update_task` |
 | `agentUpdated` | `agent: AgentInfo` | the agent watcher (2.5) when a state changes |
 | `resync` | | the socket itself, when its bus receiver lagged (`RecvError::Lagged`): refetch everything |
 
-Store writes publish on `Context::bus()` (`townhall_core::events::EventBus`, a tokio broadcast of capacity 1024) while they hold the connection, so events arrive in write order. An append publishes `entryAppended`, then `conversationUpdated`; a created task publishes `taskUpdated`, then `conversationUpdated`. The socket handler (2.2) subscribes with `ctx.bus().subscribe()` and forwards each event as `serde_json::to_string(&event)`. A client puts entries in order by `id`.
+Store writes publish on `Context::bus()` (`townhall_core::events::EventBus`, a tokio broadcast of capacity 1024) while they hold the connection, so events arrive in write order. An append publishes `entryAppended`, then `conversationUpdated`; a created task publishes `taskUpdated`, then `conversationUpdated`. The socket handler (2.2) subscribes with `ctx.bus().subscribe()` and forwards each event as `serde_json::to_string(&event)`. A client puts entries in order by `id`, and an `entryAppended` whose `id` it already has replaces that entry.
 
 ## MCP: `POST /api/conversations/{id}/mcp`
 
@@ -149,7 +149,9 @@ The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`
 }
 ```
 
-`repo` defaults to the conversation's `linkedRepo`, else the repo of its latest `repo` entry; none of those is a tool error that lists the repos. `baseBranch` defaults to the repo's. 2.3 resolves both into a `NewTask`, calls `Store::create_task`, then appends one `tasksCreated` entry per turn. No tool takes a permission mode.
+`repo` defaults to the conversation's `linkedRepo`, else the repo of its latest `repo` entry; none of those is a tool error that lists the repos. `baseBranch` defaults to the repo's. 2.3 resolves both into a `NewTask`, calls `Store::create_task`, then `Store::note_task_created`. No tool takes a permission mode.
+
+One `tasksCreated` entry per turn: a turn is everything after the conversation's latest `you` entry (the whole thread before the first). The turn's first task appends a `tasksCreated` entry; each later task of that turn is added to it in place (same `id` and `at`), and the entry is sent again as `entryAppended`. Calls are serialized, so tasks created at the same time still share the entry. Each refusal (`name` taken by a task, an agent or a branch `townhall/<name>`, unknown `repo`, `baseBranch`, `after` task or attachment, over a schema limit, an unknown field) is a result with `isError: true` and a text that says what to change. A notification runs nothing; an empty batch is `-32600`, an unknown method `-32601`, `tools/call` without `params.name` `-32602`.
 
 `set_title` (result the `Conversation`):
 
@@ -159,6 +161,15 @@ The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`
 ```
 
 2.8b adds `list_agents`, `list_workflows`, `read_definition`, `save_agent` and `save_workflow` in `mcp/library.rs`; 2.8c adds `run_workflow` in `mcp/runs.rs`. `tools()` and `allowed_tools()` pick them up.
+
+## Scheduler
+
+`scheduler::start(ctx)` runs a pass on every `taskUpdated` and every 2 s (`scheduler::TICK`); tests call `scheduler::run_once(ctx)`. A pass:
+
+- starts queued tasks oldest first, each once every `after` task is `ended` or `merged` (an `error` one holds it) and while fewer than `agentsAtOnce` task agents (agents named after a task) are alive. Start: `agent::start` in the task repo's workspace, name = the task name, base = the commit `baseBranch` is at, `ClaudeCodeAdapter::new(ctx.claude_bin())`, prompt = the task prompt plus `Files attached to this task:` and one `- <path>` per attachment, `permission_mode` from settings, a new session id. Then `working`. The agent runs `claude --permission-mode <mode> --session-id <uuid> <prompt>` (`--dangerously-skip-permissions` for `skip all`).
+- sets `error` with an `agent` `failed` entry (`could not start: <reason>`) when the start fails, or when another repo has an agent with the task's name.
+- adopts a queued task whose agent exists already (a start cut short by a restart) as `working`, never starting a second agent; a `working` task is never touched.
+- marks an `ended` task `merged`, with an `agent` `passed` entry (`merged into <base>`), when `townhall/<name>` is reachable from its base branch (`git for-each-ref --merged=<base>`) and its tip is not the commit it started from (a branch with no commits of its own is not merged). Read only: it never merges or deletes.
 
 ## Storage: `~/.townhall`
 
@@ -217,6 +228,8 @@ create unique index repos_name_nocase on repos (name collate nocase);
 | `tasks` | `name` pk `collate nocase`, `conversation_id`, `title`, `prompt`, `repo`, `base_branch`, `after` (JSON names), `state`, `attachments` (JSON ids), `pr_number`, `pr_url`, `pr_checks`, `created_at` | indexed by conversation and by state |
 | `attachments` | `id` pk, `conversation_id`, `name`, `mime`, `size`, `kind`, `created_at` | the bytes are files, see the layout |
 
+`0201_task_launches` (2.3): `task_launches (name pk collate nocase references tasks (name) on delete cascade, start_commit, session_id, launched_at)`: what each task's agent started from. `start_commit` tells `merged` from a branch that never got a commit; `session_id` is the agent's `--session-id` (`null` for an agent adopted after a restart).
+
 Every `conversation_id` references `conversations (id) on delete cascade`. Enum columns hold the serde names (`yourTurn`, `needsYou`, `inCi`).
 
 ## Store functions
@@ -230,7 +243,7 @@ Routes and units call these typed async functions; they never write SQL. A unit 
 | settings | `settings()`, `set_setting(key, value)`, `desktop_repo()`, `set_desktop_repo(path)` |
 | conversations | `create_conversation()`, `conversation(id)`, `conversations()`, `update_conversation(id, change)`, `detail(id)` |
 | thread | `append_entry(conversation_id, body)`, `entries(conversation_id)` |
-| tasks | `create_task(conversation_id, NewTask)`, `tasks(conversation_id)`, `all_tasks()`, `find_task(name)`, `update_task(name, change)` |
+| tasks | `create_task(conversation_id, NewTask)`, `tasks(conversation_id)`, `all_tasks()`, `find_task(name)`, `update_task(name, change)`; 2.3: `note_task_created(conversation_id, name)`, `record_launch(TaskLaunch)`, `task_launch(name)`, `task_launches()` (`scheduler::TaskLaunch`) |
 | attachments | `save_attachment(conversation_id, name, mime, bytes)`, `attachments(conversation_id)`, `attachment(conversation_id, id)` (record and file path) |
 
 `change` closures take a copy and return the new value; they must not call the store. `update_conversation` keeps `id`, `createdAt` and `tasks` and sets `updatedAt`; `update_task` keeps `name`, `conversationId` and `createdAt`. `create_task` checks the name (`InvalidName`), that it is free ignoring case (`Conflict`), that every `after` task and attachment exists (`InvalidInput`), and dedups both lists.
@@ -246,7 +259,7 @@ Shared code around the store:
 | `townhall_core::mcp` | names, `tools()`, `allowed_tools()`, `config_json()` |
 | `townhall_daemon` | `AppState` (`new`, `with_options`, `open`, `with_store`, `ctx()`), `start_background(&state)`, `extract::JsonBody`, `error::ApiError::NotImplemented`, `cors::origin_allowed` |
 
-`start_background(&state)` (daemon `main.rs` and the desktop app's in-process daemon) registers the startup repo, then calls `runner::start(ctx)`, `scheduler::start(ctx)` and `agent::watch::start(ctx)`. Each returns `Option<JoinHandle<()>>`, `None` today; `Background::stop()` aborts them when the desktop app restarts its daemon.
+`start_background(&state)` (daemon `main.rs` and the desktop app's in-process daemon) registers the startup repo, then calls `runner::start(ctx)`, `scheduler::start(ctx)` and `agent::watch::start(ctx)`. Each returns `Option<JoinHandle<()>>`, `None` until its unit lands (the scheduler runs since 2.3); `Background::stop()` aborts them when the desktop app restarts its daemon.
 
 ## Ownership map
 
