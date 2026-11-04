@@ -19,6 +19,7 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 | Method | Path | Body | Response | Errors | Unit |
 |--------|------|------|----------|--------|------|
 | GET | `/info` | | `{ home, repo, repoKey, userName }` (`userName` from `git config user.name`, or `null`) | | 2.1 |
+| GET | `/hello` | | `{ message: "hello" }` | | - |
 | GET | `/repos` | | `Repo[]` in the order added | 503 | 2.1 |
 | POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a plain folder, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found; 409 path registered, name taken ignoring case | 2.1 |
 | DELETE | `/repos/{name}` | | the removed `Repo`. Only unregisters: folder, worktrees and branches stay | 404; 409 it has live agents (tmux sessions), or it is the daemon's startup repo | 2.1 |

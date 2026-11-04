@@ -5,6 +5,7 @@ mod agents;
 mod attachments;
 mod conversations;
 mod events;
+mod hello;
 mod info;
 mod library;
 mod mcp;
@@ -84,6 +85,7 @@ fn library_routes() -> Router<AppState> {
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/info", get(info::info))
+        .route("/hello", get(hello::hello))
         .route("/repos", get(repos::list).post(repos::add))
         .route("/repos/{name}", delete(repos::remove))
         .route("/settings", get(settings::get))

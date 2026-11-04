@@ -228,3 +228,12 @@ async fn info_reports_home_repo_and_key() {
         "{key}"
     );
 }
+
+#[tokio::test]
+async fn hello_says_hello() {
+    let (_env, app) = init_repo().await;
+    let (s, v) = call(&app, "GET", "/api/hello", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["success"], true);
+    assert_eq!(v["data"]["message"], "hello");
+}
