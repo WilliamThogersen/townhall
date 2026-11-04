@@ -17,6 +17,8 @@ pub mod repo_infer;
 pub mod repos;
 pub mod runner;
 pub mod scheduler;
+pub mod stats;
+pub mod steps;
 pub mod store;
 pub mod tmux;
 pub mod worktree;

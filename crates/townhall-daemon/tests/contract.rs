@@ -13,7 +13,7 @@ const ARGS_DEADLINE: Duration = Duration::from_secs(5);
 mod common;
 use common::{call, unique, Env};
 
-const STUBS: [(&str, &str); 28] = [
+const STUBS: &[(&str, &str)] = &[
     ("GET", "/api/conversations"),
     ("POST", "/api/conversations"),
     ("GET", "/api/conversations/abc"),
@@ -27,9 +27,6 @@ const STUBS: [(&str, &str); 28] = [
     ("GET", "/api/conversations/abc/attachments/def"),
     ("GET", "/api/tasks"),
     ("GET", "/api/tasks/fix-login"),
-    ("GET", "/api/agents/x/steps"),
-    ("GET", "/api/stats"),
-    ("GET", "/api/stats?repo=alpha"),
     ("GET", "/api/events"),
     ("GET", "/api/library/agents"),
     ("GET", "/api/library/agents/coder"),
