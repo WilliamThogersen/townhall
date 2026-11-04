@@ -2,10 +2,9 @@ import type { Adapter, CreateAgentInput } from "../api/types";
 
 const NAME_RE = /^[A-Za-z0-9_-]+$/;
 
-/** Mirrors the backend rule: letters, digits, - and _ only. */
 export function validateName(name: string): string | null {
-  if (name.length === 0) return "Name is required";
-  if (!NAME_RE.test(name)) return "Use letters, digits, - and _ only";
+  if (name.length === 0) return "name is required";
+  if (!NAME_RE.test(name)) return "use letters, digits, - and _ only";
   return null;
 }
 
@@ -35,9 +34,9 @@ export function validateForm(v: FormValues): FormResult {
   const nameError = validateName(v.name);
   if (nameError) errors.name = nameError;
   const base = v.base.trim();
-  if (base.startsWith("-")) errors.base = "Base must not start with -";
+  if (base.startsWith("-")) errors.base = "base branch must not start with -";
   if (v.adapter === "shell" && v.command.trim() === "") {
-    errors.command = "A shell agent needs a command";
+    errors.command = "a shell agent needs a command";
   }
   if (Object.keys(errors).length > 0) return { errors, input: null };
   const extra =

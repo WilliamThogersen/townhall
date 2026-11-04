@@ -1,17 +1,77 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { createAgent } from "../api/client";
 import { toMessage } from "../api/errors";
 import type { Adapter } from "../api/types";
+import { Button } from "../ui/Button";
+import { Segmented } from "../ui/Segmented";
 import { EMPTY_FORM, validateForm, type FormValues } from "./validation";
+import "./CreateAgentForm.css";
 
-export function CreateAgentForm({ onCreated }: { onCreated: (name: string) => void }) {
+const ADAPTERS = [
+  { value: "claude", label: "claude" },
+  { value: "shell", label: "shell" },
+] as const;
+
+interface TextFieldProps {
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly error?: string;
+  readonly placeholder?: string;
+  readonly wide?: boolean;
+  readonly autoFocus?: boolean;
+}
+
+function TextField({ label, value, onChange, error, placeholder, wide, autoFocus }: TextFieldProps) {
+  const id = useId();
+  const errorId = `${id}-error`;
+  return (
+    <div className={wide ? "th-new-agent-field th-new-agent-field--wide" : "th-new-agent-field"}>
+      <label className="th-new-agent-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="th-input"
+        value={value}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        autoComplete="off"
+        spellCheck={false}
+        aria-invalid={error !== undefined}
+        aria-describedby={error ? errorId : undefined}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {error && (
+        <span id={errorId} className="th-field-error" role="alert">
+          error: {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function AdapterField({ value, onChange }: { value: Adapter; onChange: (next: Adapter) => void }) {
+  const name = useId();
+  return (
+    <div className="th-new-agent-field th-new-agent-field--fit">
+      <span className="th-new-agent-label" aria-hidden="true">
+        adapter
+      </span>
+      <Segmented<Adapter> name={name} label="adapter" value={value} options={ADAPTERS} onChange={onChange} />
+    </div>
+  );
+}
+
+function useCreateAgent(onCreated: (name: string) => void) {
   const [values, setValues] = useState<FormValues>(EMPTY_FORM);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { errors, input } = validateForm(values);
+
   const set = (patch: Partial<FormValues>) => setValues((v) => ({ ...v, ...patch }));
-  const show = (k: keyof typeof errors) => (touched ? errors[k] : undefined);
+  const shown = touched ? errors : {};
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,44 +91,42 @@ export function CreateAgentForm({ onCreated }: { onCreated: (name: string) => vo
     }
   };
 
+  return { values, set, shown, busy, error, submit };
+}
+
+export interface CreateAgentFormProps {
+  readonly id?: string;
+  readonly onCreated: (name: string) => void;
+}
+
+export function CreateAgentForm({ id, onCreated }: CreateAgentFormProps) {
+  const { values, set, shown, busy, error, submit } = useCreateAgent(onCreated);
+  const shell = values.adapter === "shell";
+
   return (
-    <form className="create" onSubmit={(e) => void submit(e)} noValidate>
-      <label>
-        Name
-        <input value={values.name} onChange={(e) => set({ name: e.target.value })}
-          aria-invalid={Boolean(show("name"))} placeholder="fix-login" />
-        {show("name") && <span className="error" role="alert">{show("name")}</span>}
-      </label>
-      <label>
-        Adapter
-        <select value={values.adapter} onChange={(e) => set({ adapter: e.target.value as Adapter })}>
-          <option value="claude">claude</option>
-          <option value="shell">shell</option>
-        </select>
-      </label>
-      {values.adapter === "claude" ? (
-        <label>
-          Prompt (optional)
-          <textarea value={values.prompt} rows={2} onChange={(e) => set({ prompt: e.target.value })} />
-        </label>
+    <form id={id} className="th-new-agent" aria-label="new agent" onSubmit={(e) => void submit(e)} noValidate>
+      <TextField label="name" value={values.name} onChange={(name) => set({ name })}
+        error={shown.name} placeholder="fix-login" autoFocus />
+      <AdapterField value={values.adapter} onChange={(adapter) => set({ adapter })} />
+      <TextField label="base branch" value={values.base} onChange={(base) => set({ base })}
+        error={shown.base} placeholder="HEAD" />
+      {shell ? (
+        <TextField wide label="command" value={values.command} onChange={(command) => set({ command })}
+          error={shown.command} placeholder="npm test --watch" />
       ) : (
-        <label>
-          Command
-          <input value={values.command} onChange={(e) => set({ command: e.target.value })}
-            aria-invalid={Boolean(show("command"))} placeholder="npm test --watch" />
-          {show("command") && <span className="error" role="alert">{show("command")}</span>}
-        </label>
+        <TextField wide label="prompt" value={values.prompt} onChange={(prompt) => set({ prompt })}
+          placeholder="optional" />
       )}
-      <label>
-        Base (optional)
-        <input value={values.base} onChange={(e) => set({ base: e.target.value })}
-          aria-invalid={Boolean(show("base"))} placeholder="HEAD" />
-        {show("base") && <span className="error" role="alert">{show("base")}</span>}
-      </label>
-      <button type="submit" className="primary" disabled={busy}>
-        {busy ? "Creating..." : "Create agent"}
-      </button>
-      {error && <p className="error" role="alert">{error}</p>}
+      <div className="th-new-agent-actions">
+        <Button type="submit" variant="primary" busy={busy} busyLabel="starting…">
+          start
+        </Button>
+        {error && (
+          <span className="th-field-error" role="alert">
+            error: {error}
+          </span>
+        )}
+      </div>
     </form>
   );
 }
