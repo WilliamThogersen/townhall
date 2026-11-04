@@ -134,9 +134,10 @@ describe("stepBar and stepTag", () => {
     expect(stepTag(ok as Step, false)).toBeNull();
   });
 
-  it("finds the slowest finished step once there are three", () => {
+  it("finds the slowest finished step once there are three and it stands out", () => {
     const three = steps([10, 0, 1], [10, 2, 9], [10, 10, 12], [10, 20, null]);
     expect(slowestStep(three)).toBe("s1");
     expect(slowestStep(three.slice(0, 2))).toBeNull();
+    expect(slowestStep(steps([10, 0, 2], [10, 2, 4], [10, 4, 7]))).toBeNull();
   });
 });

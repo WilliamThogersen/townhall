@@ -20,6 +20,7 @@ export interface Tag {
 }
 
 export const SLOWEST_AFTER = 3;
+export const SLOWEST_FACTOR = 2;
 
 const TASK_GLYPHS: Readonly<Record<TaskState, GlyphState>> = {
   queued: "queued",
@@ -134,9 +135,12 @@ export function stepTag(step: Step, slowest: boolean): Tag | null {
   return slowest ? { text: "slowest", tone: null } : null;
 }
 
+const took = (step: Step) => Date.parse(step.endedAt ?? step.startedAt) - Date.parse(step.startedAt);
+
 export function slowestStep(steps: readonly Step[]): string | null {
   const finished = steps.filter((step) => step.endedAt !== null);
   if (finished.length < SLOWEST_AFTER) return null;
-  const took = (step: Step) => Date.parse(step.endedAt ?? step.startedAt) - Date.parse(step.startedAt);
-  return finished.reduce((slowest, step) => (took(step) > took(slowest) ? step : slowest)).id;
+  const median = finished.map(took).sort((a, b) => a - b)[Math.floor(finished.length / 2)] ?? 0;
+  const slowest = finished.reduce((top, step) => (took(step) > took(top) ? step : top));
+  return took(slowest) >= median * SLOWEST_FACTOR ? slowest.id : null;
 }

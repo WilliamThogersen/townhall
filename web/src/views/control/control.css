@@ -7,8 +7,24 @@
   white-space: nowrap;
 }
 
+.th-control {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.th-control .th-page-head h1 {
+  flex: none;
+  white-space: nowrap;
+}
+
 .th-control .th-page-head-actions {
   flex: none;
+}
+
+@media (max-width: 799px) {
+  .th-control .th-page-head .th-stream {
+    display: none;
+  }
 }
 
 .th-control-filter {
@@ -36,6 +52,15 @@
 
 .th-control .th-span:focus-visible {
   outline-offset: calc(var(--th-focus-width) * -1);
+}
+
+.th-control .th-span-label {
+  overflow: hidden;
+}
+
+.th-control .th-span-name {
+  flex-shrink: 0;
+  max-width: 100%;
 }
 
 .th-control .th-span-label .th-tag {
