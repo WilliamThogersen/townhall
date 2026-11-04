@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { AgentsProvider } from "../../agents/AgentsProvider";
 import * as client from "../../api/client";
 import type { Agent } from "../../api/types";
@@ -52,7 +52,7 @@ const pane = (name: string) => screen.queryByRole("article", { name: `${name} te
 const hints = () => screen.getByRole("status", { hidden: true, name: "hints" });
 const url = () => `${window.location.pathname}${window.location.search}`;
 
-let list: ReturnType<typeof vi.spyOn<typeof client, "listAgents">>;
+let list: MockInstance<typeof client.listAgents>;
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/townhall");
