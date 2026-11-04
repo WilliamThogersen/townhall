@@ -9,39 +9,35 @@ use runner_support::{
     app_with, create, detail, entries_of, idle, kinds, message, turns_started, values_of, Fake,
 };
 
-const FIRST_FLAGS: [&str; 9] = [
+const FIRST_FLAGS: [&str; 6] = [
     "-p",
-    "--output-format",
-    "stream-json",
+    "--output-format=stream-json",
     "--verbose",
-    "--input-format",
-    "stream-json",
-    "--permission-prompt-tool",
-    "stdio",
+    "--input-format=stream-json",
+    "--permission-prompt-tool=stdio",
     "--include-partial-messages",
 ];
 
 /// The flags of a first turn: the session id, no bypass, townhall's tools only.
 fn check_first_turn(first: &[String], session: &str, config: String) {
-    assert_eq!(first[..9], FIRST_FLAGS);
+    assert_eq!(first[..6], FIRST_FLAGS);
+    assert!(first[1..].iter().all(|a| a.starts_with("--")), "{first:?}");
     assert_eq!(values_of(first, "--session-id"), [session]);
-    assert!(!first.contains(&"--resume".to_string()), "{first:?}");
+    assert!(values_of(first, "--resume").is_empty(), "{first:?}");
     assert_eq!(values_of(first, "--permission-mode"), ["default"]);
     assert_eq!(values_of(first, "--mcp-config"), [config]);
     assert_eq!(
         values_of(first, "--allowedTools"),
-        [
-            "mcp__townhall__create_task",
-            "mcp__townhall__set_title",
-            "Read",
-            "Grep",
-            "Glob",
-            "LS"
-        ]
+        ["mcp__townhall__create_task,mcp__townhall__set_title,Read,Grep,Glob,LS"]
+    );
+    assert_eq!(
+        values_of(first, "--disallowedTools"),
+        ["Bash,Edit,MultiEdit,Write,NotebookEdit"]
     );
     assert!(first.contains(&"--strict-mcp-config".to_string()));
     assert!(!first.iter().any(|a| a.contains("dangerously")));
     let prompt = values_of(first, "--append-system-prompt").join(" ");
+    assert!(prompt.contains('\n'), "the system prompt keeps its lines");
     assert!(prompt.contains("create_task") && prompt.contains("set_title"));
     assert!(prompt.contains("alpha"), "{prompt}");
 }
@@ -73,7 +69,7 @@ async fn the_first_turn_starts_the_session_and_later_ones_resume_it() {
     idle(&app, &id).await;
     let second = fake.argv(2);
     assert_eq!(values_of(&second, "--resume"), [session]);
-    assert!(!second.contains(&"--session-id".to_string()), "{second:?}");
+    assert!(values_of(&second, "--session-id").is_empty(), "{second:?}");
     assert_eq!(fake.cwd(2), env.startup);
 }
 

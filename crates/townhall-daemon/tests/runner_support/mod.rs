@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 //! A fake `claude` for townhall's own session, and helpers to drive conversations.
-//! The fake logs its argv, cwd and stdin per turn and picks a script by a word in
+//! The fake logs its argv (NUL-separated), cwd and stdin per turn and picks a script by a word in
 //! the message: `SLOW` waits for the interrupt, `HANG` ignores it, `TOOL` asks for a
 //! disallowed and an allowed tool, `CRASH` dies before it starts, `KIDS` leaves a
 //! `sleep 31` holding its stdout (`ESCAPE` in its own process group) and ignores the
@@ -25,7 +25,7 @@ const SCRIPT: &str = r#"#!/bin/sh
 dir='@DIR@'
 n=$(( $(cat "$dir/count" 2>/dev/null || echo 0) + 1 ))
 echo "$n" > "$dir/count"
-printf '%s\n' "$@" > "$dir/argv-$n"
+printf '%s\0' "$@" > "$dir/argv-$n"
 pwd -P > "$dir/cwd-$n"
 echo "$$" > "$dir/pid-$n"
 IFS= read -r first || exit 4
@@ -35,7 +35,7 @@ lost() { echo "No conversation found with session ID: $1" >&2; exit 1; }
 case "$first" in
   *CRASH*) echo 'warming up' >&2; echo 'boom: claude broke' >&2; exit 3 ;;
   *ALWAYS*) lost any ;;
-  *STALE*) case " $* " in *" --resume "*) lost resumed ;; esac ;;
+  *STALE*) case " $* " in *" --resume="*) lost resumed ;; esac ;;
 esac
 echo '{"type":"system","subtype":"init","session_id":"fake","tools":[]}'
 case "$first" in
@@ -105,9 +105,10 @@ impl Fake {
             .unwrap_or(0)
     }
 
+    /// The turn's argv, one element each, newlines inside an element kept.
     pub fn argv(&self, turn: usize) -> Vec<String> {
         let text = std::fs::read_to_string(self.dir.join(format!("argv-{turn}"))).unwrap();
-        text.lines().map(String::from).collect()
+        text.split_terminator('\0').map(String::from).collect()
     }
 
     /// The pid of the fake's turn, or of the child it left behind (`kid`).
@@ -206,17 +207,13 @@ pub fn entries_of(detail: &Value, kind: &str) -> Vec<Value> {
         .collect()
 }
 
-/// The values after `flag` up to the next flag.
+/// The value of every `flag=value` element, in order. Every option is one element.
 pub fn values_of(argv: &[String], flag: &str) -> Vec<String> {
-    let at = argv.iter().position(|a| a == flag);
-    at.map(|i| {
-        argv[i + 1..]
-            .iter()
-            .take_while(|a| !a.starts_with("--"))
-            .cloned()
-            .collect()
-    })
-    .unwrap_or_default()
+    let prefix = format!("{flag}=");
+    argv.iter()
+        .filter_map(|a| a.strip_prefix(&prefix))
+        .map(String::from)
+        .collect()
 }
 
 pub async fn add_repo(app: &Router, path: &Path) {

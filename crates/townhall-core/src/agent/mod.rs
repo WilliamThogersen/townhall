@@ -10,6 +10,7 @@ pub mod watch;
 use std::path::PathBuf;
 
 pub use adapter::{shell_quote, AgentAdapter, LaunchOptions, ShellAdapter};
+pub(crate) use claude::{add_dir, plain};
 pub use claude::{ClaudeCodeAdapter, DEFAULT_CLAUDE_BIN};
 
 use crate::cmd::{run, validate_name};

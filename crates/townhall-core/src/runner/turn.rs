@@ -160,7 +160,7 @@ async fn plan(
         mcp_config: mcp::config_json(ctx.base_url(), &conversation.id),
         add_dirs,
     };
-    Ok(args::build(&turn))
+    args::build(&turn)
 }
 
 /// Appends the error, if any, then sets `yourTurn` and frees the slot in one write.

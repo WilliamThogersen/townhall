@@ -10,6 +10,8 @@
 //! is `claude update`), so a prompt without whitespace gets a trailing newline: no
 //! subcommand name has one.
 
+use std::path::Path;
+
 use super::adapter::{shell_quote, shell_word, AgentAdapter, LaunchOptions};
 use crate::ids::is_session_id;
 use crate::model::PermissionMode;
@@ -31,7 +33,7 @@ impl Default for ClaudeCodeAdapter {
 }
 
 /// Values that sit next to flags must never look like one.
-fn plain(what: &str, value: &str) -> Result<()> {
+pub(crate) fn plain(what: &str, value: &str) -> Result<()> {
     if value.starts_with('-') || value.chars().any(char::is_control) {
         return Err(Error::InvalidInput(format!(
             "{what} {value:?} must not start with `-` or hold control characters"
@@ -109,24 +111,23 @@ fn tools(options: &LaunchOptions) -> Result<Vec<String>> {
     })
 }
 
-/// One `--add-dir=<folder>` per folder: absolute, UTF-8, never option-like.
+/// `--add-dir=<folder>`: absolute, UTF-8, never option-like.
+pub(crate) fn add_dir(dir: &Path) -> Result<String> {
+    let text = dir
+        .to_str()
+        .ok_or_else(|| Error::InvalidInput(format!("folder {dir:?} is not UTF-8")))?;
+    plain("folder", text)?;
+    if !dir.is_absolute() {
+        return Err(Error::InvalidInput(format!(
+            "folder {text:?} must be an absolute path"
+        )));
+    }
+    Ok(format!("--add-dir={text}"))
+}
+
+/// One `--add-dir=<folder>` per folder.
 fn add_dirs(options: &LaunchOptions) -> Result<Vec<String>> {
-    options
-        .add_dirs
-        .iter()
-        .map(|dir| {
-            let text = dir
-                .to_str()
-                .ok_or_else(|| Error::InvalidInput(format!("folder {dir:?} is not UTF-8")))?;
-            plain("folder", text)?;
-            if !dir.is_absolute() {
-                return Err(Error::InvalidInput(format!(
-                    "folder {text:?} must be an absolute path"
-                )));
-            }
-            Ok(format!("--add-dir={text}"))
-        })
-        .collect()
+    options.add_dirs.iter().map(|dir| add_dir(dir)).collect()
 }
 
 fn prompt(options: &LaunchOptions) -> Vec<String> {

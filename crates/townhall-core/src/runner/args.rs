@@ -1,9 +1,12 @@
 //! The argv of one turn of townhall's own session: `claude -p` with stream-json in and
 //! out, like Hive's `chatArgs`. The message goes in on stdin, so no flag carries it.
+//! Every option and its value is one element (`--name=value`), as in `agent/claude.rs`,
+//! and no value but the system prompt may start with `-` or hold control characters.
 
 use std::path::PathBuf;
 
-use crate::mcp;
+use crate::agent::{add_dir, plain};
+use crate::{mcp, Result};
 
 /// Tools townhall's session may use besides its own: reading code to plan, nothing more.
 pub const READ_ONLY_TOOLS: [&str; 4] = ["Read", "Grep", "Glob", "LS"];
@@ -33,39 +36,44 @@ pub struct TurnArgs {
     pub add_dirs: Vec<PathBuf>,
 }
 
-fn session(a: &TurnArgs) -> [String; 2] {
+const FIXED: [&str; 6] = [
+    "-p",
+    "--output-format=stream-json",
+    "--verbose",
+    "--input-format=stream-json",
+    "--permission-prompt-tool=stdio",
+    "--include-partial-messages",
+];
+
+fn session(a: &TurnArgs) -> Result<String> {
+    plain("session id", &a.session_id)?;
     let flag = if a.resume { "--resume" } else { "--session-id" };
-    [flag.to_string(), a.session_id.clone()]
+    Ok(format!("{flag}={}", a.session_id))
 }
 
-/// The flags in a fixed order; the ones that take several values go last.
-pub fn build(a: &TurnArgs) -> Vec<String> {
-    let fixed = [
-        "-p",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--permission-prompt-tool",
-        "stdio",
-        "--include-partial-messages",
+/// The options in a fixed order, one element each, the `--add-dir`s last.
+pub fn build(a: &TurnArgs) -> Result<Vec<String>> {
+    plain("mcp config", &a.mcp_config)?;
+    let options = [
+        session(a)?,
+        "--permission-mode=default".into(),
+        format!("--append-system-prompt={}", a.system_prompt),
+        "--strict-mcp-config".into(),
+        format!("--mcp-config={}", a.mcp_config),
+        format!("--allowedTools={}", allowed_tools().join(",")),
+        format!("--disallowedTools={}", DENIED_TOOLS.join(",")),
     ];
-    let mut argv: Vec<String> = fixed.iter().map(|s| s.to_string()).collect();
-    argv.extend(session(a));
-    argv.extend(["--permission-mode".into(), "default".into()]);
-    argv.extend(["--append-system-prompt".into(), a.system_prompt.clone()]);
-    argv.extend(["--strict-mcp-config".into(), "--mcp-config".into()]);
-    argv.push(a.mcp_config.clone());
-    argv.push("--allowedTools".into());
-    argv.extend(allowed_tools());
-    argv.push("--disallowedTools".into());
-    argv.extend(DENIED_TOOLS.iter().map(|t| t.to_string()));
-    if !a.add_dirs.is_empty() {
-        argv.push("--add-dir".into());
-        argv.extend(a.add_dirs.iter().map(|d| d.to_string_lossy().into_owned()));
-    }
-    argv
+    let dirs = a
+        .add_dirs
+        .iter()
+        .map(|d| add_dir(d))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(FIXED
+        .iter()
+        .map(|s| s.to_string())
+        .chain(options)
+        .chain(dirs)
+        .collect())
 }
 
 #[cfg(test)]
@@ -84,40 +92,61 @@ mod tests {
 
     #[test]
     fn first_and_later_turns() {
-        let first = build(&args(false, vec!["/r/b".into()]));
+        let first = build(&args(false, vec!["/r/b".into(), "/r/c".into()])).unwrap();
         assert_eq!(
-            first[9..],
+            first,
             [
-                "--session-id",
-                "s-1",
-                "--permission-mode",
-                "default",
-                "--append-system-prompt",
-                "plan",
+                "-p",
+                "--output-format=stream-json",
+                "--verbose",
+                "--input-format=stream-json",
+                "--permission-prompt-tool=stdio",
+                "--include-partial-messages",
+                "--session-id=s-1",
+                "--permission-mode=default",
+                "--append-system-prompt=plan",
                 "--strict-mcp-config",
-                "--mcp-config",
-                "{}",
-                "--allowedTools",
-                "mcp__townhall__create_task",
-                "mcp__townhall__set_title",
-                "Read",
-                "Grep",
-                "Glob",
-                "LS",
-                "--disallowedTools",
-                "Bash",
-                "Edit",
-                "MultiEdit",
-                "Write",
-                "NotebookEdit",
-                "--add-dir",
-                "/r/b"
+                "--mcp-config={}",
+                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,Read,Grep,Glob,LS",
+                "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
+                "--add-dir=/r/b",
+                "--add-dir=/r/c",
             ]
         );
-        let later = build(&args(true, vec![]));
-        assert_eq!(later[9..11], ["--resume", "s-1"]);
-        assert!(!later.contains(&"--add-dir".to_string()));
+        let later = build(&args(true, vec![])).unwrap();
+        assert_eq!(later[6], "--resume=s-1");
+        assert!(!later.iter().any(|a| a.starts_with("--add-dir")));
         assert!(!later.iter().any(|a| a.contains("dangerously")));
+    }
+
+    #[test]
+    fn values_that_look_like_flags_are_refused() {
+        let refused = |change: &dyn Fn(&mut TurnArgs)| {
+            let mut a = args(false, vec![]);
+            change(&mut a);
+            build(&a).unwrap_err().to_string()
+        };
+        for id in ["-s", "--dangerously-skip-permissions", "s\n1"] {
+            let error = refused(&|a| a.session_id = id.into());
+            assert!(error.contains("session id"), "{error}");
+        }
+        for config in ["--strict-mcp-config", "{}\u{7}", "{\n}"] {
+            let error = refused(&|a| a.mcp_config = config.into());
+            assert!(error.contains("mcp config"), "{error}");
+        }
+        for dir in ["-r", "relative/dir", "/r/\nb"] {
+            let error = refused(&|a| a.add_dirs = vec![dir.into()]);
+            assert!(error.contains("folder"), "{error}");
+        }
+    }
+
+    #[test]
+    fn the_system_prompt_stays_inside_its_own_element() {
+        let mut a = args(false, vec![]);
+        a.system_prompt = "--resume\n- read first\n- then plan".into();
+        let argv = build(&a).unwrap();
+        assert!(argv.contains(&"--append-system-prompt=--resume\n- read first\n- then plan".into()));
+        assert!(argv[1..].iter().all(|a| a.starts_with("--")), "{argv:?}");
     }
 
     #[test]
