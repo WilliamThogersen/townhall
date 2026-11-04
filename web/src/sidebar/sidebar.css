@@ -1,0 +1,33 @@
+.th-nav-search {
+  background: var(--th-surface-2);
+  cursor: text;
+}
+
+.th-nav-search:focus-within {
+  outline: var(--th-focus-width) solid var(--th-accent);
+  outline-offset: calc(var(--th-focus-width) * -1);
+}
+
+.th-nav-search .th-nav-icon {
+  color: var(--th-accent);
+}
+
+.th-nav-search-input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--th-fg);
+  caret-color: var(--th-accent);
+}
+
+.th-nav-search-input:focus,
+.th-nav-search-input:focus-visible {
+  outline: none;
+}
+
+.th-nav-search-input::placeholder {
+  color: var(--th-fg-faint);
+}
