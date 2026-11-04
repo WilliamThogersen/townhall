@@ -20,8 +20,9 @@ pub struct Agent {
     pub alive: bool,
 }
 
-const TMUX_ABSENT: [&str; 4] = [
+const TMUX_ABSENT: [&str; 5] = [
     "can't find session",
+    "can't find pane",
     "no server running",
     "no current target",
     "error connecting to",
