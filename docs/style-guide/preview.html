@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>townhall style preview</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+/* Reference implementation of the component specs in components.md. Uses only --th-* tokens. */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--th-bg); color: var(--th-text); font: var(--th-weight-regular) var(--th-text-md)/var(--th-leading-normal) var(--th-font-ui); }
+h1, h2, h3 { font-family: var(--th-font-display); font-weight: var(--th-weight-semibold); line-height: var(--th-leading-tight); margin: 0; }
+code, .mono { font-family: var(--th-font-mono); font-size: 0.92em; }
+p { margin: 0; }
+a { color: var(--th-accent-text); text-underline-offset: 2px; }
+:focus-visible { outline: var(--th-focus-width) solid var(--th-focus); outline-offset: var(--th-focus-offset); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+svg.g { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- app shell ---------- */
+.th-header { position: sticky; top: 0; z-index: var(--th-z-sticky); background: var(--th-surface); border-bottom: var(--th-rule-width) solid var(--th-border-strong); }
+.th-header-in { max-width: var(--th-page-max); margin: 0 auto; padding: 0 var(--th-page-pad); min-height: var(--th-header-h); display: flex; align-items: center; gap: var(--th-space-5); flex-wrap: wrap; }
+.th-brand { display: flex; align-items: center; gap: var(--th-space-3); font: var(--th-weight-semibold) var(--th-text-xl)/1 var(--th-font-display); letter-spacing: 0.01em; color: var(--th-text); text-decoration: none; padding: var(--th-space-3) 0; }
+.th-brand svg { width: 1.5rem; height: 1.5rem; fill: currentColor; }
+.th-header-tools { margin-left: auto; display: flex; gap: var(--th-space-3); align-items: center; flex-wrap: wrap; padding: var(--th-space-2) 0; }
+.page { max-width: var(--th-page-max); margin: 0 auto; padding: var(--th-space-6) var(--th-page-pad) var(--th-space-8); display: grid; gap: var(--th-space-8); }
+
+/* ---------- tabs ---------- */
+.th-tabs { display: flex; gap: var(--th-space-1); align-self: stretch; }
+.th-tab { display: inline-flex; align-items: center; gap: var(--th-space-3); padding: 0 var(--th-space-4); min-height: var(--th-hit-min); color: var(--th-text-muted); text-decoration: none; font-weight: var(--th-weight-medium); border-bottom: var(--th-rule-width) solid transparent; margin-bottom: calc(-1 * var(--th-rule-width)); transition: color var(--th-dur-fast) var(--th-ease-out); }
+.th-tab:hover { color: var(--th-text); }
+.th-tab[aria-current="page"] { color: var(--th-text); border-bottom-color: var(--th-accent); }
+.th-tab:focus-visible { outline-offset: -2px; }
+
+/* ---------- buttons ---------- */
+.th-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--th-space-3); min-height: var(--th-control-h); min-width: var(--th-hit-min); padding: 0 var(--th-control-px); border: var(--th-border-width) solid var(--th-border-strong); border-radius: var(--th-radius-md); background: var(--th-surface-raised); color: var(--th-text); font: var(--th-weight-medium) var(--th-text-md)/1 var(--th-font-ui); cursor: pointer; white-space: nowrap; transition: background var(--th-dur-fast) var(--th-ease-out), border-color var(--th-dur-fast) var(--th-ease-out), color var(--th-dur-fast) var(--th-ease-out); }
+.th-btn:hover:not(:disabled) { background: var(--th-surface-sunken); }
+.th-btn:active:not(:disabled) { background: var(--th-border); }
+.th-btn:disabled { color: var(--th-text-subtle); border-color: var(--th-border); background: var(--th-surface-sunken); cursor: not-allowed; }
+.th-btn-primary { background: var(--th-accent); border-color: var(--th-accent); color: var(--th-on-accent); }
+.th-btn-primary:hover:not(:disabled) { background: var(--th-accent-hover); border-color: var(--th-accent-hover); }
+.th-btn-primary:active:not(:disabled) { background: var(--th-accent-active); border-color: var(--th-accent-active); }
+.th-btn-ghost { background: transparent; border-color: transparent; color: var(--th-text-muted); }
+.th-btn-ghost:hover:not(:disabled) { background: var(--th-surface-sunken); color: var(--th-text); }
+.th-btn-ghost:disabled { background: transparent; border-color: transparent; }
+.th-btn-danger { background: transparent; border-color: var(--th-danger); color: var(--th-danger); }
+.th-btn-danger:hover:not(:disabled) { background: var(--th-danger-bg); }
+.th-btn-danger:active:not(:disabled) { background: var(--th-danger-bg); border-color: var(--th-danger-solid-hover); }
+.th-btn-danger-solid { background: var(--th-danger-solid); border-color: var(--th-danger-solid); color: var(--th-on-danger); }
+.th-btn-danger-solid:hover:not(:disabled) { background: var(--th-danger-solid-hover); border-color: var(--th-danger-solid-hover); }
+.th-btn-icon { padding: 0; width: var(--th-control-h); }
+.th-btn-sm { min-height: var(--th-hit-min); font-size: var(--th-text-sm); padding: 0 var(--th-space-3); }
+.th-btn[aria-busy="true"] { cursor: progress; }
+.th-spin { width: 1em; height: 1em; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: th-spin 700ms linear infinite; }
+@keyframes th-spin { to { transform: rotate(360deg); } }
+.th-btn.is-hover { background: var(--th-surface-sunken); }
+.th-btn-primary.is-hover { background: var(--th-accent-hover); }
+.th-btn-danger.is-hover { background: var(--th-danger-bg); }
+.th-btn.is-active { background: var(--th-border); }
+.th-btn-primary.is-active { background: var(--th-accent-active); }
+.th-btn.is-focus { outline: var(--th-focus-width) solid var(--th-focus); outline-offset: var(--th-focus-offset); }
+
+/* ---------- inputs ---------- */
+.th-field { display: grid; gap: var(--th-space-2); min-width: 0; }
+.th-label { font-size: var(--th-text-sm); font-weight: var(--th-weight-medium); color: var(--th-text-muted); }
+.th-opt { font-weight: var(--th-weight-regular); color: var(--th-text-subtle); }
+.th-input, .th-select, .th-textarea { width: 100%; min-height: var(--th-control-h); padding: 0 var(--th-control-px); border: var(--th-border-width) solid var(--th-border-strong); border-radius: var(--th-radius-md); background: var(--th-surface-raised); color: var(--th-text); font: inherit; transition: border-color var(--th-dur-fast) var(--th-ease-out); }
+.th-textarea { padding: var(--th-space-3) var(--th-control-px); min-height: 4.5rem; resize: vertical; }
+.th-input.mono, .th-textarea.mono { font-family: var(--th-font-mono); font-size: var(--th-text-sm); }
+.th-input::placeholder, .th-textarea::placeholder { color: var(--th-text-subtle); }
+.th-input:hover:not(:disabled), .th-select:hover:not(:disabled), .th-textarea:hover:not(:disabled) { border-color: var(--th-text-muted); }
+.th-input:disabled, .th-select:disabled, .th-textarea:disabled { background: var(--th-surface-sunken); color: var(--th-text-subtle); border-color: var(--th-border); cursor: not-allowed; }
+.th-input[aria-invalid="true"], .th-select[aria-invalid="true"], .th-textarea[aria-invalid="true"] { border-color: var(--th-danger); box-shadow: inset var(--th-bar-width) 0 0 var(--th-danger); }
+.th-select { appearance: none; padding-right: 2rem; background-image: linear-gradient(45deg, transparent 50%, var(--th-text-muted) 50%), linear-gradient(135deg, var(--th-text-muted) 50%, transparent 50%); background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+.th-msg { display: flex; gap: var(--th-space-2); align-items: flex-start; font-size: var(--th-text-sm); }
+.th-msg-error { color: var(--th-danger); }
+.th-msg-hint { color: var(--th-text-muted); }
+.th-input.is-focus { outline: var(--th-focus-width) solid var(--th-focus); outline-offset: var(--th-focus-offset); }
+
+/* ---------- status ---------- */
+[data-status="alive"] { --st: var(--th-ok); --st-bg: var(--th-ok-bg); }
+[data-status="working"] { --st: var(--th-working); --st-bg: var(--th-working-bg); }
+[data-status="waiting"] { --st: var(--th-waiting); --st-bg: var(--th-waiting-bg); }
+[data-status="dead"] { --st: var(--th-dead); --st-bg: var(--th-dead-bg); }
+[data-status="error"] { --st: var(--th-danger); --st-bg: var(--th-danger-bg); }
+.th-status { display: inline-flex; align-items: center; gap: var(--th-space-2); color: var(--st); font-size: var(--th-text-xs); font-weight: var(--th-weight-semibold); text-transform: uppercase; letter-spacing: var(--th-tracking-caps); line-height: 1; white-space: nowrap; }
+.th-status svg { width: 0.95rem; height: 0.95rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.th-status .f { fill: currentColor; }
+.th-status[data-status="working"] svg { animation: th-spin 1.4s linear infinite; }
+.th-bar { position: relative; width: var(--th-bar-width); align-self: stretch; border-radius: var(--th-radius-xs); background: var(--st); flex: none; }
+[data-status="working"] > .th-bar, .th-bar[data-status="working"] { background: repeating-linear-gradient(180deg, var(--st) 0 8px, transparent 8px 11px); }
+[data-status="waiting"] > .th-bar, .th-bar[data-status="waiting"] { background: repeating-linear-gradient(180deg, var(--st) 0 3px, transparent 3px 6px); }
+[data-status="dead"] > .th-bar, .th-bar[data-status="dead"] { background: transparent; box-shadow: inset 0 0 0 1px var(--st); }
+
+/* ---------- badge ---------- */
+.th-badge { display: inline-flex; align-items: center; gap: var(--th-space-2); height: 1.25rem; padding: 0 var(--th-space-3); border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-sm); background: var(--th-surface-sunken); color: var(--th-text-muted); font: var(--th-weight-medium) var(--th-text-xs)/1 var(--th-font-mono); white-space: nowrap; }
+.th-badge-accent { background: var(--th-accent-subtle); border-color: transparent; color: var(--th-accent-text); font-family: var(--th-font-ui); }
+.th-badge-count { background: var(--th-accent-subtle); color: var(--th-accent-text); border-color: transparent; border-radius: var(--th-radius-pill); font-family: var(--th-font-ui); font-variant-numeric: tabular-nums; min-width: 1.25rem; justify-content: center; }
+.th-badge-warn { background: var(--th-waiting-bg); color: var(--th-waiting); border-color: transparent; font-family: var(--th-font-ui); font-weight: var(--th-weight-semibold); }
+
+/* ---------- agent card ---------- */
+.th-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--th-gap); grid-template-columns: repeat(auto-fill, minmax(min(var(--th-col-min), 100%), 1fr)); }
+.th-card { display: flex; gap: var(--th-space-4); padding: var(--th-card-pad); padding-left: var(--th-space-3); background: var(--th-surface); border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-md); min-width: 0; transition: border-color var(--th-dur-fast) var(--th-ease-out), background var(--th-dur-fast) var(--th-ease-out); }
+.th-card:hover { border-color: var(--th-border-strong); background: var(--th-surface-raised); }
+.th-card:focus-within { border-color: var(--th-border-strong); }
+.th-card[data-status="waiting"] { background: var(--th-surface-raised); border-color: var(--th-waiting); }
+.th-card-body { flex: 1; min-width: 0; display: grid; gap: var(--th-space-2); }
+.th-card-top { display: flex; align-items: center; gap: var(--th-space-3); min-width: 0; }
+.th-card-name { font: var(--th-weight-semibold) var(--th-text-md)/var(--th-leading-snug) var(--th-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.th-card-meta { display: flex; align-items: center; gap: var(--th-space-3); color: var(--th-text-muted); font: var(--th-text-sm)/var(--th-leading-snug) var(--th-font-mono); min-width: 0; }
+.th-card-meta > .b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.th-card-last { font: var(--th-text-sm)/var(--th-leading-snug) var(--th-font-mono); color: var(--th-text); background: var(--th-surface-sunken); border-radius: var(--th-radius-sm); padding: var(--th-space-2) var(--th-space-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-card-actions { margin-left: auto; display: flex; gap: var(--th-space-2); flex: none; }
+.th-card-compact { align-items: center; padding-top: var(--th-space-2); padding-bottom: var(--th-space-2); }
+.th-card-compact .th-card-body { display: flex; align-items: center; gap: var(--th-space-3); }
+.th-card-compact .th-card-last { flex: 1; min-width: 0; background: none; padding: 0; color: var(--th-text-muted); }
+
+/* ---------- terminal ---------- */
+.th-term { background: var(--th-term-bg); color: var(--th-term-fg); border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-md); padding: var(--th-space-4); font: var(--th-text-sm)/1.45 var(--th-font-mono); overflow-x: auto; white-space: pre; }
+.th-term .k { color: var(--th-term-black); } .th-term .r { color: var(--th-term-red); } .th-term .g { color: var(--th-term-green); } .th-term .y { color: var(--th-term-yellow); }
+.th-term .b { color: var(--th-term-blue); } .th-term .m { color: var(--th-term-magenta); } .th-term .c { color: var(--th-term-cyan); } .th-term .w { color: var(--th-term-white); }
+.th-term .bk { color: var(--th-term-bright-black); } .th-term .br { color: var(--th-term-bright-red); } .th-term .bg2 { color: var(--th-term-bright-green); } .th-term .by { color: var(--th-term-bright-yellow); }
+.th-term .bb { color: var(--th-term-bright-blue); } .th-term .bm { color: var(--th-term-bright-magenta); } .th-term .bc { color: var(--th-term-bright-cyan); } .th-term .bw { color: var(--th-term-bright-white); }
+.th-term .sel { background: var(--th-term-selection); }
+.th-term .cur { display: inline-block; width: 0.6em; height: 1.1em; background: var(--th-term-cursor); vertical-align: text-bottom; animation: th-blink 1.1s steps(1) infinite; }
+@keyframes th-blink { 50% { opacity: 0; } }
+.th-panel { display: grid; gap: var(--th-space-3); margin-top: var(--th-space-3); }
+.th-stream { display: flex; align-items: center; gap: var(--th-space-3); font-size: var(--th-text-xs); color: var(--th-text-muted); }
+.th-sendbox { display: flex; gap: var(--th-space-3); }
+.th-sendbox .th-input { flex: 1; min-width: 0; }
+
+/* ---------- dialog, toast, banner ---------- */
+.stage { position: relative; background: var(--th-scrim); border-radius: var(--th-radius-lg); padding: var(--th-space-7) var(--th-space-5); display: grid; place-items: center; }
+.th-dialog { width: min(26rem, 100%); background: var(--th-surface-raised); border: var(--th-border-width) solid var(--th-border); border-top: var(--th-rule-width) solid var(--th-border-strong); border-radius: var(--th-radius-lg); box-shadow: var(--th-shadow-lg); padding: var(--th-space-6); display: grid; gap: var(--th-space-4); }
+.th-dialog h3 { font-size: var(--th-text-lg); }
+.th-dialog-actions { display: flex; gap: var(--th-space-3); justify-content: flex-end; flex-wrap: wrap; }
+.th-dialog-consequence { background: var(--th-surface-sunken); border-radius: var(--th-radius-sm); padding: var(--th-space-3) var(--th-space-4); font: var(--th-text-sm)/var(--th-leading-snug) var(--th-font-mono); color: var(--th-text-muted); }
+.th-toasts { display: grid; gap: var(--th-space-3); max-width: 24rem; }
+.th-toast { display: flex; gap: var(--th-space-4); align-items: flex-start; background: var(--th-surface-raised); border: var(--th-border-width) solid var(--th-border); border-left: var(--th-bar-width) solid var(--st, var(--th-border-strong)); border-radius: var(--th-radius-md); box-shadow: var(--th-shadow-md); padding: var(--th-space-4); }
+.th-toast .t { flex: 1; min-width: 0; display: grid; gap: var(--th-space-1); }
+.th-toast strong { font-weight: var(--th-weight-semibold); }
+.th-toast .t span { color: var(--th-text-muted); font-size: var(--th-text-sm); }
+.th-banner { display: flex; gap: var(--th-space-4); align-items: flex-start; padding: var(--th-space-4); border: var(--th-border-width) solid var(--st); border-left-width: var(--th-bar-width); border-radius: var(--th-radius-md); background: var(--st-bg); color: var(--th-text); }
+.th-banner > svg { color: var(--st); width: 1.1rem; height: 1.1rem; margin-top: 0.1rem; flex: none; }
+.th-banner .t { flex: 1; min-width: 0; }
+.th-banner .t strong { color: var(--st); }
+
+/* ---------- empty, skeleton ---------- */
+.th-empty { display: grid; justify-items: center; text-align: center; gap: var(--th-space-4); padding: var(--th-space-8) var(--th-space-5); border: var(--th-border-width) dashed var(--th-border-strong); border-radius: var(--th-radius-lg); background: var(--th-surface); }
+.th-empty svg.hero { width: 3rem; height: 3rem; fill: var(--th-border-strong); }
+.th-empty h3 { font-size: var(--th-text-2xl); }
+.th-empty p { color: var(--th-text-muted); max-width: 32rem; }
+.th-skel { display: block; border-radius: var(--th-radius-sm); background: linear-gradient(90deg, var(--th-surface-sunken) 0, var(--th-border) 50%, var(--th-surface-sunken) 100%); background-size: 200% 100%; animation: th-shimmer 1.4s linear infinite; }
+@keyframes th-shimmer { to { background-position: -200% 0; } }
+
+/* ---------- activity feed ---------- */
+.th-feed { border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-md); background: var(--th-surface); overflow: hidden; }
+.th-feed-group { margin: 0; padding: var(--th-space-2) var(--th-space-4); background: var(--th-surface-sunken); border-bottom: var(--th-border-width) solid var(--th-border); font: var(--th-weight-semibold) var(--th-text-xs)/1.6 var(--th-font-ui); text-transform: uppercase; letter-spacing: var(--th-tracking-caps); color: var(--th-text-muted); position: sticky; top: var(--th-header-h); z-index: 1; display: flex; gap: var(--th-space-3); justify-content: space-between; }
+.th-feed ol { list-style: none; margin: 0; padding: 0; }
+.th-row { display: grid; grid-template-columns: var(--th-bar-width) 3.5rem 7.5rem minmax(0, 1fr) auto; align-items: center; gap: var(--th-space-4); min-height: var(--th-row-h); padding: 0 var(--th-space-4) 0 var(--th-space-3); border-bottom: var(--th-border-width) solid var(--th-border); }
+.th-row:last-child { border-bottom: 0; }
+.th-row:hover { background: var(--th-surface-raised); }
+.th-row .th-bar { align-self: stretch; margin: var(--th-space-2) 0; }
+.th-row time { font: var(--th-text-xs)/1 var(--th-font-mono); color: var(--th-text-muted); font-variant-numeric: tabular-nums; }
+.th-row .who { font: var(--th-weight-semibold) var(--th-text-sm)/1.2 var(--th-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-row .what { display: flex; align-items: center; gap: var(--th-space-3); min-width: 0; font-size: var(--th-text-sm); }
+.th-row .what .th-status { flex: none; min-width: 5.2rem; }
+.th-row .what .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--th-text-muted); min-width: 0; }
+.th-row[data-status="waiting"] { background: var(--th-waiting-bg); }
+.th-row[data-status="error"] { background: var(--th-danger-bg); }
+.th-row[data-status="waiting"]:hover, .th-row[data-status="error"]:hover { filter: brightness(0.98); }
+.th-row.is-new { animation: th-enter var(--th-dur-slow) var(--th-ease-out); }
+@keyframes th-enter { from { opacity: 0; transform: translateY(-4px); } }
+.th-chips { display: flex; gap: var(--th-space-3); flex-wrap: wrap; align-items: center; }
+.th-chip { display: inline-flex; align-items: center; gap: var(--th-space-3); min-height: var(--th-hit-min); padding: 0 var(--th-space-4); border: var(--th-border-width) solid var(--th-border-strong); border-radius: var(--th-radius-pill); background: var(--th-surface-raised); color: var(--th-text); font: var(--th-weight-medium) var(--th-text-sm)/1 var(--th-font-ui); cursor: pointer; }
+.th-chip:hover { background: var(--th-surface-sunken); }
+.th-chip[aria-pressed="true"] { background: var(--th-text); color: var(--th-bg); border-color: var(--th-text); }
+.th-chip .n { font-variant-numeric: tabular-nums; opacity: 0.85; }
+.th-seg { display: inline-flex; border: var(--th-border-width) solid var(--th-border-strong); border-radius: var(--th-radius-md); overflow: hidden; background: var(--th-surface-raised); }
+.th-seg button { min-height: var(--th-hit-min); padding: 0 var(--th-space-4); border: 0; background: transparent; color: var(--th-text-muted); font: var(--th-weight-medium) var(--th-text-sm)/1 var(--th-font-ui); cursor: pointer; }
+.th-seg button + button { border-left: var(--th-border-width) solid var(--th-border-strong); }
+.th-seg button[aria-pressed="true"] { background: var(--th-text); color: var(--th-bg); }
+.th-seg button:focus-visible { outline-offset: -3px; }
+.th-attn { display: flex; gap: var(--th-space-4); align-items: center; flex-wrap: wrap; padding: var(--th-space-3) var(--th-space-4); border: var(--th-border-width) solid var(--th-waiting); border-left-width: var(--th-bar-width); border-radius: var(--th-radius-md); background: var(--th-waiting-bg); }
+
+/* ---------- documentation scaffolding (not part of the app) ---------- */
+.sec { display: grid; gap: var(--th-space-5); }
+.sec > h2 { font-size: var(--th-text-xl); padding-bottom: var(--th-space-3); border-bottom: var(--th-rule-width) solid var(--th-border-strong); display: flex; align-items: baseline; gap: var(--th-space-4); flex-wrap: wrap; }
+.sec > h2 small { font: var(--th-text-sm) var(--th-font-ui); color: var(--th-text-muted); font-weight: var(--th-weight-regular); }
+.sec h3 { font-size: var(--th-text-lg); }
+.lead { color: var(--th-text-muted); max-width: 44rem; }
+.row { display: flex; flex-wrap: wrap; gap: var(--th-space-4); align-items: center; }
+.cols { display: grid; gap: var(--th-space-5); grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr)); align-items: start; }
+.cell { display: grid; gap: var(--th-space-3); justify-items: start; }
+.cap { font: var(--th-text-xs)/1.3 var(--th-font-mono); color: var(--th-text-subtle); }
+.well { background: var(--th-surface); border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-lg); padding: var(--th-space-5); display: grid; gap: var(--th-space-5); }
+.swgrid { display: grid; gap: var(--th-space-3); grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); }
+.sw { border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-md); overflow: hidden; background: var(--th-surface); }
+.sw i { display: block; height: 2.75rem; border-bottom: var(--th-border-width) solid var(--th-border); }
+.sw div { padding: var(--th-space-2) var(--th-space-3); font: var(--th-text-xs)/1.35 var(--th-font-mono); }
+.sw b { display: block; font-weight: var(--th-weight-semibold); overflow-wrap: anywhere; }
+.sw span { color: var(--th-text-muted); }
+.tbl { width: 100%; border-collapse: collapse; font-size: var(--th-text-sm); }
+.tbl th, .tbl td { text-align: left; padding: var(--th-space-3) var(--th-space-4); border-bottom: var(--th-border-width) solid var(--th-border); vertical-align: middle; }
+.tbl th { font-size: var(--th-text-xs); text-transform: uppercase; letter-spacing: var(--th-tracking-caps); color: var(--th-text-muted); }
+.scroll { overflow-x: auto; }
+.hero { display: grid; gap: var(--th-space-4); padding: var(--th-space-7) 0 var(--th-space-2); }
+.hero h1 { font-size: var(--th-text-3xl); }
+.nav { display: flex; flex-wrap: wrap; gap: var(--th-space-3); }
+.nav a { padding: var(--th-space-2) var(--th-space-4); border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-pill); color: var(--th-text-muted); text-decoration: none; font-size: var(--th-text-sm); background: var(--th-surface); }
+.nav a:hover { color: var(--th-text); border-color: var(--th-border-strong); }
+.sp { background: var(--th-accent); height: 0.75rem; border-radius: var(--th-radius-xs); }
+.demo-box { width: 5rem; height: 3.5rem; background: var(--th-surface-raised); border: var(--th-border-width) solid var(--th-border); display: grid; place-items: center; font: var(--th-text-xs) var(--th-font-mono); color: var(--th-text-muted); }
+.motion-dot { width: 1rem; height: 1rem; border-radius: 50%; background: var(--th-accent); transition: transform var(--th-dur-slow) var(--th-ease-out); }
+.motion-track:hover .motion-dot, .motion-track:focus-within .motion-dot { transform: translateX(8rem); }
+.motion-track { padding: var(--th-space-3); border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-md); width: 11rem; background: var(--th-surface); }
+.zl { display: grid; gap: var(--th-space-2); max-width: 24rem; font: var(--th-text-sm) var(--th-font-mono); }
+.zl div { padding: var(--th-space-2) var(--th-space-4); border: var(--th-border-width) solid var(--th-border); border-radius: var(--th-radius-sm); background: var(--th-surface); display: flex; justify-content: space-between; }
+@media (max-width: 40rem) {
+  .th-row { grid-template-columns: var(--th-bar-width) minmax(0, 1fr) auto; row-gap: var(--th-space-1); padding-top: var(--th-space-3); padding-bottom: var(--th-space-3); }
+  .th-row .th-bar { grid-row: 1 / span 2; margin: 0; }
+  .th-row time { grid-column: 3; grid-row: 1; }
+  .th-row .who { grid-column: 2; grid-row: 1; }
+  .th-row .what { grid-column: 2 / span 2; grid-row: 2; }
+  .th-row .act { display: none; }
+  .th-header-tools { margin-left: 0; width: 100%; }
+  .th-header { position: static; }
+  .th-feed-group { top: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .th-spin, .th-status[data-status="working"] svg, .th-skel, .th-term .cur, .th-row.is-new { animation: none; }
+  .motion-dot { transition: none; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-alive" viewBox="0 0 16 16"><circle class="f" cx="8" cy="8" r="5" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-working" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" opacity=".35"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5"/></symbol>
+    <symbol id="i-waiting" viewBox="0 0 16 16"><path d="M8 2l6 6-6 6-6-6z"/><path d="M8 5.5v3M8 10.5v.01"/></symbol>
+    <symbol id="i-dead" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></symbol>
+    <symbol id="i-error" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5v.01"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 7l2 1.5L5 10M8.5 10.5H11"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 7.2v3.6M8 5v.01"/></symbol>
+    <symbol id="i-hall" viewBox="0 0 512 512"><path d="M254 52a14 14 0 0 1 7 2l180 76a14 14 0 0 1 8 13v26a14 14 0 0 1-14 14H70a14 14 0 0 1-14-14v-26a14 14 0 0 1 8-13l182-76a14 14 0 0 1 8-2zM72 182h368a12 12 0 0 1 0 24H72a12 12 0 0 1 0-24zM92 216h42a6 6 0 0 1 6 6l-6 200a8 8 0 0 1-8 8H98a8 8 0 0 1-8-8L86 222a6 6 0 0 1 6-6zm100 0h42a6 6 0 0 1 6 6l-4 200a8 8 0 0 1-8 8h-32a8 8 0 0 1-8-8l-4-200a6 6 0 0 1 8-6zm100 0h42a6 6 0 0 1 6 6l-4 200a8 8 0 0 1-8 8h-32a8 8 0 0 1-8-8l-4-200a6 6 0 0 1 8-6zm100 0h42a6 6 0 0 1 6 6l-4 200a8 8 0 0 1-8 8h-32a8 8 0 0 1-8-8l-4-200a6 6 0 0 1 8-6zM56 443h400a10 10 0 0 1 0 20H56a10 10 0 0 1 0-20z"/></symbol>
+  </defs>
+</svg>
+
+<header class="th-header">
+  <div class="th-header-in">
+    <a class="th-brand" href="#top"><svg viewBox="0 0 512 512" aria-hidden="true"><use href="#i-hall"/></svg>townhall</a>
+    <nav class="th-tabs" aria-label="Sections">
+      <a class="th-tab" href="#activity" aria-current="page">Activity <span class="th-badge th-badge-warn">3 need input</span></a>
+      <a class="th-tab" href="#cards">Agents <span class="th-badge th-badge-count">24</span></a>
+    </nav>
+    <div class="th-header-tools">
+      <div class="th-seg" role="group" aria-label="Theme">
+        <button type="button" data-theme-set="auto" aria-pressed="true">Auto</button>
+        <button type="button" data-theme-set="light" aria-pressed="false">Marble</button>
+        <button type="button" data-theme-set="dark" aria-pressed="false">Basalt</button>
+      </div>
+      <div class="th-seg" role="group" aria-label="Density">
+        <button type="button" data-density-set="comfortable" aria-pressed="true">Comfortable</button>
+        <button type="button" data-density-set="compact" aria-pressed="false">Compact</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="page" id="top">
+  <section class="hero">
+    <h1>Style preview</h1>
+    <p class="lead">Direction: match the town hall icon. Marble and basalt neutrals, one brass accent, a serif for headings, a clean sans for the interface, monospace for agents and terminals. Everything below is drawn from <code>tokens.css</code>. Use the toggles above to flip theme and density.</p>
+    <nav class="nav" aria-label="Preview contents">
+      <a href="#color">Color</a><a href="#type">Type</a><a href="#scale">Spacing, radii, shadow</a><a href="#motion">Motion, focus, z</a><a href="#controls">Controls</a><a href="#status">Status</a><a href="#cards">Agent cards</a><a href="#terminal">Terminal</a><a href="#overlays">Dialog, toast, banner</a><a href="#states">Empty, loading</a><a href="#activity">Activity page</a>
+    </nav>
+  </section>
+
+  <section class="sec" id="color">
+    <h2>Color <small>values filled from the live computed tokens</small></h2>
+    <div id="swatches" class="sec"></div>
+  </section>
+
+  <section class="sec" id="type">
+    <h2>Typography</h2>
+    <div class="cols">
+      <div class="well">
+        <span class="cap">display: --th-font-display</span>
+        <div style="font:var(--th-weight-semibold) var(--th-text-3xl)/1.1 var(--th-font-display)">Town hall</div>
+        <div style="font:var(--th-weight-semibold) var(--th-text-xl)/1.2 var(--th-font-display)">Twelve agents, three need you</div>
+        <div style="font:var(--th-weight-semibold) var(--th-text-lg)/1.2 var(--th-font-display)">Section title at 16px</div>
+      </div>
+      <div class="well">
+        <span class="cap">ui: --th-font-ui</span>
+        <div style="font-size:var(--th-text-lg)">Body large, 16px: dialog copy and descriptions.</div>
+        <div style="font-size:var(--th-text-md)">Body default, 14px: controls, labels, rows.</div>
+        <div style="font-size:var(--th-text-sm);color:var(--th-text-muted)">Dense body, 13px: secondary text and compact mode.</div>
+        <div style="font-size:var(--th-text-xs);text-transform:uppercase;letter-spacing:var(--th-tracking-caps);font-weight:var(--th-weight-semibold);color:var(--th-text-muted)">Caption 12px caps</div>
+      </div>
+      <div class="well">
+        <span class="cap">mono: --th-font-mono</span>
+        <div class="mono" style="font-size:var(--th-text-md);font-weight:600">fix-login-flow</div>
+        <div class="mono" style="font-size:var(--th-text-sm);color:var(--th-text-muted)">agent/fix-login-flow</div>
+        <div class="mono" style="font-size:var(--th-text-sm)">$ npm test --watch</div>
+        <div class="mono" style="font-size:var(--th-text-xs);color:var(--th-text-muted)">14:02:51 &middot; 0123456789</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="scale">
+    <h2>Spacing, radii, borders, elevation</h2>
+    <div class="cols">
+      <div class="well" id="spacing"></div>
+      <div class="well">
+        <span class="cap">radii</span>
+        <div class="row">
+          <div class="demo-box" style="border-radius:var(--th-radius-xs)">xs 2</div>
+          <div class="demo-box" style="border-radius:var(--th-radius-sm)">sm 4</div>
+          <div class="demo-box" style="border-radius:var(--th-radius-md)">md 6</div>
+          <div class="demo-box" style="border-radius:var(--th-radius-lg)">lg 10</div>
+        </div>
+        <span class="cap">borders and rules</span>
+        <div class="row">
+          <div class="demo-box">1px</div>
+          <div class="demo-box" style="border-top:var(--th-rule-width) solid var(--th-border-strong)">rule 2</div>
+          <div class="demo-box" style="border-left:var(--th-bar-width) solid var(--th-accent)">bar 4</div>
+        </div>
+      </div>
+      <div class="well" style="background:var(--th-bg)">
+        <span class="cap">elevation</span>
+        <div class="row">
+          <div class="demo-box" style="box-shadow:var(--th-shadow-sm);border-radius:var(--th-radius-md)">sm</div>
+          <div class="demo-box" style="box-shadow:var(--th-shadow-md);border-radius:var(--th-radius-md)">md</div>
+          <div class="demo-box" style="box-shadow:var(--th-shadow-lg);border-radius:var(--th-radius-md)">lg</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="motion">
+    <h2>Motion, focus, layers</h2>
+    <div class="cols">
+      <div class="well">
+        <span class="cap">hover or focus the track: 280ms ease-out. Collapses under reduced motion.</span>
+        <div class="motion-track" tabindex="0"><div class="motion-dot"></div></div>
+        <span class="cap">fast 90 / base 160 / slow 280ms</span>
+      </div>
+      <div class="well">
+        <span class="cap">focus ring: 2px, offset 2px, ink colored. Tab through anything on this page.</span>
+        <div class="row"><button class="th-btn is-focus">Button</button><input class="th-input is-focus" style="width:9rem" value="Input" aria-label="focus demo"></div>
+      </div>
+      <div class="well"><span class="cap">z layers</span>
+        <div class="zl"><div>tooltip <b>60</b></div><div>toast <b>50</b></div><div>dialog <b>40</b></div><div>overlay <b>30</b></div><div>dropdown <b>20</b></div><div>sticky <b>10</b></div><div>base <b>0</b></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="controls">
+    <h2>Controls</h2>
+    <div class="well">
+      <h3>Buttons</h3>
+      <div class="scroll"><table class="tbl">
+        <thead><tr><th>Variant</th><th>Default</th><th>Hover</th><th>Focus</th><th>Active</th><th>Disabled</th><th>Loading</th></tr></thead>
+        <tbody>
+          <tr><td>Primary</td><td><button class="th-btn th-btn-primary">Create agent</button></td><td><button class="th-btn th-btn-primary is-hover">Create agent</button></td><td><button class="th-btn th-btn-primary is-focus">Create agent</button></td><td><button class="th-btn th-btn-primary is-active">Create agent</button></td><td><button class="th-btn th-btn-primary" disabled>Create agent</button></td><td><button class="th-btn th-btn-primary" aria-busy="true"><span class="th-spin"></span>Creating...</button></td></tr>
+          <tr><td>Secondary</td><td><button class="th-btn">Open</button></td><td><button class="th-btn is-hover">Open</button></td><td><button class="th-btn is-focus">Open</button></td><td><button class="th-btn is-active">Open</button></td><td><button class="th-btn" disabled>Open</button></td><td><button class="th-btn" aria-busy="true"><span class="th-spin"></span>Sending...</button></td></tr>
+          <tr><td>Ghost</td><td><button class="th-btn th-btn-ghost">Cancel</button></td><td><button class="th-btn th-btn-ghost is-hover">Cancel</button></td><td><button class="th-btn th-btn-ghost is-focus">Cancel</button></td><td><button class="th-btn th-btn-ghost is-active">Cancel</button></td><td><button class="th-btn th-btn-ghost" disabled>Cancel</button></td><td>-</td></tr>
+          <tr><td>Danger</td><td><button class="th-btn th-btn-danger">Stop</button></td><td><button class="th-btn th-btn-danger is-hover">Stop</button></td><td><button class="th-btn th-btn-danger is-focus">Stop</button></td><td><button class="th-btn th-btn-danger is-active">Stop</button></td><td><button class="th-btn th-btn-danger" disabled>Stop</button></td><td><button class="th-btn th-btn-danger" aria-busy="true"><span class="th-spin"></span>Stopping...</button></td></tr>
+          <tr><td>Danger, confirm</td><td><button class="th-btn th-btn-danger-solid">Stop and remove</button></td><td><button class="th-btn th-btn-danger-solid is-hover">Stop and remove</button></td><td><button class="th-btn th-btn-danger-solid is-focus">Stop and remove</button></td><td>-</td><td><button class="th-btn th-btn-danger-solid" disabled>Stop and remove</button></td><td>-</td></tr>
+        </tbody></table></div>
+      <h3>Icon buttons and sizes</h3>
+      <div class="row">
+        <button class="th-btn th-btn-icon" aria-label="Open terminal"><svg class="g"><use href="#i-terminal"/></svg></button>
+        <button class="th-btn th-btn-icon th-btn-ghost" aria-label="Close"><svg class="g"><use href="#i-close"/></svg></button>
+        <button class="th-btn th-btn-icon th-btn-primary" aria-label="New agent"><svg class="g"><use href="#i-plus"/></svg></button>
+        <button class="th-btn th-btn-sm">Small</button>
+        <button class="th-btn"><svg class="g"><use href="#i-plus"/></svg>With icon</button>
+        <span class="cap">height follows density: <span id="ctl-h">36px</span></span>
+      </div>
+    </div>
+    <div class="well">
+      <h3>Fields</h3>
+      <div class="cols">
+        <div class="th-field"><label class="th-label" for="f1">Name</label><input id="f1" class="th-input mono" placeholder="fix-login"><span class="th-msg th-msg-hint">Lowercase letters, numbers and hyphens.</span></div>
+        <div class="th-field"><label class="th-label" for="f2">Name</label><input id="f2" class="th-input mono" value="Fix Login!" aria-invalid="true" aria-describedby="f2m"><span id="f2m" class="th-msg th-msg-error"><svg class="g" style="margin-top:2px"><use href="#i-error"/></svg>Use lowercase letters, numbers and hyphens only.</span></div>
+        <div class="th-field"><label class="th-label" for="f3">Name <span class="th-opt">(disabled)</span></label><input id="f3" class="th-input mono" value="fix-login" disabled></div>
+        <div class="th-field"><label class="th-label" for="f4">Adapter</label><select id="f4" class="th-select"><option>claude</option><option>shell</option></select></div>
+        <div class="th-field"><label class="th-label" for="f5">Prompt <span class="th-opt">(optional)</span></label><textarea id="f5" class="th-textarea" rows="2" placeholder="What should the agent do?"></textarea></div>
+        <div class="th-field"><label class="th-label" for="f6">Base <span class="th-opt">(optional)</span></label><input id="f6" class="th-input mono" placeholder="HEAD"></div>
+      </div>
+    </div>
+    <div class="well">
+      <h3>Badges and tags</h3>
+      <div class="row"><span class="th-badge">claude</span><span class="th-badge">shell</span><span class="th-badge th-badge-accent">new</span><span class="th-badge th-badge-count">24</span><span class="th-badge th-badge-warn"><svg class="g"><use href="#i-waiting"/></svg>3 need input</span></div>
+    </div>
+  </section>
+
+  <section class="sec" id="status">
+    <h2>Status indicators <small>glyph + label + bar pattern; never color alone</small></h2>
+    <div class="well">
+      <div class="scroll"><table class="tbl">
+        <thead><tr><th>State</th><th>Inline</th><th>Bar</th><th>Meaning</th></tr></thead>
+        <tbody id="status-rows"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="sec" id="cards">
+    <h2>Agent cards <small>the grid reads as columns; the slim bar is the state</small></h2>
+    <ul class="th-grid" id="cardgrid"></ul>
+    <div class="well">
+      <h3>Opened card with terminal</h3>
+      <div class="th-card" data-status="working"><span class="th-bar"></span>
+        <div class="th-card-body">
+          <div class="th-card-top"><span class="th-status" data-status="working"><svg><use href="#i-working"/></svg>Working</span><span class="th-card-name">refactor-auth</span><span class="th-badge">claude</span>
+            <div class="th-card-actions"><button class="th-btn th-btn-sm" aria-expanded="true">Close</button><button class="th-btn th-btn-sm th-btn-danger">Stop</button></div></div>
+          <div class="th-card-meta"><span class="b">agent/refactor-auth</span></div>
+          <div class="th-panel">
+            <div class="th-stream"><span class="th-status" data-status="alive"><svg><use href="#i-alive"/></svg>Live</span></div>
+            <div class="th-term" id="term-a" role="img" aria-label="Sample terminal output"></div>
+            <form class="th-sendbox" onsubmit="return false"><input class="th-input" placeholder="Send input to the agent" aria-label="Input for refactor-auth"><button class="th-btn" type="submit">Send</button></form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="terminal">
+    <h2>Terminal <small>xterm theme comes from the --th-term-* tokens; switch theme to see the other palette</small></h2>
+    <div class="th-term" id="term-b" role="img" aria-label="ANSI color sample"></div>
+    <div id="termsw" class="swgrid"></div>
+  </section>
+
+  <section class="sec" id="overlays">
+    <h2>Dialog, toast, banner</h2>
+    <div class="cols">
+      <div class="stage"><div class="th-dialog" role="alertdialog" aria-labelledby="dlg-t" aria-describedby="dlg-d">
+        <h3 id="dlg-t">Stop fix-login?</h3>
+        <p id="dlg-d">The agent ends and its worktree is deleted. Uncommitted work is lost.</p>
+        <div class="th-dialog-consequence">worktree: ~/.townhall/worktrees/fix-login</div>
+        <div class="th-dialog-actions"><button class="th-btn th-btn-ghost">Cancel</button><button class="th-btn th-btn-danger-solid">Stop and remove</button></div>
+      </div></div>
+      <div class="well">
+        <div class="th-toasts" role="status">
+          <div class="th-toast" data-status="waiting"><svg class="g" style="color:var(--st);margin-top:2px"><use href="#i-waiting"/></svg><div class="t"><strong>fix-login needs input</strong><span>Waiting for a reply for 2 min</span></div><button class="th-btn th-btn-icon th-btn-ghost th-btn-sm" aria-label="Dismiss"><svg class="g"><use href="#i-close"/></svg></button></div>
+          <div class="th-toast" data-status="dead"><svg class="g" style="color:var(--st);margin-top:2px"><use href="#i-dead"/></svg><div class="t"><strong>docs-sweep died</strong><span>Session ended, exit code 1</span></div><button class="th-btn th-btn-icon th-btn-ghost th-btn-sm" aria-label="Dismiss"><svg class="g"><use href="#i-close"/></svg></button></div>
+          <div class="th-toast" data-status="alive"><svg class="g" style="color:var(--st);margin-top:2px"><use href="#i-check"/></svg><div class="t"><strong>Agent created</strong><span>refactor-auth is running</span></div><button class="th-btn th-btn-icon th-btn-ghost th-btn-sm" aria-label="Dismiss"><svg class="g"><use href="#i-close"/></svg></button></div>
+        </div>
+      </div>
+    </div>
+    <div class="th-banner" data-status="error" role="alert"><svg class="g"><use href="#i-error"/></svg><div class="t"><strong>Cannot refresh agents.</strong> Connection refused at 127.0.0.1:7777. Retrying.</div><button class="th-btn th-btn-sm">Retry now</button></div>
+    <div class="th-banner" data-status="working" role="status"><svg class="g"><use href="#i-info"/></svg><div class="t"><strong>Reconnecting.</strong> Live output resumes when the stream is back.</div></div>
+  </section>
+
+  <section class="sec" id="states">
+    <h2>Empty and loading</h2>
+    <div class="cols">
+      <div class="th-empty"><svg class="hero" viewBox="0 0 512 512" aria-hidden="true"><use href="#i-hall"/></svg><h3>No agents yet</h3><p>An agent is one task in its own worktree. Create one to see it here.</p><button class="th-btn th-btn-primary"><svg class="g"><use href="#i-plus"/></svg>Create agent</button></div>
+      <div class="well" aria-busy="true" aria-label="Loading agents">
+        <span class="cap">skeleton: same footprint as a card, so nothing jumps</span>
+        <div class="th-card" style="width:100%"><span class="th-bar" style="background:var(--th-border)"></span><div class="th-card-body"><span class="th-skel" style="height:1rem;width:45%"></span><span class="th-skel" style="height:.8rem;width:70%"></span><span class="th-skel" style="height:1.6rem;width:100%"></span></div></div>
+        <div class="th-card" style="width:100%"><span class="th-bar" style="background:var(--th-border)"></span><div class="th-card-body"><span class="th-skel" style="height:1rem;width:35%"></span><span class="th-skel" style="height:.8rem;width:60%"></span><span class="th-skel" style="height:1.6rem;width:100%"></span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="activity">
+    <h2>Activity page <small>index route <code>/</code>: what happened across all agents, newest first</small></h2>
+    <div class="th-attn" role="status"><span class="th-status" data-status="waiting"><svg><use href="#i-waiting"/></svg>3 need input</span><span class="mono" style="font-size:var(--th-text-sm)">fix-login &middot; api-tests &middot; migrate-db</span><span style="margin-left:auto"><button class="th-btn th-btn-sm">Review first</button></span></div>
+    <div class="row" style="justify-content:space-between">
+      <div class="th-chips" role="group" aria-label="Filter events">
+        <button class="th-chip" aria-pressed="true">All <span class="n">48</span></button>
+        <button class="th-chip" aria-pressed="false">Needs input <span class="n">3</span></button>
+        <button class="th-chip" aria-pressed="false">Errors <span class="n">2</span></button>
+        <button class="th-chip" aria-pressed="false">Died <span class="n">1</span></button>
+        <button class="th-chip" aria-pressed="false">Finished <span class="n">9</span></button>
+      </div>
+      <div class="row"><input class="th-input mono" style="width:12rem" placeholder="Filter by agent" aria-label="Filter by agent"></div>
+    </div>
+    <div class="th-feed" id="feed"></div>
+    <p class="cap">At 50 agents the feed is a dense 28px-row log in compact mode: needs-input and errors keep a tinted row and sit in the strip above, routine starts and finishes stay quiet.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  function safe(fn) { try { return fn(); } catch (e) { return null; } }
+  function press(group, attr, val) {
+    document.querySelectorAll('[' + attr + ']').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === val)); });
+  }
+  function setTheme(v) { if (v === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', v); press(0, 'data-theme-set', v); safe(function () { localStorage.setItem('th-theme', v); }); refresh(); }
+  function setDensity(v) { if (v === 'comfortable') root.removeAttribute('data-density'); else root.setAttribute('data-density', v); press(0, 'data-density-set', v); safe(function () { localStorage.setItem('th-density', v); }); refresh(); }
+  document.querySelectorAll('[data-theme-set]').forEach(function (b) { b.addEventListener('click', function () { setTheme(b.getAttribute('data-theme-set')); }); });
+  document.querySelectorAll('[data-density-set]').forEach(function (b) { b.addEventListener('click', function () { setDensity(b.getAttribute('data-density-set')); }); });
+  document.querySelectorAll('.th-chip').forEach(function (c) { c.addEventListener('click', function () { c.closest('.th-chips').querySelectorAll('.th-chip').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); }); c.setAttribute('aria-pressed', 'true'); }); });
+
+  var groups = [
+    ['Surfaces', ['bg', 'surface', 'surface-raised', 'surface-sunken']],
+    ['Borders and text', ['border', 'border-strong', 'text', 'text-muted', 'text-subtle']],
+    ['Brass accent and focus', ['accent', 'accent-hover', 'accent-active', 'on-accent', 'accent-text', 'accent-subtle', 'focus']],
+    ['Status', ['ok', 'ok-bg', 'working', 'working-bg', 'waiting', 'waiting-bg', 'danger', 'danger-bg', 'dead', 'dead-bg', 'danger-solid', 'danger-solid-hover', 'on-danger']]
+  ];
+  var termNames = ['term-bg', 'term-fg', 'term-cursor', 'term-selection', 'term-black', 'term-red', 'term-green', 'term-yellow', 'term-blue', 'term-magenta', 'term-cyan', 'term-white', 'term-bright-black', 'term-bright-red', 'term-bright-green', 'term-bright-yellow', 'term-bright-blue', 'term-bright-magenta', 'term-bright-cyan', 'term-bright-white'];
+  function hex(n) {
+    var v = getComputedStyle(root).getPropertyValue('--th-' + n).trim();
+    return v;
+  }
+  function sw(n) { return '<div class="sw"><i style="background:var(--th-' + n + ')"></i><div><b>--th-' + n + '</b><span>' + hex(n) + '</span></div></div>'; }
+  function refresh() {
+    document.getElementById('swatches').innerHTML = groups.map(function (g) { return '<h3>' + g[0] + '</h3><div class="swgrid">' + g[1].map(sw).join('') + '</div>'; }).join('');
+    document.getElementById('termsw').innerHTML = termNames.map(sw).join('');
+    document.getElementById('ctl-h').textContent = Math.round(parseFloat(getComputedStyle(root).getPropertyValue('--th-control-h')) * 16) + 'px';
+  }
+
+  var sp = [['1', '2px'], ['2', '4px'], ['3', '8px'], ['4', '12px'], ['5', '16px'], ['6', '24px'], ['7', '32px'], ['8', '48px']];
+  document.getElementById('spacing').innerHTML = '<span class="cap">spacing, 4px base</span>' + sp.map(function (s) { return '<div class="row" style="flex-wrap:nowrap;gap:12px"><span class="cap" style="width:6.5rem;flex:none">--th-space-' + s[0] + ' ' + s[1] + '</span><div class="sp" style="width:var(--th-space-' + s[0] + ')"></div></div>'; }).join('');
+
+  var st = {
+    alive: ['Alive', 'i-alive', 'Session is running and idle or between steps.'],
+    working: ['Working', 'i-working', 'Output changed in the last few seconds.'],
+    waiting: ['Waiting', 'i-waiting', 'Needs input from you. The only state that asks for action.'],
+    dead: ['Dead', 'i-dead', 'Session ended. Worktree is kept until you stop the agent.'],
+    error: ['Error', 'i-error', 'Something failed: start, stream or command.']
+  };
+  function status(k) { return '<span class="th-status" data-status="' + k + '"><svg><use href="#' + st[k][1] + '"/></svg>' + st[k][0] + '</span>'; }
+  document.getElementById('status-rows').innerHTML = Object.keys(st).map(function (k) {
+    return '<tr><td><b>' + st[k][0] + '</b></td><td>' + status(k) + '</td><td><div data-status="' + k + '" style="display:flex;height:2.2rem"><span class="th-bar"></span></div></td><td>' + st[k][2] + '</td></tr>';
+  }).join('');
+
+  var agents = [
+    ['fix-login', 'agent/fix-login', 'claude', 'waiting', 'Apply the migration to the staging database? (y/n)'],
+    ['refactor-auth', 'agent/refactor-auth', 'claude', 'working', 'Editing src/auth/session.ts'],
+    ['api-tests', 'agent/api-tests', 'claude', 'waiting', 'Should I delete the flaky test or retry it?'],
+    ['npm-watch', 'agent/npm-watch', 'shell', 'alive', 'Watching for changes...'],
+    ['docs-sweep', 'agent/docs-sweep', 'claude', 'dead', 'Session ended, exit code 1'],
+    ['migrate-db', 'agent/migrate-db', 'claude', 'error', 'Could not create worktree: branch exists'],
+    ['lint-fix', 'agent/lint-fix', 'shell', 'working', 'eslint --fix src/ (212 files)'],
+    ['release-notes', 'agent/release-notes', 'claude', 'alive', 'Done. Waiting for the next task.']
+  ];
+  function cardHtml(a, compact) {
+    var acts = '<div class="th-card-actions"><button class="th-btn th-btn-sm" aria-expanded="false">Open</button><button class="th-btn th-btn-sm th-btn-ghost" aria-label="Stop ' + a[0] + '" style="color:var(--th-danger)">Stop</button></div>';
+    if (compact) return '<li class="th-card th-card-compact" data-status="' + a[3] + '"><span class="th-bar" style="min-height:1.25rem"></span><div class="th-card-body">' + status(a[3]) + '<span class="th-card-name">' + a[0] + '</span><span class="th-card-last">' + a[4] + '</span>' + acts + '</div></li>';
+    return '<li class="th-card" data-status="' + a[3] + '"><span class="th-bar"></span><div class="th-card-body"><div class="th-card-top">' + status(a[3]) + '<span class="th-badge" style="margin-left:auto">' + a[2] + '</span></div><div class="th-card-top"><span class="th-card-name">' + a[0] + '</span></div><div class="th-card-meta"><span class="b">' + a[1] + '</span></div><div class="th-card-last">' + a[4] + '</div><div class="th-card-actions" style="margin-left:0;justify-content:flex-end"><button class="th-btn th-btn-sm" aria-expanded="false">Open</button><button class="th-btn th-btn-sm th-btn-danger">Stop</button></div></div></li>';
+  }
+  function renderCards() {
+    var compact = root.getAttribute('data-density') === 'compact';
+    document.getElementById('cardgrid').innerHTML = agents.map(function (a) { return cardHtml(a, compact); }).join('');
+  }
+  var oldRefresh = refresh; refresh = function () { oldRefresh(); renderCards(); };
+
+  var term = '<span class="g">$</span> claude --resume fix-login\n<span class="bk">Reading src/auth/session.ts</span>\n<span class="c">&gt;</span> Updating <span class="y">session.ts</span> (+14 -3)\n<span class="g">  + export function refresh(token: string)</span>\n<span class="r">  - export function refresh()</span>\n<span class="m">Tests:</span> <span class="g">42 passed</span>, <span class="r">1 failed</span>\n<span class="sel">Apply the migration to staging? (y/n)</span> <span class="cur"></span>';
+  document.getElementById('term-a').innerHTML = term;
+  document.getElementById('term-b').innerHTML = ['k', 'r', 'g', 'y', 'b', 'm', 'c', 'w'].map(function (c) { return '<span class="' + c + '">normal ' + c + '</span>'; }).join('  ') + '\n' + ['bk', 'br', 'bg2', 'by', 'bb', 'bm', 'bc', 'bw'].map(function (c) { return '<span class="' + c + '">bright ' + c + '</span>'; }).join('  ');
+
+  var feed = [
+    ['Now', [['14:02', 'fix-login', 'waiting', 'Needs input', 'Apply the migration to staging? (y/n)', 1], ['14:01', 'api-tests', 'waiting', 'Needs input', 'Delete the flaky test or retry it?', 0], ['14:01', 'migrate-db', 'error', 'Error', 'Could not create worktree: branch exists', 0]]],
+    ['Last hour', [['13:48', 'lint-fix', 'working', 'Started', 'shell: eslint --fix src/', 0], ['13:41', 'release-notes', 'alive', 'Finished', 'Task complete in 6 min', 0], ['13:30', 'docs-sweep', 'dead', 'Died', 'Session ended, exit code 1', 0], ['13:12', 'refactor-auth', 'working', 'Started', 'claude: Refactor session handling', 0]]],
+    ['Earlier today', [['11:20', 'npm-watch', 'alive', 'Finished', 'Task complete in 2 min', 0], ['10:05', 'npm-watch', 'working', 'Started', 'shell: npm test --watch', 0], ['09:30', 'schema-diff', 'alive', 'Finished', 'Task complete in 14 min', 0]]],
+    ['Yesterday', [['17:55', 'schema-diff', 'working', 'Started', 'claude: Compare prod and staging schema', 0]]]
+  ];
+  document.getElementById('feed').innerHTML = feed.map(function (g) {
+    return '<h3 class="th-feed-group"><span>' + g[0] + '</span><span>' + g[1].length + ' events</span></h3><ol>' + g[1].map(function (r) {
+      return '<li class="th-row' + (r[5] ? ' is-new' : '') + '" data-status="' + r[2] + '"><span class="th-bar"></span><time>' + r[0] + '</time><span class="who">' + r[1] + '</span><span class="what"><span class="th-status" data-status="' + r[2] + '"><svg><use href="#' + st[r[2]][1] + '"/></svg>' + r[3] + '</span><span class="txt">' + r[4] + '</span></span><span class="act"><button class="th-btn th-btn-sm th-btn-ghost">Open</button></span></li>';
+    }).join('') + '</ol>';
+  }).join('');
+
+  var t = safe(function () { return localStorage.getItem('th-theme'); });
+  var d = safe(function () { return localStorage.getItem('th-density'); });
+  if (t) setTheme(t); if (d) setDensity(d);
+  refresh();
+})();
+</script>
+</body>
+</html>

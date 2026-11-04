@@ -1,0 +1,310 @@
+/*
+ * townhall design tokens: the single source of truth.
+ * Direction: "match the town hall icon". Stone and marble neutrals, one brass accent.
+ * NOT imported by the app yet. See foundations.md for usage rules.
+ *
+ * Structure:
+ *   1. :root                       light (marble) colors + all theme-independent tokens
+ *   2. @media dark                 dark (basalt) overrides, unless data-theme="light"
+ *   3. :root[data-theme="dark"]    dark overrides, forced
+ * The two dark blocks MUST stay identical; check-contrast.mjs verifies this.
+ * Prefix: --th-
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---- Surfaces ---- */
+  --th-bg: #f3f1ec;
+  --th-surface: #faf9f6;
+  --th-surface-raised: #ffffff;
+  --th-surface-sunken: #e9e6df;
+
+  /* ---- Borders ---- */
+  --th-border: #d5d0c5;
+  --th-border-strong: #8f897c;
+
+  /* ---- Text ---- */
+  --th-text: #1c1b19;
+  --th-text-muted: #57534b;
+  --th-text-subtle: #6b665c;
+
+  /* ---- Brass accent ---- */
+  --th-accent: #7a5a14;
+  --th-accent-hover: #6a4e10;
+  --th-accent-active: #5a420c;
+  --th-on-accent: #ffffff;
+  --th-accent-text: #7a5a14;
+  --th-accent-subtle: #efe6cf;
+
+  /* ---- Focus ---- */
+  --th-focus: #1c1b19;
+
+  /* ---- Status: fg is for text, glyphs and bars; bg is a tint behind text ---- */
+  --th-ok: #1f6b3a;
+  --th-ok-bg: #dfeee3;
+  --th-working: #1f4f8a;
+  --th-working-bg: #dde8f5;
+  --th-waiting: #9a4a06;
+  --th-waiting-bg: #f8e6d2;
+  --th-danger: #a52a22;
+  --th-danger-bg: #f6dcd9;
+  --th-dead: #57534b;
+  --th-dead-bg: #e9e6df;
+  --th-danger-solid: #a52a22;
+  --th-danger-solid-hover: #8f221b;
+  --th-on-danger: #ffffff;
+
+  /* ---- Terminal (light palette, for xterm theme) ---- */
+  --th-term-bg: #fbfaf7;
+  --th-term-fg: #25231f;
+  --th-term-cursor: #7a5a14;
+  --th-term-selection: #e5dcc3;
+  --th-term-black: #25231f;
+  --th-term-red: #a52a22;
+  --th-term-green: #1f6b3a;
+  --th-term-yellow: #7a5a14;
+  --th-term-blue: #1f4f8a;
+  --th-term-magenta: #7a3a80;
+  --th-term-cyan: #14666b;
+  --th-term-white: #57534b;
+  --th-term-bright-black: #57534b;
+  --th-term-bright-red: #b83228;
+  --th-term-bright-green: #2a7d49;
+  --th-term-bright-yellow: #8a6416;
+  --th-term-bright-blue: #2b61a8;
+  --th-term-bright-magenta: #8c4592;
+  --th-term-bright-cyan: #1b7a80;
+  --th-term-bright-white: #3f3c36;
+
+  /* ---- Elevation (shadows are soft and warm; borders do most of the work) ---- */
+  --th-shadow-sm: 0 1px 2px rgb(40 32 16 / 0.08);
+  --th-shadow-md: 0 4px 12px rgb(40 32 16 / 0.12), 0 1px 3px rgb(40 32 16 / 0.08);
+  --th-shadow-lg: 0 16px 40px rgb(40 32 16 / 0.18), 0 2px 6px rgb(40 32 16 / 0.1);
+  --th-scrim: rgb(28 27 25 / 0.45);
+
+  /* ---- Typography: system stacks, work offline. See foundations.md for optional self-hosted files ---- */
+  --th-font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+  --th-font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --th-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --th-text-xs: 0.75rem;     /* 12px: badges, meta */
+  --th-text-sm: 0.8125rem;   /* 13px: dense UI, compact body */
+  --th-text-md: 0.875rem;    /* 14px: default body and controls */
+  --th-text-lg: 1rem;        /* 16px: section titles, dialog body */
+  --th-text-xl: 1.25rem;     /* 20px: page title (serif) */
+  --th-text-2xl: 1.5rem;     /* 24px: empty-state title (serif) */
+  --th-text-3xl: 2rem;       /* 32px: first-run hero (serif) */
+
+  --th-leading-tight: 1.2;
+  --th-leading-snug: 1.35;
+  --th-leading-normal: 1.5;
+
+  --th-weight-regular: 400;
+  --th-weight-medium: 500;
+  --th-weight-semibold: 600;
+  --th-tracking-caps: 0.06em;
+
+  /* ---- Spacing (4px base) ---- */
+  --th-space-0: 0;
+  --th-space-1: 0.125rem;  /* 2px */
+  --th-space-2: 0.25rem;   /* 4px */
+  --th-space-3: 0.5rem;    /* 8px */
+  --th-space-4: 0.75rem;   /* 12px */
+  --th-space-5: 1rem;      /* 16px */
+  --th-space-6: 1.5rem;    /* 24px */
+  --th-space-7: 2rem;      /* 32px */
+  --th-space-8: 3rem;      /* 48px */
+
+  /* ---- Radii: lightly rounded slabs, like the icon columns ---- */
+  --th-radius-xs: 2px;
+  --th-radius-sm: 4px;
+  --th-radius-md: 6px;
+  --th-radius-lg: 10px;
+  --th-radius-pill: 999px;
+
+  /* ---- Borders ---- */
+  --th-border-width: 1px;
+  --th-rule-width: 2px;       /* the thin base rule of the icon: header underline, dialog top */
+  --th-bar-width: 4px;        /* status bar on cards and feed rows */
+
+  /* ---- Focus ring ---- */
+  --th-focus-width: 2px;
+  --th-focus-offset: 2px;
+
+  /* ---- Motion ---- */
+  --th-dur-fast: 90ms;
+  --th-dur-base: 160ms;
+  --th-dur-slow: 280ms;
+  --th-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --th-ease-in-out: cubic-bezier(0.45, 0, 0.2, 1);
+
+  /* ---- Z layers ---- */
+  --th-z-base: 0;
+  --th-z-sticky: 10;
+  --th-z-dropdown: 20;
+  --th-z-overlay: 30;
+  --th-z-dialog: 40;
+  --th-z-toast: 50;
+  --th-z-tooltip: 60;
+
+  /* ---- Density: comfortable (default). Override with data-density="compact" ---- */
+  --th-control-h: 2.25rem;       /* 36px */
+  --th-control-px: 0.75rem;
+  --th-row-h: 2.75rem;           /* feed row, 44px */
+  --th-card-pad: 0.75rem;
+  --th-gap: 0.75rem;
+  --th-col-min: 21rem;           /* min agent column width, 336px */
+  --th-hit-min: 2.25rem;         /* minimum interactive target; compact lowers to 24px */
+
+  /* ---- Layout ---- */
+  --th-page-max: 90rem;          /* 1440px */
+  --th-page-pad: 1rem;
+  --th-header-h: 3rem;
+}
+
+:root[data-density="compact"] {
+  --th-control-h: 1.75rem;       /* 28px */
+  --th-control-px: 0.5rem;
+  --th-row-h: 1.75rem;           /* 28px */
+  --th-card-pad: 0.5rem;
+  --th-gap: 0.5rem;
+  --th-col-min: 17.5rem;         /* 280px */
+  --th-hit-min: 1.5rem;          /* 24px: WCAG 2.2 AA 2.5.8 floor */
+}
+
+@media (pointer: coarse) {
+  :root, :root[data-density="compact"] {
+    --th-control-h: 2.75rem;     /* 44px: touch always wins over compact */
+    --th-hit-min: 2.75rem;
+  }
+}
+
+@media (max-width: 40rem) {
+  :root { --th-page-pad: 0.75rem; --th-col-min: 100%; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --th-bg: #111213;
+    --th-surface: #181a1b;
+    --th-surface-raised: #202224;
+    --th-surface-sunken: #0c0d0e;
+    --th-border: #2e3033;
+    --th-border-strong: #6a6d70;
+    --th-text: #ebe8e2;
+    --th-text-muted: #a6a39b;
+    --th-text-subtle: #8f8c85;
+    --th-accent: #d2a64a;
+    --th-accent-hover: #dfb55e;
+    --th-accent-active: #c4962f;
+    --th-on-accent: #1a1407;
+    --th-accent-text: #dcb25a;
+    --th-accent-subtle: #2b2410;
+    --th-focus: #f1eee8;
+    --th-ok: #5fc084;
+    --th-ok-bg: #12261a;
+    --th-working: #7fb0ec;
+    --th-working-bg: #14233a;
+    --th-waiting: #f0a24f;
+    --th-waiting-bg: #33220f;
+    --th-danger: #f0766c;
+    --th-danger-bg: #35171a;
+    --th-dead: #a6a39b;
+    --th-dead-bg: #202224;
+    --th-danger-solid: #c93c33;
+    --th-danger-solid-hover: #b3332b;
+    --th-on-danger: #ffffff;
+    --th-term-bg: #0c0d0e;
+    --th-term-fg: #dedbd4;
+    --th-term-cursor: #dcb25a;
+    --th-term-selection: #3a3320;
+    --th-term-black: #6b6e72;
+    --th-term-red: #f0766c;
+    --th-term-green: #5fc084;
+    --th-term-yellow: #dcb25a;
+    --th-term-blue: #7fb0ec;
+    --th-term-magenta: #c792d0;
+    --th-term-cyan: #5cc3c9;
+    --th-term-white: #dedbd4;
+    --th-term-bright-black: #8f8c85;
+    --th-term-bright-red: #ff948a;
+    --th-term-bright-green: #7fd9a0;
+    --th-term-bright-yellow: #f0c978;
+    --th-term-bright-blue: #a3c8f5;
+    --th-term-bright-magenta: #dcb0e4;
+    --th-term-bright-cyan: #86d9de;
+    --th-term-bright-white: #f5f2ec;
+    --th-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+    --th-shadow-md: 0 4px 12px rgb(0 0 0 / 0.55), 0 1px 3px rgb(0 0 0 / 0.4);
+    --th-shadow-lg: 0 16px 40px rgb(0 0 0 / 0.65), 0 2px 6px rgb(0 0 0 / 0.5);
+    --th-scrim: rgb(0 0 0 / 0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --th-bg: #111213;
+  --th-surface: #181a1b;
+  --th-surface-raised: #202224;
+  --th-surface-sunken: #0c0d0e;
+  --th-border: #2e3033;
+  --th-border-strong: #6a6d70;
+  --th-text: #ebe8e2;
+  --th-text-muted: #a6a39b;
+  --th-text-subtle: #8f8c85;
+  --th-accent: #d2a64a;
+  --th-accent-hover: #dfb55e;
+  --th-accent-active: #c4962f;
+  --th-on-accent: #1a1407;
+  --th-accent-text: #dcb25a;
+  --th-accent-subtle: #2b2410;
+  --th-focus: #f1eee8;
+  --th-ok: #5fc084;
+  --th-ok-bg: #12261a;
+  --th-working: #7fb0ec;
+  --th-working-bg: #14233a;
+  --th-waiting: #f0a24f;
+  --th-waiting-bg: #33220f;
+  --th-danger: #f0766c;
+  --th-danger-bg: #35171a;
+  --th-dead: #a6a39b;
+  --th-dead-bg: #202224;
+  --th-danger-solid: #c93c33;
+  --th-danger-solid-hover: #b3332b;
+  --th-on-danger: #ffffff;
+  --th-term-bg: #0c0d0e;
+  --th-term-fg: #dedbd4;
+  --th-term-cursor: #dcb25a;
+  --th-term-selection: #3a3320;
+  --th-term-black: #6b6e72;
+  --th-term-red: #f0766c;
+  --th-term-green: #5fc084;
+  --th-term-yellow: #dcb25a;
+  --th-term-blue: #7fb0ec;
+  --th-term-magenta: #c792d0;
+  --th-term-cyan: #5cc3c9;
+  --th-term-white: #dedbd4;
+  --th-term-bright-black: #8f8c85;
+  --th-term-bright-red: #ff948a;
+  --th-term-bright-green: #7fd9a0;
+  --th-term-bright-yellow: #f0c978;
+  --th-term-bright-blue: #a3c8f5;
+  --th-term-bright-magenta: #dcb0e4;
+  --th-term-bright-cyan: #86d9de;
+  --th-term-bright-white: #f5f2ec;
+  --th-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+  --th-shadow-md: 0 4px 12px rgb(0 0 0 / 0.55), 0 1px 3px rgb(0 0 0 / 0.4);
+  --th-shadow-lg: 0 16px 40px rgb(0 0 0 / 0.65), 0 2px 6px rgb(0 0 0 / 0.5);
+  --th-scrim: rgb(0 0 0 / 0.6);
+}
+
+/* Reduced motion: collapse durations; components must also drop non-essential animation. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --th-dur-fast: 0.01ms;
+    --th-dur-base: 0.01ms;
+    --th-dur-slow: 0.01ms;
+  }
+}
