@@ -42,6 +42,11 @@
   flex: 1;
 }
 
+.th-control .th-loop {
+  flex-wrap: wrap;
+  row-gap: var(--th-space-1);
+}
+
 .th-control .th-loop-stage--you .th-status {
   width: auto;
 }

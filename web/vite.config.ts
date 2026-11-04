@@ -81,6 +81,7 @@ export default defineConfig(({ mode }) => ({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    css: { include: [/\.css\?raw$/] },
     coverage: {
       provider: "v8",
       reporter: ["text"],
