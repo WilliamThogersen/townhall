@@ -313,7 +313,8 @@ async fn a_permission_prompt_waits_while_the_transcript_ends_on_a_result() {
          2. Yes, and don't ask again for rm commands in /w/fix\n   3. No\n\n Esc to cancel\n",
     )
     .await;
-    let call = json!([{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]);
+    let call =
+        json!([{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]);
     let result = json!([{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]);
     env.write_transcript(&[
         json!({"type": "user", "message": {"content": "go"}}),
@@ -327,6 +328,22 @@ async fn a_permission_prompt_waits_while_the_transcript_ends_on_a_result() {
             .into(),
     })
     .await;
+    agent::stop(env.ws(), &env.name).await.unwrap();
+}
+
+#[tokio::test]
+async fn claudes_trust_dialog_waits_for_you() {
+    let env = showing(
+        " Quick safety check: Is this a project you created or one you trust?\n\n   \
+         Yes, I trust this folder\n \u{276f} No, exit\n\n Enter to confirm\n",
+    )
+    .await;
+    let question = "claude asks whether to trust this worktree";
+    env.wait_for(&AgentState::Waiting {
+        question: question.into(),
+    })
+    .await;
+    assert_eq!(state::choices(question), ["yes, trust it", "no, exit"]);
     agent::stop(env.ws(), &env.name).await.unwrap();
 }
 

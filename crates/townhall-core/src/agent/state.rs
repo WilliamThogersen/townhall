@@ -6,7 +6,9 @@
 //!   turn that ended on a question, when the screen shows a selection prompt (a permission
 //!   request only ever shows there, even while the transcript reads busy: Claude writes a
 //!   message with parallel tool calls only once every call has a result), or, for a program
-//!   without a transcript, when its last line is a question,
+//!   without a transcript, when its last line is a question. Claude's folder trust dialog
+//!   in a new worktree asks too, as [`question::TRUST_QUESTION`]; it is never answered
+//!   for you,
 //! - a live Claude whose turn ended without asking, [`IDLE_SETTLE_MS`] ago or longer, is
 //!   `ended`: interactive Claude never exits on its own, and a short pause between tool
 //!   calls must not count. Typing into it starts a new turn, which is `working` again,
@@ -150,8 +152,12 @@ async fn idle(
 }
 
 /// A prompt on screen (any agent) or, when `plain`, a last line asking something.
+/// Claude's folder trust dialog is asked as [`question::TRUST_QUESTION`].
 async fn on_screen(ws: &Workspace, agent: &Agent, pane: &Pane, plain: bool) -> Option<String> {
     let text = screen_text(ws, agent, pane).await?;
+    if screen::trust_dialog(&text) {
+        return Some(question::TRUST_QUESTION.to_string());
+    }
     let plain_question = || plain.then(|| screen::trailing_question(&text)).flatten();
     screen::prompt(&text).or_else(plain_question)
 }
