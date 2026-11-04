@@ -3,7 +3,9 @@
 //! A fake `claude` for townhall's own session, and helpers to drive conversations.
 //! The fake logs its argv, cwd and stdin per turn and picks a script by a word in
 //! the message: `SLOW` waits for the interrupt, `HANG` ignores it, `TOOL` asks for a
-//! disallowed and an allowed tool, `CRASH` dies before it starts.
+//! disallowed and an allowed tool, `CRASH` dies before it starts, `KIDS` leaves a
+//! `sleep 31` holding its stdout (`ESCAPE` in its own process group) and ignores the
+//! interrupt, `STALE` cannot find the session on `--resume`, `ALWAYS` never can.
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -23,14 +25,24 @@ n=$(( $(cat "$dir/count" 2>/dev/null || echo 0) + 1 ))
 echo "$n" > "$dir/count"
 printf '%s\n' "$@" > "$dir/argv-$n"
 pwd -P > "$dir/cwd-$n"
+echo "$$" > "$dir/pid-$n"
 IFS= read -r first || exit 4
 printf '%s\n' "$first" > "$dir/stdin-$n"
 log() { printf '%s\n' "$1" >> "$dir/stdin-$n"; }
+lost() { echo "No conversation found with session ID: $1" >&2; exit 1; }
 case "$first" in
   *CRASH*) echo 'warming up' >&2; echo 'boom: claude broke' >&2; exit 3 ;;
+  *ALWAYS*) lost any ;;
+  *STALE*) case " $* " in *" --resume "*) lost resumed ;; esac ;;
 esac
 echo '{"type":"system","subtype":"init","session_id":"fake","tools":[]}'
 case "$first" in
+  *KIDS*|*ESCAPE*)
+    case "$first" in *ESCAPE*) set -m ;; esac
+    sleep 31 &
+    echo "$!" > "$dir/kid-$n"
+    while IFS= read -r line; do log "$line"; done
+    exit 0 ;;
   *SLOW*|*HANG*)
     while IFS= read -r line; do
       log "$line"
@@ -86,6 +98,12 @@ impl Fake {
     pub fn argv(&self, turn: usize) -> Vec<String> {
         let text = std::fs::read_to_string(self.dir.join(format!("argv-{turn}"))).unwrap();
         text.lines().map(String::from).collect()
+    }
+
+    /// The pid of the fake's turn, or of the child it left behind (`kid`).
+    pub fn pid(&self, what: &str, turn: usize) -> String {
+        let file = self.dir.join(format!("{what}-{turn}"));
+        std::fs::read_to_string(file).unwrap().trim().to_string()
     }
 
     pub fn cwd(&self, turn: usize) -> PathBuf {
@@ -200,4 +218,23 @@ pub async fn set_setting(app: &Router, key: &str, value: Value) {
     let uri = format!("/api/settings/{key}");
     let (s, v) = call(app, "PUT", &uri, Some(json!({"value": value}))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
+}
+
+pub fn alive(pid: &str) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", pid])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// Waits up to two seconds for `pid` to end.
+pub async fn gone(pid: &str) -> bool {
+    for _ in 0..100 {
+        if !alive(pid) {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    false
 }

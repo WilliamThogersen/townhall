@@ -183,51 +183,5 @@ impl Proc {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sh(script: &str) -> Proc {
-        let args = vec!["-c".to_string(), script.to_string()];
-        Proc::spawn("/bin/sh", &args, Path::new("/")).unwrap()
-    }
-
-    #[tokio::test]
-    async fn reads_lines_and_the_stderr_tail() {
-        let mut p = sh("read l; echo \"got $l\"; echo one >&2; echo last >&2; exit 2");
-        let (_tx, mut stop) = watch::channel(false);
-        p.write("hi\n").await;
-        assert_eq!(p.next_line(&mut stop).await.as_deref(), Some("got hi"));
-        assert_eq!(p.next_line(&mut stop).await, None);
-        let exit = p.finish().await;
-        assert_eq!(exit.code, Some(2));
-        assert_eq!(exit.last_error.as_deref(), Some("last"));
-        assert!(!exit.stopped);
-    }
-
-    #[tokio::test]
-    async fn a_stop_interrupts_on_stdin() {
-        let mut p = sh("read l; echo ready; read l; echo \"$l\"");
-        let (tx, mut stop) = watch::channel(false);
-        p.write("go\n").await;
-        assert_eq!(p.next_line(&mut stop).await.as_deref(), Some("ready"));
-        tx.send_replace(true);
-        let line = p.next_line(&mut stop).await.unwrap();
-        assert!(line.contains("\"interrupt\""), "{line}");
-        assert_eq!(p.next_line(&mut stop).await, None);
-        assert!(p.finish().await.stopped);
-    }
-
-    #[test]
-    fn a_missing_program_is_a_spawn_error() {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let err = rt
-            .block_on(async { Proc::spawn("/no/claude", &[], Path::new("/")) })
-            .unwrap_err();
-        assert!(matches!(err, Error::Spawn { .. }), "{err}");
-        assert_eq!(last_line("a\n b \n\n"), Some("b".into()));
-        assert_eq!(last_line(" \n"), None);
-    }
-}
+#[path = "process_tests.rs"]
+mod tests;
