@@ -183,11 +183,9 @@ impl Proc {
         }
     }
 
-    /// The child exited: whatever it left in its group goes too.
+    /// The child exited and was reaped, so its pid is no longer ours and its group is
+    /// left alone; reading gives up soon if something else keeps the pipes open.
     fn exited(&mut self, status: std::io::Result<ExitStatus>) {
-        if let Some(group) = self.group {
-            kill_group(group);
-        }
         let code = match status {
             Ok(status) => status.code(),
             Err(e) => {
