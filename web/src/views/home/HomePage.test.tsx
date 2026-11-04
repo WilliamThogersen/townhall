@@ -9,8 +9,9 @@ import * as statsApi from "../../api/stats";
 import type { Repo } from "../../api/types";
 import { TestDataProvider } from "../../data/testing";
 import { renderWithHints, shownHints } from "../../test/renderWithHints";
-import { HERO_PLACEHOLDER } from "./HeroComposer";
 import { HomePage } from "./HomePage";
+
+const HERO_PLACEHOLDER = "what should we work on? name a repo, or describe the code";
 
 const REPOS: readonly Repo[] = [aRepo({ name: "townhall" }), aRepo({ name: "shop", baseBranch: "develop" })];
 const afternoon = () => new Date(2026, 10, 4, 14, 0);
@@ -70,8 +71,8 @@ describe("HomePage", () => {
     renderHome();
     const input = await composer();
     input.blur();
-    fireEvent.click(screen.getByRole("button", { name: "upgrade the dependencies in shop" }));
-    expect(input).toHaveValue("upgrade the dependencies in shop");
+    fireEvent.click(screen.getByRole("button", { name: "find dead code in shop" }));
+    expect(input).toHaveValue("find dead code in shop");
     await waitFor(() => expect(input).toHaveFocus());
     expect(start).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "start" })).toBeEnabled();
@@ -98,7 +99,7 @@ describe("HomePage", () => {
     const input = await composer();
     fireEvent.change(input, { target: { value: "fix the login loop" } });
     fireEvent.click(screen.getByRole("button", { name: "start" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("error: cannot reach the daemon");
+    expect(await screen.findByText("error: cannot reach the daemon")).toBeInTheDocument();
     expect(input).toHaveValue("fix the login loop");
     expect(window.location.pathname).toBe("/");
   });

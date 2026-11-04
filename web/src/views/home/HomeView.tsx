@@ -1,15 +1,14 @@
 import { useRef, useState } from "react";
 import type { Repo } from "../../api/types";
+import { Composer, type ComposerHandle } from "../../composer";
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
-import { Banner } from "../../ui/Banner";
 import { Greeting } from "./Greeting";
 import type { Clock } from "./greetingText";
-import { HeroComposer } from "./HeroComposer";
 import { ReposKnown } from "./ReposKnown";
 import { ShippedStats } from "./ShippedStats";
 import { starterPrompts } from "./starterPrompts";
 import { Starters } from "./Starters";
-import { useComposerFocus } from "./useComposerFocus";
+import { useFocusOnNewKey } from "./useFocusOnNewKey";
 import { useStartConversation } from "./useStartConversation";
 
 export const HOME_KEYS: readonly KeyHint[] = [
@@ -26,28 +25,21 @@ export interface HomeViewProps {
 export function HomeView({ repos, clock }: HomeViewProps) {
   useKeyHints(HOME_KEYS);
   const [now] = useState(clock);
-  const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const focusComposer = useComposerFocus(inputRef);
-  const { start, busy, error } = useStartConversation();
-  const pick = (text: string) => {
-    setDraft(text);
-    focusComposer();
-  };
+  const composer = useRef<ComposerHandle>(null);
+  useFocusOnNewKey(composer);
+  const start = useStartConversation();
   return (
     <div className="th-home">
       <div className="th-home-inner">
         <Greeting now={now} />
-        {error === null ? null : <Banner level="error">{error}</Banner>}
-        <HeroComposer
-          value={draft}
-          onChange={setDraft}
+        <Composer
+          variant="hero"
+          ref={composer}
+          autoFocus
           onSubmit={start}
-          busy={busy}
-          inputRef={inputRef}
           tools={repos && repos.length > 0 ? <ReposKnown repos={repos} /> : null}
         />
-        <Starters prompts={starterPrompts(repos)} onPick={pick} />
+        <Starters prompts={starterPrompts(repos)} onPick={(text) => composer.current?.fill(text)} />
         <ShippedStats today={now} />
       </div>
     </div>

@@ -8,8 +8,8 @@ export const PREVIEW_STARTERS: readonly string[] = [
 
 const TEMPLATES: readonly ((repo: Repo) => string)[] = [
   (repo) => `fix the failing tests on ${repo.name} ${repo.baseBranch}`,
-  (repo) => `upgrade the dependencies in ${repo.name}`,
   (repo) => `find dead code in ${repo.name}`,
+  (repo) => `tidy the readme in ${repo.name}`,
 ];
 
 export function starterPrompts(repos: readonly Repo[] | null): readonly string[] {

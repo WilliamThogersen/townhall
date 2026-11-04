@@ -21,8 +21,8 @@ describe("starterPrompts", () => {
     ];
     expect(starterPrompts(repos)).toEqual([
       "fix the failing tests on townhall main",
-      "upgrade the dependencies in shop",
-      "find dead code in data-hub",
+      "find dead code in shop",
+      "tidy the readme in data-hub",
     ]);
   });
 
@@ -30,8 +30,8 @@ describe("starterPrompts", () => {
     const repos = [aRepo({ name: "shop", baseBranch: "develop" })];
     expect(starterPrompts(repos)).toEqual([
       "fix the failing tests on shop develop",
-      "upgrade the dependencies in shop",
       "find dead code in shop",
+      "tidy the readme in shop",
     ]);
   });
 });
