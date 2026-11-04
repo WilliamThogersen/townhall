@@ -152,6 +152,19 @@ fn a_tool_with_a_comma_is_refused_at_launch() {
 }
 
 #[test]
+fn a_tool_with_a_comma_is_refused_at_validation() {
+    let source =
+        "name = \"a\"\nadapter = \"claude\"\ntools = [\"Read,Edit\", \"Bash(git diff:*,x)\"]\n";
+    assert_eq!(
+        agent_errors(source),
+        [
+            "error: agent \"a\": tools entry \"Read,Edit\" must not hold a comma: give each tool its own entry",
+            "error: agent \"a\": tools entry \"Bash(git diff:*,x)\" must not hold a comma: give each tool its own entry",
+        ]
+    );
+}
+
+#[test]
 fn a_shell_definition_carries_its_command() {
     let def = parse_agent("name = \"s\"\nadapter = \"shell\"\ncommand = \"cargo test\"\n")
         .unwrap()
