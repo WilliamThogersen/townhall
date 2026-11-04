@@ -1,4 +1,5 @@
 use axum::http::StatusCode;
+use axum::Router;
 use serde_json::{json, Value};
 use townhall_core::agent::{self, LaunchOptions, ShellAdapter};
 
@@ -29,6 +30,65 @@ fn names_and_repos(v: &Value) -> Vec<(String, String)> {
     rows
 }
 
+async fn create(app: &Router, body: Value) -> (StatusCode, Value) {
+    call(app, "POST", "/api/agents", Some(body)).await
+}
+
+/// Starts `a` in the startup repo and `b` in beta; each answers with its repo.
+async fn start_one_per_repo(app: &Router, a: &str, b: &str) {
+    let (s, v) = create(app, shell(a, "sleep 30", None)).await;
+    assert_eq!(
+        (s, &v["data"]["repo"]),
+        (StatusCode::CREATED, &json!("alpha")),
+        "{v}"
+    );
+    let (s, v) = create(app, shell(b, "sh -c 'echo up; cat'", Some("beta"))).await;
+    assert_eq!(
+        (s, &v["data"]["repo"]),
+        (StatusCode::CREATED, &json!("beta")),
+        "{v}"
+    );
+    assert_eq!(v["data"]["state"], json!({"kind": "working"}));
+}
+
+/// Both are listed with their repo, and `b` is reached by its name alone.
+async fn listed_and_reached_by_name(app: &Router, a: &str, b: &str) {
+    let (s, v) = call(app, "GET", "/api/agents", None).await;
+    assert_eq!(s, StatusCode::OK);
+    let mut want = vec![
+        (a.to_string(), "alpha".to_string()),
+        (b.to_string(), "beta".to_string()),
+    ];
+    want.sort();
+    assert_eq!(names_and_repos(&v), want);
+
+    let send = format!("/api/agents/{b}/send");
+    let (s, _) = call(app, "POST", &send, Some(json!({"text": "hello-beta"}))).await;
+    assert_eq!(s, StatusCode::OK);
+    settle().await;
+    let (s, v) = call(app, "GET", &format!("/api/agents/{b}/output"), None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(v["data"].as_str().unwrap().contains("hello-beta"), "{v}");
+}
+
+/// A name taken in another repo, an unknown `?repo=` and a repo with a live agent.
+async fn refused_across_repos(app: &Router, b: &str) {
+    let (s, v) = create(app, shell(b, "true", Some("alpha"))).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    assert!(v["error"]
+        .as_str()
+        .unwrap()
+        .contains("already exists in repo `beta`"));
+
+    let ghost = format!("/api/agents/{b}/output?repo=ghost");
+    let (s, _) = call(app, "GET", &ghost, None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+
+    let (s, v) = call(app, "DELETE", "/api/repos/beta", None).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("1 running agent"));
+}
+
 #[tokio::test]
 async fn agents_are_listed_and_resolved_across_repos() {
     let env = Env::new("alpha").await;
@@ -37,80 +97,10 @@ async fn agents_are_listed_and_resolved_across_repos() {
     call(&app, "POST", "/api/repos", Some(json!({"path": beta}))).await;
     let (a, b) = (unique("a"), unique("b"));
 
-    let (s, v) = call(
-        &app,
-        "POST",
-        "/api/agents",
-        Some(shell(&a, "sleep 30", None)),
-    )
-    .await;
-    assert_eq!(
-        (s, &v["data"]["repo"]),
-        (StatusCode::CREATED, &json!("alpha")),
-        "{v}"
-    );
-    let (s, v) = call(
-        &app,
-        "POST",
-        "/api/agents",
-        Some(shell(&b, "sh -c 'echo up; cat'", Some("beta"))),
-    )
-    .await;
-    assert_eq!(
-        (s, &v["data"]["repo"]),
-        (StatusCode::CREATED, &json!("beta")),
-        "{v}"
-    );
-    assert_eq!(v["data"]["state"], json!({"kind": "working"}));
+    start_one_per_repo(&app, &a, &b).await;
     settle().await;
-
-    let (s, v) = call(&app, "GET", "/api/agents", None).await;
-    assert_eq!(s, StatusCode::OK);
-    let mut want = vec![
-        (a.clone(), "alpha".to_string()),
-        (b.clone(), "beta".to_string()),
-    ];
-    want.sort();
-    assert_eq!(names_and_repos(&v), want);
-
-    let (s, _) = call(
-        &app,
-        "POST",
-        &format!("/api/agents/{b}/send"),
-        Some(json!({"text": "hello-beta"})),
-    )
-    .await;
-    assert_eq!(s, StatusCode::OK);
-    settle().await;
-    let (s, v) = call(&app, "GET", &format!("/api/agents/{b}/output"), None).await;
-    assert_eq!(s, StatusCode::OK);
-    assert!(v["data"].as_str().unwrap().contains("hello-beta"), "{v}");
-
-    let (s, v) = call(
-        &app,
-        "POST",
-        "/api/agents",
-        Some(shell(&b, "true", Some("alpha"))),
-    )
-    .await;
-    assert_eq!(s, StatusCode::CONFLICT, "{v}");
-    assert!(v["error"]
-        .as_str()
-        .unwrap()
-        .contains("already exists in repo `beta`"));
-
-    let (s, _) = call(
-        &app,
-        "GET",
-        &format!("/api/agents/{b}/output?repo=ghost"),
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
-
-    let (s, v) = call(&app, "DELETE", "/api/repos/beta", None).await;
-    assert_eq!(s, StatusCode::CONFLICT, "{v}");
-    assert!(v["error"].as_str().unwrap().contains("1 running agent"));
+    listed_and_reached_by_name(&app, &a, &b).await;
+    refused_across_repos(&app, &b).await;
 
     for name in [&a, &b] {
         let (s, v) = call(&app, "DELETE", &format!("/api/agents/{name}"), None).await;

@@ -45,7 +45,7 @@ async fn task_names_are_unique_across_conversations_ignoring_case() {
 }
 
 #[tokio::test]
-async fn after_and_attachments_must_exist() {
+async fn after_is_deduped_and_attachments_are_kept() {
     let env = store_env();
     let c = env.store.create_conversation().await.unwrap();
     env.store
@@ -60,6 +60,30 @@ async fn after_and_attachments_must_exist() {
         env.store.create_task(&c.id, waits).await.unwrap().after,
         vec!["first"]
     );
+    let file = env
+        .store
+        .save_attachment(&c.id, "notes.md", "text/markdown", b"# hi".to_vec())
+        .await
+        .unwrap();
+    let with_file = NewTask {
+        attachments: vec![file.id.clone()],
+        ..new_task("third")
+    };
+    assert_eq!(
+        env.store
+            .create_task(&c.id, with_file)
+            .await
+            .unwrap()
+            .attachments,
+        vec![file.id]
+    );
+    assert_eq!(env.store.tasks(&c.id).await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn after_and_attachments_must_exist() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
     for bad in [
         NewTask {
             after: vec!["ghost".into()],
@@ -81,24 +105,7 @@ async fn after_and_attachments_must_exist() {
         let err = env.store.create_task(&c.id, bad).await.unwrap_err();
         assert!(matches!(err, Error::InvalidInput(_)), "{err:?}");
     }
-    let file = env
-        .store
-        .save_attachment(&c.id, "notes.md", "text/markdown", b"# hi".to_vec())
-        .await
-        .unwrap();
-    let with_file = NewTask {
-        attachments: vec![file.id.clone()],
-        ..new_task("third")
-    };
-    assert_eq!(
-        env.store
-            .create_task(&c.id, with_file)
-            .await
-            .unwrap()
-            .attachments,
-        vec![file.id]
-    );
-    assert_eq!(env.store.tasks(&c.id).await.unwrap().len(), 3);
+    assert!(env.store.tasks(&c.id).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -172,6 +179,12 @@ async fn attachments_are_files_with_a_record() {
         ("file", "application/octet-stream")
     );
     assert_eq!(env.store.attachments(&c.id).await.unwrap(), vec![img, doc]);
+}
+
+#[tokio::test]
+async fn too_big_unknown_and_orphan_attachments_are_refused() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
     let big = vec![0u8; MAX_ATTACHMENT_BYTES as usize + 1];
     let err = env
         .store

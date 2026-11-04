@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn every_body_has_a_stable_shape() {
+    fn message_and_error_bodies_have_a_stable_shape() {
         round_trip(
             EntryBody::You {
                 text: "hi".into(),
@@ -109,6 +109,16 @@ mod tests {
             EntryBody::Townhall { text: "ok".into() },
             json!({"kind": "townhall", "text": "ok"}),
         );
+        round_trip(
+            EntryBody::Error {
+                message: "claude exited with 1".into(),
+            },
+            json!({"kind": "error", "message": "claude exited with 1"}),
+        );
+    }
+
+    #[test]
+    fn repo_bodies_have_a_stable_shape() {
         round_trip(
             EntryBody::Repo {
                 repo: "shop".into(),
@@ -126,6 +136,10 @@ mod tests {
             },
             json!({"kind": "repoAsk", "question": "which one?", "candidates": ["shop", "admin"], "offerAll": true}),
         );
+    }
+
+    #[test]
+    fn task_and_agent_bodies_have_a_stable_shape() {
         round_trip(
             EntryBody::TasksCreated {
                 tasks: vec!["fix-login".into()],
@@ -147,12 +161,6 @@ mod tests {
                 text: "y".into(),
             },
             json!({"kind": "agent", "agent": "fix-login", "event": "sent", "text": "y"}),
-        );
-        round_trip(
-            EntryBody::Error {
-                message: "claude exited with 1".into(),
-            },
-            json!({"kind": "error", "message": "claude exited with 1"}),
         );
     }
 }
