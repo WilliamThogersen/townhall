@@ -34,8 +34,11 @@ fn limit() -> usize {
     usize::try_from(MAX_ATTACHMENT_BYTES).unwrap_or(usize::MAX)
 }
 
+/// A field without a file name is a text value (`-F file=hello`), not a file: `400`.
 async fn read_field(mut field: Field<'_>) -> Result<Upload, ApiError> {
-    let name = field.file_name().unwrap_or_default().to_string();
+    let Some(name) = field.file_name().map(str::to_string) else {
+        return Err(ApiError::BadRequest(ONE_FILE.into()));
+    };
     let content_type = field.content_type().map(str::to_string);
     let mut bytes = Vec::new();
     while let Some(chunk) = field.chunk().await.map_err(broken)? {
@@ -54,7 +57,8 @@ async fn read_field(mut field: Field<'_>) -> Result<Upload, ApiError> {
     })
 }
 
-/// The one non-empty `file` field. Any other field, a second file or none is `400`.
+/// The one non-empty file in the `file` field. Any other field, a `file` field that is
+/// not a file, a second file or none is `400`.
 pub async fn read(mut form: Multipart) -> Result<Upload, ApiError> {
     let mut found = None;
     while let Some(field) = form.next_field().await.map_err(broken)? {

@@ -52,7 +52,7 @@ async fn uploads_images_and_files_into_the_conversation_folder() {
 }
 
 #[tokio::test]
-async fn the_type_comes_from_the_bytes_not_the_name() {
+async fn an_image_type_without_image_bytes_is_a_file() {
     let t = Setup::new().await;
     let fake = upload_ok(&t.app, &t.id, file("fake.png", "image/png", b"just text")).await;
     assert_eq!(
@@ -69,6 +69,11 @@ async fn the_type_comes_from_the_bytes_not_the_name() {
         (&svg["kind"], &svg["mime"]),
         (&json!("file"), &json!("application/octet-stream"))
     );
+}
+
+#[tokio::test]
+async fn images_are_told_by_their_bytes_and_named_for_their_type() {
+    let t = Setup::new().await;
     let cases: [(&str, &str, &[u8], &str, &str); 5] = [
         (
             "clip",
@@ -94,6 +99,11 @@ async fn the_type_comes_from_the_bytes_not_the_name() {
             "{name}"
         );
     }
+}
+
+#[tokio::test]
+async fn other_types_come_from_the_part_then_the_extension() {
+    let t = Setup::new().await;
     let by_part = upload_ok(&t.app, &t.id, file("rows.bin", "Text/CSV", b"a,b")).await;
     assert_eq!(by_part["mime"], "text/csv");
     let part = Part {
@@ -188,6 +198,21 @@ async fn unknown_conversations_are_404() {
         .join("conversations")
         .join("abc123")
         .exists());
+}
+
+#[tokio::test]
+async fn a_text_field_named_file_is_not_a_file() {
+    let t = Setup::new().await;
+    let text = Part {
+        field: "file",
+        file_name: None,
+        content_type: None,
+        bytes: b"hello",
+    };
+    let (s, v) = upload(&t.app, &t.id, text).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert_eq!(v["error"], "send one file in a field named `file`");
+    assert!(t.list().await.is_empty());
 }
 
 #[tokio::test]
