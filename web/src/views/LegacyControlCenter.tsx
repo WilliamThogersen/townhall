@@ -4,6 +4,7 @@ import { useAgentsContext } from "../agents/AgentsProvider";
 import { CreateAgentForm } from "../agents/CreateAgentForm";
 import { NEW_CONVERSATION_HINT, SEARCH_HINT } from "../shell/globalKeys";
 import { useKeyHints } from "../shell/keyHints";
+import "./legacyControlCenter.css";
 
 export function LegacyControlCenter() {
   const { agents, loading, refresh } = useAgentsContext();

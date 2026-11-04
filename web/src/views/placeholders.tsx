@@ -40,7 +40,7 @@ export function SettingsPlaceholder() {
   useKeyHints(BOTH_KEYS);
   return (
     <EmptyState title="settings come next">
-      permissions, theme and notifications will live here
+      permissions, theme and notifications go here
     </EmptyState>
   );
 }
