@@ -9,7 +9,8 @@ use townhall_core::agent::{
 };
 use townhall_core::cmd::validate_name;
 use townhall_core::model::{AgentEvent, AgentInfo, EntryBody};
-use townhall_core::{fleet, Context, Error};
+use townhall_core::repos::verify_branch;
+use townhall_core::{fleet, Context, Error, Workspace};
 
 use crate::envelope::{created, ok};
 use crate::error::ApiError;
@@ -55,17 +56,20 @@ pub async fn list(State(state): State<AppState>) -> Result<Response, ApiError> {
     Ok(ok(fleet::list(state.ctx()).await?))
 }
 
-async fn target(ctx: &Context, repo: Option<&str>) -> Result<fleet::Located, ApiError> {
+/// Where a new agent goes: the named repo, else the startup repo.
+async fn target(ctx: &Context, name: &str, repo: Option<&str>) -> Result<fleet::Located, ApiError> {
     match repo.map(str::trim).filter(|r| !r.is_empty()) {
-        Some(name) => {
-            let found = ctx.repo(name).await?;
+        Some(wanted) => {
+            let found = ctx.repo(wanted).await?;
             Ok(fleet::Located {
                 workspace: ctx.workspace(&found)?,
                 repo: found.name,
+                name: name.to_string(),
             })
         }
         None => Ok(fleet::Located {
             repo: ctx.startup_repo_name().await,
+            name: name.to_string(),
             workspace: ctx.startup().clone(),
         }),
     }
@@ -87,11 +91,11 @@ pub async fn create(
     if let Some(taken) = fleet::holders(ctx, &req.name).await?.first() {
         return Err(Error::Conflict(format!(
             "an agent named `{}` already exists in repo `{}`",
-            req.name, taken.repo
+            taken.name, taken.repo
         ))
         .into());
     }
-    let at = target(ctx, req.repo.as_deref()).await?;
+    let at = target(ctx, &req.name, req.repo.as_deref()).await?;
     let options = LaunchOptions {
         prompt: req.prompt,
         command: req.command,
@@ -99,9 +103,19 @@ pub async fn create(
         ..LaunchOptions::default()
     };
     let base = base.unwrap_or(DEFAULT_BASE);
+    check_base(&at.workspace, base).await?;
     let started = agent::start(&at.workspace, &req.name, base, adapter.as_ref(), &options).await?;
     let now = state::detect(&at.workspace, &started).await;
     Ok(created(AgentInfo::new(started, &at.repo, now)))
+}
+
+/// The base must resolve to a commit before git is asked to branch from it.
+async fn check_base(ws: &Workspace, base: &str) -> Result<(), ApiError> {
+    let (repo, base) = (ws.repo().to_path_buf(), base.to_string());
+    tokio::task::spawn_blocking(move || verify_branch(&repo, &base))
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("cannot check the base branch: {e}")))??;
+    Ok(())
 }
 
 pub async fn remove(

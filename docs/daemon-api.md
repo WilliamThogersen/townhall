@@ -7,23 +7,23 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 - Base: `http://127.0.0.1:7777/api` (desktop) or same-origin `/api` (browser, Vite proxy).
 - Every HTTP response is the envelope `{ "success": bool, "data": T | null, "error": string | null }` (`crates/townhall-daemon/src/envelope.rs`). `data` is shown below as the response.
 - JSON field names are camelCase. A Rust `Option` is always present on the wire, as `null` when empty. Timestamps are RFC 3339 UTC strings with milliseconds (`2026-11-04T10:42:05.000Z`, `townhall_core::clock`), so they sort as text.
-- Bodies go through `townhall_daemon::extract::JsonBody<T>`: a body that is not JSON, has the wrong content type or the wrong fields is `400` in the envelope. Every phase 2 request body type refuses unknown fields (`deny_unknown_fields`); phase 1's agent bodies (`POST /api/agents`, `/send`) still ignore them.
+- Bodies go through `townhall_daemon::extract::JsonBody<T>`: a body that is not JSON, has the wrong content type or the wrong fields is `400` in the envelope, with the error `expected content-type application/json` or `invalid json body: <what serde said>` (for example ``invalid json body: missing field `path` at line 1 column 2``). Every phase 2 request body type refuses unknown fields (`deny_unknown_fields`); phase 1's agent bodies (`POST /api/agents`, `/send`) still ignore them.
 - Error codes: `400` invalid input or name, `404` not found, `409` conflict (taken name, ambiguous agent, repo in use), `413` attachment over 20 MB, `501 not implemented yet` (a route whose unit has not landed), `503` the database is held by another townhall, `500` anything else (logged).
 - Copy in `error` strings is lowercase and has no `error:` prefix; the UI adds it.
 - CORS allows only the desktop and Vite origins (`cors::ALLOWED_ORIGINS`), methods `GET POST PUT PATCH DELETE`. CORS does not cover websockets or multipart posts: `/api/events` and the upload route must call `cors::origin_allowed(&headers)` and answer `403` when it is false.
 
 ## Routes
 
-`?repo=<name>` is accepted by every `/api/agents/{name}...` route. Without it the name is looked up across every registered repo; two repos with that agent is `409` (`agent `x` exists in several repos (a, b): pass ?repo=<name>`). Repo names match ignoring case.
+`?repo=<name>` is accepted by every `/api/agents/{name}...` route. Without it the name is looked up across every registered repo (ignoring case, as macOS folders do; an agent whose name differs only by case is `404`, never acted on); two repos with that agent is `409` (`agent `x` exists in several repos (a, b): pass ?repo=<name>`). Repo names match ignoring case.
 
 | Method | Path | Body | Response | Errors | Unit |
 |--------|------|------|----------|--------|------|
 | GET | `/info` | | `{ home, repo, repoKey, userName }` (`userName` from `git config user.name`, or `null`) | | 2.1 |
 | GET | `/repos` | | `Repo[]` in the order added | 503 | 2.1 |
-| POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, not a git repo, blank or bad name, base branch not found; 409 path registered, name taken ignoring case | 2.1 |
+| POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a plain folder, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found; 409 path registered, name taken ignoring case | 2.1 |
 | DELETE | `/repos/{name}` | | the removed `Repo`. Only unregisters: folder, worktrees and branches stay | 404; 409 it has live agents (tmux sessions), or it is the daemon's startup repo | 2.1 |
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
-| POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400; 404 repo; 409 the name exists in any repo | phase 1, 2.1 |
+| POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400 bad name, ``base branch `x` not found``; 404 repo; 409 the name exists in any repo, ignoring case | phase 1, 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` | the name. When the agent is a task's, adds an `agent` `sent` entry to its conversation | 400, 404, 409 | phase 1, 2.1 |
 | GET | `/agents/{name}/output` | | the pane text | 400, 404, 409 | phase 1, 2.1 |
@@ -60,7 +60,7 @@ Every route above is registered in `crates/townhall-daemon/src/routes/mod.rs` no
 
 All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 
-- `Repo { name, path, baseBranch }`. `name`: `[A-Za-z0-9._-]`, starts with a letter or digit, at most 64, unique ignoring case, the folder name by default. `path`: canonical. `baseBranch`: origin's HEAD branch (the local branch when it exists, else `origin/x`), else the current branch, else `HEAD`.
+- `Repo { name, path, baseBranch }`. `name`: `[A-Za-z0-9._-]`, starts with a letter or digit, at most 64, unique ignoring case, the folder name by default. `path`: canonical, the top folder of a git work tree, never one of townhall's own worktrees. `baseBranch`: origin's HEAD branch (the local branch when it exists, else `origin/x`), else the current branch, else `HEAD`.
 - `AgentInfo { name, repo, kind, branch, worktree, alive, state }`: phase 1's `Agent` plus `repo` and `state`. `AgentState`: `{ kind: "working" }`, `{ kind: "waiting", question }`, `{ kind: "error", exitCode: number | null }`, `{ kind: "ended" }`.
 - `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it).
 - `Conversation { id, sessionId, sessionStarted, title, status: "thinking" | "yourTurn", tasks: string[] (task names, oldest first), linkedRepo: string | null, ended, context: { used, limit } | null, createdAt, updatedAt }`. `title` starts as `new conversation`. `sessionStarted` is false until the first turn went through (that turn uses `--session-id`, later ones `--resume`).
@@ -100,7 +100,22 @@ A missing or invalid stored value reads as its default. The store also keeps `de
 
 ## Permission mode
 
-`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt`. `ClaudeCodeAdapter` builds `claude [--model m] --permission-mode <mode> [--append-system-prompt p] [--session-id id] [prompt] [--allowedTools t ...]`, every value quoted with `shell_quote`; `bypassPermissions` becomes `--dangerously-skip-permissions` instead. `permission_mode` always comes from `Context::settings()`, never from a request body or a tool call: `POST /api/agents` ignores any such field. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
+`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
+
+```
+claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
+       [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2] [-- PROMPT]
+```
+
+- Every option and its value is one argv element (`--name=value`), and the launch command shell-quotes every element, so no value can split or start a new flag. `--allowedTools` is one comma-joined element, so its position does not matter.
+- The prompt is the only positional, after the end-of-options `--`. A prompt such as `--dangerously-skip-permissions`, `-p`, `--permission-mode=bypassPermissions` or `--` arrives as the prompt, never as a flag.
+- `claude` still runs a subcommand when the first positional equals its name, even after `--` (`claude -- mcp` runs `claude mcp`). A prompt without any whitespace therefore gets a trailing newline; no subcommand name has one.
+- `model`, `session_id` (a UUID) and each `allowed_tools` entry are refused (`InvalidInput`) when they start with `-` or hold control characters; a tool may not hold a comma. The system prompt may hold anything, since it sits inside its own `--append-system-prompt=` element. Blank values add no flag; no prompt means no `--`.
+- `permission_mode`: `default`, `acceptEdits`, `plan` and `auto` become `--permission-mode=<mode>`; `bypassPermissions` becomes `--dangerously-skip-permissions`. `claude` 2.1.318 lists `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` and no longer lists `default`, but still accepts it, so `default` is passed as is for now.
+- Checked against the installed `claude` 2.1.318 (empty environment, throwaway `HOME`, an invalid `--session-id` so it stops right after parsing): `-- --no-such-flag` reaches the session-id check while `--no-such-flag` alone is `unknown option`, and `--allowedTools=Read,Bash(git diff:*),Edit` and the `--name=value` forms parse.
+- `ClaudeCodeAdapter::args(&options)` returns the same argv unquoted, for a caller that spawns `claude` without a shell (2.2's runner).
+
+`permission_mode` always comes from `Context::settings()`, never from a request body or a tool call: `POST /api/agents` ignores any such field. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
 
 ## Websocket: `/api/events`
 
@@ -186,7 +201,7 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
 - `townhall_core::store::Store` is the only code that opens the database: one connection behind a mutex, every call on `spawn_blocking`, `journal_mode = WAL`, `foreign_keys = ON`, `busy_timeout = 5000`.
 - One owner: `townhall.lock` holds an exclusive OS lock (`File::try_lock`) for as long as the store is open. A second open, from another process or the same one, fails with `townhall.db is in use by another townhall (pid N)` after a short retry. The daemon opens it at start (`AppState::open`) and exits on that error. The desktop app opens it once at launch and hands it to every in-process daemon start (`AppState::with_store`); when another townhall holds it, the app uses that daemon.
 - Live agent state (alive, branch, worktree) is never stored: it comes from git and tmux.
-- Import: when `~/.townhall/config.json` exists at open, its `repo` is registered (when it is still a git repo) and saved as `desktop.repo`, any known `settings` keys are saved, existing rows are never overridden, and the file is renamed to `config.json.imported` (`-2`, `-3` ... when taken). Never deleted. A corrupt file is left alone with a warning. The desktop app imports the older `<app config dir>/settings.json` into `desktop.repo` once, when the store has none.
+- Import: when `~/.townhall/config.json` exists at open, its `repo` is registered (when it is still a git repo) and saved as `desktop.repo` (existing rows are never overridden), and the file is renamed to `config.json.imported` (`-2`, `-3` ... when taken). Never deleted. Nothing else is read from it: a `settings` object is ignored, so a file can never choose `skip all`. A corrupt file is left alone with a warning. The desktop app imports the older `<app config dir>/settings.json` into `desktop.repo` once, when the store has none.
 
 ### Migrations
 
@@ -255,7 +270,7 @@ Shared code around the store:
 | `townhall_core::Context` | `startup()`, `store()`, `registry()`, `bus()`, `base_url()`, `claude_bin()`, `settings()`, `ensure_startup_repo()`, `startup_repo_name()`, `repos()`, `repo(name)`, `workspace(&repo)`. Built by `AppState`; core units get it from `start(ctx)` |
 | `townhall_core::repos::RepoRegistry` | `list`, `get`, `add(&AddRepo)`, `ensure(path)`, `remove`; `resolve_path`, `inspect`, `names::*` |
 | `townhall_core::fleet` | `list(ctx)` every `AgentInfo`, `holders(ctx, name)`, `locate(ctx, name, repo)`, `unregister(ctx, name)` |
-| `townhall_core::agent` | `start`, `stop`, `list`, `send`, `output`, `LaunchOptions`, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `state::detect(ws, agent)` |
+| `townhall_core::agent` | `start`, `stop`, `list`, `send`, `output`, `LaunchOptions`, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `ClaudeCodeAdapter::args`, `state::detect(ws, agent)` |
 | `townhall_core::mcp` | names, `tools()`, `allowed_tools()`, `config_json()` |
 | `townhall_daemon` | `AppState` (`new`, `with_options`, `open`, `with_store`, `ctx()`), `start_background(&state)`, `extract::JsonBody`, `error::ApiError::NotImplemented`, `cors::origin_allowed` |
 
@@ -267,7 +282,7 @@ A unit edits only the files it owns. Shared files (`lib.rs`, `routes/mod.rs`, `m
 
 | Unit | Owns | Calls |
 |------|------|-------|
-| 2.1 contract, repos, storage (and 2.0) | `crates/townhall-core/src/{model/, store/mod.rs, store/codec.rs, store/lock.rs, store/migrate.rs, store/import.rs, store/repos.rs, store/settings.rs, store/conversations.rs, store/thread.rs, store/tasks.rs, store/attachments.rs, store/migrations/0001_init.sql, store/migrations/0002_conversations.sql, repos/, fleet.rs, context.rs, events.rs, clock.rs, ids.rs, fsutil.rs, agent/adapter.rs}`, `crates/townhall-daemon/src/{state.rs, background.rs, extract.rs, error.rs, cors.rs, main.rs, routes/mod.rs, routes/repos.rs, routes/settings.rs, routes/agents.rs, routes/stream.rs, routes/info.rs}`, `src-tauri/src/{settings.rs, daemon.rs, commands.rs}`, `web/src/api/types.ts`, `docs/daemon-api.md` | |
+| 2.1 contract, repos, storage (and 2.0) | `crates/townhall-core/src/{model/, store/mod.rs, store/codec.rs, store/lock.rs, store/migrate.rs, store/import.rs, store/repos.rs, store/settings.rs, store/conversations.rs, store/thread.rs, store/tasks.rs, store/attachments.rs, store/migrations/0001_init.sql, store/migrations/0002_conversations.sql, repos/, fleet.rs, context.rs, events.rs, clock.rs, ids.rs, fsutil.rs, agent/adapter.rs, agent/claude.rs, agent/claude_tests.rs}`, `crates/townhall-daemon/src/{state.rs, background.rs, extract.rs, error.rs, cors.rs, main.rs, routes/mod.rs, routes/repos.rs, routes/settings.rs, routes/agents.rs, routes/stream.rs, routes/info.rs}`, `src-tauri/src/{settings.rs, daemon.rs, commands.rs}`, `web/src/api/types.ts`, `docs/daemon-api.md` | |
 | 2.2 conversations | `crates/townhall-core/src/runner/`, `crates/townhall-core/src/store/unit_2_2.rs` and `store/migrations/01xx_*.sql`, `crates/townhall-daemon/src/routes/{conversations.rs, events.rs}`, its tests | `Store::{create_conversation, conversation, conversations, update_conversation, detail, append_entry, entries, attachment}`, `Context::{bus, settings, base_url, claude_bin, repos, repo}`, `mcp::{config_json, allowed_tools}`, `ids::new_session_id`, `repo_infer::infer` (2.4), `cors::origin_allowed`, `JsonBody` |
 | 2.3 tasks | `crates/townhall-core/src/scheduler/`, `crates/townhall-core/src/mcp/mod.rs` (the JSON-RPC handling it adds), `store/unit_2_3.rs` and `store/migrations/02xx_*.sql`, `crates/townhall-daemon/src/routes/{tasks.rs, mcp.rs}` | `Store::{create_task, tasks, all_tasks, find_task, update_task, append_entry, conversation, update_conversation, attachment}`, `Context::{repo, settings, workspace, claude_bin}`, `agent::{start, list}`, `LaunchOptions` with `permission_mode` from settings, `fleet::holders`, `model::CreateTaskInput` |
 | 2.4 repo inference | `crates/townhall-core/src/repo_infer/` (`Candidate`, `Rule`, `Inference`, `infer`), plus its `pub mod repo_infer;` line | `Context::repos()` for candidates; 2.2 maps `Inference::Found` to `EntryBody::Repo` (`Rule` to `RepoRule`) and `Ask` to `EntryBody::RepoAsk` |

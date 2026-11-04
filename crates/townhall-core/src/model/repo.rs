@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// A registered repository: `~/.townhall/config.json` `repos[]`, `GET /api/repos`.
+/// A registered repository: one row of the `repos` table, `GET /api/repos`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Repo {

@@ -97,13 +97,41 @@ async fn config_json_is_imported_once_and_renamed() {
     );
     assert_eq!(repos[0].path, repo.canonicalize().unwrap());
     assert_eq!(store.desktop_repo().await.unwrap(), Some(repo.clone()));
-    assert_eq!(store.settings().await.unwrap().agents_at_once, 12);
+    assert_eq!(
+        store.settings().await.unwrap(),
+        Settings::default(),
+        "only the repo is imported, never settings"
+    );
     let h = home(&dir);
     assert!(!h.config_file().exists());
     let kept = fs::read_to_string(h.root().join("config.json.imported")).unwrap();
     assert!(kept.contains("theme"), "the old file is kept as it was");
     drop(store);
     assert_eq!(open(&dir).repos().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_config_json_cannot_choose_skip_all() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        json!({"repo": "/x", "settings": {"permissionMode": "bypassPermissions"}}),
+    );
+    let store = open(&dir);
+    assert_eq!(
+        store.settings().await.unwrap().permission_mode,
+        PermissionMode::AcceptEdits
+    );
+    drop(store);
+    write_config(
+        &dir,
+        json!({"settings": {"permissionMode": "bypassPermissions"}}),
+    );
+    let again = open(&dir);
+    assert_eq!(
+        again.settings().await.unwrap().permission_mode,
+        PermissionMode::AcceptEdits
+    );
 }
 
 #[tokio::test]

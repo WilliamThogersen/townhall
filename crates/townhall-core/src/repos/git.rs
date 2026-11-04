@@ -1,24 +1,49 @@
 //! The git questions the registry asks about a folder. Blocking: call from
 //! `spawn_blocking` (as `RepoRegistry` does) or from code that is not async.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::cmd::run_blocking;
 use crate::{Error, Result};
 
 const ORIGIN_PREFIX: &str = "origin/";
 const DETACHED: &str = "HEAD";
+const TOWNHALL_BRANCH: &str = crate::model::TASK_BRANCH_PREFIX;
 
-/// Ok when `path` is inside a git work tree. A missing `git` is its own error.
-pub fn check_work_tree(path: &Path) -> Result<()> {
-    match run_blocking("git", &["rev-parse", "--is-inside-work-tree"], Some(path)) {
-        Ok(out) if out == "true" => Ok(()),
-        Ok(_) | Err(Error::Command { .. }) => Err(Error::InvalidInput(format!(
-            "{} is not a git repository",
-            path.display()
-        ))),
-        Err(e) => Err(e),
+fn not_top(path: &Path) -> Error {
+    Error::InvalidInput(format!(
+        "{} is not the top folder of a git repo",
+        path.display()
+    ))
+}
+
+fn git_path(path: &Path, flag: &str) -> Option<PathBuf> {
+    let out = run_blocking("git", &["rev-parse", flag], Some(path)).ok()?;
+    path.join(out).canonicalize().ok()
+}
+
+/// Ok when the canonical `path` is the top folder of a git work tree, is not inside
+/// townhall's own `worktrees` folder, and is not a linked worktree on a `townhall/*` branch.
+/// A missing `git` is its own error.
+pub fn check_top_folder(path: &Path, worktrees: &Path) -> Result<()> {
+    let top = match run_blocking("git", &["rev-parse", "--show-toplevel"], Some(path)) {
+        Ok(top) => top,
+        Err(Error::Command { .. }) => return Err(not_top(path)),
+        Err(e) => return Err(e),
+    };
+    let top = Path::new(&top).canonicalize().map_err(|_| not_top(path))?;
+    let owned = worktrees
+        .canonicalize()
+        .unwrap_or_else(|_| worktrees.to_path_buf());
+    if top != path || path.starts_with(&owned) {
+        return Err(not_top(path));
     }
+    let linked = git_path(path, "--git-dir") != git_path(path, "--git-common-dir");
+    let branch = symbolic_ref(path, "HEAD").unwrap_or_default();
+    if linked && branch.starts_with(TOWNHALL_BRANCH) {
+        return Err(not_top(path));
+    }
+    Ok(())
 }
 
 fn symbolic_ref(path: &Path, name: &str) -> Option<String> {

@@ -6,11 +6,12 @@ pub mod names;
 
 use std::path::{Path, PathBuf};
 
-pub use git::{check_work_tree, detect_base_branch, verify_branch};
+pub use git::{check_top_folder, detect_base_branch, verify_branch};
 
+use crate::home::WORKTREES_DIR;
 use crate::model::{AddRepo, Repo};
 use crate::store::Store;
-use crate::{Error, Result};
+use crate::{Error, Home, Result};
 
 /// A typed path: trimmed, `~` expanded, absolute, existing, canonical, a folder.
 pub fn resolve_path(input: &str) -> Result<PathBuf> {
@@ -47,10 +48,10 @@ fn expand_tilde(input: &str) -> PathBuf {
     }
 }
 
-/// The entry for a canonical repo folder: checks git, then checks or detects the base
-/// branch. Blocking (runs git).
-pub fn inspect(path: &Path, name: String, base_branch: Option<&str>) -> Result<Repo> {
-    check_work_tree(path)?;
+/// The entry for a canonical repo folder: checks it is the top folder of a git repo and
+/// not one of townhall's worktrees, then checks or detects the base branch. Blocking (git).
+pub fn inspect(home: &Home, path: &Path, name: String, base_branch: Option<&str>) -> Result<Repo> {
+    check_top_folder(path, &home.root().join(WORKTREES_DIR))?;
     let base_branch = match base_branch.map(str::trim).filter(|b| !b.is_empty()) {
         Some(given) => {
             verify_branch(path, given)?;
@@ -113,8 +114,8 @@ impl RepoRegistry {
     pub async fn add(&self, req: &AddRepo) -> Result<Repo> {
         let path = resolve_path(&req.path)?;
         let name = chosen_name(req.name.as_deref(), &path)?;
-        let base = req.base_branch.clone();
-        let repo = blocking(move || inspect(&path, name, base.as_deref())).await?;
+        let (base, home) = (req.base_branch.clone(), self.store.home().clone());
+        let repo = blocking(move || inspect(&home, &path, name, base.as_deref())).await?;
         self.store.add_repo(repo).await
     }
 
@@ -126,7 +127,8 @@ impl RepoRegistry {
         if let Some(found) = self.list().await?.into_iter().find(|r| r.path == path) {
             return Ok(found);
         }
-        let repo = blocking(move || inspect(&path, names::from_folder(&path), None)).await?;
+        let home = self.store.home().clone();
+        let repo = blocking(move || inspect(&home, &path, names::from_folder(&path), None)).await?;
         self.store.ensure_repo(repo).await
     }
 

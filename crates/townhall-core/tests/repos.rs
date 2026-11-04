@@ -5,7 +5,7 @@ use townhall_core::events::EventBus;
 use townhall_core::model::AddRepo;
 use townhall_core::repos::RepoRegistry;
 use townhall_core::store::Store;
-use townhall_core::{Error, Home};
+use townhall_core::{worktree, Error, Home, Workspace};
 
 mod common;
 use common::{clone_with_origin_head, git, init_named};
@@ -181,4 +181,68 @@ async fn remove_only_unregisters() {
         env.registry.get("shop").await,
         Err(Error::Missing { .. })
     ));
+}
+
+const NOT_TOP: &str = "is not the top folder of a git repo";
+
+async fn refused(env: &Env, path: &Path) -> String {
+    match env.registry.add(&add(path)).await {
+        Err(Error::InvalidInput(msg)) => msg,
+        other => panic!("{} was not refused: {other:?}", path.display()),
+    }
+}
+
+#[tokio::test]
+async fn only_the_top_folder_of_a_repo_is_a_repo() {
+    let env = env();
+    let repo = init_named(env.dir.path(), "shop", "main").await;
+    let sub = repo.join("src/app");
+    std::fs::create_dir_all(&sub).unwrap();
+    assert!(refused(&env, &sub).await.contains(NOT_TOP));
+    assert!(refused(&env, &repo.join("src")).await.contains(NOT_TOP));
+    let plain = env.dir.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    assert!(refused(&env, &plain).await.contains(NOT_TOP));
+    assert!(env.registry.ensure(&sub).await.is_err());
+    assert_eq!(env.registry.add(&add(&repo)).await.unwrap().name, "shop");
+}
+
+#[tokio::test]
+async fn townhall_worktrees_are_never_repos() {
+    let env = env();
+    let repo = init_named(env.dir.path(), "shop", "main").await;
+    let ws = Workspace::new(Home::at(env.dir.path().join(".townhall")), &repo).unwrap();
+    let agent = worktree::create(&ws, "fix-login", "main").await.unwrap();
+    assert!(refused(&env, &agent.path).await.contains(NOT_TOP));
+    assert!(env.registry.ensure(&agent.path).await.is_err());
+
+    let outside = env.dir.path().join("elsewhere");
+    let target = outside.to_string_lossy().into_owned();
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "townhall/by-hand",
+            &target,
+            "main",
+        ],
+    )
+    .await;
+    assert!(refused(&env, &outside).await.contains(NOT_TOP));
+
+    let feature = env.dir.path().join("feature");
+    let target = feature.to_string_lossy().into_owned();
+    git(
+        &repo,
+        &["worktree", "add", "-q", "-b", "feature", &target, "main"],
+    )
+    .await;
+    let ok = env.registry.add(&add(&feature)).await.unwrap();
+    assert_eq!(
+        ok.base_branch, "feature",
+        "a worktree of your own is a repo"
+    );
 }

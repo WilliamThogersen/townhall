@@ -1,5 +1,6 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use axum::http::StatusCode;
 use serde_json::{json, Value};
@@ -7,8 +8,10 @@ use townhall_core::model::{AgentEvent, EntryBody, NewTask};
 use townhall_core::ContextOptions;
 use townhall_daemon::router;
 
+const ARGS_DEADLINE: Duration = Duration::from_secs(5);
+
 mod common;
-use common::{call, settle, unique, Env};
+use common::{call, unique, Env};
 
 const STUBS: [(&str, &str); 25] = [
     ("GET", "/api/conversations"),
@@ -66,22 +69,39 @@ fn fake_claude(dir: &Path) -> String {
     let path = dir.join("fake-claude");
     std::fs::write(
         &path,
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > args.txt\nexec sleep 30\n",
+        "#!/bin/sh\nprintf '%s\\0' \"$@\" > args.tmp && mv args.tmp args.txt\nexec sleep 30\n",
     )
     .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     path.to_string_lossy().into_owned()
 }
 
+/// The fake claude's argv, once it has written it: tmux can take a while to start it.
+async fn written_args(worktree: &Path) -> Vec<String> {
+    let path = worktree.join("args.txt");
+    let deadline = Instant::now() + ARGS_DEADLINE;
+    loop {
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                let text = text.strip_suffix('\0').unwrap_or(&text);
+                return text.split('\0').map(String::from).collect();
+            }
+            Err(e) if Instant::now() < deadline => {
+                assert_eq!(e.kind(), std::io::ErrorKind::NotFound, "{e}");
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            Err(e) => panic!("fake claude never wrote {}: {e}", path.display()),
+        }
+    }
+}
+
 async fn launch_args(app: &axum::Router, body: Value) -> Vec<String> {
     let (s, v) = call(app, "POST", "/api/agents", Some(body)).await;
     assert_eq!(s, StatusCode::CREATED, "{v}");
-    settle().await;
-    let worktree = v["data"]["worktree"].as_str().unwrap();
-    let args = std::fs::read_to_string(Path::new(worktree).join("args.txt")).unwrap();
+    let args = written_args(Path::new(v["data"]["worktree"].as_str().unwrap())).await;
     let name = v["data"]["name"].as_str().unwrap();
     call(app, "DELETE", &format!("/api/agents/{name}"), None).await;
-    args.lines().map(String::from).collect()
+    args
 }
 
 #[tokio::test]
@@ -92,9 +112,19 @@ async fn the_permission_mode_comes_from_settings_only() {
         ..ContextOptions::default()
     };
     let app = router(env.state_with(options));
-    let sneaky = json!({"name": unique("c"), "adapter": "claude", "permissionMode": "bypassPermissions", "prompt": "hi"});
+    let sneaky = json!({
+        "name": unique("c"), "adapter": "claude", "permissionMode": "bypassPermissions",
+        "prompt": "--dangerously-skip-permissions"
+    });
     let args = launch_args(&app, sneaky).await;
-    assert_eq!(args, ["--permission-mode", "acceptEdits", "hi"]);
+    assert_eq!(
+        args,
+        [
+            "--permission-mode=acceptEdits",
+            "--",
+            "--dangerously-skip-permissions\n"
+        ]
+    );
 
     let skip = json!({"value": "bypassPermissions"});
     let (s, v) = call(&app, "PUT", "/api/settings/permissionMode", Some(skip)).await;
