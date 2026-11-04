@@ -6,7 +6,6 @@ export const TASK_ROWS_HINT: KeyHint = { keys: "j k", label: "tasks" };
 export const OPEN_TASK_HINT: KeyHint = { keys: "⏎", label: "open terminal" };
 export const SESSION_KEY_HINTS: readonly KeyHint[] = [TASK_ROWS_HINT, OPEN_TASK_HINT];
 
-const NO_HINTS: readonly KeyHint[] = [];
 const ROW_SELECTOR = "button[data-task]";
 const LETTER_STEPS: Readonly<Record<string, number>> = { j: 1, k: -1 };
 const ARROW_STEPS: Readonly<Record<string, number>> = { ArrowDown: 1, ArrowUp: -1 };
@@ -35,9 +34,12 @@ export function onTaskListKeyDown(e: ReactKeyboardEvent<HTMLElement>): void {
   stepTaskFocus(e.currentTarget, step);
 }
 
-export function useTaskKeys(listRef: RefObject<HTMLElement | null>, hasTasks: boolean): void {
-  useKeyHints(hasTasks ? SESSION_KEY_HINTS : NO_HINTS);
+export function TaskKeyHints() {
+  useKeyHints(SESSION_KEY_HINTS);
+  return null;
+}
 
+export function useTaskKeys(listRef: RefObject<HTMLElement | null>): void {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const step = LETTER_STEPS[e.key];
