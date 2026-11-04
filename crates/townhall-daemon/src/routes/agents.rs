@@ -1,38 +1,25 @@
-use axum::extract::{Path, State};
+//! `/api/agents`: agents across every registered repo. A name is resolved across repos;
+//! `?repo=<name>` picks one when two repos have it.
+
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
-use axum::Json;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use townhall_core::agent::{
-    self, Agent, AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter,
+    self, state, AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter,
 };
+use townhall_core::cmd::validate_name;
+use townhall_core::model::{AgentEvent, AgentInfo, EntryBody};
+use townhall_core::repos::verify_branch;
+use townhall_core::{fleet, Context, Error, Workspace};
 
 use crate::envelope::{created, ok};
 use crate::error::ApiError;
+use crate::extract::JsonBody;
 use crate::state::AppState;
 
 const DEFAULT_BASE: &str = "HEAD";
 
-#[derive(Debug, Serialize)]
-pub struct AgentView {
-    name: String,
-    kind: Option<String>,
-    branch: String,
-    worktree: String,
-    alive: bool,
-}
-
-impl From<Agent> for AgentView {
-    fn from(a: Agent) -> Self {
-        Self {
-            name: a.name,
-            kind: a.kind,
-            branch: a.branch,
-            worktree: a.worktree.to_string_lossy().into_owned(),
-            alive: a.alive,
-        }
-    }
-}
-
+/// `POST /api/agents` body. There is no permission field: the mode always comes from settings.
 #[derive(Debug, Deserialize)]
 pub struct CreateAgent {
     name: String,
@@ -40,6 +27,8 @@ pub struct CreateAgent {
     adapter: String,
     prompt: Option<String>,
     command: Option<String>,
+    /// Registered repo name; the startup repo when missing.
+    repo: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,9 +36,15 @@ pub struct SendText {
     text: String,
 }
 
-fn adapter_for(kind: &str) -> Result<Box<dyn AgentAdapter>, ApiError> {
+/// `?repo=<name>` on every `/api/agents/{name}...` route.
+#[derive(Debug, Default, Deserialize)]
+pub struct RepoQuery {
+    pub repo: Option<String>,
+}
+
+fn adapter_for(kind: &str, ctx: &Context) -> Result<Box<dyn AgentAdapter>, ApiError> {
     match kind {
-        "claude" => Ok(Box::new(ClaudeCodeAdapter)),
+        "claude" => Ok(Box::new(ClaudeCodeAdapter::new(ctx.claude_bin()))),
         "shell" => Ok(Box::new(ShellAdapter)),
         other => Err(ApiError::BadRequest(format!(
             "unknown adapter `{other}`: expected `claude` or `shell`"
@@ -58,60 +53,124 @@ fn adapter_for(kind: &str) -> Result<Box<dyn AgentAdapter>, ApiError> {
 }
 
 pub async fn list(State(state): State<AppState>) -> Result<Response, ApiError> {
-    let agents: Vec<AgentView> = agent::list(state.workspace())
-        .await?
-        .into_iter()
-        .map(AgentView::from)
-        .collect();
-    Ok(ok(agents))
+    Ok(ok(fleet::list(state.ctx()).await?))
+}
+
+/// Where a new agent goes: the named repo, else the startup repo.
+async fn target(ctx: &Context, name: &str, repo: Option<&str>) -> Result<fleet::Located, ApiError> {
+    match repo.map(str::trim).filter(|r| !r.is_empty()) {
+        Some(wanted) => {
+            let found = ctx.repo(wanted).await?;
+            Ok(fleet::Located {
+                workspace: ctx.workspace(&found)?,
+                repo: found.name,
+                name: name.to_string(),
+            })
+        }
+        None => Ok(fleet::Located {
+            repo: ctx.startup_repo_name().await,
+            name: name.to_string(),
+            workspace: ctx.startup().clone(),
+        }),
+    }
 }
 
 pub async fn create(
     State(state): State<AppState>,
-    Json(req): Json<CreateAgent>,
+    JsonBody(req): JsonBody<CreateAgent>,
 ) -> Result<Response, ApiError> {
-    let adapter = adapter_for(&req.adapter)?;
+    let ctx = state.ctx();
+    let adapter = adapter_for(&req.adapter, ctx)?;
     let base = req.base.as_deref().map(str::trim).filter(|b| !b.is_empty());
     if base.is_some_and(|b| b.starts_with('-')) {
         return Err(ApiError::BadRequest(
             "`base` must not start with `-`".into(),
         ));
     }
+    validate_name(&req.name)?;
+    if let Some(taken) = fleet::holders(ctx, &req.name).await?.first() {
+        return Err(Error::Conflict(format!(
+            "an agent named `{}` already exists in repo `{}`",
+            taken.name, taken.repo
+        ))
+        .into());
+    }
+    let at = target(ctx, &req.name, req.repo.as_deref()).await?;
     let options = LaunchOptions {
         prompt: req.prompt,
         command: req.command,
+        permission_mode: ctx.settings().await?.permission_mode,
+        ..LaunchOptions::default()
     };
-    let started = agent::start(
-        state.workspace(),
-        &req.name,
-        base.unwrap_or(DEFAULT_BASE),
-        adapter.as_ref(),
-        &options,
-    )
-    .await?;
-    Ok(created(AgentView::from(started)))
+    let base = base.unwrap_or(DEFAULT_BASE);
+    check_base(&at.workspace, base).await?;
+    let started = agent::start(&at.workspace, &req.name, base, adapter.as_ref(), &options).await?;
+    let now = state::detect(&at.workspace, &started).await;
+    Ok(created(AgentInfo::new(started, &at.repo, now)))
+}
+
+/// The base must resolve to a commit before git is asked to branch from it.
+async fn check_base(ws: &Workspace, base: &str) -> Result<(), ApiError> {
+    let (repo, base) = (ws.repo().to_path_buf(), base.to_string());
+    tokio::task::spawn_blocking(move || verify_branch(&repo, &base))
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("cannot check the base branch: {e}")))??;
+    Ok(())
 }
 
 pub async fn remove(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    Query(q): Query<RepoQuery>,
 ) -> Result<Response, ApiError> {
-    agent::stop(state.workspace(), &name).await?;
+    let at = fleet::locate(state.ctx(), &name, q.repo.as_deref()).await?;
+    agent::stop(&at.workspace, &name).await?;
     Ok(ok(name))
 }
 
 pub async fn send(
     State(state): State<AppState>,
     Path(name): Path<String>,
-    Json(req): Json<SendText>,
+    Query(q): Query<RepoQuery>,
+    JsonBody(req): JsonBody<SendText>,
 ) -> Result<Response, ApiError> {
-    agent::send(state.workspace(), &name, &req.text).await?;
+    let ctx = state.ctx();
+    let at = fleet::locate(ctx, &name, q.repo.as_deref()).await?;
+    agent::send(&at.workspace, &name, &req.text).await?;
+    note_sent(ctx, &name, &req.text).await;
     Ok(ok(name))
+}
+
+/// A task's agent got text: add `→ sent to <agent>` to its conversation. The text was
+/// already sent, so a failure here is logged rather than failing the request.
+async fn note_sent(ctx: &Context, name: &str, text: &str) {
+    let noted = async {
+        let store = ctx.store()?;
+        match store.find_task(name).await? {
+            Some(task) => {
+                let body = EntryBody::Agent {
+                    agent: task.name,
+                    event: AgentEvent::Sent,
+                    text: text.to_string(),
+                };
+                store
+                    .append_entry(&task.conversation_id, body)
+                    .await
+                    .map(|_| ())
+            }
+            None => Ok(()),
+        }
+    };
+    if let Err(e) = noted.await {
+        eprintln!("warn: sent to `{name}` but not noted in its conversation: {e}");
+    }
 }
 
 pub async fn output(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    Query(q): Query<RepoQuery>,
 ) -> Result<Response, ApiError> {
-    Ok(ok(agent::output(state.workspace(), &name).await?))
+    let at = fleet::locate(state.ctx(), &name, q.repo.as_deref()).await?;
+    Ok(ok(agent::output(&at.workspace, &name).await?))
 }

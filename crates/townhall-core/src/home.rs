@@ -6,7 +6,8 @@ use crate::{Error, Result};
 
 const HOME_ENV: &str = "TOWNHALL_HOME";
 const HOME_DIR: &str = ".townhall";
-const WORKTREES_DIR: &str = "worktrees";
+/// Townhall's own agent worktrees live under `<home>/worktrees/`.
+pub const WORKTREES_DIR: &str = "worktrees";
 const CONFIG_FILE: &str = "config.json";
 const MAX_BASE_LEN: usize = 32;
 
@@ -37,6 +38,7 @@ impl Home {
         &self.root
     }
 
+    /// Phase 1's `config.json`: only read, once, by the store's import, which then renames it.
     pub fn config_file(&self) -> PathBuf {
         self.root.join(CONFIG_FILE)
     }

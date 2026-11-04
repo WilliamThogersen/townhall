@@ -2,10 +2,14 @@
 //! Nothing is stored; state is rediscovered from git and tmux.
 
 mod adapter;
+mod claude;
+pub mod state;
+pub mod watch;
 
 use std::path::PathBuf;
 
-pub use adapter::{shell_quote, AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter};
+pub use adapter::{shell_quote, AgentAdapter, LaunchOptions, ShellAdapter};
+pub use claude::{ClaudeCodeAdapter, DEFAULT_CLAUDE_BIN};
 
 use crate::cmd::{run, validate_name};
 use crate::{tmux, worktree, Error, Result, Workspace};
