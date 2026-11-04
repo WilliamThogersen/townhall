@@ -34,21 +34,14 @@ use transcript::Turn;
 /// How long a turn must have ended, without a question, before the agent counts as ended.
 pub const IDLE_SETTLE_MS: i64 = 10_000;
 
-/// Overrides where Claude's transcripts are read from (tests point it at a temp folder).
-pub const PROJECTS_ENV: &str = "TOWNHALL_CLAUDE_PROJECTS";
+/// Overrides where Claude's transcripts are read from (tests point it at a temp folder);
+/// the same variable 2.7's steps read.
+pub const PROJECTS_ENV: &str = steps::CLAUDE_PROJECTS_ENV;
 
-fn env_dir(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name)
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-}
-
-/// Claude's projects folder: `$TOWNHALL_CLAUDE_PROJECTS`, else `$CLAUDE_CONFIG_DIR/projects`
-/// (where Claude itself writes then), else `~/.claude/projects`.
+/// Claude's projects folder, found as steps find it (`$TOWNHALL_CLAUDE_PROJECTS`, else
+/// `~/.claude/projects`). `None` when neither is set: then only the screen is read.
 pub fn claude_projects() -> Option<PathBuf> {
-    env_dir(PROJECTS_ENV)
-        .or_else(|| env_dir("CLAUDE_CONFIG_DIR").map(|d| d.join("projects")))
-        .or_else(|| env_dir("HOME").map(|h| h.join(".claude").join("projects")))
+    steps::claude_projects_dir().ok()
 }
 
 /// The agent's state, reading transcripts from [`claude_projects`].
@@ -276,8 +269,8 @@ mod tests {
     }
 
     #[test]
-    fn projects_folder_is_found() {
-        assert!(claude_projects().is_some());
-        assert_eq!(env_dir("TOWNHALL_TEST_SURELY_UNSET_VAR"), None);
+    fn projects_folder_is_the_one_steps_read() {
+        assert_eq!(PROJECTS_ENV, "TOWNHALL_CLAUDE_PROJECTS");
+        assert_eq!(claude_projects(), steps::claude_projects_dir().ok());
     }
 }
