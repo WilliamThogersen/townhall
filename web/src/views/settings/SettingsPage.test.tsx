@@ -3,11 +3,21 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../../settings/settings";
 import { getSettings, updateSettings } from "../../settings/settingsStore";
+import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
 import { saveThemeChoice } from "../../theme/theme";
 import { SettingsPage } from "./SettingsPage";
 
+function HintsProbe() {
+  const hints = useCurrentKeyHints();
+  return <p data-testid="hints">{hints.map((hint) => `${hint.keys}=${hint.label}`).join(" | ")}</p>;
+}
+
 const group = (name: string) => within(screen.getByRole("radiogroup", { name }));
-const permissionHelp = () => screen.getByText(/^agents|^edits go through/, { selector: ".th-setting-help" });
+function permissionHelp(): HTMLElement {
+  const help = screen.getByText("permissions", { selector: ".th-setting-label" }).nextElementSibling;
+  if (!(help instanceof HTMLElement)) throw new Error("permissions has no help line");
+  return help;
+}
 
 beforeEach(() => {
   updateSettings(DEFAULT_SETTINGS);
@@ -24,6 +34,16 @@ describe("SettingsPage", () => {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: /save/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the keys that move through the settings", () => {
+    render(
+      <KeyHintsProvider>
+        <SettingsPage />
+        <HintsProbe />
+      </KeyHintsProvider>,
+    );
+    expect(screen.getByTestId("hints")).toHaveTextContent("tab=next setting | ← →=change choice");
   });
 
   it("starts from the stored settings", () => {

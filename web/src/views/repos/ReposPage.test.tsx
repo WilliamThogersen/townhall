@@ -5,7 +5,13 @@ import * as client from "../../api/client";
 import { ApiError } from "../../api/errors";
 import type { Agent } from "../../api/types";
 import type { RepoState } from "../../desktop/useRepo";
+import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
 import { BROWSER_NOTE, EXTERNAL_NOTE, ReposPage } from "./ReposPage";
+
+function HintsProbe() {
+  const hints = useCurrentKeyHints();
+  return <p data-testid="hints">{hints.map((hint) => `${hint.keys}=${hint.label}`).join(" | ")}</p>;
+}
 
 const mocks = vi.hoisted(() => ({
   desktop: false,
@@ -63,6 +69,18 @@ describe("ReposPage", () => {
     expect(screen.getByText("no conversations")).toBeInTheDocument();
     expect(screen.getByText("no agents")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "new conversation" })).toHaveAttribute("href", "/");
+  });
+
+  it("shows only the keys that work here", async () => {
+    vi.spyOn(client, "getInfo").mockResolvedValue(info);
+    render(
+      <KeyHintsProvider>
+        <ReposPage />
+        <HintsProbe />
+      </KeyHintsProvider>,
+    );
+    await screen.findByText("shop");
+    expect(screen.getByTestId("hints")).toHaveTextContent("n=new conversation | /=search");
   });
 
   it("counts the agents with their glyphs", async () => {

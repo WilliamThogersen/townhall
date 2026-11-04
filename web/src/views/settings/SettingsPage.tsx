@@ -1,7 +1,14 @@
+import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 import { AgentsGroup, AppearanceGroup, ConversationsGroup } from "./SettingGroups";
 import "./cap.css";
 
+export const SETTINGS_HINTS: readonly KeyHint[] = [
+  { keys: "tab", label: "next setting" },
+  { keys: "← →", label: "change choice" },
+];
+
 export function SettingsPage() {
+  useKeyHints(SETTINGS_HINTS);
   return (
     <div className="th-page">
       <header className="th-page-head">

@@ -1,6 +1,8 @@
 import { isDesktop } from "../../api/base";
 import { useRepo } from "../../desktop/useRepo";
 import { useInfo } from "../../repos/useInfo";
+import { NEW_CONVERSATION_HINT, SEARCH_HINT } from "../../shell/globalKeys";
+import { useKeyHints } from "../../shell/keyHints";
 import { Button } from "../../ui/Button";
 import { ReposView } from "./ReposView";
 
@@ -40,6 +42,9 @@ function BrowserRepos() {
   return <ReposView repo={repo} action={<HeadNote text={BROWSER_NOTE} />} />;
 }
 
+const REPOS_HINTS = [NEW_CONVERSATION_HINT, SEARCH_HINT];
+
 export function ReposPage() {
+  useKeyHints(REPOS_HINTS);
   return isDesktop() ? <DesktopRepos /> : <BrowserRepos />;
 }
