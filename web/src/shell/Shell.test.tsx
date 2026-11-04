@@ -55,6 +55,14 @@ describe("Shell", () => {
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
   });
 
+  it("makes the sidebar header a window drag region that keeps the logo link", async () => {
+    const { container } = renderShell();
+    const top = container.querySelector(".th-sidebar-top");
+    expect(top).toHaveAttribute("data-tauri-drag-region", "deep");
+    expect(top).toContainElement(link(/townhall/));
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
   it("links every nav item to its route", async () => {
     renderShell();
     expect(link(/townhall/)).toHaveAttribute("href", "/townhall");

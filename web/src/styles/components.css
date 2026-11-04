@@ -150,19 +150,33 @@ textarea {
 
 .th-sidebar-top {
   display: flex;
+  flex: none;
   align-items: center;
   height: var(--th-bar);
   padding: 0 var(--th-space-4);
+}
+
+/* The macOS desktop window draws its traffic lights over this bar. */
+:root[data-titlebar="overlay"] .th-sidebar-top {
+  padding-left: var(--th-traffic-lights);
+}
+
+.th-sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
   color: inherit;
   text-decoration: none;
 }
 
-.th-sidebar-top .th-logo {
+.th-sidebar-brand .th-logo {
   margin-right: var(--th-space-2);
   color: var(--th-fg);
+  /* Box centering puts the logo 1px under the wordmark's cap height; lift it level. */
+  translate: 0 -1px;
 }
 
-.th-sidebar-top:hover .th-wordmark {
+.th-sidebar-brand:hover .th-wordmark {
   text-decoration: underline;
   text-decoration-color: var(--th-line-control);
   text-underline-offset: 4px;

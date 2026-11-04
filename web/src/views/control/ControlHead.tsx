@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import { Button } from "../../ui/Button";
+import { DRAG_REGION } from "../../ui/dragRegion";
 
 export const NEW_AGENT_FORM_ID = "th-new-agent-form";
 
@@ -16,7 +17,7 @@ function countLabel(count: number): string {
 
 export function ControlHead({ count, formOpen, onToggleForm, toggleRef }: ControlHeadProps) {
   return (
-    <header className="th-page-head">
+    <header className="th-page-head" {...DRAG_REGION}>
       <h1>control center</h1>
       {count !== null && <span className="th-control-cap">{countLabel(count)}</span>}
       <div className="th-page-head-actions">
