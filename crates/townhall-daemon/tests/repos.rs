@@ -141,3 +141,18 @@ async fn bad_bodies_are_400_in_the_envelope() {
     let (s, v) = send(&app, text).await;
     assert_eq!((s, &v["success"]), (StatusCode::BAD_REQUEST, &json!(false)));
 }
+
+#[tokio::test]
+async fn a_subfolder_is_not_a_repo() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let sub = env.startup.join("src");
+    std::fs::create_dir_all(&sub).unwrap();
+    let (s, v) = call(&app, "POST", "/api/repos", Some(json!({"path": sub}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let msg = v["error"].as_str().unwrap();
+    assert!(
+        msg.ends_with("is not the top folder of a git repo"),
+        "{msg}"
+    );
+}

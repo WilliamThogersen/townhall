@@ -6,7 +6,8 @@ use crate::{Error, Result};
 
 const HOME_ENV: &str = "TOWNHALL_HOME";
 const HOME_DIR: &str = ".townhall";
-const WORKTREES_DIR: &str = "worktrees";
+/// Townhall's own agent worktrees live under `<home>/worktrees/`.
+pub const WORKTREES_DIR: &str = "worktrees";
 const CONFIG_FILE: &str = "config.json";
 const MAX_BASE_LEN: usize = 32;
 

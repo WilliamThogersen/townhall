@@ -17,11 +17,11 @@ use crate::{Error, Home, Result};
 
 pub const IMPORTED_SUFFIX: &str = ".imported";
 
-fn importable(path: &Path) -> Result<Repo> {
+fn importable(home: &Home, path: &Path) -> Result<Repo> {
     let canonical = path
         .canonicalize()
         .map_err(|e| Error::io(format!("repo path {}", path.display()), e))?;
-    inspect(&canonical, names::from_folder(&canonical), None)
+    inspect(home, &canonical, names::from_folder(&canonical), None)
 }
 
 /// `config.json.imported`, or `config.json.imported-2` ... when that name is taken.
@@ -52,7 +52,7 @@ pub(super) fn config_json(conn: &mut Connection, home: &Home) -> Result<bool> {
         .get("repo")
         .and_then(Value::as_str)
         .filter(|p| !p.is_empty());
-    let repo = saved_repo.and_then(|p| match importable(Path::new(p)) {
+    let repo = saved_repo.and_then(|p| match importable(home, Path::new(p)) {
         Ok(repo) => Some(repo),
         Err(e) => {
             eprintln!("warn: saved repo {p} not registered: {e}");
