@@ -204,7 +204,7 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
   ```
 
   (`--dangerously-skip-permissions` instead of `--permission-mode` for `skip all`). The prompt's own text only ever reaches claude through the brief.
-- sets `error` with an `agent` `failed` entry (`could not start: <reason>`, at most 300 characters) when the start fails, or when another agent has the task's name (in another repo, or in another case).
+- sets `error` with an `agent` `failed` entry (`could not start: <reason>`, at most 300 characters; a failed command reads ``<its stderr> (`<command>` exited with <code>)``, so the cut drops the long command line, never the reason) when the start fails, or when another agent has the task's name (in another repo, or in another case).
 - adopts a queued task whose own agent (its exact name, in its repo) exists already (a start cut short by a restart) as `working`, never starting a second agent; a `working` task is never touched.
 - marks an `ended` task `merged`, with an `agent` `passed` entry (`merged into <base>`), when `townhall/<name>` is reachable from its base branch (`git for-each-ref --merged=<base>`) and its tip is not the commit it started from (a branch with no commits of its own is not merged). Read only: it never merges or deletes.
 

@@ -11,6 +11,8 @@ use crate::{clock, ids, Error, Result, Workspace};
 use super::{brief, plan, transition, Pass, TaskLaunch};
 
 /// An `agent` `failed` entry's text stays short: a start error can quote a whole command.
+/// `Error::Command` puts the reason first and the command last, so the cut loses the
+/// command, never the reason.
 const MAX_FAILED_TEXT: usize = 300;
 
 /// Every agent of every registered repo, by repo name. A repo whose agents cannot be listed

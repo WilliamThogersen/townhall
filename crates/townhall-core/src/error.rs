@@ -8,7 +8,9 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
-    #[error("`{command}` exited with {code:?}: {stderr}")]
+    /// Shown as its stderr first and the command last, so a message cut short (a task's
+    /// `could not start`) keeps the reason and loses the long command line.
+    #[error("{}", command_failed(.command, *.code, .stderr))]
     Command {
         command: String,
         code: Option<i32>,
@@ -46,6 +48,19 @@ pub enum Error {
     RollbackFailed { cause: String, cleanup: String },
 }
 
+/// `<stderr> (`<command>` exited with <code>)`, or only the parenthesised part when the
+/// command printed no error.
+fn command_failed(command: &str, code: Option<i32>, stderr: &str) -> String {
+    let ran = match code {
+        Some(code) => format!("`{command}` exited with {code}"),
+        None => format!("`{command}` was stopped by a signal"),
+    };
+    match stderr.trim() {
+        "" => ran,
+        why => format!("{why} ({ran})"),
+    }
+}
+
 impl Error {
     pub fn missing(what: &'static str, name: impl Into<String>) -> Self {
         Self::Missing {
@@ -63,3 +78,33 @@ impl Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failed(command: &str, code: Option<i32>, stderr: &str) -> String {
+        Error::Command {
+            command: command.into(),
+            code,
+            stderr: stderr.into(),
+        }
+        .to_string()
+    }
+
+    #[test]
+    fn a_failed_command_says_why_before_what_it_ran() {
+        let long = format!("tmux new-session {}", "x".repeat(2_000));
+        let text = failed(&long, Some(1), "File name too long");
+        assert!(
+            text.starts_with("File name too long (`tmux new-session x"),
+            "{text}"
+        );
+        assert!(text.ends_with("x` exited with 1)"), "{text}");
+        assert_eq!(
+            failed("git x", None, "boom"),
+            "boom (`git x` was stopped by a signal)"
+        );
+        assert_eq!(failed("git x", Some(2), ""), "`git x` exited with 2");
+    }
+}
