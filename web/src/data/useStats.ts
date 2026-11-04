@@ -1,14 +1,15 @@
+import { useMemo } from "react";
 import { getStats } from "../api/stats";
-import { useDataContext } from "./dataContext";
+import { useGeneration } from "./dataContext";
 import type { StatsState } from "./types";
 import { useLoad } from "./useLoad";
 
 export function useStats(repo?: string): StatsState {
-  const { refresh } = useDataContext();
+  const generation = useGeneration();
   const { data, loading, error } = useLoad(
     JSON.stringify(["stats", repo ?? null]),
     (signal) => getStats(repo, signal),
-    refresh,
+    generation,
   );
-  return { stats: data, loading, error };
+  return useMemo(() => ({ stats: data, loading, error }), [data, loading, error]);
 }

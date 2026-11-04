@@ -1,33 +1,26 @@
-import { useMemo } from "react";
-import { getConversation, listConversations } from "../api/conversations";
+import { useCallback, useMemo } from "react";
 import type { Conversation } from "../api/types";
-import { useDataContext } from "./dataContext";
+import { useDataStore, useResource } from "./dataContext";
+import { CONVERSATIONS_KEY, detailKey } from "./resources";
 import type { ConversationsState, ConversationState } from "./types";
-import { useLoad } from "./useLoad";
 
 const NO_CONVERSATIONS: readonly Conversation[] = [];
 
-export function newestFirst(list: readonly Conversation[]): readonly Conversation[] {
-  return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-}
-
 export function useConversations(): ConversationsState {
-  const { refresh } = useDataContext();
-  const { data, loading, error } = useLoad(
-    "conversations",
-    (signal) => listConversations(signal),
-    refresh,
+  const { data, loading, error } = useResource(CONVERSATIONS_KEY, (state) => state.conversations);
+  return useMemo(
+    () => ({ conversations: data ?? NO_CONVERSATIONS, loading, error }),
+    [data, loading, error],
   );
-  const conversations = useMemo(() => (data ? newestFirst(data) : NO_CONVERSATIONS), [data]);
-  return { conversations, loading, error };
 }
 
 export function useConversation(id: string | null): ConversationState {
-  const { refresh } = useDataContext();
-  const { data, loading, error, reload } = useLoad(
-    id === null ? null : `conversation:${id}`,
-    (signal) => getConversation(id ?? "", signal),
-    refresh,
+  const store = useDataStore();
+  const { data, loading, error } = useResource(id === null ? null : detailKey(id), (state) =>
+    id === null ? null : state.details.get(id),
   );
-  return { detail: data, loading, error, reload };
+  const reload = useCallback(() => {
+    if (id !== null) store.refetch(detailKey(id));
+  }, [store, id]);
+  return useMemo(() => ({ detail: data, loading, error, reload }), [data, loading, error, reload]);
 }
