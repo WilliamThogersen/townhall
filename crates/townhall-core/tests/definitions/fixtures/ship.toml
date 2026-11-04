@@ -1,0 +1,28 @@
+# the ship workflow from the agents and workflows plan
+name = "ship"
+description = "plan, build, then test and review in parallel"
+
+[[step]]
+id = "plan"
+agent = "planner"
+prompt = "Write an implementation spec for: {{input}}"
+
+[[step]]
+id = "build"
+agent = "coder"
+after = ["plan"]
+prompt = "Implement this spec:\n\n{{steps.plan.result}}"
+
+[[step]]
+id = "test"
+agent = "tester"
+after = ["build"]
+from = "build"
+prompt = "Test the changes on this branch against the spec:\n\n{{steps.plan.result}}"
+
+[[step]]
+id = "review"
+agent = "reviewer"
+after = ["build"]
+from = "build"
+prompt = "Review the diff on this branch. Answer go or no-go with reasons."

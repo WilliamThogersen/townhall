@@ -5,7 +5,7 @@ use serde_json::json;
 use tempfile::TempDir;
 use townhall_core::events::EventBus;
 use townhall_core::model::{PermissionMode, SettingKey, Settings};
-use townhall_core::store::{migrate, Store, DB_FILE, LOCK_FILE};
+use townhall_core::store::{Store, DB_FILE, LOCK_FILE};
 use townhall_core::{Error, Home};
 
 mod common;
@@ -47,12 +47,10 @@ async fn an_empty_home_gets_a_migrated_database() {
         })
         .await
         .unwrap();
-    let newest = migrate::all().iter().map(|m| i64::from(m.id)).max();
-    assert_eq!(
-        (mode.as_str(), fks, Some(version)),
-        ("wal", 1, newest),
-        "user_version is the newest migration, whichever unit added it"
-    );
+    let newest = townhall_core::store::migrate::all()
+        .last()
+        .map_or(0, |m| m.id);
+    assert_eq!((mode.as_str(), fks, version), ("wal", 1, i64::from(newest)));
 }
 
 #[tokio::test]
@@ -99,13 +97,41 @@ async fn config_json_is_imported_once_and_renamed() {
     );
     assert_eq!(repos[0].path, repo.canonicalize().unwrap());
     assert_eq!(store.desktop_repo().await.unwrap(), Some(repo.clone()));
-    assert_eq!(store.settings().await.unwrap().agents_at_once, 12);
+    assert_eq!(
+        store.settings().await.unwrap(),
+        Settings::default(),
+        "only the repo is imported, never settings"
+    );
     let h = home(&dir);
     assert!(!h.config_file().exists());
     let kept = fs::read_to_string(h.root().join("config.json.imported")).unwrap();
     assert!(kept.contains("theme"), "the old file is kept as it was");
     drop(store);
     assert_eq!(open(&dir).repos().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_config_json_cannot_choose_skip_all() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        json!({"repo": "/x", "settings": {"permissionMode": "bypassPermissions"}}),
+    );
+    let store = open(&dir);
+    assert_eq!(
+        store.settings().await.unwrap().permission_mode,
+        PermissionMode::AcceptEdits
+    );
+    drop(store);
+    write_config(
+        &dir,
+        json!({"settings": {"permissionMode": "bypassPermissions"}}),
+    );
+    let again = open(&dir);
+    assert_eq!(
+        again.settings().await.unwrap().permission_mode,
+        PermissionMode::AcceptEdits
+    );
 }
 
 #[tokio::test]

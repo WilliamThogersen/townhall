@@ -92,7 +92,8 @@ worktrees under the repo's own `.git`. Townhall keeps no config files.
 ~/.townhall/
   townhall.db                                    every repo, setting, conversation and task (SQLite)
   townhall.lock                                  held while a townhall owns the database
-  conversations/<id>/files/<attachment>/<name>   attachments, the only other files
+  conversations/<id>/files/<attachment>/<name>   attachments
+  tasks/<name>/brief.md                          a task's whole prompt, which its agent reads
   worktrees/<repo-key>/<agent>/                  one git worktree per agent, branch townhall/<agent>
   config.json.imported                           an older config.json, after its one-time import
 ```
@@ -100,7 +101,7 @@ worktrees under the repo's own `.git`. Townhall keeps no config files.
 - One owner: the daemon opens the database, and a second townhall on the same
   home fails with `townhall.db is in use by another townhall`. The desktop app runs
   the daemon in-process, or uses the one already on port 7777.
-- An existing `config.json` is imported once (its repo and settings) and renamed
+- An existing `config.json` is imported once (its repo, nothing else) and renamed
   to `config.json.imported`, never deleted.
 - `<repo-key>` is the repo folder name plus a short hash of its canonical path,
   for example `myapp-1a2b3c4d`, so two repos with the same folder name never collide.

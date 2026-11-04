@@ -1,4 +1,4 @@
-//! `/api/repos`: the repo registry in `config.json`.
+//! `/api/repos`: the repo registry (the `repos` table, through `RepoRegistry`).
 
 use axum::extract::{Path, State};
 use axum::response::Response;

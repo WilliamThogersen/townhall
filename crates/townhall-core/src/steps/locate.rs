@@ -51,6 +51,23 @@ fn hash_suffix(hash: i32) -> String {
 /// The newest `.jsonl` transcript for `cwd`, looking under both `cwd` as given and its
 /// resolved path, since Claude may have seen either spelling.
 pub fn latest_transcript(claude_projects: &Path, cwd: &Path) -> Result<Option<PathBuf>> {
+    newest_transcript(claude_projects, cwd, None)
+}
+
+/// Like [`latest_transcript`], but only a transcript last written at or after `since`.
+pub fn latest_transcript_since(
+    claude_projects: &Path,
+    cwd: &Path,
+    since: SystemTime,
+) -> Result<Option<PathBuf>> {
+    newest_transcript(claude_projects, cwd, Some(since))
+}
+
+fn newest_transcript(
+    claude_projects: &Path,
+    cwd: &Path,
+    since: Option<SystemTime>,
+) -> Result<Option<PathBuf>> {
     let given = project_dir_for(claude_projects, cwd);
     let resolved = cwd
         .canonicalize()
@@ -62,7 +79,10 @@ pub fn latest_transcript(claude_projects: &Path, cwd: &Path) -> Result<Option<Pa
         .flatten()
         .map(|dir| newest_in(&dir))
         .collect::<Result<Vec<_>>>()?;
-    Ok(found.into_iter().flatten().max().map(|(_, path)| path))
+    let newest = found.into_iter().flatten().max();
+    Ok(newest
+        .filter(|(written, _)| since.is_none_or(|cutoff| *written >= cutoff))
+        .map(|(_, path)| path))
 }
 
 /// The newest transcript file in `dir`, or none when the folder does not exist.

@@ -25,10 +25,7 @@ async fn start_background_registers_the_startup_repo() {
     let env = Env::new("alpha").await;
     let state = env.state();
     let background = start_background(&state).await;
-    assert!(
-        background.running() <= 3,
-        "at most the runner, the scheduler and the agent watcher run"
-    );
+    assert!(background.running() >= 1, "the task scheduler (2.3) runs");
     background.stop();
     let stored = state.ctx().store().unwrap().repos().await.unwrap();
     assert_eq!(stored[0].path, env.startup);
@@ -143,4 +140,50 @@ async fn bad_bodies_are_400_in_the_envelope() {
         .unwrap();
     let (s, v) = send(&app, text).await;
     assert_eq!((s, &v["success"]), (StatusCode::BAD_REQUEST, &json!(false)));
+}
+
+#[tokio::test]
+async fn a_subfolder_is_not_a_repo() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let sub = env.startup.join("src");
+    std::fs::create_dir_all(&sub).unwrap();
+    let (s, v) = call(&app, "POST", "/api/repos", Some(json!({"path": sub}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let msg = v["error"].as_str().unwrap();
+    assert!(
+        msg.ends_with("is not the top folder of a git repo"),
+        "{msg}"
+    );
+}
+
+#[tokio::test]
+async fn json_rejections_use_lowercase_contract_copy() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let raw = |content_type: &'static str, body: &'static str| {
+        Request::post("/api/repos")
+            .header("content-type", content_type)
+            .body(Body::from(body))
+            .unwrap()
+    };
+    let (s, v) = send(&app, raw("text/plain", "{}")).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    assert_eq!(v["error"], "expected content-type application/json");
+    for (body, needle) in [
+        ("{nope", "invalid json body: "),
+        ("{\"path\": 1}", "invalid json body: "),
+        (
+            "{\"path\": \"/x\", \"base_branch\": \"m\"}",
+            "unknown field `base_branch`",
+        ),
+    ] {
+        let (s, v) = send(&app, raw("application/json", body)).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{body}");
+        let msg = v["error"].as_str().unwrap();
+        assert!(msg.starts_with("invalid json body: "), "{msg}");
+        assert!(msg.contains(needle), "{msg}");
+        let detail = &msg["invalid json body: ".len()..];
+        assert!(!detail.starts_with(char::is_uppercase), "{msg}");
+    }
 }

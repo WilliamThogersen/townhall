@@ -59,9 +59,28 @@ fn duplicate(e: &Error) -> bool {
     matches!(e, Error::Command { stderr, .. } if stderr.contains("duplicate session"))
 }
 
-async fn run_tmux(args: &[String]) -> Result<String> {
+const SPAWN_ATTEMPTS: u32 = 4;
+const SPAWN_PAUSE: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// tmux's server exits when its last session ends; a `new-session` that reaches it just
+/// then fails with this, and the next try starts a fresh server.
+fn server_was_exiting(e: &crate::Error) -> bool {
+    matches!(e, crate::Error::Command { stderr, .. } if stderr.contains("server exited unexpectedly"))
+}
+
+/// Runs `new-session`, trying again while the tmux server was just exiting.
+async fn run_new_session(args: &[String]) -> Result<String> {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    run("tmux", &args, None).await
+    let mut attempt = 1;
+    loop {
+        match run("tmux", &args, None).await {
+            Err(e) if server_was_exiting(&e) && attempt < SPAWN_ATTEMPTS => {
+                attempt += 1;
+                tokio::time::sleep(SPAWN_PAUSE).await;
+            }
+            other => return other,
+        }
+    }
 }
 
 /// Start a detached tmux session running `command` in `cwd`.
@@ -70,11 +89,11 @@ async fn run_tmux(args: &[String]) -> Result<String> {
 pub async fn spawn(key: &str, name: &str, cwd: &Path, command: &str) -> Result<()> {
     validate_name(name)?;
     let args = new_session(key, name, &cwd.to_string_lossy(), command);
-    let first = run_tmux(&args).await;
+    let first = run_new_session(&args).await;
     let result = match first {
         Err(e) if duplicate(&e) && dead_leftover(key, name).await? => {
             kill(key, name).await?;
-            run_tmux(&args).await
+            run_new_session(&args).await
         }
         other => other,
     };
@@ -228,4 +247,21 @@ pub async fn kill(key: &str, name: &str) -> Result<()> {
     .await;
     panes::invalidate();
     killed.map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_exiting_server_race_is_retried() {
+        let failed = |stderr: &str| crate::Error::Command {
+            command: "tmux new-session".into(),
+            code: Some(1),
+            stderr: stderr.into(),
+        };
+        assert!(server_was_exiting(&failed("server exited unexpectedly")));
+        assert!(!server_was_exiting(&failed("duplicate session: x")));
+        assert!(!server_was_exiting(&crate::Error::InvalidInput("x".into())));
+    }
 }

@@ -1,7 +1,8 @@
 //! The one-time import of phase 1's `~/.townhall/config.json` (`{ "repo": "<path>" }`):
 //! the repo goes into `repos` (when it is still a git repo) and becomes the desktop app's
-//! repo, any known `settings` go into `settings`, and the file is renamed to
-//! `config.json.imported`. Never deleted; existing rows are never overridden.
+//! repo, and the file is renamed to `config.json.imported`. Never deleted; existing rows are
+//! never overridden. Only `repo` is read: settings, `skip all` above all, change only
+//! through `PUT /api/settings/{key}`, never through a file.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,30 +11,17 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use super::{repos, settings};
-use crate::model::{Repo, SettingKey};
+use crate::model::Repo;
 use crate::repos::{inspect, names};
 use crate::{Error, Home, Result};
 
 pub const IMPORTED_SUFFIX: &str = ".imported";
 
-fn importable(path: &Path) -> Result<Repo> {
+fn importable(home: &Home, path: &Path) -> Result<Repo> {
     let canonical = path
         .canonicalize()
         .map_err(|e| Error::io(format!("repo path {}", path.display()), e))?;
-    inspect(&canonical, names::from_folder(&canonical), None)
-}
-
-fn known_settings(raw: &Value) -> Vec<(SettingKey, Value)> {
-    let Some(saved) = raw.get("settings") else {
-        return vec![];
-    };
-    SettingKey::ALL
-        .into_iter()
-        .filter_map(|key| {
-            let value = saved.get(key.as_str())?;
-            key.check(value).ok().map(|v| (key, v))
-        })
-        .collect()
+    inspect(home, &canonical, names::from_folder(&canonical), None)
 }
 
 /// `config.json.imported`, or `config.json.imported-2` ... when that name is taken.
@@ -64,7 +52,7 @@ pub(super) fn config_json(conn: &mut Connection, home: &Home) -> Result<bool> {
         .get("repo")
         .and_then(Value::as_str)
         .filter(|p| !p.is_empty());
-    let repo = saved_repo.and_then(|p| match importable(Path::new(p)) {
+    let repo = saved_repo.and_then(|p| match importable(home, Path::new(p)) {
         Ok(repo) => Some(repo),
         Err(e) => {
             eprintln!("warn: saved repo {p} not registered: {e}");
@@ -77,9 +65,6 @@ pub(super) fn config_json(conn: &mut Connection, home: &Home) -> Result<bool> {
     }
     if let Some(p) = saved_repo {
         settings::put_missing(&tx, settings::DESKTOP_REPO, &Value::String(p.into()))?;
-    }
-    for (key, value) in known_settings(&raw) {
-        settings::put_missing(&tx, key.as_str(), &value)?;
     }
     tx.commit()?;
     let dest = imported_path(&path);
@@ -104,15 +89,5 @@ mod tests {
             imported_path(&path),
             dir.path().join("config.json.imported-2")
         );
-    }
-
-    #[test]
-    fn only_valid_known_settings_are_kept() {
-        let raw = serde_json::json!({"settings": {"agentsAtOnce": 9, "notifyWhen": "x", "theme": "dark"}});
-        assert_eq!(
-            known_settings(&raw),
-            vec![(SettingKey::AgentsAtOnce, serde_json::json!(9))]
-        );
-        assert!(known_settings(&serde_json::json!({"repo": "/x"})).is_empty());
     }
 }

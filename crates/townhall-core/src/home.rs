@@ -1,12 +1,14 @@
 //! The one folder townhall owns: `~/.townhall` (or `$TOWNHALL_HOME`).
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use crate::{Error, Result};
 
 const HOME_ENV: &str = "TOWNHALL_HOME";
 const HOME_DIR: &str = ".townhall";
-const WORKTREES_DIR: &str = "worktrees";
+/// Townhall's own agent worktrees live under `<home>/worktrees/`.
+pub const WORKTREES_DIR: &str = "worktrees";
 const CONFIG_FILE: &str = "config.json";
 const MAX_BASE_LEN: usize = 32;
 
@@ -21,22 +23,33 @@ impl Home {
         Self { root: root.into() }
     }
 
-    /// `$TOWNHALL_HOME` when set and non-empty, else `$HOME/.townhall`.
+    /// `$TOWNHALL_HOME` when set and non-empty, else `$HOME/.townhall`, made absolute so
+    /// every path handed to an agent resolves from any folder.
     pub fn from_env() -> Result<Self> {
-        let over = std::env::var_os(HOME_ENV).filter(|v| !v.is_empty());
-        if let Some(root) = over {
-            return Ok(Self::at(root));
-        }
-        let home = std::env::var_os("HOME")
-            .filter(|v| !v.is_empty())
-            .ok_or_else(|| Error::InvalidInput(format!("neither {HOME_ENV} nor HOME is set")))?;
-        Ok(Self::at(PathBuf::from(home).join(HOME_DIR)))
+        Self::from_vars(std::env::var_os(HOME_ENV), std::env::var_os("HOME"))
+    }
+
+    fn from_vars(over: Option<OsString>, home: Option<OsString>) -> Result<Self> {
+        let set = |v: Option<OsString>| v.filter(|v| !v.is_empty());
+        let root = match (set(over), set(home)) {
+            (Some(root), _) => PathBuf::from(root),
+            (None, Some(home)) => PathBuf::from(home).join(HOME_DIR),
+            (None, None) => {
+                return Err(Error::InvalidInput(format!(
+                    "neither {HOME_ENV} nor HOME is set"
+                )))
+            }
+        };
+        let absolute = std::path::absolute(&root)
+            .map_err(|e| Error::io(format!("home {}", root.display()), e))?;
+        Ok(Self::at(absolute))
     }
 
     pub fn root(&self) -> &Path {
         &self.root
     }
 
+    /// Phase 1's `config.json`: only read, once, by the store's import, which then renames it.
     pub fn config_file(&self) -> PathBuf {
         self.root.join(CONFIG_FILE)
     }
@@ -130,6 +143,16 @@ pub fn repo_key(canonical_repo: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_home_is_always_absolute() {
+        let relative = Home::from_vars(Some("rel/th".into()), Some("/u".into())).unwrap();
+        assert!(relative.root().is_absolute(), "{:?}", relative.root());
+        assert!(relative.root().ends_with("rel/th"));
+        let default = Home::from_vars(Some("".into()), Some("/u".into())).unwrap();
+        assert_eq!(default.root(), Path::new("/u/.townhall"));
+        assert!(Home::from_vars(None, Some("".into())).is_err());
+    }
 
     #[test]
     fn key_is_stable_safe_and_distinct() {
