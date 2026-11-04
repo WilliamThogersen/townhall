@@ -25,8 +25,8 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
 | POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400 bad name, ``base branch `x` not found``; 404 repo; 409 the name exists in any repo, ignoring case | phase 1, 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
-| POST | `/agents/{name}/send` | `{ text }` | the name. When the agent is a task's, adds an `agent` `sent` entry to its conversation | 400, 404, 409 | phase 1, 2.1 |
-| GET | `/agents/{name}/output` | | the pane text | 400, 404, 409 | phase 1, 2.1 |
+| POST | `/agents/{name}/send` | `{ text }` | the name. When the agent is a task's, adds an `agent` `sent` entry to its conversation | 400, 404 (also a dead pane), 409 | phase 1, 2.1 |
+| GET | `/agents/{name}/output` | | the pane text | 400, 404 (also a dead pane), 409 | phase 1, 2.1 |
 | GET (ws) | `/agents/{name}/stream` | | text frames with the pane, `error: ...` then close when it ends | 400, 404, 409 before the upgrade | phase 1, 2.1 |
 | GET | `/agents/{name}/steps` | | `Step[]` | 404 | 2.7 |
 | GET | `/stats?repo=` | | `{ days: ShippedDay[] }`: last 730 days, days with activity only, summed across repos unless `repo` | 404 repo | 2.7 |
@@ -207,10 +207,24 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
 - adopts a queued task whose own agent (its exact name, in its repo) exists already (a start cut short by a restart) as `working`, never starting a second agent; a `working` task is never touched.
 - marks an `ended` task `merged`, with an `agent` `passed` entry (`merged into <base>`), when `townhall/<name>` is reachable from its base branch (`git for-each-ref --merged=<base>`) and its tip is not the commit it started from (a branch with no commits of its own is not merged). Read only: it never merges or deletes.
 
+## Agent states
+
+Unit 2.5, `agent/state.rs` and `agent/watch.rs`.
+
+- `state::detect(ws, agent)` reads Claude's transcripts from `state::claude_projects()` (`$TOWNHALL_CLAUDE_PROJECTS`, else `~/.claude/projects`); `state::detect_in(projects, ws, agent)` takes that folder as an argument (`None`: the screen only), so tests pass a temp folder.
+- No session is `ended`. A dead pane (sessions keep it with `remain-on-exit`) is `ended` when it exited 0, else `error` with the exit code (a signal as 128 plus its number). A live pane is `waiting` when the transcript has a pending `AskUserQuestion` or a turn that ended on a question, when the screen shows a selection prompt, or, for a program without a transcript, when its last line asks. A live Claude whose turn ended without a question `state::IDLE_SETTLE_MS` (10 s) ago or longer is `ended`: interactive Claude never exits on its own, and a short pause between tool calls must not count. Anything else live is `working`. When tmux cannot be asked, alive is `working` and dead is `ended`.
+- `state::choices(question)`: what can be typed back, the numbers of the question's numbered options, else the two words of a `y/n` marker, else nothing. The watcher puts them in the `needsYou` entry's `choices`.
+- The watcher (`agent::watch::start`) polls every agent every 1.5 s (`watch::INTERVAL`). When a state changes it publishes `agentUpdated`, moves the agent's task (`working`, `needsYou`, `error`, `ended`; never a `queued`, `merged`, `inCi` or `inReview` one) and appends a `needsYou` or `agent` entry. An exit counts once seen on two polls in a row.
+- A dead pane answers like a missing session: `POST /agents/{name}/send` and `GET /agents/{name}/output` are `404`, and the stream sends `error: ...` and closes.
+
 ## Environment
 
 | variable | what | default |
 |----------|------|---------|
+| `TOWNHALL_HOME` | townhall's folder, made absolute | `~/.townhall` |
+| `TOWNHALL_REPO`, `TOWNHALL_BIND` | the daemon's startup repo and address (`townhall-daemon --repo --bind`) | `.`, `127.0.0.1:7777` |
+| `TOWNHALL_CLAUDE_BIN` | the `claude` program; tests point it at a fake script | `claude` |
+| `TOWNHALL_CLAUDE_PROJECTS` | where Claude's transcripts are read from, for steps (2.7) and agent states (2.5); tests point it at a temp folder | `~/.claude/projects` |
 | `TOWNHALL_TMUX_SOCKET` | a private tmux server for every tmux call townhall makes (`tmux -L <name>`): letters, digits, `.`, `_` and `-`, anything else is refused. Every test harness sets it once per test process (`townhall-test-<pid>-<nanos>`, `tests/common/tmux_server.rs`) and kills that server at exit, so tests never share the default server, or its stale environment, with real agents | the default server |
 
 Every new session also gets `-e PWD=<worktree>`, so a pane never inherits the `PWD` of whoever started the tmux server.
@@ -275,6 +289,8 @@ create unique index repos_name_nocase on repos (name collate nocase);
 
 `0201_task_launches` (2.3): `task_launches (name pk collate nocase references tasks (name) on delete cascade, start_commit, session_id, launched_at)`: what each task's agent started from. `start_commit` tells `merged` from a branch that never got a commit; `session_id` is the agent's `--session-id` (`null` for an agent adopted after a restart).
 
+`0501_agent_states` (2.5): `agent_states (repo, agent, state, updated_at)`, primary key `(repo, agent)`, both `collate nocase`, `state` the `AgentState` as JSON: the state the watcher last acted on, so a restarted daemon repeats neither entries nor events. Detection never reads it. `Store::{seen_agent_states, see_agent_state, forget_agent_state}` (`store/unit_2_5.rs`) read and write it.
+
 Every `conversation_id` references `conversations (id) on delete cascade`. Enum columns hold the serde names (`yourTurn`, `needsYou`, `inCi`).
 
 ## Store functions
@@ -300,7 +316,7 @@ Shared code around the store:
 | `townhall_core::Context` | `startup()`, `store()`, `registry()`, `bus()`, `base_url()`, `claude_bin()`, `settings()`, `ensure_startup_repo()`, `startup_repo_name()`, `repos()`, `repo(name)`, `workspace(&repo)`. Built by `AppState`; core units get it from `start(ctx)` |
 | `townhall_core::repos::RepoRegistry` | `list`, `get`, `add(&AddRepo)`, `ensure(path)`, `remove`; `resolve_path`, `inspect`, `names::*` |
 | `townhall_core::fleet` | `list(ctx)` every `AgentInfo`, `holders(ctx, name)`, `locate(ctx, name, repo)`, `unregister(ctx, name)` |
-| `townhall_core::agent` | `start`, `stop`, `list`, `send`, `output`, `LaunchOptions`, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `ClaudeCodeAdapter::args`, `state::detect(ws, agent)` |
+| `townhall_core::agent` | `start`, `stop`, `list`, `send`, `output`, `LaunchOptions`, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `ClaudeCodeAdapter::args`, `state::detect(ws, agent)`, `state::detect_in(projects, ws, agent)`, `state::choices(question)`, `state::IDLE_SETTLE_MS` |
 | `townhall_core::mcp` | names, `tools()`, `allowed_tools()`, `config_json()` |
 | `townhall_daemon` | `AppState` (`new`, `with_options`, `open`, `with_store`, `ctx()`), `start_background(&state)`, `extract::JsonBody`, `error::ApiError::NotImplemented`, `cors::origin_allowed` |
 
