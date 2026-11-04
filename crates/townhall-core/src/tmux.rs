@@ -12,6 +12,7 @@ use std::path::Path;
 pub use panes::{Exit, Pane};
 
 use crate::cmd::{run, validate_name};
+use crate::model::AgentKey;
 use crate::{Error, Result};
 
 const SESSION_PREFIX: &str = "townhall-";
@@ -205,13 +206,58 @@ fn gone(name: &str) -> Error {
     Error::NotFound(name.to_string())
 }
 
-/// Type `text` into the session and press Enter. A dead pane counts as a missing session.
-pub async fn send(key: &str, name: &str, text: &str) -> Result<()> {
+/// `text` as one argument tmux passes on unchanged. tmux reads an argument that ends in
+/// `;` as the end of its command and turns a final `\;` into `;`, so a final `;` goes
+/// as `\;`.
+fn literal(text: &str) -> String {
+    match text.strip_suffix(';') {
+        Some(head) => format!("{head}\\;"),
+        None => text.to_string(),
+    }
+}
+
+/// `send-keys` that types `text` as it is (`-l`, never key names like `Down` or `C-c`),
+/// then a second one that presses Enter.
+fn type_then_enter(target: &str, text: &str) -> Vec<String> {
+    let typed = literal(text);
+    let args = ["send-keys", "-t", target, "-l", "--", &typed, ";"];
+    let enter = ["send-keys", "-t", target, "Enter"];
+    args.into_iter().chain(enter).map(String::from).collect()
+}
+
+/// The session's pane target, once its pane is known to be live.
+async fn live_target(key: &str, name: &str) -> Result<String> {
     validate_name(name)?;
     if dead(key, name).await? {
         return Err(gone(name));
     }
-    run_tmux(&["send-keys", "-t", &pane_target(key, name), text, "Enter"]).await?;
+    Ok(pane_target(key, name))
+}
+
+/// Type `text` into the session as it is, then press Enter. A dead pane counts as a
+/// missing session.
+pub async fn send(key: &str, name: &str, text: &str) -> Result<()> {
+    let args = type_then_enter(&live_target(key, name).await?, text);
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_tmux(&args).await?;
+    Ok(())
+}
+
+/// tmux's name for a key townhall presses.
+fn key_name(pressed: AgentKey) -> &'static str {
+    match pressed {
+        AgentKey::Up => "Up",
+        AgentKey::Down => "Down",
+        AgentKey::Enter => "Enter",
+        AgentKey::Escape => "Escape",
+        AgentKey::Tab => "Tab",
+    }
+}
+
+/// Press one key in the session, nothing else. A dead pane counts as a missing session.
+pub async fn send_key(key: &str, name: &str, pressed: AgentKey) -> Result<()> {
+    let target = live_target(key, name).await?;
+    run_tmux(&["send-keys", "-t", &target, key_name(pressed)]).await?;
     Ok(())
 }
 
@@ -298,6 +344,31 @@ mod tests {
             let error = args(Some(bad)).unwrap_err();
             assert!(error.to_string().contains(SOCKET_ENV), "{error}");
         }
+    }
+
+    #[test]
+    fn text_is_typed_literally_and_a_final_semicolon_survives_tmux() {
+        assert_eq!(
+            type_then_enter("=s:", "Down"),
+            [
+                "send-keys",
+                "-t",
+                "=s:",
+                "-l",
+                "--",
+                "Down",
+                ";",
+                "send-keys",
+                "-t",
+                "=s:",
+                "Enter"
+            ]
+        );
+        assert_eq!(literal("fix it;"), "fix it\\;");
+        assert_eq!(literal(";"), "\\;");
+        assert_eq!(literal("a\\;"), "a\\\\;");
+        assert_eq!(literal("semi; colon"), "semi; colon");
+        assert_eq!(literal(""), "");
     }
 
     #[test]

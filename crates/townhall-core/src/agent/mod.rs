@@ -14,6 +14,7 @@ pub(crate) use claude::{add_dir, plain};
 pub use claude::{ClaudeCodeAdapter, DEFAULT_CLAUDE_BIN};
 
 use crate::cmd::{run, validate_name};
+use crate::model::AgentKey;
 use crate::{tmux, worktree, Error, Result, Workspace};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +133,13 @@ fn missing_session(name: &str, e: Error) -> Error {
 /// Type text into the agent's session and press Enter. A dead session is `NotFound`.
 pub async fn send(ws: &Workspace, name: &str, text: &str) -> Result<()> {
     tmux::send(ws.key(), name, text)
+        .await
+        .map_err(|e| missing_session(name, e))
+}
+
+/// Press one key in the agent's session. A dead session is `NotFound`.
+pub async fn send_key(ws: &Workspace, name: &str, key: AgentKey) -> Result<()> {
+    tmux::send_key(ws.key(), name, key)
         .await
         .map_err(|e| missing_session(name, e))
 }
