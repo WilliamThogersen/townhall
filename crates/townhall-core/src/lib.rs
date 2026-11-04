@@ -4,6 +4,7 @@ pub mod agent;
 pub mod cmd;
 pub mod error;
 pub mod home;
+pub mod repo_infer;
 pub mod tmux;
 pub mod worktree;
 
