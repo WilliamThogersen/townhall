@@ -50,7 +50,7 @@ impl Drop for Sessions {
     fn drop(&mut self) {
         for session in &self.0 {
             let target = format!("={session}");
-            let _ = std::process::Command::new("tmux")
+            let _ = common::tmux()
                 .args(["kill-session", "-t", &target])
                 .output();
         }

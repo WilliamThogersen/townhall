@@ -14,6 +14,11 @@ use tower::ServiceExt;
 use townhall_core::{ContextOptions, Home, Workspace};
 use townhall_daemon::{router, AppState};
 
+#[path = "../../../townhall-core/tests/common/tmux_server.rs"]
+mod tmux_server;
+#[allow(unused_imports)]
+pub use tmux_server::{private_tmux, tmux};
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn unique(prefix: &str) -> String {
@@ -32,6 +37,7 @@ pub async fn git(dir: &Path, args: &[&str]) -> String {
 
 /// A repo with one commit on `main`, in a folder called `name` under `parent`.
 pub async fn repo_at(parent: &Path, name: &str) -> PathBuf {
+    private_tmux();
     let dir = parent.join(name);
     std::fs::create_dir_all(&dir).unwrap();
     git(&dir, &["init", "-q", "-b", "main"]).await;
@@ -62,6 +68,7 @@ pub struct Env {
 
 impl Env {
     pub async fn new(startup_name: &str) -> Self {
+        private_tmux();
         let root = TempDir::new().unwrap();
         let startup = repo_at(root.path(), startup_name).await;
         let home = Home::at(root.path().join(".townhall"));

@@ -11,6 +11,10 @@ use townhall_core::model::{AddRepo, AgentEvent, EntryBody, NewTask, Repo, Task, 
 use townhall_core::store::Store;
 use townhall_core::{agent, Context, ContextOptions, Home, Workspace};
 
+#[path = "../common/tmux_server.rs"]
+mod tmux_server;
+use tmux_server::{private_tmux, tmux};
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn unique(prefix: &str) -> String {
@@ -70,6 +74,7 @@ pub struct Sched {
 
 impl Sched {
     pub async fn new() -> Self {
+        private_tmux();
         let root = TempDir::new().unwrap();
         let repo_name = unique("th23-sched");
         let repo = root.path().join(&repo_name);
@@ -228,7 +233,7 @@ pub async fn sleeper(ws: &Workspace, name: &str) {
 /// Kills every tmux session of the repo `ws`, and only those.
 pub fn kill_sessions(ws: &Workspace) {
     let prefix = format!("townhall-{}-", ws.key());
-    let listed = std::process::Command::new("tmux")
+    let listed = tmux()
         .args(["list-sessions", "-F", "#{session_name}"])
         .output();
     let out = match listed {
@@ -241,9 +246,7 @@ pub fn kill_sessions(ws: &Workspace) {
     for session in String::from_utf8_lossy(&out.stdout).lines() {
         if session.starts_with(&prefix) {
             let target = format!("={session}");
-            let killed = std::process::Command::new("tmux")
-                .args(["kill-session", "-t", &target])
-                .output();
+            let killed = tmux().args(["kill-session", "-t", &target]).output();
             if let Err(e) = killed {
                 eprintln!("warn: test session {session} not killed: {e}");
             }

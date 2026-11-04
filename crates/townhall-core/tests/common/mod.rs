@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use townhall_core::{Home, Workspace};
 
+mod tmux_server;
+#[allow(unused_imports)]
+pub use tmux_server::{private_tmux, tmux};
+
 pub async fn git(dir: &Path, args: &[&str]) -> String {
     townhall_core::cmd::run("git", args, Some(dir))
         .await
@@ -29,6 +33,7 @@ async fn commit(dir: &Path) {
 }
 
 pub async fn init_repo() -> TempDir {
+    private_tmux();
     let dir = TempDir::new().unwrap();
     git(dir.path(), &["init", "-b", "main"]).await;
     commit(dir.path()).await;
@@ -37,6 +42,7 @@ pub async fn init_repo() -> TempDir {
 
 /// A repo with one commit on `branch`, in a folder called `name` under `parent`.
 pub async fn init_named(parent: &Path, name: &str, branch: &str) -> PathBuf {
+    private_tmux();
     let dir = parent.join(name);
     std::fs::create_dir_all(&dir).unwrap();
     git(&dir, &["init", "-b", branch]).await;
@@ -77,6 +83,7 @@ pub struct StoreEnv {
 }
 
 pub fn store_env() -> StoreEnv {
+    private_tmux();
     let dir = TempDir::new().unwrap();
     let bus = townhall_core::events::EventBus::new();
     let store =

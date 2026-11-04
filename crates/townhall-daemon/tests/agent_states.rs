@@ -34,7 +34,7 @@ struct Session(String);
 impl Drop for Session {
     fn drop(&mut self) {
         let target = format!("={}", self.0);
-        let _ = std::process::Command::new("tmux")
+        let _ = common::tmux()
             .args(["kill-session", "-t", &target])
             .output();
     }

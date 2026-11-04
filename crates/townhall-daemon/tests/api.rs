@@ -11,6 +11,8 @@ use tower::ServiceExt;
 use townhall_core::{Home, Workspace};
 use townhall_daemon::{router, AppState};
 
+mod common;
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn unique(prefix: &str) -> String {
@@ -32,6 +34,7 @@ fn state_for(repo: &std::path::Path, home: &std::path::Path) -> AppState {
 }
 
 async fn init_repo() -> (Env, Router) {
+    common::private_tmux();
     let dir = TempDir::new().unwrap();
     let git =
         |args: &'static [&'static str]| townhall_core::cmd::run("git", args, Some(dir.path()));
