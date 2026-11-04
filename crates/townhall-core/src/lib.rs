@@ -13,6 +13,7 @@ pub mod home;
 pub mod ids;
 pub mod mcp;
 pub mod model;
+pub mod repo_infer;
 pub mod repos;
 pub mod runner;
 pub mod scheduler;
