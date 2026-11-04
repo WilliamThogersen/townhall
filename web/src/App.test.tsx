@@ -2,6 +2,9 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "./api/client";
 import * as events from "./api/events";
+import { aRepo, someStats } from "./api/fixtures";
+import * as reposApi from "./api/repos";
+import * as statsApi from "./api/stats";
 import { App } from "./App";
 import { navigate } from "./router";
 import { DEFAULT_SETTINGS } from "./settings/settings";
@@ -13,6 +16,8 @@ beforeEach(() => {
   vi.spyOn(client, "listAgents").mockResolvedValue([]);
   vi.spyOn(client, "getInfo").mockResolvedValue({ home: "/h", repo: "/r", repoKey: "r-1" });
   vi.spyOn(events, "connectEvents").mockReturnValue({ close: () => undefined });
+  vi.spyOn(reposApi, "listRepos").mockResolvedValue([aRepo()]);
+  vi.spyOn(statsApi, "getStats").mockResolvedValue(someStats());
 });
 
 afterEach(() => {
@@ -24,8 +29,13 @@ afterEach(() => {
 const heading = (name: string) => screen.getByRole("heading", { level: 1, name });
 
 describe("App routes", () => {
+  it("/ shows home", async () => {
+    render(<App />);
+    expect(await screen.findByRole("textbox", { name: "Describe the work" })).toBeInTheDocument();
+    await waitFor(() => expect(client.listAgents).toHaveBeenCalled());
+  });
+
   it.each([
-    ["/", "conversations come next"],
     ["/c/fix-login", "conversations come next"],
     ["/search?q=x", "search comes next"],
     ["/nope", "not found"],
@@ -74,7 +84,7 @@ describe("App routes", () => {
         <App />
       </SettingsStoreContext>,
     );
-    expect(screen.getByText("conversations come next")).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "Describe the work" })).toBeInTheDocument();
     await waitFor(() => expect(localStorage.getItem("th-settings")).toBeNull());
     expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
       "GET /api/settings",
