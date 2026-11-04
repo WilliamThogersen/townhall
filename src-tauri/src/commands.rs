@@ -1,10 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::{oneshot, Mutex};
+use townhall_core::Home;
 
 use crate::daemon::{Controller, Mode};
 use crate::repo::validate_repo;
@@ -14,7 +15,7 @@ use crate::settings::{self, Settings};
 pub struct Shared {
     pub controller: Controller,
     pub settings: Mutex<Settings>,
-    pub config_dir: PathBuf,
+    pub home: Home,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -72,7 +73,7 @@ pub async fn apply_repo(shared: &Shared, path: &Path) -> Result<(), String> {
         }
     }
     let next = Settings { repo: Some(repo) };
-    settings::save(&shared.config_dir, &next)?;
+    settings::save(&shared.home, &next)?;
     *shared.settings.lock().await = next;
     Ok(())
 }
@@ -108,17 +109,15 @@ pub async fn choose_repo(
 }
 
 pub fn build_shared(app: &AppHandle) -> Result<SharedState, String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("config dir: {e}"))?;
-    let loaded = settings::load(&config_dir)?;
+    let home = Home::from_env().map_err(|e| format!("townhall home: {e}"))?;
+    let legacy_dir = app.path().app_config_dir().ok();
+    let loaded = settings::load(&home, legacy_dir.as_deref())?;
     let addr = crate::daemon::BIND
         .parse()
         .map_err(|e| format!("bind address: {e}"))?;
     Ok(Arc::new(Shared {
-        controller: Controller::new(addr),
+        controller: Controller::new(addr, home.clone()),
         settings: Mutex::new(loaded),
-        config_dir,
+        home,
     }))
 }

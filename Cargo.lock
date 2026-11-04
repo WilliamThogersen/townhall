@@ -4325,6 +4325,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tempfile",
  "tokio",
+ "townhall-core",
  "townhall-daemon",
 ]
 

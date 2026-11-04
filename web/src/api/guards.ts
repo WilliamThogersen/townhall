@@ -1,5 +1,5 @@
 import { ApiError } from "./errors";
-import type { Agent } from "./types";
+import type { Agent, Info } from "./types";
 
 export type Guard<T> = (value: unknown) => T;
 
@@ -45,4 +45,13 @@ export function parseAgents(value: unknown): readonly Agent[] {
 
 export function parseString(value: unknown): string {
   return typeof value === "string" ? value : fail("expected a string");
+}
+
+export function parseInfo(value: unknown): Info {
+  if (!isRecord(value)) return fail("info is not an object");
+  const { home, repo, repoKey } = value;
+  if (typeof home !== "string") return fail("info.home");
+  if (typeof repo !== "string") return fail("info.repo");
+  if (typeof repoKey !== "string") return fail("info.repoKey");
+  return { home, repo, repoKey };
 }

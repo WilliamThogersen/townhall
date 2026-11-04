@@ -1,4 +1,5 @@
 mod agents;
+mod info;
 mod stream;
 
 use axum::routing::{get, post};
@@ -8,6 +9,7 @@ use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
+        .route("/info", get(info::info))
         .route("/agents", get(agents::list).post(agents::create))
         .route("/agents/{name}", axum::routing::delete(agents::remove))
         .route("/agents/{name}/send", post(agents::send))

@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, Mutex};
+use townhall_core::{Home, Workspace};
 use townhall_daemon::{router_with_cors, serve, AppState};
 
 pub const BIND: &str = "127.0.0.1:7777";
@@ -38,13 +39,15 @@ struct Slot {
 /// agents live in tmux and are never touched.
 pub struct Controller {
     addr: SocketAddr,
+    home: Home,
     slot: Mutex<Slot>,
 }
 
 impl Controller {
-    pub fn new(addr: SocketAddr) -> Self {
+    pub fn new(addr: SocketAddr, home: Home) -> Self {
         Self {
             addr,
+            home,
             slot: Mutex::new(Slot {
                 mode: Mode::Stopped,
                 running: None,
@@ -62,7 +65,7 @@ impl Controller {
         if slot.mode != Mode::Stopped {
             return Err("daemon is already started".into());
         }
-        start_locked(&mut slot, self.addr, repo).await
+        start_locked(&mut slot, self.addr, &self.home, repo).await
     }
 
     /// Marks the daemon external when something already listens on the port.
@@ -89,7 +92,7 @@ impl Controller {
         }
         stop_locked(&mut slot).await;
         wait_released(self.addr).await;
-        start_locked(&mut slot, self.addr, repo).await
+        start_locked(&mut slot, self.addr, &self.home, repo).await
     }
 
     pub async fn stop(&self) {
@@ -108,7 +111,12 @@ async fn wait_released(addr: SocketAddr) {
     }
 }
 
-async fn start_locked(slot: &mut Slot, addr: SocketAddr, repo: &Path) -> Result<Mode, String> {
+async fn start_locked(
+    slot: &mut Slot,
+    addr: SocketAddr,
+    home: &Home,
+    repo: &Path,
+) -> Result<Mode, String> {
     let listener = match TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
@@ -117,8 +125,9 @@ async fn start_locked(slot: &mut Slot, addr: SocketAddr, repo: &Path) -> Result<
         }
         Err(e) => return Err(format!("cannot bind {addr}: {e}")),
     };
+    let workspace = Workspace::new(home.clone(), repo).map_err(|e| e.to_string())?;
     let (tx, rx) = oneshot::channel::<()>();
-    let app = router_with_cors(AppState::new(repo.to_path_buf()));
+    let app = router_with_cors(AppState::new(workspace));
     let handle = tauri::async_runtime::spawn(async move {
         let shutdown = async {
             let _ = rx.await;
@@ -173,7 +182,7 @@ mod tests {
             let mut found = None;
             for _ in 0..10 {
                 let addr = free_addr();
-                let c = Controller::new(addr);
+                let c = Controller::new(addr, Home::at(dir.path().join(".townhall")));
                 if c.start(dir.path()).await.unwrap() == Mode::Embedded {
                     found = Some((addr, c));
                     break;
@@ -193,7 +202,10 @@ mod tests {
             .expect("port released after stop");
 
         let taken = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let c = Controller::new(taken.local_addr().unwrap());
+        let c = Controller::new(
+            taken.local_addr().unwrap(),
+            Home::at(dir.path().join(".townhall")),
+        );
         assert_eq!(c.start(dir.path()).await.unwrap(), Mode::External);
         let err = c.restart(dir.path()).await.unwrap_err();
         assert!(err.contains("already running"), "{err}");

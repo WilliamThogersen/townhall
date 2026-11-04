@@ -1,12 +1,15 @@
 import { wsBase } from "./base";
-import { parseAgent, parseAgents, parseString } from "./guards";
+import { parseAgent, parseAgents, parseInfo, parseString } from "./guards";
 import { request } from "./request";
-import type { Agent, CreateAgentInput } from "./types";
+import type { Agent, CreateAgentInput, Info } from "./types";
 
 const enc = encodeURIComponent;
 
 export const listAgents = (signal?: AbortSignal): Promise<readonly Agent[]> =>
   request("GET", "/agents", parseAgents, undefined, signal);
+
+export const getInfo = (signal?: AbortSignal): Promise<Info> =>
+  request("GET", "/info", parseInfo, undefined, signal);
 
 export const createAgent = (input: CreateAgentInput): Promise<Agent> =>
   request("POST", "/agents", parseAgent, input);

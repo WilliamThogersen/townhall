@@ -1,10 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::cmd::{run, validate_name};
-use crate::Result;
+use crate::{Error, Result, Workspace};
 
 const BRANCH_PREFIX: &str = "townhall/";
-const WORKTREE_DIR: &str = ".townhall/worktrees";
 
 /// A git worktree owned by one agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,49 +13,58 @@ pub struct Worktree {
     pub path: PathBuf,
 }
 
-fn describe(repo: &Path, name: &str) -> Worktree {
+fn describe(ws: &Workspace, name: &str) -> Worktree {
     Worktree {
         name: name.to_string(),
         branch: format!("{BRANCH_PREFIX}{name}"),
-        path: repo.join(WORKTREE_DIR).join(name),
+        path: ws.worktrees_dir().join(name),
     }
 }
 
-/// Create `<repo>/.townhall/worktrees/<name>` on a new branch `townhall/<name>`.
-pub async fn create(repo: &Path, name: &str, base: &str) -> Result<Worktree> {
+/// Create `~/.townhall/worktrees/<repo-key>/<name>` on a new branch `townhall/<name>`.
+pub async fn create(ws: &Workspace, name: &str, base: &str) -> Result<Worktree> {
     validate_name(name)?;
-    let wt = describe(repo, name);
+    let wt = describe(ws, name);
+    ws.home().create_dir(&ws.worktrees_dir())?;
     let path = wt.path.to_string_lossy().into_owned();
     run(
         "git",
         &["worktree", "add", "-b", &wt.branch, &path, base],
-        Some(repo),
+        Some(ws.repo()),
     )
     .await?;
     Ok(wt)
 }
 
 /// Remove the worktree and delete its branch.
-pub async fn remove(repo: &Path, name: &str) -> Result<()> {
+pub async fn remove(ws: &Workspace, name: &str) -> Result<()> {
     validate_name(name)?;
-    let wt = describe(repo, name);
+    let wt = describe(ws, name);
     let path = wt.path.to_string_lossy().into_owned();
-    run("git", &["worktree", "remove", "--force", &path], Some(repo)).await?;
-    run("git", &["branch", "-D", &wt.branch], Some(repo)).await?;
+    run(
+        "git",
+        &["worktree", "remove", "--force", &path],
+        Some(ws.repo()),
+    )
+    .await?;
+    run("git", &["branch", "-D", &wt.branch], Some(ws.repo())).await?;
     Ok(())
 }
 
 /// List townhall-managed worktrees (rediscovered from git, so restarts lose nothing).
-pub async fn list(repo: &Path) -> Result<Vec<Worktree>> {
-    let out = run("git", &["worktree", "list", "--porcelain"], Some(repo)).await?;
+pub async fn list(ws: &Workspace) -> Result<Vec<Worktree>> {
     // git reports canonical paths (e.g. /private/var on macOS), so compare against one.
-    let root = repo
-        .canonicalize()
-        .map_err(|source| crate::Error::Spawn {
-            program: "canonicalize".into(),
-            source,
-        })?
-        .join(WORKTREE_DIR);
+    let root = match ws.worktrees_dir().canonicalize() {
+        Ok(root) => root,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(source) => {
+            return Err(Error::Io {
+                context: format!("worktrees dir {}", ws.worktrees_dir().display()),
+                source,
+            })
+        }
+    };
+    let out = run("git", &["worktree", "list", "--porcelain"], Some(ws.repo())).await?;
     let found = out
         .split("\n\n")
         .filter_map(|block| {
@@ -66,7 +74,7 @@ pub async fn list(repo: &Path) -> Result<Vec<Worktree>> {
                 .ok()?
                 .to_string_lossy()
                 .into_owned();
-            Some(describe(repo, &name))
+            Some(describe(ws, &name))
         })
         .collect();
     Ok(found)

@@ -58,7 +58,7 @@ fn adapter_for(kind: &str) -> Result<Box<dyn AgentAdapter>, ApiError> {
 }
 
 pub async fn list(State(state): State<AppState>) -> Result<Response, ApiError> {
-    let agents: Vec<AgentView> = agent::list(state.repo())
+    let agents: Vec<AgentView> = agent::list(state.workspace())
         .await?
         .into_iter()
         .map(AgentView::from)
@@ -82,7 +82,7 @@ pub async fn create(
         command: req.command,
     };
     let started = agent::start(
-        state.repo(),
+        state.workspace(),
         &req.name,
         base.unwrap_or(DEFAULT_BASE),
         adapter.as_ref(),
@@ -96,18 +96,22 @@ pub async fn remove(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Response, ApiError> {
-    agent::stop(state.repo(), &name).await?;
+    agent::stop(state.workspace(), &name).await?;
     Ok(ok(name))
 }
 
 pub async fn send(
+    State(state): State<AppState>,
     Path(name): Path<String>,
     Json(req): Json<SendText>,
 ) -> Result<Response, ApiError> {
-    agent::send(&name, &req.text).await?;
+    agent::send(state.workspace(), &name, &req.text).await?;
     Ok(ok(name))
 }
 
-pub async fn output(Path(name): Path<String>) -> Result<Response, ApiError> {
-    Ok(ok(agent::output(&name).await?))
+pub async fn output(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Response, ApiError> {
+    Ok(ok(agent::output(state.workspace(), &name).await?))
 }

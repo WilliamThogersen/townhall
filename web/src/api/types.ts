@@ -15,3 +15,9 @@ export interface CreateAgentInput {
   readonly prompt?: string;
   readonly command?: string;
 }
+
+export interface Info {
+  readonly home: string;
+  readonly repo: string;
+  readonly repoKey: string;
+}

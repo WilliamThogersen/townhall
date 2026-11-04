@@ -14,6 +14,12 @@ pub enum Error {
         code: Option<i32>,
         stderr: String,
     },
+    #[error("{context}: {source}")]
+    Io {
+        context: String,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("invalid name `{0}`: use letters, digits, `-` and `_` only")]
     InvalidName(String),
     #[error("invalid input: {0}")]

@@ -8,6 +8,7 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tempfile::TempDir;
 use tower::ServiceExt;
+use townhall_core::{Home, Workspace};
 use townhall_daemon::{router, AppState};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -20,7 +21,17 @@ fn unique(prefix: &str) -> String {
     )
 }
 
-async fn init_repo() -> (TempDir, Router) {
+struct Env {
+    repo: TempDir,
+    home: TempDir,
+}
+
+fn state_for(repo: &std::path::Path, home: &std::path::Path) -> AppState {
+    let ws = Workspace::new(Home::at(home.join(".townhall")), repo).unwrap();
+    AppState::new(ws)
+}
+
+async fn init_repo() -> (Env, Router) {
     let dir = TempDir::new().unwrap();
     let git =
         |args: &'static [&'static str]| townhall_core::cmd::run("git", args, Some(dir.path()));
@@ -37,8 +48,9 @@ async fn init_repo() -> (TempDir, Router) {
     ])
     .await
     .unwrap();
-    let app = router(AppState::new(dir.path().to_path_buf()));
-    (dir, app)
+    let home = TempDir::new().unwrap();
+    let app = router(state_for(dir.path(), home.path()));
+    (Env { repo: dir, home }, app)
 }
 
 async fn call(app: &Router, method: &str, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
@@ -62,7 +74,7 @@ async fn settle() {
 
 #[tokio::test]
 async fn full_lifecycle_over_http() {
-    let (_dir, app) = init_repo().await;
+    let (env, app) = init_repo().await;
     let name = unique("api");
 
     let (s, v) = call(&app, "GET", "/api/agents", None).await;
@@ -74,6 +86,9 @@ async fn full_lifecycle_over_http() {
     assert_eq!(s, StatusCode::CREATED, "{v}");
     assert_eq!(v["data"]["alive"], true);
     assert_eq!(v["data"]["kind"], "shell");
+    let wt = v["data"]["worktree"].as_str().unwrap();
+    assert!(wt.starts_with(env.home.path().to_str().unwrap()), "{wt}");
+    assert!(!wt.starts_with(env.repo.path().to_str().unwrap()), "{wt}");
     settle().await;
 
     let (_, v) = call(&app, "GET", "/api/agents", None).await;
@@ -159,7 +174,8 @@ async fn bad_base_is_500_and_rolls_back() {
 async fn cors_allows_desktop_origin_only() {
     use axum::http::{header, Method};
     let dir = tempfile::tempdir().unwrap();
-    let app = townhall_daemon::router_with_cors(AppState::new(dir.path().to_path_buf()));
+    let home = tempfile::tempdir().unwrap();
+    let app = townhall_daemon::router_with_cors(state_for(dir.path(), home.path()));
     let preflight = |origin: &'static str| {
         Request::builder()
             .method(Method::OPTIONS)
@@ -189,4 +205,21 @@ async fn cors_allows_desktop_origin_only() {
         .headers()
         .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
         .is_none());
+}
+
+#[tokio::test]
+async fn info_reports_home_repo_and_key() {
+    let (env, app) = init_repo().await;
+    let (s, v) = call(&app, "GET", "/api/info", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["success"], true);
+    let home = env.home.path().join(".townhall");
+    assert_eq!(v["data"]["home"], home.to_str().unwrap());
+    let repo = env.repo.path().canonicalize().unwrap();
+    assert_eq!(v["data"]["repo"], repo.to_str().unwrap());
+    let key = v["data"]["repoKey"].as_str().unwrap();
+    assert!(
+        key.ends_with(|c: char| c.is_ascii_hexdigit()) && key.contains('-'),
+        "{key}"
+    );
 }

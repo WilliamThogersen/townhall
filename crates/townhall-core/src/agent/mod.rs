@@ -3,12 +3,12 @@
 
 mod adapter;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub use adapter::{shell_quote, AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter};
 
 use crate::cmd::{run, validate_name};
-use crate::{tmux, worktree, Error, Result};
+use crate::{tmux, worktree, Error, Result, Workspace};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Agent {
@@ -49,7 +49,7 @@ fn from_worktree(wt: worktree::Worktree, kind: Option<String>, alive: bool) -> A
 
 /// Create the worktree, then the tmux session. Rolls the worktree back if tmux fails.
 pub async fn start(
-    repo: &Path,
+    ws: &Workspace,
     name: &str,
     base: &str,
     adapter: &dyn AgentAdapter,
@@ -57,9 +57,9 @@ pub async fn start(
 ) -> Result<Agent> {
     validate_name(name)?;
     let command = adapter.launch_command(options)?;
-    let wt = worktree::create(repo, name, base).await?;
-    if let Err(cause) = tmux::spawn(name, &wt.path, &command).await {
-        return Err(match worktree::remove(repo, name).await {
+    let wt = worktree::create(ws, name, base).await?;
+    if let Err(cause) = tmux::spawn(ws.key(), name, &wt.path, &command).await {
+        return Err(match worktree::remove(ws, name).await {
             Ok(()) => cause,
             Err(cleanup) => Error::RollbackFailed {
                 cause: cause.to_string(),
@@ -72,16 +72,16 @@ pub async fn start(
 
 /// Kill the session and remove worktree and branch. Either may already be gone,
 /// but if both are, the agent does not exist and `NotFound` is returned.
-pub async fn stop(repo: &Path, name: &str) -> Result<()> {
+pub async fn stop(ws: &Workspace, name: &str) -> Result<()> {
     validate_name(name)?;
-    let killed = match tmux::kill(name).await {
+    let killed = match tmux::kill(ws.key(), name).await {
         Ok(()) => true,
         Err(e) if tmux_absent(&e) => false,
         Err(e) => return Err(e),
     };
-    let removed = match worktree::remove(repo, name).await {
+    let removed = match worktree::remove(ws, name).await {
         Ok(()) => true,
-        Err(e) if git_absent(&e) => delete_orphan_branch(repo, name).await?,
+        Err(e) if git_absent(&e) => delete_orphan_branch(ws, name).await?,
         Err(e) => return Err(e),
     };
     if killed || removed {
@@ -92,9 +92,9 @@ pub async fn stop(repo: &Path, name: &str) -> Result<()> {
 }
 
 /// Worktree already gone: the branch may still linger. True if it was deleted.
-async fn delete_orphan_branch(repo: &Path, name: &str) -> Result<bool> {
+async fn delete_orphan_branch(ws: &Workspace, name: &str) -> Result<bool> {
     let branch = format!("townhall/{name}");
-    match run("git", &["branch", "-D", &branch], Some(repo)).await {
+    match run("git", &["branch", "-D", &branch], Some(ws.repo())).await {
         Ok(_) => Ok(true),
         Err(e) if git_absent(&e) => Ok(false),
         Err(e) => Err(e),
@@ -102,8 +102,8 @@ async fn delete_orphan_branch(repo: &Path, name: &str) -> Result<bool> {
 }
 
 /// Worktrees joined with live sessions. A worktree without a session is `alive: false`.
-pub async fn list(repo: &Path) -> Result<Vec<Agent>> {
-    let (worktrees, sessions) = (worktree::list(repo).await?, tmux::list().await?);
+pub async fn list(ws: &Workspace) -> Result<Vec<Agent>> {
+    let (worktrees, sessions) = (worktree::list(ws).await?, tmux::list(ws.key()).await?);
     Ok(worktrees
         .into_iter()
         .map(|wt| {
@@ -122,15 +122,15 @@ fn missing_session(name: &str, e: Error) -> Error {
 }
 
 /// Type text into the agent's session and press Enter.
-pub async fn send(name: &str, text: &str) -> Result<()> {
-    tmux::send(name, text)
+pub async fn send(ws: &Workspace, name: &str, text: &str) -> Result<()> {
+    tmux::send(ws.key(), name, text)
         .await
         .map_err(|e| missing_session(name, e))
 }
 
 /// Current pane contents of the agent's session.
-pub async fn output(name: &str) -> Result<String> {
-    tmux::capture(name)
+pub async fn output(ws: &Workspace, name: &str) -> Result<String> {
+    tmux::capture(ws.key(), name)
         .await
         .map_err(|e| missing_session(name, e))
 }

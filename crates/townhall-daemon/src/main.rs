@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 use clap::Parser;
+use townhall_core::{Home, Workspace};
 use townhall_daemon::config::Config;
 use townhall_daemon::{router_with_cors, serve, AppState};
 
@@ -16,16 +17,15 @@ async fn main() -> ExitCode {
 }
 
 async fn run(config: Config) -> Result<(), String> {
-    let repo = config
-        .repo
-        .canonicalize()
-        .map_err(|e| format!("repo path {}: {e}", config.repo.display()))?;
+    let home = Home::from_env().map_err(|e| format!("townhall home: {e}"))?;
+    let workspace = Workspace::new(home, &config.repo).map_err(|e| e.to_string())?;
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .map_err(|e| format!("bind {}: {e}", config.bind))?;
     eprintln!(
-        "townhall-daemon: repo {} listening on {}",
-        repo.display(),
+        "townhall-daemon: repo {} (home {}) listening on {}",
+        workspace.repo().display(),
+        workspace.home().root().display(),
         config.bind
     );
     let shutdown = async {
@@ -33,5 +33,10 @@ async fn run(config: Config) -> Result<(), String> {
             eprintln!("townhall-daemon: signal handler failed: {e}");
         }
     };
-    serve(listener, router_with_cors(AppState::new(repo)), shutdown).await
+    serve(
+        listener,
+        router_with_cors(AppState::new(workspace)),
+        shutdown,
+    )
+    .await
 }

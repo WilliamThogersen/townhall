@@ -5,6 +5,9 @@ use tempfile::TempDir;
 use townhall_core::agent::{self, LaunchOptions, ShellAdapter};
 use townhall_core::{tmux, Error};
 
+mod common;
+use common::{fixture, git};
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn unique(prefix: &str) -> String {
@@ -13,32 +16,6 @@ fn unique(prefix: &str) -> String {
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::SeqCst)
     )
-}
-
-async fn git(dir: &std::path::Path, args: &[&str]) -> String {
-    townhall_core::cmd::run("git", args, Some(dir))
-        .await
-        .unwrap()
-}
-
-async fn init_repo() -> TempDir {
-    let dir = TempDir::new().unwrap();
-    git(dir.path(), &["init", "-b", "main"]).await;
-    git(
-        dir.path(),
-        &[
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@t",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "init",
-        ],
-    )
-    .await;
-    dir
 }
 
 fn shell(cmd: &str) -> LaunchOptions {
@@ -54,10 +31,11 @@ async fn settle() {
 
 #[tokio::test]
 async fn start_list_send_output_stop() {
-    let repo = init_repo().await;
+    let fx = fixture().await;
+    let ws = &fx.ws;
     let name = unique("life");
     let a = agent::start(
-        repo.path(),
+        ws,
         &name,
         "main",
         &ShellAdapter,
@@ -70,100 +48,98 @@ async fn start_list_send_output_stop() {
     assert_eq!(a.branch, format!("townhall/{name}"));
     settle().await;
 
-    let listed = agent::list(repo.path()).await.unwrap();
+    let listed = agent::list(ws).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert!(listed[0].alive);
 
-    agent::send(&name, "ping-townhall").await.unwrap();
+    agent::send(ws, &name, "ping-townhall").await.unwrap();
     settle().await;
-    let out = agent::output(&name).await.unwrap();
+    let out = agent::output(ws, &name).await.unwrap();
     assert!(
         out.contains("ready") && out.contains("ping-townhall"),
         "{out}"
     );
 
-    agent::stop(repo.path(), &name).await.unwrap();
-    assert!(agent::list(repo.path()).await.unwrap().is_empty());
-    assert!(!tmux::list().await.unwrap().contains(&name));
-    assert!(git(repo.path(), &["branch", "--list", "townhall/*"])
+    agent::stop(ws, &name).await.unwrap();
+    assert!(agent::list(ws).await.unwrap().is_empty());
+    assert!(!tmux::list(ws.key()).await.unwrap().contains(&name));
+    assert!(git(fx.repo.path(), &["branch", "--list", "townhall/*"])
         .await
         .is_empty());
 }
 
 #[tokio::test]
 async fn failed_spawn_rolls_back_worktree() {
-    let repo = init_repo().await;
+    let fx = fixture().await;
+    let ws = &fx.ws;
     let name = unique("roll");
     // Occupy the session name so tmux spawn fails after the worktree exists.
     let blocker = TempDir::new().unwrap();
-    tmux::spawn(&name, blocker.path(), "sleep 30")
+    tmux::spawn(ws.key(), &name, blocker.path(), "sleep 30")
         .await
         .unwrap();
 
-    let err = agent::start(
-        repo.path(),
-        &name,
-        "main",
-        &ShellAdapter,
-        &shell("sleep 30"),
-    )
-    .await
-    .unwrap_err();
+    let err = agent::start(ws, &name, "main", &ShellAdapter, &shell("sleep 30"))
+        .await
+        .unwrap_err();
     assert!(matches!(err, Error::Command { .. }), "{err:?}");
-    assert!(agent::list(repo.path()).await.unwrap().is_empty());
-    assert!(git(repo.path(), &["branch", "--list", "townhall/*"])
+    assert!(agent::list(ws).await.unwrap().is_empty());
+    assert!(git(fx.repo.path(), &["branch", "--list", "townhall/*"])
         .await
         .is_empty());
 
-    tmux::kill(&name).await.unwrap();
+    tmux::kill(ws.key(), &name).await.unwrap();
 }
 
 #[tokio::test]
 async fn dead_session_shows_not_alive_and_stop_cleans_up() {
-    let repo = init_repo().await;
+    let fx = fixture().await;
+    let ws = &fx.ws;
     let name = unique("dead");
-    agent::start(repo.path(), &name, "main", &ShellAdapter, &shell("true"))
+    agent::start(ws, &name, "main", &ShellAdapter, &shell("true"))
         .await
         .unwrap();
     settle().await;
 
-    let listed = agent::list(repo.path()).await.unwrap();
+    let listed = agent::list(ws).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert!(!listed[0].alive);
 
-    agent::stop(repo.path(), &name).await.unwrap();
-    assert!(agent::list(repo.path()).await.unwrap().is_empty());
+    agent::stop(ws, &name).await.unwrap();
+    assert!(agent::list(ws).await.unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn stop_missing_agent_is_not_found() {
-    let repo = init_repo().await;
-    let err = agent::stop(repo.path(), &unique("ghost"))
-        .await
-        .unwrap_err();
+    let fx = fixture().await;
+    let ws = &fx.ws;
+    let err = agent::stop(ws, &unique("ghost")).await.unwrap_err();
     assert!(matches!(err, Error::NotFound(_)), "{err:?}");
 }
 
 #[tokio::test]
 async fn send_and_output_on_missing_session_are_not_found() {
+    let fx = fixture().await;
+    let ws = &fx.ws;
     let name = unique("nosess");
     assert!(matches!(
-        agent::send(&name, "x").await,
+        agent::send(ws, &name, "x").await,
         Err(Error::NotFound(_))
     ));
     assert!(matches!(
-        agent::output(&name).await,
+        agent::output(ws, &name).await,
         Err(Error::NotFound(_))
     ));
 }
 
 #[tokio::test]
 async fn invalid_inputs_rejected_before_side_effects() {
-    let repo = init_repo().await;
-    let bad = agent::start(repo.path(), "../x", "main", &ShellAdapter, &shell("true")).await;
+    let fx = fixture().await;
+    let ws = &fx.ws;
+    let bad = agent::start(ws, "../x", "main", &ShellAdapter, &shell("true")).await;
     assert!(matches!(bad, Err(Error::InvalidName(_))));
     let no_cmd = agent::start(
-        repo.path(),
+        ws,
         &unique("nc"),
         "main",
         &ShellAdapter,
@@ -171,5 +147,25 @@ async fn invalid_inputs_rejected_before_side_effects() {
     )
     .await;
     assert!(matches!(no_cmd, Err(Error::InvalidInput(_))));
-    assert!(agent::list(repo.path()).await.unwrap().is_empty());
+    assert!(agent::list(ws).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn same_agent_name_in_two_repos_is_isolated() {
+    let (a, b) = (fixture().await, fixture().await);
+    let name = unique("twin");
+    for fx in [&a, &b] {
+        agent::start(&fx.ws, &name, "main", &ShellAdapter, &shell("sleep 30"))
+            .await
+            .unwrap();
+    }
+    for fx in [&a, &b] {
+        let listed = agent::list(&fx.ws).await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].alive);
+    }
+    agent::stop(&a.ws, &name).await.unwrap();
+    assert!(agent::list(&a.ws).await.unwrap().is_empty());
+    assert!(agent::list(&b.ws).await.unwrap()[0].alive);
+    agent::stop(&b.ws, &name).await.unwrap();
 }

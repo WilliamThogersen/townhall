@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAgent, listAgents, sendText, streamUrl } from "./client";
+import { createAgent, getInfo, listAgents, sendText, streamUrl } from "./client";
 import { ApiError } from "./errors";
 
 const agent = { name: "a", kind: "shell", branch: "townhall/a", worktree: "/w/a", alive: true };
@@ -18,6 +18,14 @@ describe("api client", () => {
   it("unwraps the envelope and validates agents", async () => {
     mockFetch(200, { success: true, data: [agent], error: null });
     expect(await listAgents()).toEqual([agent]);
+  });
+
+  it("validates the info payload", async () => {
+    const info = { home: "/h/.townhall", repo: "/r", repoKey: "r-0123abcd" };
+    mockFetch(200, { success: true, data: info, error: null });
+    expect(await getInfo()).toEqual(info);
+    mockFetch(200, { success: true, data: { home: "/h" }, error: null });
+    await expect(getInfo()).rejects.toMatchObject({ kind: "protocol" });
   });
 
   it("maps a failure envelope to an http ApiError", async () => {
