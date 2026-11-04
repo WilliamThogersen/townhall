@@ -1,4 +1,4 @@
-.th-stats-head > h2:only-child {
+.th-stats .th-stats-head > h2:only-child {
   order: 0;
 }
 
@@ -14,4 +14,43 @@
 .th-heat-grid .th-heat-cell[data-active] {
   outline: var(--th-border) solid var(--th-fg);
   outline-offset: 1px;
+}
+
+@container (max-width: 767px) and (max-height: 579px) {
+  .th-home .th-heatmap {
+    display: none;
+  }
+}
+
+@container (max-width: 567px) and (max-height: 269px) {
+  .th-home .th-home-starters,
+  .th-home .th-greeting .th-logo {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  @container (max-height: 629px) {
+    .th-home .th-heatmap {
+      display: none;
+    }
+  }
+
+  @container (max-height: 459px) {
+    .th-home .th-stats {
+      display: none;
+    }
+  }
+
+  @container (max-width: 699px) and (max-height: 699px) {
+    .th-home .th-heatmap {
+      display: none;
+    }
+  }
+
+  @container (max-width: 699px) and (max-height: 539px) {
+    .th-home .th-stats {
+      display: none;
+    }
+  }
 }
