@@ -15,6 +15,7 @@ mod content;
 mod process;
 mod prompt;
 mod repo;
+mod session;
 mod stream;
 mod turn;
 mod turns;
@@ -25,7 +26,8 @@ pub use actions::{create, end, patch, send, stop, MAX_ATTACHMENTS, MAX_MESSAGE_C
 pub use args::{allowed_tools, DENIED_TOOLS, READ_ONLY_TOOLS};
 pub use content::user_content;
 pub use process::{EXIT_GRACE, KILL_WAIT, STOP_GRACE};
-pub use turn::DEFAULT_CONTEXT_LIMIT;
+pub use session::DEFAULT_CONTEXT_LIMIT;
+pub use turn::LOST_SESSION;
 pub use turns::{TurnGuard, Turns, BUSY};
 
 use crate::model::{ConversationStatus, EntryBody};
