@@ -1,19 +1,99 @@
-mod agents;
-mod info;
-mod stream;
+//! Every phase 2 route, registered once here. Each unit fills in the handlers of its own
+//! file and does not edit this one (ownership map: `docs/daemon-api.md`).
 
-use axum::routing::{get, post};
+mod agents;
+mod attachments;
+mod conversations;
+mod events;
+mod info;
+mod library;
+mod mcp;
+mod repos;
+mod runs;
+mod settings;
+mod stats;
+mod steps;
+mod stream;
+mod tasks;
+
+use axum::extract::DefaultBodyLimit;
+use axum::routing::{delete, get, post, put};
 use axum::Router;
+use townhall_core::model::MAX_ATTACHMENT_BYTES;
 
 use crate::state::AppState;
+
+/// One attachment per upload request, plus room for the multipart framing.
+pub const UPLOAD_BODY_LIMIT: usize = MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
+
+fn agent_routes() -> Router<AppState> {
+    Router::new()
+        .route("/agents", get(agents::list).post(agents::create))
+        .route("/agents/{name}", delete(agents::remove))
+        .route("/agents/{name}/send", post(agents::send))
+        .route("/agents/{name}/output", get(agents::output))
+        .route("/agents/{name}/stream", get(stream::stream))
+        .route("/agents/{name}/steps", get(steps::list))
+}
+
+fn conversation_routes() -> Router<AppState> {
+    let upload = get(attachments::list)
+        .post(attachments::upload)
+        .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT));
+    Router::new()
+        .route(
+            "/conversations",
+            get(conversations::list).post(conversations::create),
+        )
+        .route(
+            "/conversations/{id}",
+            get(conversations::detail).patch(conversations::patch),
+        )
+        .route("/conversations/{id}/messages", post(conversations::send))
+        .route("/conversations/{id}/stop", post(conversations::stop))
+        .route("/conversations/{id}/end", post(conversations::end))
+        .route("/conversations/{id}/mcp", post(mcp::rpc))
+        .route("/conversations/{id}/attachments", upload)
+        .route(
+            "/conversations/{id}/attachments/{attachment}",
+            get(attachments::download),
+        )
+}
+
+fn library_routes() -> Router<AppState> {
+    Router::new()
+        .route("/library/agents", get(library::list_agents))
+        .route(
+            "/library/agents/{name}",
+            get(library::get_agent)
+                .put(library::put_agent)
+                .delete(library::delete_agent),
+        )
+        .route("/library/workflows", get(library::list_workflows))
+        .route(
+            "/library/workflows/{name}",
+            get(library::get_workflow)
+                .put(library::put_workflow)
+                .delete(library::delete_workflow),
+        )
+        .route("/library/import", post(library::import))
+        .route("/workflows/{name}/runs", post(runs::start))
+        .route("/runs/{id}", get(runs::get))
+}
 
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/info", get(info::info))
-        .route("/agents", get(agents::list).post(agents::create))
-        .route("/agents/{name}", axum::routing::delete(agents::remove))
-        .route("/agents/{name}/send", post(agents::send))
-        .route("/agents/{name}/output", get(agents::output))
-        .route("/agents/{name}/stream", get(stream::stream));
+        .route("/repos", get(repos::list).post(repos::add))
+        .route("/repos/{name}", delete(repos::remove))
+        .route("/settings", get(settings::get))
+        .route("/settings/{key}", put(settings::put))
+        .route("/tasks", get(tasks::list))
+        .route("/tasks/{name}", get(tasks::get))
+        .route("/stats", get(stats::get))
+        .route("/events", get(events::socket))
+        .merge(agent_routes())
+        .merge(conversation_routes())
+        .merge(library_routes());
     Router::new().nest("/api", api).with_state(state)
 }

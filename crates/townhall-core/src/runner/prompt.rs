@@ -1,0 +1,189 @@
+//! What townhall tells its own session: the appended system prompt with the turn's repo,
+//! and the stream-json lines it writes on the CLI's stdin.
+
+use serde_json::{json, Value};
+
+use crate::model::Repo;
+
+const INSTRUCTIONS: &str = "\
+you are townhall, a planner. you talk with the user, work out what they want and hand the work to Claude agents as tasks.
+- create every piece of work with the create_task tool. each task runs as its own agent in a git worktree of its repo.
+- never edit files or run commands yourself. you may read code (Read, Grep, Glob, LS) to plan, nothing else; the agents do the work.
+- once the topic is clear, name the conversation with set_title (3 to 6 words, lowercase).
+- keep replies short.";
+
+const QUESTION_TOOL: &str = "AskUserQuestion";
+/// Added when townhall had to start the session over.
+pub const LOST_HISTORY: &str = "the earlier history of this conversation was lost: ask the user for anything you need from it.";
+
+/// Which repo this turn is about, from repo inference.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RepoNote {
+    One(Repo),
+    /// The user answered `both` or `all`.
+    Several(Vec<Repo>),
+    Unknown,
+}
+
+fn describe(repo: &Repo) -> String {
+    format!(
+        "{} at {}, base branch {}",
+        repo.name,
+        repo.path.display(),
+        repo.base_branch
+    )
+}
+
+fn names(repos: &[Repo]) -> String {
+    repos
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn note_text(note: &RepoNote, registered: &[Repo]) -> String {
+    match note {
+        RepoNote::One(repo) => format!(
+            "repo for this turn: {}. create_task uses it when you leave `repo` out.",
+            describe(repo)
+        ),
+        RepoNote::Several(repos) => format!(
+            "the user picked these repos: {}. pass `repo` on every create_task.",
+            names(repos)
+        ),
+        RepoNote::Unknown if registered.is_empty() => {
+            "no repo is registered yet: create_task fails until the user adds one on the repos page."
+                .to_string()
+        }
+        RepoNote::Unknown => {
+            "no repo is resolved for this turn: pass `repo` on every create_task.".to_string()
+        }
+    }
+}
+
+/// `--append-system-prompt`: the rules, this turn's repo and every registered repo.
+pub fn system_prompt(note: &RepoNote, registered: &[Repo]) -> String {
+    let list: Vec<String> = registered
+        .iter()
+        .map(|r| format!("- {}", describe(r)))
+        .collect();
+    let repos = if list.is_empty() {
+        String::new()
+    } else {
+        format!("\nregistered repos:\n{}", list.join("\n"))
+    };
+    format!("{INSTRUCTIONS}\n\n{}{repos}", note_text(note, registered))
+}
+
+fn line(value: Value) -> String {
+    format!("{value}\n")
+}
+
+/// The user turn, its content blocks built by `content::user_content`.
+pub fn user_line(content: Vec<Value>) -> String {
+    line(json!({
+        "type": "user",
+        "session_id": "",
+        "message": { "role": "user", "content": content },
+        "parent_tool_use_id": null
+    }))
+}
+
+fn control_response(response: Value) -> String {
+    line(json!({ "type": "control_response", "response": response }))
+}
+
+pub fn allow_line(request_id: &str, input: &Value) -> String {
+    control_response(json!({
+        "subtype": "success",
+        "request_id": request_id,
+        "response": { "behavior": "allow", "updatedInput": input }
+    }))
+}
+
+/// Why townhall's session may not run `tool`, for Claude to read and change course.
+pub fn deny_message(tool: &str) -> String {
+    if tool == QUESTION_TOOL {
+        return "townhall shows no question forms: ask the user in your reply instead.".into();
+    }
+    format!(
+        "townhall's own session may not use {tool}. it plans and hands the work to agents: \
+         create a task with create_task and the agent edits the code in its own worktree."
+    )
+}
+
+pub fn deny_line(request_id: &str, tool: &str) -> String {
+    control_response(json!({
+        "subtype": "success",
+        "request_id": request_id,
+        "response": { "behavior": "deny", "message": deny_message(tool) }
+    }))
+}
+
+pub fn error_line(request_id: &str, subtype: &str) -> String {
+    control_response(json!({
+        "subtype": "error",
+        "request_id": request_id,
+        "error": format!("townhall does not handle `{subtype}` requests")
+    }))
+}
+
+pub fn interrupt_line(request_id: &str) -> String {
+    line(json!({
+        "type": "control_request",
+        "request_id": request_id,
+        "request": { "subtype": "interrupt" }
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repo(name: &str) -> Repo {
+        Repo {
+            name: name.into(),
+            path: format!("/r/{name}").into(),
+            base_branch: "main".into(),
+        }
+    }
+
+    #[test]
+    fn the_prompt_names_the_turns_repo() {
+        let all = [repo("shop"), repo("admin")];
+        let one = system_prompt(&RepoNote::One(repo("shop")), &all);
+        assert!(one.starts_with("you are townhall"));
+        assert!(one.contains("repo for this turn: shop at /r/shop, base branch main."));
+        assert!(one.contains("- admin at /r/admin, base branch main"));
+        let several = system_prompt(&RepoNote::Several(all.to_vec()), &all);
+        assert!(several.contains("the user picked these repos: shop, admin."));
+        assert!(system_prompt(&RepoNote::Unknown, &all).contains("no repo is resolved"));
+        let none = system_prompt(&RepoNote::Unknown, &[]);
+        assert!(none.contains("no repo is registered yet") && !none.contains("registered repos"));
+        assert!(!one.contains('\u{2014}') && !one.contains('\u{2013}'));
+    }
+
+    #[test]
+    fn stdin_lines_are_one_json_object_each() {
+        let parse = |s: String| -> Value {
+            assert!(s.ends_with('\n') && !s.trim_end().contains('\n'));
+            serde_json::from_str(&s).unwrap()
+        };
+        let user = parse(user_line(vec![json!({"type": "text", "text": "hi"})]));
+        assert_eq!(user["message"]["content"][0]["text"], "hi");
+        let allow = parse(allow_line("r1", &json!({"a": 1})));
+        assert_eq!(
+            allow["response"]["response"]["updatedInput"],
+            json!({"a": 1})
+        );
+        let deny = parse(deny_line("r2", "Edit"));
+        assert_eq!(deny["response"]["request_id"], "r2");
+        assert_eq!(deny["response"]["response"]["behavior"], "deny");
+        assert!(deny_message("AskUserQuestion").contains("ask the user in your reply"));
+        let error = parse(error_line("r3", "hook_callback"));
+        assert_eq!(error["response"]["subtype"], "error");
+        let stop = parse(interrupt_line("stop-1"));
+        assert_eq!(stop["request"]["subtype"], "interrupt");
+    }
+}

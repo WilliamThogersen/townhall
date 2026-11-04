@@ -15,16 +15,18 @@
 
 ## status
 
-Early scaffold. The core runs agents today. Conversations and the new interface are designed and come next.
+Early. The core runs agents, and the daemon now runs conversations that turn into tasks
+across several repos, with agent states, attachments, steps and shipped stats. Their
+interface comes next.
 
 |   | part | what it does |
 |---|------|--------------|
 | ● | core | one git worktree and one tmux session per agent, adapters for `claude` and `shell` |
-| ● | daemon | http and websocket api on `127.0.0.1:7777`, live terminal snapshots |
+| ● | daemon | http and websocket api on `127.0.0.1:7777`: several repos, conversations, tasks, agent states, attachments, steps and shipped stats, live terminal snapshots |
 | ● | desktop | tauri app with repo picker, tray and a notification when an agent ends |
 | ◐ | interface | terminal-native redesign, specified in [`docs/style-guide`](docs/style-guide/README.md) |
-| ○ | conversations | talk to townhall; it finds the repo and creates tasks that agents pick up |
-| ○ | control center | one timeline for every agent in every conversation |
+| ◐ | conversations | talk to townhall; it finds the repo and creates tasks that agents pick up. works in the daemon, the interface comes next |
+| ◐ | control center | one timeline for every agent in every conversation. agent states and steps work in the daemon, the timeline comes next |
 
 `●` works · `◐` in progress · `○` planned
 
@@ -67,10 +69,10 @@ npm run tauri build          # packaged app; add `-- --debug` for a faster debug
 
 Output lands under `target/`. How it behaves:
 
-- **First launch** opens a native folder picker. The repo must be a git repo. The
-  choice is saved in `~/.townhall/config.json` (an old `settings.json` in the app
-  config dir is migrated on first launch) and can be changed with "Change repo" in
-  the header; the in-process daemon restarts on the new path.
+- **First launch** opens a native folder picker. It must be the top folder of a git repo. The
+  choice is saved in `~/.townhall/townhall.db` (an old `settings.json` in the app
+  config dir or an old `config.json` is imported on first launch) and can be changed
+  with "Change repo" in the header; the in-process daemon restarts on the new path.
 - **Port 7777 taken** (a daemon running separately): the app uses that daemon, and
   the repo is whatever it was started with.
 - **Closing the window** hides it to the tray; use "Quit" in the tray menu to exit.
@@ -86,19 +88,29 @@ Output lands under `target/`. How it behaves:
 Everything townhall creates lives in one folder, `~/.townhall` (override with
 `TOWNHALL_HOME`; created with mode 0700). Nothing is ever written into your repo:
 no `.townhall` folder, no `.gitignore` edits. Git itself only records the
-worktrees under the repo's own `.git`.
+worktrees under the repo's own `.git`. Townhall keeps no config files.
 
 ```
 ~/.townhall/
-  config.json                      desktop app settings (chosen repo)
-  worktrees/<repo-key>/<agent>/    one git worktree per agent, branch townhall/<agent>
+  townhall.db                                    every repo, setting, conversation and task (SQLite)
+  townhall.lock                                  held while a townhall owns the database
+  conversations/<id>/files/<attachment>/<name>   attachments
+  tasks/<name>/brief.md                          a task's whole prompt, which its agent reads
+  worktrees/<repo-key>/<agent>/                  one git worktree per agent, branch townhall/<agent>
+  config.json.imported                           an older config.json, after its one-time import
 ```
 
+- One owner: the daemon opens the database, and a second townhall on the same
+  home fails with `townhall.db is in use by another townhall`. The desktop app runs
+  the daemon in-process, or uses the one already on port 7777.
+- An existing `config.json` is imported once (its repo, nothing else) and renamed
+  to `config.json.imported`, never deleted.
 - `<repo-key>` is the repo folder name plus a short hash of its canonical path,
   for example `myapp-1a2b3c4d`, so two repos with the same folder name never collide.
-- tmux sessions are named `townhall-<repo-key>-<agent>`, so agent names are per repo.
-- No state is stored: agents are rediscovered from `git worktree list` and tmux.
-- `GET /api/info` returns `{home, repo, repoKey}` for the running daemon.
+- tmux sessions are named `townhall-<repo-key>-<agent>`.
+- Live agent state is never stored: agents are rediscovered from `git worktree list` and tmux.
+- The daemon serves every registered repo (`GET /api/repos`); the routes, the
+  websocket messages and the tables are in [`docs/daemon-api.md`](docs/daemon-api.md).
 
 ## repo map
 

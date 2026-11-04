@@ -1,0 +1,18 @@
+not json at all
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_late","name":"Glob","input":{"pattern":"**/*.rs"}}]},"timestamp":"2026-03-10T10:00:05.000Z"}
+
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_early","name":"Task","input":{"description":"explore the repo"}}]},"timestamp":"2026-03-10T10:00:01.000Z"}
+[1,2,3]
+"a string"
+{"type":"assistant","message":null}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_no_time","name":"Read","input":{"file_path":"/x"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/no-id"}}]},"timestamp":"2026-03-10T10:00:02.000Z"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_no_name","input":{}}]},"timestamp":"2026-03-10T10:00:02.000Z"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_side","name":"Bash","input":{"command":"ls"}}]},"isSidechain":true,"timestamp":"2026-03-10T10:00:03.000Z"}
+{"type":"user","message":{"content":[{"type":"tool_use","id":"toolu_in_user","name":"Bash","input":{"command":"ls"}}]},"timestamp":"2026-03-10T10:00:04.000Z"}
+{"type":"assistant","message":{"content":"a plain text reply"},"timestamp":"2026-03-10T10:00:06.000Z"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_early","name":"Task","input":{"description":"a replayed call"}}]},"timestamp":"2026-03-10T10:00:07.000Z"}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_unknown","content":"x"},"not a block",{"type":"tool_result","content":"no id"},{"type":"tool_result","tool_use_id":"toolu_early","is_error":true,"content":[{"type":"text","text":"boom"}]}]},"timestamp":"2026-03-10T10:00:08.000Z"}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_early","is_error":false}]},"timestamp":"2026-03-10T10:00:09.000Z"}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_late","content":"src/lib.rs"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_cut","name"

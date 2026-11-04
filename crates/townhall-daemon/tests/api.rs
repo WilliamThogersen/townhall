@@ -11,6 +11,8 @@ use tower::ServiceExt;
 use townhall_core::{Home, Workspace};
 use townhall_daemon::{router, AppState};
 
+mod common;
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn unique(prefix: &str) -> String {
@@ -32,6 +34,7 @@ fn state_for(repo: &std::path::Path, home: &std::path::Path) -> AppState {
 }
 
 async fn init_repo() -> (Env, Router) {
+    common::private_tmux();
     let dir = TempDir::new().unwrap();
     let git =
         |args: &'static [&'static str]| townhall_core::cmd::run("git", args, Some(dir.path()));
@@ -160,12 +163,14 @@ async fn missing_agent_is_404() {
 }
 
 #[tokio::test]
-async fn bad_base_is_500_and_rolls_back() {
+async fn bad_base_is_400_and_creates_nothing() {
     let (_dir, app) = init_repo().await;
     let n = unique("base");
     let body = json!({"name": n, "adapter": "shell", "command": "true", "base": "no-such-ref"});
-    let (s, _) = call(&app, "POST", "/api/agents", Some(body)).await;
-    assert_eq!(s, StatusCode::INTERNAL_SERVER_ERROR);
+    let (s, v) = call(&app, "POST", "/api/agents", Some(body)).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let msg = v["error"].as_str().unwrap();
+    assert!(msg.contains("base branch `no-such-ref` not found"), "{msg}");
     let (_, v) = call(&app, "GET", "/api/agents", None).await;
     assert_eq!(v["data"], json!([]));
 }

@@ -25,6 +25,27 @@ pub async fn run(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Str
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// `run` for code that is not async (the store's import, `spawn_blocking` closures).
+pub fn run_blocking(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    let mut command = std::process::Command::new(program);
+    command.args(args);
+    if let Some(dir) = cwd {
+        command.current_dir(dir);
+    }
+    let output = command.output().map_err(|source| Error::Spawn {
+        program: program.to_string(),
+        source,
+    })?;
+    if !output.status.success() {
+        return Err(Error::Command {
+            command: format!("{program} {}", args.join(" ")),
+            code: output.status.code(),
+            stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 /// Agent names become branch, directory and tmux session names.
 pub fn validate_name(name: &str) -> Result<()> {
     let ok = !name.is_empty()

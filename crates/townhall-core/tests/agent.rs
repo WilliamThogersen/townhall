@@ -20,8 +20,8 @@ fn unique(prefix: &str) -> String {
 
 fn shell(cmd: &str) -> LaunchOptions {
     LaunchOptions {
-        prompt: None,
         command: Some(cmd.to_string()),
+        ..LaunchOptions::default()
     }
 }
 
