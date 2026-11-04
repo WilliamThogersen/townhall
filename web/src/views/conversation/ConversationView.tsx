@@ -47,7 +47,7 @@ export function ConversationView({ id, detail }: ConversationViewProps) {
     <div
       className="th-convo-layout"
       data-pane={pane.task === null ? undefined : "true"}
-      data-rail={rail.folded ? "closed" : undefined}
+      data-rail={rail.attribute}
     >
       <section className="th-convo-view" aria-label={conversation.title} {...drop.dropProps}>
         <ConversationHeader

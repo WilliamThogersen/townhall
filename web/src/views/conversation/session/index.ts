@@ -1,6 +1,7 @@
 import { createElement, type JSX } from "react";
 import { AgentPane } from "../../../agents/AgentPane";
 import type { ConversationDetail, Task } from "../../../api/types";
+import { taskGlyph, taskWords } from "../thread/taskView";
 
 export interface SessionPanelProps {
   readonly detail: ConversationDetail;
@@ -22,7 +23,9 @@ function taskRow(task: Task, props: SessionPanelProps) {
       "aria-pressed": props.openTask === task.name,
       onClick: () => props.onOpenTask(task.name),
     },
+    createElement("span", { className: "th-status", "data-state": taskGlyph(task.state), "aria-hidden": true }),
     createElement("span", { className: "th-task-name" }, task.name),
+    createElement("span", { className: "th-task-state" }, taskWords(task, props.detail.tasks)),
   );
   return createElement("li", { key: task.name, className: "th-task" }, button);
 }

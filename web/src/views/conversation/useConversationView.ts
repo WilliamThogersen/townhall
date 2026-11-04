@@ -6,6 +6,7 @@ import { useConversationActions } from "../../data";
 import { navigate, PATHS, useRoute } from "../../router";
 import { useSettings } from "../../settings/useSettings";
 import type { ThreadContextValue } from "./thread/threadContext";
+import { useNarrow } from "./useNarrow";
 
 export interface PaneRoute {
   readonly wanted: string | null;
@@ -25,13 +26,15 @@ export function usePaneRoute(id: string, tasks: readonly Task[]): PaneRoute {
   return { wanted, task, open, close };
 }
 
+export type RailAttribute = "closed" | "open" | undefined;
+
 export interface Rail {
   readonly visible: boolean;
-  readonly folded: boolean;
+  readonly attribute: RailAttribute;
   readonly toggle: () => void;
 }
 
-export function useRail(pane: PaneRoute): Rail {
+function useWideRail(pane: PaneRoute): Rail {
   const { settings, update } = useSettings();
   const open = settings.sessionPanelOpen;
   const paneOpen = pane.task !== null;
@@ -43,7 +46,29 @@ export function useRail(pane: PaneRoute): Rail {
     pane.close();
     if (!open) update({ sessionPanelOpen: true });
   };
-  return { visible: open && !paneOpen, folded: !open && !paneOpen, toggle };
+  return { visible: open && !paneOpen, attribute: !open && !paneOpen ? "closed" : undefined, toggle };
+}
+
+function useOverlayRail(pane: PaneRoute): Rail {
+  const [open, setOpen] = useState(false);
+  const paneOpen = pane.task !== null;
+  const toggle = () => {
+    if (!paneOpen) {
+      setOpen((was) => !was);
+      return;
+    }
+    pane.close();
+    setOpen(true);
+  };
+  const visible = open && !paneOpen;
+  return { visible, attribute: visible ? "open" : undefined, toggle };
+}
+
+export function useRail(pane: PaneRoute): Rail {
+  const narrow = useNarrow();
+  const wide = useWideRail(pane);
+  const overlay = useOverlayRail(pane);
+  return narrow ? overlay : wide;
 }
 
 export interface Commands {

@@ -90,7 +90,10 @@ beforeEach(() => {
   vi.spyOn(reposApi, "listRepos").mockResolvedValue([aRepo({ name: "townhall", baseBranch: "main" })]);
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("ConversationPage states", () => {
   it("opens the conversation with its header, thread and session panel", async () => {
@@ -170,6 +173,24 @@ describe("ConversationPage terminal and session panel", () => {
     await waitFor(() => expect(put).toHaveBeenCalledWith("sessionPanelOpen", false));
     await userEvent.keyboard("s");
     expect(layout()).not.toHaveAttribute("data-rail");
+  });
+
+  it("opens the session panel as an overlay on a narrow window", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((media: string) => ({ media, matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
+    const { put } = renderPage();
+    const toggle = await screen.findByRole("button", { name: "session" });
+    expect(layout()).not.toHaveAttribute("data-rail");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.keyboard("s");
+    expect(layout()).toHaveAttribute("data-rail", "open");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(toggle);
+    expect(layout()).not.toHaveAttribute("data-rail");
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("ignores s while typing", async () => {
