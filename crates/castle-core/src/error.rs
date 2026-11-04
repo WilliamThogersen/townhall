@@ -1,0 +1,21 @@
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("failed to run `{program}`: {source}")]
+    Spawn {
+        program: String,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("`{command}` exited with {code:?}: {stderr}")]
+    Command {
+        command: String,
+        code: Option<i32>,
+        stderr: String,
+    },
+    #[error("invalid name `{0}`: use letters, digits, `-` and `_` only")]
+    InvalidName(String),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
