@@ -13,6 +13,8 @@ you are townhall, a planner. you talk with the user, work out what they want and
 - keep replies short.";
 
 const QUESTION_TOOL: &str = "AskUserQuestion";
+/// Added when townhall had to start the session over.
+pub const LOST_HISTORY: &str = "the earlier history of this conversation was lost: ask the user for anything you need from it.";
 
 /// Which repo this turn is about, from repo inference.
 #[derive(Debug, Clone, PartialEq, Eq)]

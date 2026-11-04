@@ -64,6 +64,17 @@ async fn a_foreign_origin_is_refused_before_the_upgrade() {
     drop(ok);
 }
 
+#[tokio::test]
+async fn a_plain_get_is_told_to_upgrade_in_contract_copy() {
+    let env = Env::new("alpha").await;
+    let fake = Fake::install(env.root.path());
+    let (_state, app) = app_with(&env, &fake);
+    let req = Request::get("/api/events").body(Body::empty()).unwrap();
+    let (s, v) = send(&app, req).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    assert_eq!(v["error"], "this route needs a websocket upgrade");
+}
+
 async fn next_event(
     ws: &mut (impl StreamExt<Item = Result<Message, WsError>> + Unpin),
 ) -> ServerEvent {
