@@ -59,6 +59,7 @@ stop_pid() {
 kill_tmux() {
   [ -n "${1:-}" ] || return 0
   tmux -L "$1" kill-server >/dev/null 2>&1 || true
+  rm -f "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/$1"
 }
 
 wipe_old_demo() {
