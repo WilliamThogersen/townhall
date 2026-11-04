@@ -8,10 +8,11 @@ use crate::home::repo_key;
 use crate::model::{AgentInfo, Repo};
 use crate::{tmux, worktree, Error, Result, Workspace};
 
-/// Where an agent lives: its repo's name and workspace.
+/// Where an agent lives: its repo's name, its name as stored, and the workspace.
 #[derive(Debug, Clone)]
 pub struct Located {
     pub repo: String,
+    pub name: String,
     pub workspace: Workspace,
 }
 
@@ -38,14 +39,21 @@ async fn agents_of(ctx: &Context, repo: &Repo) -> Result<Vec<AgentInfo>> {
     Ok(infos)
 }
 
-async fn has_agent(ws: &Workspace, name: &str) -> Result<bool> {
-    if tmux::list(ws.key()).await?.iter().any(|n| n == name) {
-        return Ok(true);
+/// The stored name of the agent (worktree or session) called `name` ignoring case: git and
+/// tmux tell names apart by case, the macOS file system does not.
+async fn held_name(ws: &Workspace, name: &str) -> Result<Option<String>> {
+    let sessions = tmux::list(ws.key()).await?;
+    if let Some(found) = sessions.into_iter().find(|n| n.eq_ignore_ascii_case(name)) {
+        return Ok(Some(found));
     }
-    Ok(worktree::list(ws).await?.iter().any(|w| w.name == name))
+    let trees = worktree::list(ws).await?;
+    Ok(trees
+        .into_iter()
+        .map(|w| w.name)
+        .find(|n| n.eq_ignore_ascii_case(name)))
 }
 
-/// Repos that have an agent (worktree or session) called `name`.
+/// Repos that have an agent called `name`, ignoring case, each with the stored name.
 pub async fn holders(ctx: &Context, name: &str) -> Result<Vec<Located>> {
     let mut found = vec![];
     for repo in ctx.repos().await? {
@@ -56,36 +64,60 @@ pub async fn holders(ctx: &Context, name: &str) -> Result<Vec<Located>> {
                 continue;
             }
         };
-        match has_agent(&ws, name).await {
-            Ok(true) => found.push(Located {
+        match held_name(&ws, name).await {
+            Ok(Some(stored)) => found.push(Located {
                 repo: repo.name.clone(),
+                name: stored,
                 workspace: ws,
             }),
-            Ok(false) => {}
+            Ok(None) => {}
             Err(e) => eprintln!("warn: repo `{}` skipped: {e}", repo.name),
         }
     }
     Ok(found)
 }
 
+/// An agent whose name differs only by case is not this agent: never act on it.
+fn only_by_case(name: &str, stored: &str) -> Result<()> {
+    if stored == name {
+        Ok(())
+    } else {
+        Err(Error::NotFound(name.to_string()))
+    }
+}
+
+async fn in_repo(ctx: &Context, name: &str, wanted: &str) -> Result<Located> {
+    let found = ctx.repo(wanted).await?;
+    let workspace = ctx.workspace(&found)?;
+    if let Some(stored) = held_name(&workspace, name).await? {
+        only_by_case(name, &stored)?;
+    }
+    Ok(Located {
+        repo: found.name,
+        name: name.to_string(),
+        workspace,
+    })
+}
+
 /// The agent's repo: `repo` when given, else the one repo that has it, else the startup
-/// repo (so a missing agent is still `404` from the operation). Two repos is a conflict.
+/// repo (so a missing agent is still `404` from the operation). Two repos is a conflict;
+/// an agent whose name differs only by case is `NotFound`.
 pub async fn locate(ctx: &Context, name: &str, repo: Option<&str>) -> Result<Located> {
     validate_name(name)?;
     if let Some(wanted) = repo.map(str::trim).filter(|r| !r.is_empty()) {
-        let found = ctx.repo(wanted).await?;
-        return Ok(Located {
-            workspace: ctx.workspace(&found)?,
-            repo: found.name,
-        });
+        return in_repo(ctx, name, wanted).await;
     }
     let mut found = holders(ctx, name).await?;
     match found.len() {
         0 => Ok(Located {
             repo: ctx.startup_repo_name().await,
+            name: name.to_string(),
             workspace: ctx.startup().clone(),
         }),
-        1 => Ok(found.remove(0)),
+        1 => {
+            only_by_case(name, &found[0].name)?;
+            Ok(found.remove(0))
+        }
         _ => {
             let repos: Vec<String> = found.into_iter().map(|l| l.repo).collect();
             Err(Error::Conflict(format!(

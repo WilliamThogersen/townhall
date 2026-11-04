@@ -7,14 +7,14 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 - Base: `http://127.0.0.1:7777/api` (desktop) or same-origin `/api` (browser, Vite proxy).
 - Every HTTP response is the envelope `{ "success": bool, "data": T | null, "error": string | null }` (`crates/townhall-daemon/src/envelope.rs`). `data` is shown below as the response.
 - JSON field names are camelCase. A Rust `Option` is always present on the wire, as `null` when empty. Timestamps are RFC 3339 UTC strings with milliseconds (`2026-11-04T10:42:05.000Z`, `townhall_core::clock`), so they sort as text.
-- Bodies go through `townhall_daemon::extract::JsonBody<T>`: a body that is not JSON, has the wrong content type or the wrong fields is `400` in the envelope, with the error `expected content-type application/json` or `invalid json body: <what serde said>` (for example `invalid json body: missing field `path` at line 1 column 2`). Every phase 2 request body type refuses unknown fields (`deny_unknown_fields`); phase 1's agent bodies (`POST /api/agents`, `/send`) still ignore them.
+- Bodies go through `townhall_daemon::extract::JsonBody<T>`: a body that is not JSON, has the wrong content type or the wrong fields is `400` in the envelope, with the error `expected content-type application/json` or `invalid json body: <what serde said>` (for example ``invalid json body: missing field `path` at line 1 column 2``). Every phase 2 request body type refuses unknown fields (`deny_unknown_fields`); phase 1's agent bodies (`POST /api/agents`, `/send`) still ignore them.
 - Error codes: `400` invalid input or name, `404` not found, `409` conflict (taken name, ambiguous agent, repo in use), `413` attachment over 20 MB, `501 not implemented yet` (a route whose unit has not landed), `503` the database is held by another townhall, `500` anything else (logged).
 - Copy in `error` strings is lowercase and has no `error:` prefix; the UI adds it.
 - CORS allows only the desktop and Vite origins (`cors::ALLOWED_ORIGINS`), methods `GET POST PUT PATCH DELETE`. CORS does not cover websockets or multipart posts: `/api/events` and the upload route must call `cors::origin_allowed(&headers)` and answer `403` when it is false.
 
 ## Routes
 
-`?repo=<name>` is accepted by every `/api/agents/{name}...` route. Without it the name is looked up across every registered repo; two repos with that agent is `409` (`agent `x` exists in several repos (a, b): pass ?repo=<name>`). Repo names match ignoring case.
+`?repo=<name>` is accepted by every `/api/agents/{name}...` route. Without it the name is looked up across every registered repo (ignoring case, as macOS folders do; an agent whose name differs only by case is `404`, never acted on); two repos with that agent is `409` (`agent `x` exists in several repos (a, b): pass ?repo=<name>`). Repo names match ignoring case.
 
 | Method | Path | Body | Response | Errors | Unit |
 |--------|------|------|----------|--------|------|
@@ -23,7 +23,7 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 | POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a plain folder, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found; 409 path registered, name taken ignoring case | 2.1 |
 | DELETE | `/repos/{name}` | | the removed `Repo`. Only unregisters: folder, worktrees and branches stay | 404; 409 it has live agents (tmux sessions), or it is the daemon's startup repo | 2.1 |
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
-| POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400; 404 repo; 409 the name exists in any repo | phase 1, 2.1 |
+| POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400 bad name, `base branch `x` not found`; 404 repo; 409 the name exists in any repo, ignoring case | phase 1, 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` | the name. When the agent is a task's, adds an `agent` `sent` entry to its conversation | 400, 404, 409 | phase 1, 2.1 |
 | GET | `/agents/{name}/output` | | the pane text | 400, 404, 409 | phase 1, 2.1 |

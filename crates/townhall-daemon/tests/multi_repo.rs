@@ -171,3 +171,49 @@ async fn a_repo_whose_folder_is_gone_does_not_break_the_list() {
     let (s, v) = call(&app, "DELETE", "/api/repos/gone", None).await;
     assert_eq!(s, StatusCode::OK, "{v}");
 }
+
+#[tokio::test]
+async fn names_that_differ_only_by_case_never_reach_git() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let lower = unique("c");
+    let upper = lower.to_uppercase();
+    let (s, _) = call(
+        &app,
+        "POST",
+        "/api/agents",
+        Some(shell(&lower, "sleep 30", None)),
+    )
+    .await;
+    assert_eq!(s, StatusCode::CREATED);
+
+    let (s, v) = call(
+        &app,
+        "POST",
+        "/api/agents",
+        Some(shell(&upper, "true", None)),
+    )
+    .await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    let msg = v["error"].as_str().unwrap();
+    assert!(
+        msg.contains(&format!("an agent named `{lower}` already exists")),
+        "{msg}"
+    );
+
+    let output = format!("/api/agents/{upper}/output");
+    let (s, v) = call(&app, "GET", &output, None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "{v}");
+    let (s, v) = call(&app, "DELETE", &format!("/api/agents/{upper}"), None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "{v}");
+    let (_, v) = call(&app, "GET", "/api/agents", None).await;
+    assert_eq!(
+        v["data"][0]["name"],
+        json!(lower),
+        "the other agent is untouched"
+    );
+    assert_eq!(v["data"][0]["alive"], true);
+
+    let (s, _) = call(&app, "DELETE", &format!("/api/agents/{lower}"), None).await;
+    assert_eq!(s, StatusCode::OK);
+}
