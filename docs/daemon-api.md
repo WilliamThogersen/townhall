@@ -206,6 +206,14 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
 - adopts a queued task whose own agent (its exact name, in its repo) exists already (a start cut short by a restart) as `working`, never starting a second agent; a `working` task is never touched.
 - marks an `ended` task `merged`, with an `agent` `passed` entry (`merged into <base>`), when `townhall/<name>` is reachable from its base branch (`git for-each-ref --merged=<base>`) and its tip is not the commit it started from (a branch with no commits of its own is not merged). Read only: it never merges or deletes.
 
+## Environment
+
+| variable | what | default |
+|----------|------|---------|
+| `TOWNHALL_TMUX_SOCKET` | a private tmux server for every tmux call townhall makes (`tmux -L <name>`): letters, digits, `.`, `_` and `-`, anything else is refused. Every test harness sets it once per test process (`townhall-test-<pid>-<nanos>`, `tests/common/tmux_server.rs`) and kills that server at exit, so tests never share the default server, or its stale environment, with real agents | the default server |
+
+Every new session also gets `-e PWD=<worktree>`, so a pane never inherits the `PWD` of whoever started the tmux server.
+
 ## Storage: `~/.townhall`
 
 ```
