@@ -1,8 +1,8 @@
-//! Rules for values that become their own words in claude's argv. `--allowedTools`
-//! takes several values, so a tool such as `--dangerously-skip-permissions` would
-//! read as a flag of its own. Quoting cannot stop that.
+//! Rules for values that go into claude's argv as `--model=` and `--allowedTools=`
+//! values. The adapter refuses a value that starts with `-` too; checking here
+//! reports every such value when a definition is checked.
 
-/// Why `model` cannot follow `claude --model`, if it cannot.
+/// Why `model` cannot be the `claude --model=` value, if it cannot.
 pub(crate) fn model_problem(model: &str) -> Option<String> {
     flag_problem(model)
         .or_else(|| {

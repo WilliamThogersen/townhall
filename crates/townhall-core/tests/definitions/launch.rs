@@ -45,17 +45,10 @@ fn the_coder_runs_with_its_own_flags() {
     assert_eq!(
         argv(&coder.launch_options(SettingsMode::Auto)),
         [
-            "--model",
-            "sonnet",
-            "--permission-mode",
-            "acceptEdits",
-            "--append-system-prompt",
-            prompt.trim(),
-            "--allowedTools",
-            "Read",
-            "Edit",
-            "Write",
-            "Bash",
+            "--model=sonnet".to_string(),
+            "--permission-mode=acceptEdits".into(),
+            format!("--append-system-prompt={prompt}"),
+            "--allowedTools=Read,Edit,Write,Bash".into(),
         ]
     );
 }
@@ -64,7 +57,7 @@ fn the_coder_runs_with_its_own_flags() {
 fn mode_words(mode: &str) -> Vec<String> {
     match mode {
         "skip all" => vec!["--dangerously-skip-permissions".to_string()],
-        value => vec!["--permission-mode".to_string(), value.to_string()],
+        value => vec![format!("--permission-mode={value}")],
     }
 }
 
@@ -129,7 +122,7 @@ fn a_blank_model_is_unset() {
 }
 
 #[test]
-fn the_step_prompt_goes_before_the_tools() {
+fn the_step_prompt_goes_last_after_the_end_of_options() {
     let def = agent("tools = [\"Read\", \"Bash(rm -rf:*)\"]");
     let options = LaunchOptions {
         prompt: Some("go on".into()),
@@ -138,13 +131,23 @@ fn the_step_prompt_goes_before_the_tools() {
     assert_eq!(
         argv(&options),
         [
-            "--permission-mode",
-            "acceptEdits",
+            "--permission-mode=acceptEdits",
+            "--allowedTools=Read,Bash(rm -rf:*)",
+            "--",
             "go on",
-            "--allowedTools",
-            "Read",
-            "Bash(rm -rf:*)",
         ]
+    );
+}
+
+#[test]
+fn a_tool_with_a_comma_is_refused_at_launch() {
+    let def = agent("tools = [\"Read\", \"Bash(git diff:*,x)\"]");
+    let error = ClaudeCodeAdapter::default()
+        .launch_command(&def.launch_options(SettingsMode::AcceptEdits))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("must not hold a comma"),
+        "{error}"
     );
 }
 
