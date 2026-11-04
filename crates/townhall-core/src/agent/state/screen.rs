@@ -169,6 +169,7 @@ Enter to select \u{b7} \u{2191}/\u{2193} to navigate \u{b7} Esc to cancel
             "1) postgres\n2) sqlite\n#?"
         );
         assert!(trailing_question("building...\ndone").is_none());
+        assert!(trailing_question("go on? (y/n) y\n").is_none(), "answered");
         assert!(trailing_question("? for shortcuts").is_none());
         assert!(trailing_question("").is_none());
     }

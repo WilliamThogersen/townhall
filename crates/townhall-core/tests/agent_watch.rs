@@ -269,6 +269,30 @@ async fn a_question_needs_you_once_then_working_again() {
 }
 
 #[tokio::test]
+async fn an_answered_y_n_prompt_works_again_with_one_entry() {
+    let mut env = env().await;
+    let name = env
+        .agent("sh -c 'printf \"go on? (y/n) \"; read x; sleep 600'")
+        .await;
+    env.task(&name, TaskState::Working).await;
+    let mut watcher = Watcher::new(env.ctx().clone()).await;
+    env.poll_until(&mut watcher, &name, TaskState::NeedsYou)
+        .await;
+    agent::send(env.ctx().startup(), &name, "y").await.unwrap();
+    env.poll_until(&mut watcher, &name, TaskState::Working)
+        .await;
+    env.polls(&mut watcher, 3).await;
+    assert_eq!(env.state_of(&name).await, TaskState::Working);
+    let asked = EntryBody::NeedsYou {
+        agent: name.clone(),
+        question: "go on? (y/n)".into(),
+        choices: vec!["y".into(), "n".into()],
+    };
+    assert_eq!(env.agent_entries().await, vec![asked]);
+    agent::stop(env.ctx().startup(), &name).await.unwrap();
+}
+
+#[tokio::test]
 async fn queued_and_merged_tasks_are_left_alone() {
     let mut env = env().await;
     let asking = env.agent("sh -c 'printf \"go? \"; read a; sleep 30'").await;

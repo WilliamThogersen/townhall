@@ -185,6 +185,18 @@ async fn a_shell_question_waits_until_it_is_answered() {
 }
 
 #[tokio::test]
+async fn an_answered_y_n_prompt_is_working_again() {
+    let env = start("sh -c 'printf \"go on? (y/n) \"; read x; sleep 600'").await;
+    env.wait_for(&AgentState::Waiting {
+        question: "go on? (y/n)".into(),
+    })
+    .await;
+    agent::send(env.ws(), &env.name, "y").await.unwrap();
+    env.wait_for(&AgentState::Working).await;
+    agent::stop(env.ws(), &env.name).await.unwrap();
+}
+
+#[tokio::test]
 async fn a_live_agent_without_a_question_works_and_a_gone_session_ended() {
     let env = start("sleep 30").await;
     env.wait_for(&AgentState::Working).await;

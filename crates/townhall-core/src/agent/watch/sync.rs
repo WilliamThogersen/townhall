@@ -59,9 +59,20 @@ fn entry_for(agent: &str, now: &AgentState) -> Option<EntryBody> {
     }
 }
 
+/// The same question with text typed after it, not yet sent: not a new question.
+fn grew(before: &AgentState, now: &AgentState) -> bool {
+    match (before, now) {
+        (AgentState::Waiting { question: old }, AgentState::Waiting { question: new }) => {
+            new.starts_with(old.trim_end())
+        }
+        _ => false,
+    }
+}
+
 /// The task's change for its agent in `now`. `before` is the state last acted on: when the
 /// task already matches, a new state (another question) still gets its entry, but with no
-/// memory (`None`) it is taken as already recorded.
+/// memory (`None`) it is taken as already recorded, and a question that only grew by text
+/// typed after it is the same question.
 pub(super) fn plan(task: &Task, now: &AgentState, before: Option<&AgentState>) -> Option<Change> {
     if hands_off(task.state) {
         return None;
@@ -73,7 +84,7 @@ pub(super) fn plan(task: &Task, now: &AgentState, before: Option<&AgentState>) -
             entry: entry_for(&task.name, now),
         });
     }
-    let fresh = before.is_some_and(|b| b != now);
+    let fresh = before.is_some_and(|b| b != now && !grew(b, now));
     let entry = entry_for(&task.name, now).filter(|_| fresh)?;
     Some(Change {
         state: None,
@@ -173,6 +184,21 @@ mod tests {
                 Some(&asking("a?"))
             ),
             None
+        );
+    }
+
+    #[test]
+    fn a_question_that_only_grew_by_typed_text_is_not_new() {
+        let waiting = task(TaskState::NeedsYou);
+        let before = asking("name? ");
+        assert_eq!(plan(&waiting, &asking("name? bo"), Some(&before)), None);
+        assert_eq!(
+            plan(&waiting, &asking("name? bob"), Some(&asking("name? bo"))),
+            None
+        );
+        let other = plan(&waiting, &asking("age?"), Some(&before)).unwrap();
+        assert!(
+            matches!(other.entry, Some(EntryBody::NeedsYou { question, .. }) if question == "age?")
         );
     }
 

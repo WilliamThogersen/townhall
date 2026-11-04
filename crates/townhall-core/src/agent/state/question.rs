@@ -71,19 +71,21 @@ pub(crate) fn with_options(question: &str, options: &[Item]) -> String {
         .join("\n")
 }
 
-/// The two answers of a `y/n`, `[Y/n]` or `(yes/no)` marker in `line`, lowercased.
+/// The two answers of a `y/n`, `[Y/n]` or `(yes/no)` marker that ends `line` (spaces, `?`
+/// or `:` may follow), lowercased. Text typed after the marker means it was answered.
 fn yes_no(line: &str) -> Option<Vec<String>> {
     let lower = line.to_lowercase();
-    lower
-        .split(|c: char| !(c.is_alphanumeric() || c == '/'))
-        .filter_map(|w| w.split_once('/'))
-        .find(|pair| {
-            matches!(
-                *pair,
-                ("y", "n") | ("yes", "no") | ("y", "no") | ("yes", "n")
-            )
-        })
-        .map(|(yes, no)| vec![yes.to_string(), no.to_string()])
+    let tail = lower.trim_end_matches(|c: char| c.is_whitespace() || "?:".contains(c));
+    let last = tail
+        .trim_end_matches([')', ']'])
+        .rsplit(|c: char| !(c.is_alphanumeric() || c == '/'))
+        .next()?;
+    let (yes, no) = last.split_once('/')?;
+    let fits = matches!(
+        (yes, no),
+        ("y", "n") | ("yes", "no") | ("y", "no") | ("yes", "n")
+    );
+    fits.then(|| vec![yes.to_string(), no.to_string()])
 }
 
 /// The numbers of the last run of options numbered 1, 2, 3 ... in `lines`.
@@ -186,6 +188,26 @@ mod tests {
         assert!(choices("read and/or write?").is_empty());
         assert_eq!(choices("read and/or write? [y/n]"), ["y", "n"]);
         assert_eq!(choices("1. a\n2. b\n1. c\nnext?"), ["1", "2"]);
+    }
+
+    #[test]
+    fn a_yes_no_marker_asks_only_at_the_end_of_the_line() {
+        for asking in [
+            "go on? (y/n) ",
+            "proceed [Y/n]:",
+            "overwrite (yes/no)?",
+            "keep y/n",
+        ] {
+            assert!(asks(asking), "{asking}");
+        }
+        for answered in [
+            "go on? (y/n) y",
+            "keep [y/n] no thanks",
+            "the y/n flag is set",
+        ] {
+            assert!(!asks(answered), "{answered}");
+            assert!(choices(answered).is_empty(), "{answered}");
+        }
     }
 
     #[test]
