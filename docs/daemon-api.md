@@ -100,7 +100,22 @@ A missing or invalid stored value reads as its default. The store also keeps `de
 
 ## Permission mode
 
-`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt`. `ClaudeCodeAdapter` builds `claude [--model m] --permission-mode <mode> [--append-system-prompt p] [--session-id id] [prompt] [--allowedTools t ...]`, every value quoted with `shell_quote`; `bypassPermissions` becomes `--dangerously-skip-permissions` instead. `permission_mode` always comes from `Context::settings()`, never from a request body or a tool call: `POST /api/agents` ignores any such field. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
+`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
+
+```
+claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
+       [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2] [-- PROMPT]
+```
+
+- Every option and its value is one argv element (`--name=value`), and the launch command shell-quotes every element, so no value can split or start a new flag. `--allowedTools` is one comma-joined element, so its position does not matter.
+- The prompt is the only positional, after the end-of-options `--`. A prompt such as `--dangerously-skip-permissions`, `-p`, `--permission-mode=bypassPermissions` or `--` arrives as the prompt, never as a flag.
+- `claude` still runs a subcommand when the first positional equals its name, even after `--` (`claude -- mcp` runs `claude mcp`). A prompt without any whitespace therefore gets a trailing newline; no subcommand name has one.
+- `model`, `session_id` (a UUID) and each `allowed_tools` entry are refused (`InvalidInput`) when they start with `-` or hold control characters; a tool may not hold a comma. The system prompt may hold anything, since it sits inside its own `--append-system-prompt=` element. Blank values add no flag; no prompt means no `--`.
+- `permission_mode`: `default`, `acceptEdits`, `plan` and `auto` become `--permission-mode=<mode>`; `bypassPermissions` becomes `--dangerously-skip-permissions`. `claude` 2.1.318 lists `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` and no longer lists `default`, but still accepts it, so `default` is passed as is for now.
+- Checked against the installed `claude` 2.1.318 (empty environment, throwaway `HOME`, an invalid `--session-id` so it stops right after parsing): `-- --no-such-flag` reaches the session-id check while `--no-such-flag` alone is `unknown option`, and `--allowedTools=Read,Bash(git diff:*),Edit` and the `--name=value` forms parse.
+- `ClaudeCodeAdapter::args(&options)` returns the same argv unquoted, for a caller that spawns `claude` without a shell (2.2's runner).
+
+`permission_mode` always comes from `Context::settings()`, never from a request body or a tool call: `POST /api/agents` ignores any such field. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
 
 ## Websocket: `/api/events`
 
@@ -242,7 +257,7 @@ Shared code around the store:
 | `townhall_core::Context` | `startup()`, `store()`, `registry()`, `bus()`, `base_url()`, `claude_bin()`, `settings()`, `ensure_startup_repo()`, `startup_repo_name()`, `repos()`, `repo(name)`, `workspace(&repo)`. Built by `AppState`; core units get it from `start(ctx)` |
 | `townhall_core::repos::RepoRegistry` | `list`, `get`, `add(&AddRepo)`, `ensure(path)`, `remove`; `resolve_path`, `inspect`, `names::*` |
 | `townhall_core::fleet` | `list(ctx)` every `AgentInfo`, `holders(ctx, name)`, `locate(ctx, name, repo)`, `unregister(ctx, name)` |
-| `townhall_core::agent` | `start`, `stop`, `list`, `send`, `output`, `LaunchOptions`, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `state::detect(ws, agent)` |
+| `townhall_core::agent` | `start`, `stop`, `list`, `send`, `output`, `LaunchOptions`, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `ClaudeCodeAdapter::args`, `state::detect(ws, agent)` |
 | `townhall_core::mcp` | names, `tools()`, `allowed_tools()`, `config_json()` |
 | `townhall_daemon` | `AppState` (`new`, `with_options`, `open`, `with_store`, `ctx()`), `start_background(&state)`, `extract::JsonBody`, `error::ApiError::NotImplemented`, `cors::origin_allowed` |
 
@@ -254,7 +269,7 @@ A unit edits only the files it owns. Shared files (`lib.rs`, `routes/mod.rs`, `m
 
 | Unit | Owns | Calls |
 |------|------|-------|
-| 2.1 contract, repos, storage (and 2.0) | `crates/townhall-core/src/{model/, store/mod.rs, store/codec.rs, store/lock.rs, store/migrate.rs, store/import.rs, store/repos.rs, store/settings.rs, store/conversations.rs, store/thread.rs, store/tasks.rs, store/attachments.rs, store/migrations/0001_init.sql, store/migrations/0002_conversations.sql, repos/, fleet.rs, context.rs, events.rs, clock.rs, ids.rs, fsutil.rs, agent/adapter.rs}`, `crates/townhall-daemon/src/{state.rs, background.rs, extract.rs, error.rs, cors.rs, main.rs, routes/mod.rs, routes/repos.rs, routes/settings.rs, routes/agents.rs, routes/stream.rs, routes/info.rs}`, `src-tauri/src/{settings.rs, daemon.rs, commands.rs}`, `web/src/api/types.ts`, `docs/daemon-api.md` | |
+| 2.1 contract, repos, storage (and 2.0) | `crates/townhall-core/src/{model/, store/mod.rs, store/codec.rs, store/lock.rs, store/migrate.rs, store/import.rs, store/repos.rs, store/settings.rs, store/conversations.rs, store/thread.rs, store/tasks.rs, store/attachments.rs, store/migrations/0001_init.sql, store/migrations/0002_conversations.sql, repos/, fleet.rs, context.rs, events.rs, clock.rs, ids.rs, fsutil.rs, agent/adapter.rs, agent/claude.rs, agent/claude_tests.rs}`, `crates/townhall-daemon/src/{state.rs, background.rs, extract.rs, error.rs, cors.rs, main.rs, routes/mod.rs, routes/repos.rs, routes/settings.rs, routes/agents.rs, routes/stream.rs, routes/info.rs}`, `src-tauri/src/{settings.rs, daemon.rs, commands.rs}`, `web/src/api/types.ts`, `docs/daemon-api.md` | |
 | 2.2 conversations | `crates/townhall-core/src/runner/`, `crates/townhall-core/src/store/unit_2_2.rs` and `store/migrations/01xx_*.sql`, `crates/townhall-daemon/src/routes/{conversations.rs, events.rs}`, its tests | `Store::{create_conversation, conversation, conversations, update_conversation, detail, append_entry, entries, attachment}`, `Context::{bus, settings, base_url, claude_bin, repos, repo}`, `mcp::{config_json, allowed_tools}`, `ids::new_session_id`, `repo_infer::infer` (2.4), `cors::origin_allowed`, `JsonBody` |
 | 2.3 tasks | `crates/townhall-core/src/scheduler/`, `crates/townhall-core/src/mcp/mod.rs` (the JSON-RPC handling it adds), `store/unit_2_3.rs` and `store/migrations/02xx_*.sql`, `crates/townhall-daemon/src/routes/{tasks.rs, mcp.rs}` | `Store::{create_task, tasks, all_tasks, find_task, update_task, append_entry, conversation, update_conversation, attachment}`, `Context::{repo, settings, workspace, claude_bin}`, `agent::{start, list}`, `LaunchOptions` with `permission_mode` from settings, `fleet::holders`, `model::CreateTaskInput` |
 | 2.4 repo inference | `crates/townhall-core/src/repo_infer/` (`Candidate`, `Rule`, `Inference`, `infer`), plus its `pub mod repo_infer;` line | `Context::repos()` for candidates; 2.2 maps `Inference::Found` to `EntryBody::Repo` (`Rule` to `RepoRule`) and `Ask` to `EntryBody::RepoAsk` |

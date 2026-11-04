@@ -21,7 +21,8 @@ pub enum PermissionMode {
 }
 
 impl PermissionMode {
-    /// The value `--permission-mode` takes; `None` for `skip all`, which is its own flag.
+    /// The value `claude --permission-mode` takes; `None` for `skip all`, which is its own
+    /// flag, `--dangerously-skip-permissions`.
     pub fn cli_value(self) -> Option<&'static str> {
         match self {
             Self::Default => Some("default"),
@@ -249,6 +250,7 @@ mod tests {
     #[test]
     fn permission_values() {
         assert_eq!(PermissionMode::default().cli_value(), Some("acceptEdits"));
+        assert_eq!(PermissionMode::Plan.cli_value(), Some("plan"));
         assert_eq!(PermissionMode::Default.cli_value(), Some("default"));
         assert_eq!(PermissionMode::BypassPermissions.cli_value(), None);
     }
