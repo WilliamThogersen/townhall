@@ -61,7 +61,10 @@ mod tests {
 
     #[test]
     fn claude_quotes_prompt() {
-        let o = LaunchOptions { prompt: Some("it's $HOME".into()), command: None };
+        let o = LaunchOptions {
+            prompt: Some("it's $HOME".into()),
+            command: None,
+        };
         assert_eq!(
             ClaudeCodeAdapter.launch_command(&o).unwrap(),
             "claude 'it'\\''s $HOME'"
@@ -70,11 +73,18 @@ mod tests {
 
     #[test]
     fn claude_without_prompt() {
-        assert_eq!(ClaudeCodeAdapter.launch_command(&LaunchOptions::default()).unwrap(), "claude");
+        assert_eq!(
+            ClaudeCodeAdapter
+                .launch_command(&LaunchOptions::default())
+                .unwrap(),
+            "claude"
+        );
     }
 
     #[test]
     fn shell_requires_command() {
-        assert!(ShellAdapter.launch_command(&LaunchOptions::default()).is_err());
+        assert!(ShellAdapter
+            .launch_command(&LaunchOptions::default())
+            .is_err());
     }
 }

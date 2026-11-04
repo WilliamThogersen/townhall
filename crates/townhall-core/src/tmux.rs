@@ -16,7 +16,15 @@ pub async fn spawn(name: &str, cwd: &Path, command: &str) -> Result<()> {
     let cwd = cwd.to_string_lossy().into_owned();
     run(
         "tmux",
-        &["new-session", "-d", "-s", &session_name(name), "-c", &cwd, command],
+        &[
+            "new-session",
+            "-d",
+            "-s",
+            &session_name(name),
+            "-c",
+            &cwd,
+            command,
+        ],
         None,
     )
     .await?;
@@ -32,8 +40,9 @@ pub async fn list() -> Result<Vec<String>> {
             .map(str::to_string)
             .collect()),
         // No tmux server running means no sessions.
-        Err(crate::Error::Command { stderr, .. }) if stderr.contains("no server running")
-            || stderr.contains("error connecting to") => {
+        Err(crate::Error::Command { stderr, .. })
+            if stderr.contains("no server running") || stderr.contains("error connecting to") =>
+        {
             Ok(vec![])
         }
         Err(e) => Err(e),
@@ -43,14 +52,24 @@ pub async fn list() -> Result<Vec<String>> {
 /// Type `text` into the session and press Enter.
 pub async fn send(name: &str, text: &str) -> Result<()> {
     validate_name(name)?;
-    run("tmux", &["send-keys", "-t", &session_name(name), text, "Enter"], None).await?;
+    run(
+        "tmux",
+        &["send-keys", "-t", &session_name(name), text, "Enter"],
+        None,
+    )
+    .await?;
     Ok(())
 }
 
 /// Snapshot of the visible pane plus scrollback.
 pub async fn capture(name: &str) -> Result<String> {
     validate_name(name)?;
-    run("tmux", &["capture-pane", "-p", "-S", "-", "-t", &session_name(name)], None).await
+    run(
+        "tmux",
+        &["capture-pane", "-p", "-S", "-", "-t", &session_name(name)],
+        None,
+    )
+    .await
 }
 
 pub async fn kill(name: &str) -> Result<()> {

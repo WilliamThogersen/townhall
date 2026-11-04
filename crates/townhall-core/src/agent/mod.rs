@@ -38,7 +38,13 @@ fn git_absent(e: &Error) -> bool {
 }
 
 fn from_worktree(wt: worktree::Worktree, kind: Option<String>, alive: bool) -> Agent {
-    Agent { name: wt.name, kind, branch: wt.branch, worktree: wt.path, alive }
+    Agent {
+        name: wt.name,
+        kind,
+        branch: wt.branch,
+        worktree: wt.path,
+        alive,
+    }
 }
 
 /// Create the worktree, then the tmux session. Rolls the worktree back if tmux fails.
@@ -117,10 +123,14 @@ fn missing_session(name: &str, e: Error) -> Error {
 
 /// Type text into the agent's session and press Enter.
 pub async fn send(name: &str, text: &str) -> Result<()> {
-    tmux::send(name, text).await.map_err(|e| missing_session(name, e))
+    tmux::send(name, text)
+        .await
+        .map_err(|e| missing_session(name, e))
 }
 
 /// Current pane contents of the agent's session.
 pub async fn output(name: &str) -> Result<String> {
-    tmux::capture(name).await.map_err(|e| missing_session(name, e))
+    tmux::capture(name)
+        .await
+        .map_err(|e| missing_session(name, e))
 }

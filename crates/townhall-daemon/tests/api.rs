@@ -4,25 +4,39 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;
-use townhall_daemon::{router, AppState};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tempfile::TempDir;
 use tower::ServiceExt;
+use townhall_daemon::{router, AppState};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn unique(prefix: &str) -> String {
-    format!("{prefix}-{}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::SeqCst))
+    format!(
+        "{prefix}-{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::SeqCst)
+    )
 }
 
 async fn init_repo() -> (TempDir, Router) {
     let dir = TempDir::new().unwrap();
-    let git = |args: &'static [&'static str]| townhall_core::cmd::run("git", args, Some(dir.path()));
+    let git =
+        |args: &'static [&'static str]| townhall_core::cmd::run("git", args, Some(dir.path()));
     git(&["init", "-b", "main"]).await.unwrap();
-    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "init"])
-        .await
-        .unwrap();
+    git(&[
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "init",
+    ])
+    .await
+    .unwrap();
     let app = router(AppState::new(dir.path().to_path_buf()));
     (dir, app)
 }
@@ -94,9 +108,21 @@ async fn invalid_name_is_400() {
 async fn unknown_adapter_and_missing_command_are_400() {
     let (_dir, app) = init_repo().await;
     let n = unique("bad");
-    let (s, _) = call(&app, "POST", "/api/agents", Some(json!({"name": n, "adapter": "nope"}))).await;
+    let (s, _) = call(
+        &app,
+        "POST",
+        "/api/agents",
+        Some(json!({"name": n, "adapter": "nope"})),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
-    let (s, _) = call(&app, "POST", "/api/agents", Some(json!({"name": n, "adapter": "shell"}))).await;
+    let (s, _) = call(
+        &app,
+        "POST",
+        "/api/agents",
+        Some(json!({"name": n, "adapter": "shell"})),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
 
@@ -108,7 +134,13 @@ async fn missing_agent_is_404() {
     assert_eq!((s, &v["success"]), (StatusCode::NOT_FOUND, &json!(false)));
     let (s, _) = call(&app, "GET", &format!("/api/agents/{n}/output"), None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
-    let (s, _) = call(&app, "POST", &format!("/api/agents/{n}/send"), Some(json!({"text": "x"}))).await;
+    let (s, _) = call(
+        &app,
+        "POST",
+        &format!("/api/agents/{n}/send"),
+        Some(json!({"text": "x"})),
+    )
+    .await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 }
 
@@ -138,8 +170,23 @@ async fn cors_allows_desktop_origin_only() {
             .body(Body::empty())
             .unwrap()
     };
-    let ok = app.clone().oneshot(preflight("tauri://localhost")).await.unwrap();
-    assert_eq!(ok.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).unwrap(), "tauri://localhost");
-    let bad = app.oneshot(preflight("https://evil.example")).await.unwrap();
-    assert!(bad.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+    let ok = app
+        .clone()
+        .oneshot(preflight("tauri://localhost"))
+        .await
+        .unwrap();
+    assert_eq!(
+        ok.headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .unwrap(),
+        "tauri://localhost"
+    );
+    let bad = app
+        .oneshot(preflight("https://evil.example"))
+        .await
+        .unwrap();
+    assert!(bad
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        .is_none());
 }

@@ -12,15 +12,36 @@ pub struct Envelope<T: Serialize> {
 }
 
 pub fn ok<T: Serialize>(data: T) -> Response {
-    reply(StatusCode::OK, Envelope { success: true, data: Some(data), error: None })
+    reply(
+        StatusCode::OK,
+        Envelope {
+            success: true,
+            data: Some(data),
+            error: None,
+        },
+    )
 }
 
 pub fn created<T: Serialize>(data: T) -> Response {
-    reply(StatusCode::CREATED, Envelope { success: true, data: Some(data), error: None })
+    reply(
+        StatusCode::CREATED,
+        Envelope {
+            success: true,
+            data: Some(data),
+            error: None,
+        },
+    )
 }
 
 pub fn failure(status: StatusCode, message: String) -> Response {
-    reply(status, Envelope::<()> { success: false, data: None, error: Some(message) })
+    reply(
+        status,
+        Envelope::<()> {
+            success: false,
+            data: None,
+            error: Some(message),
+        },
+    )
 }
 
 fn reply<T: Serialize>(status: StatusCode, body: Envelope<T>) -> Response {

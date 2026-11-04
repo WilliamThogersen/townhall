@@ -52,7 +52,10 @@ pub async fn list(repo: &Path) -> Result<Vec<Worktree>> {
     // git reports canonical paths (e.g. /private/var on macOS), so compare against one.
     let root = repo
         .canonicalize()
-        .map_err(|source| crate::Error::Spawn { program: "canonicalize".into(), source })?
+        .map_err(|source| crate::Error::Spawn {
+            program: "canonicalize".into(),
+            source,
+        })?
         .join(WORKTREE_DIR);
     let found = out
         .split("\n\n")

@@ -1,10 +1,10 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
 use axum::Json;
+use serde::{Deserialize, Serialize};
 use townhall_core::agent::{
     self, Agent, AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::envelope::{created, ok};
 use crate::error::ApiError;
@@ -58,8 +58,11 @@ fn adapter_for(kind: &str) -> Result<Box<dyn AgentAdapter>, ApiError> {
 }
 
 pub async fn list(State(state): State<AppState>) -> Result<Response, ApiError> {
-    let agents: Vec<AgentView> =
-        agent::list(state.repo()).await?.into_iter().map(AgentView::from).collect();
+    let agents: Vec<AgentView> = agent::list(state.repo())
+        .await?
+        .into_iter()
+        .map(AgentView::from)
+        .collect();
     Ok(ok(agents))
 }
 
@@ -70,9 +73,14 @@ pub async fn create(
     let adapter = adapter_for(&req.adapter)?;
     let base = req.base.as_deref().map(str::trim).filter(|b| !b.is_empty());
     if base.is_some_and(|b| b.starts_with('-')) {
-        return Err(ApiError::BadRequest("`base` must not start with `-`".into()));
+        return Err(ApiError::BadRequest(
+            "`base` must not start with `-`".into(),
+        ));
     }
-    let options = LaunchOptions { prompt: req.prompt, command: req.command };
+    let options = LaunchOptions {
+        prompt: req.prompt,
+        command: req.command,
+    };
     let started = agent::start(
         state.repo(),
         &req.name,

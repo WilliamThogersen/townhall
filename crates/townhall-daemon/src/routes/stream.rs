@@ -10,10 +10,7 @@ use crate::error::ApiError;
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Validates the agent exists (404/400 before upgrade), then streams pane changes.
-pub async fn stream(
-    Path(name): Path<String>,
-    ws: WebSocketUpgrade,
-) -> Result<Response, ApiError> {
+pub async fn stream(Path(name): Path<String>, ws: WebSocketUpgrade) -> Result<Response, ApiError> {
     let first = agent::output(&name).await?;
     Ok(ws.on_upgrade(move |socket| pump(socket, name, first)))
 }
