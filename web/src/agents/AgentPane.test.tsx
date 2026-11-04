@@ -172,6 +172,7 @@ describe("AgentPane stop", () => {
     await openConfirm();
     await userEvent.click(screen.getByRole("button", { name: "stop and remove" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("error: worktree is dirty");
+    expect(screen.getByRole("button", { name: "cancel" })).toHaveFocus();
     expect(p.onStopped).not.toHaveBeenCalled();
     stop.mockResolvedValue("stopped");
     await userEvent.click(screen.getByRole("button", { name: "stop and remove" }));

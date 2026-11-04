@@ -63,7 +63,7 @@ export function PaneStopConfirm({ name, stop }: { name: string; stop: StopConfir
 
   useEffect(() => {
     cancelButton.current?.focus();
-  }, []);
+  }, [stop.error]);
 
   return (
     <div className="th-pane-actions">

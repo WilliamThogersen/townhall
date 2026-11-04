@@ -21,10 +21,12 @@ describe("PanePrompt", () => {
     expect(sendButton().querySelector(".th-kbd")).toHaveTextContent("⏎");
   });
 
-  it("keeps send disabled for whitespace only", async () => {
+  it("keeps send disabled for whitespace only and ignores enter", async () => {
+    const send = vi.spyOn(client, "sendText").mockResolvedValue("ok");
     render(<PanePrompt name="u-demo" />);
-    await userEvent.type(input(), "   ");
+    await userEvent.type(input(), "   {Enter}");
     expect(sendButton()).toBeDisabled();
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("sends the text with enter and clears the input", async () => {

@@ -25,6 +25,12 @@ describe("AgentCard", () => {
     expect(onToggle).toHaveBeenCalledWith("u-demo");
   });
 
+  it("marks a dead agent without a kind", () => {
+    render(<AgentCard agent={{ ...agent, alive: false, kind: null }} open={false} onToggle={() => {}} onStopped={() => {}} />);
+    expect(screen.getByText("dead")).toBeInTheDocument();
+    expect(screen.queryByText("shell")).toBeNull();
+  });
+
   it("renders the agent pane in a fixed box when open", async () => {
     const onToggle = vi.fn();
     const onStopped = vi.fn();
