@@ -107,13 +107,15 @@ impl Controller {
 }
 
 /// The OS can keep the port busy for a moment after our own server closed it.
-async fn wait_released(addr: SocketAddr) {
+/// True once the port binds again, false when it stayed busy.
+async fn wait_released(addr: SocketAddr) -> bool {
     for _ in 0..REBIND_ATTEMPTS {
         match TcpListener::bind(addr).await {
-            Ok(_) => return,
+            Ok(_) => return true,
             Err(_) => tokio::time::sleep(REBIND_DELAY).await,
         }
     }
+    false
 }
 
 async fn start_locked(slot: &mut Slot, c: &Controller, repo: &Path) -> Result<Mode, String> {
@@ -218,9 +220,7 @@ mod tests {
         let (addr, c) = embedded_through_a_restart(&home, &store, dir.path()).await;
         c.stop().await;
         assert_eq!(c.mode().await, Mode::Stopped);
-        TcpListener::bind(addr)
-            .await
-            .expect("port released after stop");
+        assert!(wait_released(addr).await, "port released after stop");
 
         let taken = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let c = Controller::new(taken.local_addr().unwrap(), home, None);
