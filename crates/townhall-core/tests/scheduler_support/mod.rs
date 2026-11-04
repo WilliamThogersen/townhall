@@ -6,7 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tempfile::TempDir;
-use townhall_core::model::{NewTask, Task, TaskState};
+use townhall_core::agent::{LaunchOptions, ShellAdapter};
+use townhall_core::model::{AddRepo, AgentEvent, EntryBody, NewTask, Repo, Task, TaskState};
 use townhall_core::store::Store;
 use townhall_core::{agent, Context, ContextOptions, Home, Workspace};
 
@@ -156,6 +157,48 @@ impl Sched {
         self.ws.worktrees_dir().join(name)
     }
 
+    /// The brief file the scheduler writes for `name`.
+    pub fn brief(&self, name: &str) -> PathBuf {
+        townhall_core::scheduler::brief_file(self.ws.home(), name)
+    }
+
+    pub async fn last_entry(&self) -> EntryBody {
+        let entries = self.store().entries(&self.conversation).await.unwrap();
+        entries.last().unwrap().body.clone()
+    }
+
+    /// The text of the last entry, which must be `× <name> ...`.
+    pub async fn failed_text(&self, name: &str) -> String {
+        match self.last_entry().await {
+            EntryBody::Agent { agent, event, text } => {
+                assert_eq!((agent.as_str(), event), (name, AgentEvent::Failed));
+                text
+            }
+            other => panic!("expected a failed agent entry, got {other:?}"),
+        }
+    }
+
+    pub async fn agent_names(&self) -> Vec<String> {
+        let mut all: Vec<String> = self.agents().await.into_iter().map(|a| a.name).collect();
+        all.sort();
+        all
+    }
+
+    /// A second registered repo with one commit on `main`.
+    pub async fn other_repo(&self) -> (Repo, Workspace) {
+        let path = self.root.path().join(unique("th23-other"));
+        std::fs::create_dir_all(&path).unwrap();
+        git(&path, &["init", "-q", "-b", "main"]).await;
+        commit(&path, "init").await;
+        let add = AddRepo {
+            path: path.to_string_lossy().into_owned(),
+            ..AddRepo::default()
+        };
+        let repo = self.ctx().registry().unwrap().add(&add).await.unwrap();
+        let ws = self.ctx().workspace(&repo).unwrap();
+        (repo, ws)
+    }
+
     /// The fake claude's arguments, once it has written them.
     pub async fn args(&self, name: &str) -> String {
         let path = self.args_dir.join(format!("{name}.args"));
@@ -171,6 +214,43 @@ impl Sched {
     }
 }
 
+/// An agent that is no task's: `sleep 120` in a worktree of `ws`.
+pub async fn sleeper(ws: &Workspace, name: &str) {
+    let options = LaunchOptions {
+        command: Some("sleep 120".into()),
+        ..LaunchOptions::default()
+    };
+    agent::start(ws, name, "main", &ShellAdapter, &options)
+        .await
+        .unwrap();
+}
+
+/// Kills every tmux session of the repo `ws`, and only those.
+pub fn kill_sessions(ws: &Workspace) {
+    let prefix = format!("townhall-{}-", ws.key());
+    let listed = std::process::Command::new("tmux")
+        .args(["list-sessions", "-F", "#{session_name}"])
+        .output();
+    let out = match listed {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!("warn: test sessions not listed: {e}");
+            return;
+        }
+    };
+    for session in String::from_utf8_lossy(&out.stdout).lines() {
+        if session.starts_with(&prefix) {
+            let target = format!("={session}");
+            let killed = std::process::Command::new("tmux")
+                .args(["kill-session", "-t", &target])
+                .output();
+            if let Err(e) = killed {
+                eprintln!("warn: test session {session} not killed: {e}");
+            }
+        }
+    }
+}
+
 fn open(ws: &Workspace, claude: &str) -> Context {
     let options = ContextOptions {
         claude_bin: claude.to_string(),
@@ -181,27 +261,6 @@ fn open(ws: &Workspace, claude: &str) -> Context {
 
 impl Drop for Sched {
     fn drop(&mut self) {
-        let prefix = format!("townhall-{}-", self.ws.key());
-        let listed = std::process::Command::new("tmux")
-            .args(["list-sessions", "-F", "#{session_name}"])
-            .output();
-        let out = match listed {
-            Ok(out) => out,
-            Err(e) => {
-                eprintln!("warn: test sessions not listed: {e}");
-                return;
-            }
-        };
-        for session in String::from_utf8_lossy(&out.stdout).lines() {
-            if session.starts_with(&prefix) {
-                let target = format!("={session}");
-                let killed = std::process::Command::new("tmux")
-                    .args(["kill-session", "-t", &target])
-                    .output();
-                if let Err(e) = killed {
-                    eprintln!("warn: test session {session} not killed: {e}");
-                }
-            }
-        }
+        kill_sessions(&self.ws);
     }
 }

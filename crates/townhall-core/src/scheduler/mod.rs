@@ -2,7 +2,8 @@
 //! of its repo, and tells when a finished task's branch was merged.
 //!
 //! - A queued task starts once every `after` task finished (`ended` or `merged`) and fewer
-//!   than `agentsAtOnce` task agents are alive. Queued tasks start oldest first.
+//!   than `agentsAtOnce` tasks are `working` or `needsYou` with a live session. Queued tasks
+//!   start oldest first. The agent reads its whole prompt from its brief (`brief.rs`).
 //! - A start that fails sets `error` with an `agent` `failed` entry: the only `error` it
 //!   sets. The agent watcher (2.5) owns `needsYou`, `error` and `ended`.
 //! - An `ended` task whose branch has commits of its own and is merged into its base
@@ -12,6 +13,7 @@
 //!
 //! It runs a pass on every `taskUpdated` and on a slow tick (`TICK`).
 
+mod brief;
 mod launch;
 mod merged;
 mod plan;
@@ -27,6 +29,8 @@ use crate::context::Context;
 use crate::model::{ServerEvent, Task, TaskState};
 use crate::store::Store;
 use crate::{Error, Result};
+
+pub use brief::brief_file;
 
 /// The slow tick: merges and freed slots are noticed at least this often.
 pub const TICK: Duration = Duration::from_secs(2);

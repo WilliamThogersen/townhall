@@ -1,5 +1,5 @@
 //! The scheduler's decisions that need no git, tmux or store: which queued tasks may start,
-//! how many slots are free and the prompt an agent starts with.
+//! how many slots are free, a task's brief and how long a failure text may be.
 
 use std::path::PathBuf;
 
@@ -26,28 +26,30 @@ pub fn ready(tasks: &[Task]) -> Vec<&Task> {
         .collect()
 }
 
-/// Whether `name` is one of the tasks' (agent names are task names).
-pub fn is_task(tasks: &[Task], name: &str) -> bool {
-    tasks.iter().any(|t| t.name.eq_ignore_ascii_case(name))
-}
-
-/// How many more task agents may start next to `alive` under `limit`.
-pub fn free_slots(limit: u32, alive: usize) -> usize {
+/// How many more task agents may start next to `active` under `limit`.
+pub fn free_slots(limit: u32, active: usize) -> usize {
     usize::try_from(limit)
         .unwrap_or(usize::MAX)
-        .saturating_sub(alive)
+        .saturating_sub(active)
 }
 
-/// The prompt a task's agent starts with: the task's own, then its attachments' paths.
-pub fn prompt(task_prompt: &str, files: &[PathBuf]) -> String {
-    if files.is_empty() {
-        return task_prompt.to_string();
-    }
+/// A task's brief: its title as a heading, its prompt, then its attachments' paths.
+pub fn brief_text(title: &str, prompt: &str, files: &[PathBuf]) -> String {
     let listed: Vec<String> = files.iter().map(|f| format!("- {}", f.display())).collect();
-    format!(
-        "{task_prompt}\n\nFiles attached to this task:\n{}",
-        listed.join("\n")
-    )
+    let attached = match listed.is_empty() {
+        true => String::new(),
+        false => format!("\n\nFiles attached to this task:\n{}", listed.join("\n")),
+    };
+    format!("# {title}\n\n{}{attached}\n", prompt.trim_end())
+}
+
+/// `text` cut to at most `max` characters, ending in `...` when it was cut.
+pub fn capped(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(max.saturating_sub(3)).collect();
+    format!("{kept}...")
 }
 
 #[cfg(test)]
@@ -99,7 +101,6 @@ mod tests {
         ];
         let names: Vec<&str> = ready(&tasks).iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["b", "e"]);
-        assert!(is_task(&tasks, "G") && !is_task(&tasks, "z"));
     }
 
     #[test]
@@ -110,12 +111,21 @@ mod tests {
     }
 
     #[test]
-    fn attachments_are_listed_after_the_prompt() {
-        assert_eq!(prompt("fix it", &[]), "fix it");
+    fn the_brief_lists_attachments_after_the_prompt() {
+        assert_eq!(brief_text("fix", "do it\n\n", &[]), "# fix\n\ndo it\n");
         let files = [PathBuf::from("/h/a.png"), PathBuf::from("/h/b c.txt")];
         assert_eq!(
-            prompt("fix it", &files),
-            "fix it\n\nFiles attached to this task:\n- /h/a.png\n- /h/b c.txt"
+            brief_text("fix", "do it", &files),
+            "# fix\n\ndo it\n\nFiles attached to this task:\n- /h/a.png\n- /h/b c.txt\n"
         );
+    }
+
+    #[test]
+    fn capped_text_keeps_whole_characters() {
+        assert_eq!(capped("short", 300), "short");
+        let long = "é".repeat(400);
+        let cut = capped(&long, 300);
+        assert_eq!(cut.chars().count(), 300);
+        assert!(cut.ends_with("..."));
     }
 }
