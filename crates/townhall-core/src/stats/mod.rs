@@ -4,12 +4,17 @@ mod log;
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use crate::cmd::run;
 use crate::{Error, Result};
 use log::{kind, parse_merges, Kind, Merge, MERGE_FORMAT};
+
+/// The widest window, 100 years; larger `since_days` are capped to it.
+pub const MAX_SINCE_DAYS: u32 = 36_500;
+const DAY_SECS: u64 = 86_400;
 
 /// What shipped on one day.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -23,8 +28,9 @@ pub struct ShippedDay {
     pub agents: u32,
 }
 
-/// Days with `townhall/*` merges into `base_branch` in the last `since_days`, ascending.
-/// A merge counts on its committer's local date; its commits are `merge^1..merge^2`.
+/// Days with `townhall/*` merges into `base_branch` in the last `since_days` (at most
+/// [`MAX_SINCE_DAYS`]), ascending. A merge counts on its committer's local date; its
+/// commits are `merge^1..merge^2`.
 pub async fn shipped(repo: &Path, base_branch: &str, since_days: u32) -> Result<Vec<ShippedDay>> {
     check_branch_name(base_branch)?;
     check_repo(repo).await?;
@@ -101,10 +107,23 @@ async fn check_branch(repo: &Path, base: &str) -> Result<()> {
     }
 }
 
+/// `--since` as an absolute cutoff: git misreads `N days ago` when it reaches before 1970.
+fn since_arg(since_days: u32, now_secs: u64) -> String {
+    let window = u64::from(since_days.min(MAX_SINCE_DAYS)) * DAY_SECS;
+    format!("--since=@{} +0000", now_secs.saturating_sub(window))
+}
+
+fn now_secs() -> Result<u64> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .map_err(|e| Error::InvalidInput(format!("system clock is before 1970: {e}")))
+}
+
 /// `townhall/*` merges on the first-parent line of `base`, with lines added against `merge^1`.
 async fn list_merges(repo: &Path, base: &str, since_days: u32) -> Result<Vec<Merge>> {
     let format = format!("--format={MERGE_FORMAT}");
-    let since = format!("--since={since_days} days ago");
+    let since = since_arg(since_days, now_secs()?);
     let args = [
         "log",
         "--first-parent",
@@ -178,6 +197,16 @@ mod tests {
         let big = day("2026-01-01", u32::MAX, 0, u64::MAX, 1);
         let merged = merge_days(vec![vec![big.clone()], vec![day("2026-01-01", 1, 0, 1, 1)]]);
         assert_eq!(merged, vec![ShippedDay { agents: 2, ..big }]);
+    }
+
+    #[test]
+    fn since_is_an_absolute_cutoff_capped_at_the_epoch() {
+        assert_eq!(since_arg(30, 1_000_000_000), "--since=@997408000 +0000");
+        assert_eq!(since_arg(0, 5), "--since=@5 +0000");
+        assert_eq!(since_arg(36_500, 1_000), "--since=@0 +0000");
+        let now = 1_800_000_000;
+        assert_eq!(since_arg(u32::MAX, now), since_arg(MAX_SINCE_DAYS, now));
+        assert_eq!(since_arg(u32::MAX, now), "--since=@0 +0000");
     }
 
     #[test]

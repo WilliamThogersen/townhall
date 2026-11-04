@@ -237,6 +237,31 @@ async fn only_merges_inside_the_window_count() {
 }
 
 #[tokio::test]
+async fn a_huge_window_is_capped_instead_of_going_wrong() {
+    let repo = history().await;
+    let days = shipped(repo.path(), "main", u32::MAX).await.unwrap();
+    assert_eq!(
+        days,
+        vec![
+            day("2026-03-10", 2, 2, 12, 2),
+            day("2026-03-12", 0, 0, 3, 1)
+        ]
+    );
+    let old = Repo::new("2001-01-01T10:00:00+00:00").await;
+    let fix = [(
+        "2001-01-02T10:00:00+00:00",
+        "fix: old",
+        "a.txt",
+        &b"1\n"[..],
+    )];
+    old.branch("townhall/old", &fix).await;
+    old.merge("2001-01-03T10:00:00+00:00", "townhall/old", None)
+        .await;
+    let days = shipped(old.path(), "main", u32::MAX).await.unwrap();
+    assert_eq!(days, vec![day("2001-01-03", 1, 0, 1, 1)]);
+}
+
+#[tokio::test]
 async fn a_townhall_branch_merged_into_another_counts_once() {
     let repo = Repo::new("2026-03-01T10:00:00+00:00").await;
     let inner = [("2026-03-02T10:00:00+00:00", "fix: b", "b.txt", &b"1\n"[..])];
