@@ -33,27 +33,53 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   notifyWhen: "needsYou",
 });
 
-type Fields = Readonly<Record<string, unknown>>;
+export type SettingKey = keyof Settings;
 
-function isFields(raw: unknown): raw is Fields {
+export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
+  "permissionMode",
+  "workWithoutAsking",
+  "agentsAtOnce",
+  "repoUnclear",
+  "sessionPanelOpen",
+  "notifyWhen",
+]);
+
+type Fields = Readonly<Record<string, unknown>>;
+type Check<T> = (value: unknown) => value is T;
+
+export function isFields(raw: unknown): raw is Fields {
   return typeof raw === "object" && raw !== null && !Array.isArray(raw);
 }
 
-function oneOf<T extends string>(choices: readonly T[], value: unknown, fallback: T): T {
-  return choices.find((choice) => choice === value) ?? fallback;
+function choiceOf<T extends string>(choices: readonly T[]): Check<T> {
+  return (value): value is T => choices.some((choice) => choice === value);
 }
 
-function flag(value: unknown, fallback: boolean): boolean {
-  return typeof value === "boolean" ? value : fallback;
+const isFlag: Check<boolean> = (value): value is boolean => typeof value === "boolean";
+
+const isAgentsAtOnce: Check<number> = (value): value is number =>
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= AGENTS_AT_ONCE_MIN &&
+  value <= AGENTS_AT_ONCE_MAX;
+
+const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
+  permissionMode: choiceOf(PERMISSION_MODES),
+  workWithoutAsking: isFlag,
+  agentsAtOnce: isAgentsAtOnce,
+  repoUnclear: choiceOf(REPO_UNCLEAR_VALUES),
+  sessionPanelOpen: isFlag,
+  notifyWhen: choiceOf(NOTIFY_VALUES),
+};
+
+export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
+  const check: Check<Settings[K]> = CHECKS[key];
+  return check(value);
 }
 
-function agentsAtOnce(value: unknown, fallback: number): number {
-  const valid =
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= AGENTS_AT_ONCE_MIN &&
-    value <= AGENTS_AT_ONCE_MAX;
-  return valid ? value : fallback;
+function pick<K extends SettingKey>(fields: Fields, key: K): Settings[K] {
+  const value = fields[key];
+  return isSettingValue(key, value) ? value : DEFAULT_SETTINGS[key];
 }
 
 export function clampAgentsAtOnce(value: number): number {
@@ -62,13 +88,12 @@ export function clampAgentsAtOnce(value: number): number {
 
 export function parseSettings(raw: unknown): Settings {
   const fields: Fields = isFields(raw) ? raw : {};
-  const d = DEFAULT_SETTINGS;
   return Object.freeze({
-    permissionMode: oneOf(PERMISSION_MODES, fields.permissionMode, d.permissionMode),
-    workWithoutAsking: flag(fields.workWithoutAsking, d.workWithoutAsking),
-    agentsAtOnce: agentsAtOnce(fields.agentsAtOnce, d.agentsAtOnce),
-    repoUnclear: oneOf(REPO_UNCLEAR_VALUES, fields.repoUnclear, d.repoUnclear),
-    sessionPanelOpen: flag(fields.sessionPanelOpen, d.sessionPanelOpen),
-    notifyWhen: oneOf(NOTIFY_VALUES, fields.notifyWhen, d.notifyWhen),
+    permissionMode: pick(fields, "permissionMode"),
+    workWithoutAsking: pick(fields, "workWithoutAsking"),
+    agentsAtOnce: pick(fields, "agentsAtOnce"),
+    repoUnclear: pick(fields, "repoUnclear"),
+    sessionPanelOpen: pick(fields, "sessionPanelOpen"),
+    notifyWhen: pick(fields, "notifyWhen"),
   });
 }

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { AgentsProvider } from "./agents/AgentsProvider";
 import { useRoute } from "./router";
+import { useLoadSettings } from "./settings/useSettings";
 import { Shell } from "./shell/Shell";
 import { ControlCenterPage } from "./views/control/ControlCenterPage";
 import { ReposPage } from "./views/repos/ReposPage";
@@ -33,6 +34,7 @@ function Screen() {
 }
 
 export function App({ sidebarFoot }: { readonly sidebarFoot?: ReactNode }) {
+  useLoadSettings();
   return (
     <AgentsProvider>
       <Shell sidebarFoot={sidebarFoot}>
