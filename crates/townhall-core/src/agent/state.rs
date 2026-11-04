@@ -4,8 +4,9 @@
 //! - a live pane is `waiting` when the agent asks something. It asks when Claude's
 //!   transcript (written since the session started) has a pending `AskUserQuestion` or a
 //!   turn that ended on a question, when the screen shows a selection prompt (a permission
-//!   request only ever shows there), or, for a program without a transcript, when its last
-//!   line is a question,
+//!   request only ever shows there, even while the transcript reads busy: Claude writes a
+//!   message with parallel tool calls only once every call has a result), or, for a program
+//!   without a transcript, when its last line is a question,
 //! - a live Claude whose turn ended without asking, [`IDLE_SETTLE_MS`] ago or longer, is
 //!   `ended`: interactive Claude never exits on its own, and a short pause between tool
 //!   calls must not count. Typing into it starts a new turn, which is `working` again,
@@ -115,7 +116,7 @@ async fn live(projects: Option<&Path>, ws: &Workspace, agent: &Agent, pane: &Pan
     let asked = |q: Option<String>| q.map_or(AgentState::Working, waiting);
     match turn {
         Some(Turn::Asking { question }) => waiting(question),
-        Some(Turn::Busy) => AgentState::Working,
+        Some(Turn::Busy) => asked(on_screen(ws, agent, pane, false).await),
         Some(Turn::Pending { call }) => asked(
             on_screen(ws, agent, pane, false)
                 .await

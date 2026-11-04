@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde_json::{json, Value};
 use tempfile::TempDir;
-use townhall_core::agent::{self, state, Agent, LaunchOptions, ShellAdapter};
+use townhall_core::agent::{self, shell_quote, state, Agent, LaunchOptions, ShellAdapter};
 use townhall_core::model::AgentState;
 use townhall_core::{clock, steps, tmux, Error, Workspace};
 
@@ -108,6 +108,12 @@ async fn start(command: &str) -> Env {
         _sessions: sessions,
         name,
     }
+}
+
+/// A session that prints `screen` as it is and stays.
+async fn showing(screen: &str) -> Env {
+    let script = format!("printf '%s' {}; sleep 30", shell_quote(screen));
+    start(&format!("sh -c {}", shell_quote(&script))).await
 }
 
 fn assistant(content: Value, stop: Option<&str>) -> Value {
@@ -293,6 +299,32 @@ async fn a_permission_prompt_on_screen_waits_with_the_pending_call() {
         .await;
     env.wait_for(&AgentState::Waiting {
         question: "Bash: rm -rf build\nDo you want to proceed?\n1. Yes\n2. No".into(),
+    })
+    .await;
+    agent::stop(env.ws(), &env.name).await.unwrap();
+}
+
+/// Claude 2.1.318 writes a message with parallel calls only once every call has a result,
+/// so a call that waits for permission leaves the transcript on another call's result.
+#[tokio::test]
+async fn a_permission_prompt_waits_while_the_transcript_ends_on_a_result() {
+    let env = showing(
+        "\u{23fa} Bash(rm -rf build)\n\n Do you want to proceed?\n \u{276f} 1. Yes\n   \
+         2. Yes, and don't ask again for rm commands in /w/fix\n   3. No\n\n Esc to cancel\n",
+    )
+    .await;
+    let call = json!([{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]);
+    let result = json!([{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]);
+    env.write_transcript(&[
+        json!({"type": "user", "message": {"content": "go"}}),
+        assistant(call, Some("tool_use")),
+        json!({"type": "user", "message": {"content": result}}),
+    ])
+    .await;
+    env.wait_for(&AgentState::Waiting {
+        question: "Do you want to proceed?\n1. Yes\n\
+                   2. Yes, and don't ask again for rm commands in /w/fix\n3. No"
+            .into(),
     })
     .await;
     agent::stop(env.ws(), &env.name).await.unwrap();
