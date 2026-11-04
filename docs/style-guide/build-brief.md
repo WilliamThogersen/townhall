@@ -71,6 +71,8 @@ Unit 2.1 first: it writes the API contract (Rust types, `web/src/api/types.ts`, 
 | 2.6 attachments | Upload endpoint, files per conversation, images to townhall's session as images, files attached to tasks, 20 MB limit |
 | 2.7 steps and stats | Steps per agent from Claude transcripts (tool calls with start, end, result). Shipped stats: merges from `townhall/*` into each base branch, classified by `fix:` / `feat:`, plus lines added |
 
+Also ran in this phase: 2.0 storage (one SQLite database for every repo, setting, conversation and task) and 2.8a agent and workflow definitions; 2.8b library and 2.8c runs moved to a later phase.
+
 ### Phase 3: frontend on the new API
 
 Runs in parallel once phase 2's contract is merged; units that need 2.2 to 2.7 wait for those.

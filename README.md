@@ -15,16 +15,18 @@
 
 ## status
 
-Early scaffold. The core runs agents today. Conversations and the new interface are designed and come next.
+Early. The core runs agents, and the daemon now runs conversations that turn into tasks
+across several repos, with agent states, attachments, steps and shipped stats. Their
+interface comes next.
 
 |   | part | what it does |
 |---|------|--------------|
 | ● | core | one git worktree and one tmux session per agent, adapters for `claude` and `shell` |
-| ● | daemon | http and websocket api on `127.0.0.1:7777`, live terminal snapshots |
+| ● | daemon | http and websocket api on `127.0.0.1:7777`: several repos, conversations, tasks, agent states, attachments, steps and shipped stats, live terminal snapshots |
 | ● | desktop | tauri app with repo picker, tray and a notification when an agent ends |
 | ◐ | interface | terminal-native redesign, specified in [`docs/style-guide`](docs/style-guide/README.md) |
-| ○ | conversations | talk to townhall; it finds the repo and creates tasks that agents pick up |
-| ○ | control center | one timeline for every agent in every conversation |
+| ◐ | conversations | talk to townhall; it finds the repo and creates tasks that agents pick up. works in the daemon, the interface comes next |
+| ◐ | control center | one timeline for every agent in every conversation. agent states and steps work in the daemon, the timeline comes next |
 
 `●` works · `◐` in progress · `○` planned
 
