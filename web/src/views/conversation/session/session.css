@@ -1,3 +1,7 @@
 .th-session .th-loop-stage--you .th-status {
   width: auto;
 }
+
+.th-session-files .th-msg-files {
+  display: grid;
+}

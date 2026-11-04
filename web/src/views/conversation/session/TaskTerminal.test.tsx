@@ -53,6 +53,7 @@ describe("TaskTerminal with a live agent", () => {
     renderTerminal(login);
     expect(await screen.findByTestId("terminal")).toHaveTextContent("$ ready");
     expect(pane("fix-login").parentElement).toHaveClass("th-panes");
+    expect(pane("fix-login")).toHaveAttribute("data-active", "true");
     expect(pane("fix-login").querySelector(".th-pane-branch")).toHaveTextContent("townhall/fix-login");
   });
 
@@ -108,6 +109,7 @@ describe("TaskTerminal without a live agent", () => {
     const head = pane("logout-cookie").querySelector(".th-pane-head")!;
     expect(head.querySelector(".th-status")).toHaveAttribute("data-state", "queued");
     expect(head.querySelector(".th-pane-branch")).toHaveTextContent("townhall/logout-cookie");
+    expect(pane("logout-cookie")).toHaveAttribute("data-active", "true");
     expect(screen.queryByTestId("terminal")).toBeNull();
   });
 

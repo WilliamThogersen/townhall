@@ -23,7 +23,7 @@ function NoTerminal({ task, siblings, loading, onClose }: NoTerminalProps) {
   const view = taskView(task, siblings);
   const branch = `townhall/${task.name}`;
   return (
-    <article className="th-pane" aria-label={`${task.name} terminal`}>
+    <article className="th-pane" data-active="true" aria-label={`${task.name} terminal`}>
       <div className="th-pane-head">
         <TaskGlyph state={view.glyph} />
         <span className="th-pane-title">{task.name}</span>
@@ -60,7 +60,7 @@ export function TaskTerminal({ task, onClose }: TaskTerminalProps) {
   return (
     <div className="th-panes">
       {agent?.alive ? (
-        <AgentPane key={agent.name} agent={agent} onClose={onClose} onStopped={onClose} />
+        <AgentPane key={agent.name} agent={agent} onClose={onClose} onStopped={onClose} focused />
       ) : (
         <NoTerminal task={task} siblings={detail?.tasks ?? [task]} loading={loading && agent === null} onClose={onClose} />
       )}

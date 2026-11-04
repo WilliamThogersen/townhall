@@ -48,11 +48,13 @@ const FINISHED: ReadonlySet<TaskState> = new Set(["ended", "merged"]);
 
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+const CHECKED_STATES: ReadonlySet<TaskState> = new Set(["inCi", "error"]);
+
 function lookOf(task: Task): StateLook {
-  if (task.state !== "inCi") return LOOKS[task.state];
-  if (task.pr?.checks === "failed") return FAILED_CHECKS;
-  if (task.pr?.checks === "passed") return { ...LOOKS.inCi, words: "checks passed" };
-  return LOOKS.inCi;
+  const checks = task.pr?.checks;
+  if (checks === "failed" && CHECKED_STATES.has(task.state)) return FAILED_CHECKS;
+  if (checks === "passed" && task.state === "inCi") return { ...LOOKS.inCi, words: "checks passed" };
+  return LOOKS[task.state];
 }
 
 export function pendingAfter(task: Task, siblings: readonly Task[]): readonly string[] {

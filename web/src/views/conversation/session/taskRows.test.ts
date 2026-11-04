@@ -100,6 +100,16 @@ describe("taskView", () => {
     expect(v).toMatchObject({ words: "checks failed", glyph: "error", tone: "error" });
   });
 
+  it("says checks failed for an error task whose pull request failed", () => {
+    const v = view(named("guard", "error", { pr: pr({ checks: "failed" }) }));
+    expect(v).toMatchObject({ words: "checks failed", glyph: "error", tone: "error", prOpen: true });
+  });
+
+  it("keeps the failed checks words to tasks that are still open", () => {
+    expect(view(named("guard", "merged", { pr: pr({ checks: "failed" }) })).words).toBe("merged");
+    expect(view(named("guard", "working", { pr: pr({ checks: "failed" }) })).words).toBe("working");
+  });
+
   it("says checks passed for a green pull request in ci", () => {
     expect(view(named("guard", "inCi", { pr: pr({ checks: "passed" }) })).words).toBe("checks passed");
   });
