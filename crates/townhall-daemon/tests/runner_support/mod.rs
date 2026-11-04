@@ -5,7 +5,9 @@
 //! the message: `SLOW` waits for the interrupt, `HANG` ignores it, `TOOL` asks for a
 //! disallowed and an allowed tool, `CRASH` dies before it starts, `KIDS` leaves a
 //! `sleep 31` holding its stdout (`ESCAPE` in its own process group) and ignores the
-//! interrupt, `STALE` cannot find the session on `--resume`, `ALWAYS` never can.
+//! interrupt, `STALE` cannot find the session on `--resume`, `ALWAYS` never can,
+//! `MENTION` succeeds with a reply (and a stderr line) that quotes that error, and
+//! `ERRAFTER` ends with an error result quoting it after `init`.
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -56,15 +58,23 @@ case "$first" in
       esac
     done
     exit 0 ;;
+  *ERRAFTER*)
+    echo '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"No conversation found with session ID: z"}'
+    cat >> "$dir/stdin-$n"
+    exit 1 ;;
   *TOOL*)
     echo '{"type":"control_request","request_id":"req-edit","request":{"subtype":"can_use_tool","tool_name":"Edit","input":{"file_path":"/x","old_string":"a","new_string":"b"},"tool_use_id":"toolu_1"}}'
     IFS= read -r answer; log "$answer"
     echo '{"type":"control_request","request_id":"req-read","request":{"subtype":"can_use_tool","tool_name":"Read","input":{"file_path":"/x"},"tool_use_id":"toolu_2"}}'
     IFS= read -r answer; log "$answer" ;;
 esac
+say='on it.'
+case "$first" in
+  *MENTION*) say='the app logs say: No conversation found with session ID 42'; echo "$say" >&2 ;;
+esac
 echo '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"on"}}}'
-echo '{"type":"assistant","message":{"model":"claude-test","role":"assistant","content":[{"type":"text","text":"on it."}],"usage":{"input_tokens":1200,"cache_creation_input_tokens":300,"cache_read_input_tokens":500,"output_tokens":20}}}'
-echo '{"type":"result","subtype":"success","is_error":false,"result":"on it.","usage":{"input_tokens":5000,"output_tokens":40},"modelUsage":{"claude-test":{"contextWindow":200000}}}'
+echo '{"type":"assistant","message":{"model":"claude-test","role":"assistant","content":[{"type":"text","text":"'"$say"'"}],"usage":{"input_tokens":1200,"cache_creation_input_tokens":300,"cache_read_input_tokens":500,"output_tokens":20}}}'
+echo '{"type":"result","subtype":"success","is_error":false,"result":"'"$say"'","usage":{"input_tokens":5000,"output_tokens":40},"modelUsage":{"claude-test":{"contextWindow":200000}}}'
 cat >> "$dir/stdin-$n"
 "#;
 

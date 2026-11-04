@@ -126,3 +126,49 @@ async fn a_lost_session_is_retried_only_once() {
     );
     assert_eq!(d["conversation"]["sessionStarted"], false);
 }
+
+async fn started(app: &axum::Router) -> (String, Value) {
+    let id = id_of(&create(app, "hello").await);
+    let d = idle(app, &id).await;
+    (id, d["conversation"]["sessionId"].clone())
+}
+
+#[tokio::test]
+async fn a_reply_that_quotes_the_lost_session_error_keeps_the_session() {
+    let env = Env::new("alpha").await;
+    let fake = Fake::install(env.root.path());
+    let (_state, app) = app_with(&env, &fake);
+    let (id, session) = started(&app).await;
+    message(&app, &id, "MENTION").await;
+    let d = idle(&app, &id).await;
+    assert_eq!(fake.turns(), 2, "one run, no fresh session");
+    assert_eq!(d["conversation"]["sessionId"], session);
+    assert_eq!(d["conversation"]["sessionStarted"], true);
+    assert_eq!(kinds(&d), ["you", "repo", "townhall", "you", "townhall"]);
+    assert_eq!(
+        entries_of(&d, "townhall")[1]["text"],
+        "the app logs say: No conversation found with session ID 42"
+    );
+}
+
+#[tokio::test]
+async fn an_error_result_after_init_is_no_lost_session() {
+    let env = Env::new("alpha").await;
+    let fake = Fake::install(env.root.path());
+    let (_state, app) = app_with(&env, &fake);
+    let (id, session) = started(&app).await;
+    message(&app, &id, "ERRAFTER").await;
+    let d = idle(&app, &id).await;
+    assert_eq!(fake.turns(), 2, "one run, no fresh session");
+    assert_eq!(d["conversation"]["sessionId"], session);
+    let errors: Vec<Value> = entries_of(&d, "error")
+        .into_iter()
+        .map(|e| e["message"].clone())
+        .collect();
+    assert_eq!(
+        errors,
+        [Value::from(
+            "claude failed: No conversation found with session ID: z"
+        )]
+    );
+}
