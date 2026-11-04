@@ -72,6 +72,8 @@ fn pane_target(key: &str, name: &str) -> String {
     format!("={}:", session_name(key, name))
 }
 
+/// The pane gets its own `PWD`, so it never inherits the stale one of whoever started
+/// the tmux server.
 fn new_session(key: &str, name: &str, cwd: &str, command: &str) -> Vec<String> {
     let session = session_name(key, name);
     [
@@ -81,6 +83,8 @@ fn new_session(key: &str, name: &str, cwd: &str, command: &str) -> Vec<String> {
         &session,
         "-c",
         cwd,
+        "-e",
+        &format!("PWD={cwd}"),
         command,
         ";",
         "set-option",
@@ -294,5 +298,14 @@ mod tests {
             let error = args(Some(bad)).unwrap_err();
             assert!(error.to_string().contains(SOCKET_ENV), "{error}");
         }
+    }
+
+    #[test]
+    fn a_new_session_gets_its_own_pwd() {
+        let args = new_session("k", "a", "/w/a", "run it");
+        let at = args.iter().position(|a| a == "-e").unwrap();
+        assert_eq!(args[at + 1], "PWD=/w/a");
+        let command = args.iter().position(|a| a == "run it").unwrap();
+        assert!(at < command, "{args:?}");
     }
 }
