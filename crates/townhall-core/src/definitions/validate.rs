@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use super::error::{into_result, invalid_name, DefKind, DefinitionError};
 use super::graph::Graph;
+use super::names::MAX_STEP_ID_LEN;
 use super::vars::{tokens, Token, Var};
 use super::workflow::{Step, WorkflowDef, MAX_STEPS};
 
@@ -79,6 +80,8 @@ impl StepCheck<'_> {
     fn check_id(&self) -> Vec<DefinitionError> {
         let id = &self.step().id;
         let invalid = invalid_name(id);
+        let long = (id.len() > MAX_STEP_ID_LEN)
+            .then(|| format!("is longer than {MAX_STEP_ID_LEN} characters"));
         let duplicate = self.def.steps[..self.index]
             .iter()
             .find(|s| s.id.eq_ignore_ascii_case(id))
@@ -91,6 +94,7 @@ impl StepCheck<'_> {
             });
         invalid
             .into_iter()
+            .chain(long)
             .chain(duplicate)
             .map(|m| self.error("id", m))
             .collect()

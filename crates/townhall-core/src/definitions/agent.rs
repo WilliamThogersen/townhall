@@ -92,7 +92,11 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
         DefinitionError::field(DefKind::Agent, &def.name, field, message)
     };
     let name = invalid_name(&def.name).map(|m| error("name", m));
-    let model = def.model.as_deref().and_then(model_problem);
+    let model = def
+        .model
+        .as_deref()
+        .filter(|m| !m.trim().is_empty())
+        .and_then(model_problem);
     let tools = def.tools.iter().filter_map(|tool| tool_problem(tool));
     let command = command_problem(def).map(|m| error("command", m.to_string()));
     let errors = name

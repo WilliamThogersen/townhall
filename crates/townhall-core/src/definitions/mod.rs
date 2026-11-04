@@ -16,7 +16,7 @@ mod workflow;
 pub use agent::{check_agent, parse_agent, validate_agent, AdapterKind, AgentDef, PermissionMode};
 pub use error::{DefKind, DefinitionError};
 pub use launch::LaunchFields;
-pub use names::{step_agent_name, SHORT_RUN_ID_LEN};
+pub use names::{step_agent_name, MAX_STEP_ID_LEN, SHORT_RUN_ID_LEN};
 pub use order::start_order;
 pub use parse::Parsed;
 pub use validate::validate_workflow;

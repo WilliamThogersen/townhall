@@ -44,6 +44,19 @@ fn rule_2_step_id_must_be_valid() {
 }
 
 #[test]
+fn step_ids_have_at_most_55_characters() {
+    let longest = "s".repeat(55);
+    assert_eq!(workflow_errors(&workflow(&[(&longest, &[], "")])), none());
+    let long = "s".repeat(300);
+    assert_eq!(
+        workflow_errors(&workflow(&[(&long, &[], "")])),
+        [format!(
+            "error: workflow \"w\" step \"{long}\": id is longer than 55 characters"
+        )]
+    );
+}
+
+#[test]
 fn step_ids_are_unique() {
     assert_eq!(
         workflow_errors(&workflow(&[("a", &[], ""), ("a", &[], "")])),

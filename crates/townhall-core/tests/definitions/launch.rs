@@ -6,10 +6,11 @@ use townhall_core::model::PermissionMode as SettingsMode;
 
 use crate::support::{agent_errors, CODER};
 
+/// Every saved setting, strictest first.
 const SETTINGS_MODES: [SettingsMode; 5] = [
+    SettingsMode::Plan,
     SettingsMode::Default,
     SettingsMode::AcceptEdits,
-    SettingsMode::Plan,
     SettingsMode::Auto,
     SettingsMode::BypassPermissions,
 ];
@@ -38,11 +39,11 @@ fn agent(extra: &str) -> AgentDef {
 }
 
 #[test]
-fn the_definition_mode_wins_over_settings() {
+fn the_coder_runs_with_its_own_flags() {
     let coder = parse_agent(CODER).unwrap().def;
     let prompt = coder.prompt.clone().unwrap();
     assert_eq!(
-        argv(&coder.launch_options(SettingsMode::Plan)),
+        argv(&coder.launch_options(SettingsMode::Auto)),
         [
             "--model",
             "sonnet",
@@ -59,38 +60,72 @@ fn the_definition_mode_wins_over_settings() {
     );
 }
 
-#[test]
-fn settings_decide_when_the_definition_sets_no_mode() {
-    let def = agent("");
-    assert_eq!(
-        argv(&def.launch_options(SettingsMode::Plan)),
-        ["--permission-mode", "plan"]
-    );
-    assert_eq!(
-        argv(&def.launch_options(SettingsMode::Auto)),
-        ["--permission-mode", "auto"]
-    );
-    assert_eq!(
-        argv(&def.launch_options(SettingsMode::BypassPermissions)),
-        ["--dangerously-skip-permissions"]
-    );
+/// The words a permission mode adds to claude's argv.
+fn mode_words(mode: &str) -> Vec<String> {
+    match mode {
+        "skip all" => vec!["--dangerously-skip-permissions".to_string()],
+        value => vec!["--permission-mode".to_string(), value.to_string()],
+    }
 }
 
 #[test]
-fn a_definition_never_yields_skip_all() {
+fn a_definition_only_narrows_the_saved_setting() {
+    let table: [(Option<&str>, [&str; 5]); 4] = [
+        (None, ["plan", "default", "acceptEdits", "auto", "skip all"]),
+        (Some("plan"), ["plan", "plan", "plan", "plan", "plan"]),
+        (
+            Some("default"),
+            ["plan", "default", "default", "default", "default"],
+        ),
+        (
+            Some("acceptEdits"),
+            [
+                "plan",
+                "default",
+                "acceptEdits",
+                "acceptEdits",
+                "acceptEdits",
+            ],
+        ),
+    ];
+    for (own, expected) in table {
+        let def = agent(&own.map_or(String::new(), |m| format!("permission_mode = \"{m}\"")));
+        for (settings, want) in SETTINGS_MODES.into_iter().zip(expected) {
+            let options = def.launch_options(settings);
+            assert_eq!(
+                argv(&options),
+                mode_words(want),
+                "{own:?} under {settings:?}"
+            );
+            if own.is_some() {
+                assert!(!matches!(
+                    options.permission_mode,
+                    SettingsMode::Auto | SettingsMode::BypassPermissions
+                ));
+            }
+        }
+    }
+}
+
+#[test]
+fn definition_modes_map_onto_the_same_settings_modes() {
     for mode in [
         PermissionMode::Default,
         PermissionMode::AcceptEdits,
         PermissionMode::Plan,
     ] {
         assert_eq!(SettingsMode::from(mode).cli_value(), Some(mode.as_str()));
-        let def = agent(&format!("permission_mode = \"{}\"", mode.as_str()));
-        for settings in SETTINGS_MODES {
-            let options = def.launch_options(settings);
-            assert_eq!(options.permission_mode, SettingsMode::from(mode));
-            assert_eq!(argv(&options), ["--permission-mode", mode.as_str()]);
-        }
     }
+}
+
+#[test]
+fn a_blank_model_is_unset() {
+    let def = agent("model = \"  \"");
+    assert_eq!(def.launch_options(SettingsMode::Plan).model, None);
+    assert_eq!(
+        argv(&def.launch_options(SettingsMode::Plan)),
+        mode_words("plan")
+    );
 }
 
 #[test]
@@ -156,6 +191,8 @@ fn model_cannot_smuggle_flags() {
         ))
     };
     assert!(errors("claude-opus-4-5[1m]").is_empty());
+    assert!(errors("").is_empty());
+    assert!(errors("  ").is_empty());
     assert_eq!(
         errors("--dangerously-skip-permissions"),
         ["error: agent \"a\": model \"--dangerously-skip-permissions\" must not start with \"-\""]
