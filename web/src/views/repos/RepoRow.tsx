@@ -8,7 +8,7 @@ function AgentSummary({ agents }: { readonly agents: readonly Agent[] }) {
   if (agents.length === 0) return <span className="th-cap">no agents</span>;
   return (
     <span className="th-cap">
-      <GlyphCounts counts={countByState(agents)} /> {agents.length} agent{agents.length === 1 ? "" : "s"}
+      <GlyphCounts counts={countByState(agents)} className="th-glyphs" /> {agents.length} agent{agents.length === 1 ? "" : "s"}
     </span>
   );
 }

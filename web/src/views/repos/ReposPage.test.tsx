@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "../../api/client";
@@ -70,7 +70,7 @@ describe("ReposPage", () => {
     vi.spyOn(client, "getInfo").mockResolvedValue(info);
     render(<ReposPage />);
     expect(await screen.findByText(/3 agents/)).toBeInTheDocument();
-    expect(screen.getByText("2 alive, 1 dead")).toBeInTheDocument();
+    expect(screen.getByText("2 running, 1 ended")).toBeInTheDocument();
   });
 
   it("says one agent in the singular", async () => {
