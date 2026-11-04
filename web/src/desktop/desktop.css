@@ -1,3 +1,13 @@
 .th-first-run {
   height: 100dvh;
 }
+
+.th-drag-bar {
+  flex: none;
+  height: var(--th-bar);
+}
+
+/* Only the macOS overlay title bar needs it; elsewhere the window keeps its own title bar. */
+:root:not([data-titlebar="overlay"]) .th-drag-bar {
+  display: none;
+}

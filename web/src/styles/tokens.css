@@ -107,6 +107,7 @@
   --th-control-lg: 32px;
   --th-row: 28px;
   --th-bar: 36px;
+  --th-traffic-lights: 90px; /* the macOS window buttons end at 74px, then space-4 */
   --th-keybar: 24px;
   --th-sidebar: 272px;
   --th-thread-min: 420px;

@@ -1,4 +1,5 @@
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
+import { DRAG_REGION } from "../../ui/dragRegion";
 import { AgentsGroup, AppearanceGroup, ConversationsGroup } from "./SettingGroups";
 import "./cap.css";
 
@@ -11,7 +12,7 @@ export function SettingsPage() {
   useKeyHints(SETTINGS_HINTS);
   return (
     <div className="th-page">
-      <header className="th-page-head">
+      <header className="th-page-head" {...DRAG_REGION}>
         <h1>settings</h1>
         <span className="th-cap">saved as you change them</span>
       </header>

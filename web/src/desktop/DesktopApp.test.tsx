@@ -37,6 +37,15 @@ describe("DesktopApp", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("starting…");
   });
 
+  it("gives the first-run screens a bar to drag the window by", async () => {
+    repoStatus.mockResolvedValue({ repo: "/r/gone", mode: "stopped" });
+    const { container } = render(<DesktopApp />);
+    await screen.findByRole("button", { name: "choose repository…" });
+    const bar = container.querySelector(".th-first-run > .th-drag-bar");
+    expect(bar).toHaveAttribute("data-tauri-drag-region", "deep");
+    expect(bar).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("asks for a repository on first run and shows the picker as busy", async () => {
     const picked = deferred<bridge.RepoStatus>();
     repoStatus.mockResolvedValue({ repo: null, mode: "stopped" });

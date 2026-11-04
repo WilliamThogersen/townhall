@@ -9,6 +9,7 @@ describe("ControlHead", () => {
     const onToggleForm = vi.fn();
     const { container } = render(<ControlHead count={2} formOpen={false} onToggleForm={onToggleForm} />);
     expect(container.firstChild).toHaveClass("th-page-head");
+    expect(container.firstChild).toHaveAttribute("data-tauri-drag-region", "deep");
     expect(screen.getByRole("heading", { level: 1, name: "control center" })).toBeInTheDocument();
     expect(screen.getByText("2 agents")).toHaveClass("th-control-cap");
     const button = screen.getByRole("button", { name: "new agent…" });
