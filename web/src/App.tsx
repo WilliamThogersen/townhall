@@ -1,25 +1,24 @@
 import type { ReactNode } from "react";
 import { AgentsProvider } from "./agents/AgentsProvider";
+import { DataProvider } from "./data";
 import { useRoute } from "./router";
 import { useLoadSettings } from "./settings/useSettings";
 import { Shell } from "./shell/Shell";
 import { ControlCenterPage } from "./views/control/ControlCenterPage";
+import { ConversationPage } from "./views/conversation/ConversationPage";
+import { HomePage } from "./views/home/HomePage";
+import { NotFound } from "./views/NotFound";
 import { ReposPage } from "./views/repos/ReposPage";
+import { SearchPage } from "./views/search/SearchPage";
 import { SettingsPage } from "./views/settings/SettingsPage";
-import {
-  ConversationPlaceholder,
-  HomePlaceholder,
-  NotFound,
-  SearchPlaceholder,
-} from "./views/placeholders";
 
 function Screen() {
   const route = useRoute();
   switch (route.name) {
     case "home":
-      return <HomePlaceholder />;
+      return <HomePage />;
     case "conversation":
-      return <ConversationPlaceholder id={route.params.id ?? ""} />;
+      return <ConversationPage id={route.params.id ?? ""} />;
     case "control":
       return <ControlCenterPage />;
     case "repos":
@@ -27,7 +26,7 @@ function Screen() {
     case "settings":
       return <SettingsPage />;
     case "search":
-      return <SearchPlaceholder />;
+      return <SearchPage />;
     case "not-found":
       return <NotFound path={route.path} />;
   }
@@ -36,10 +35,12 @@ function Screen() {
 export function App({ sidebarFoot }: { readonly sidebarFoot?: ReactNode }) {
   useLoadSettings();
   return (
-    <AgentsProvider>
-      <Shell sidebarFoot={sidebarFoot}>
-        <Screen />
-      </Shell>
-    </AgentsProvider>
+    <DataProvider>
+      <AgentsProvider>
+        <Shell sidebarFoot={sidebarFoot}>
+          <Screen />
+        </Shell>
+      </AgentsProvider>
+    </DataProvider>
   );
 }

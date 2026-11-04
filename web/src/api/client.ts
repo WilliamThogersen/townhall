@@ -1,12 +1,12 @@
-import { wsBase } from "./base";
-import { parseAgent, parseAgents, parseInfo, parseString } from "./guards";
+import { wsApiBase, type PageLocation } from "./base";
+import { parseAgent, parseAgentInfos, parseInfo, parseString } from "./guards";
 import { request } from "./request";
-import type { Agent, CreateAgentInput, Info } from "./types";
+import type { Agent, AgentInfo, CreateAgentInput, Info } from "./types";
 
 const enc = encodeURIComponent;
 
-export const listAgents = (signal?: AbortSignal): Promise<readonly Agent[]> =>
-  request("GET", "/agents", parseAgents, undefined, signal);
+export const listAgents = (signal?: AbortSignal): Promise<readonly AgentInfo[]> =>
+  request("GET", "/agents", parseAgentInfos, undefined, signal);
 
 export const getInfo = (signal?: AbortSignal): Promise<Info> =>
   request("GET", "/info", parseInfo, undefined, signal);
@@ -25,10 +25,8 @@ export const getOutput = (name: string): Promise<string> =>
 
 export function streamUrl(
   name: string,
-  loc: Location = window.location,
+  loc: PageLocation = window.location,
   win: object = window,
 ): string {
-  const base =
-    wsBase(win) ?? `${loc.protocol === "https:" ? "wss:" : "ws:"}//${loc.host}/api`;
-  return `${base}/agents/${enc(name)}/stream`;
+  return `${wsApiBase(loc, win)}/agents/${enc(name)}/stream`;
 }

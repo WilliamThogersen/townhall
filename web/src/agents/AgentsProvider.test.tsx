@@ -1,12 +1,13 @@
 import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as client from "../api/client";
-import type { Agent } from "../api/types";
+import type { AgentInfo } from "../api/types";
 import * as notify from "../desktop/notify";
 import { AgentsProvider, useAgentsContext } from "./AgentsProvider";
 
-const mk = (name: string, alive: boolean): Agent => ({
+const mk = (name: string, alive: boolean): AgentInfo => ({
   name, kind: "shell", branch: `townhall/${name}`, worktree: `/w/${name}`, alive,
+  repo: "demo", state: { kind: alive ? "working" : "ended" },
 });
 
 afterEach(() => vi.restoreAllMocks());

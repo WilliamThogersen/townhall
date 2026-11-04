@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "../api/client";
+import * as events from "../api/events";
 import * as bridge from "./bridge";
 import { DesktopApp } from "./DesktopApp";
 
@@ -21,6 +22,7 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/");
   vi.spyOn(client, "listAgents").mockResolvedValue([]);
   vi.spyOn(client, "getInfo").mockResolvedValue({ home: "/h", repo: "/r", repoKey: "r-1" });
+  vi.spyOn(events, "connectEvents").mockReturnValue({ close: () => undefined });
 });
 
 afterEach(() => {
