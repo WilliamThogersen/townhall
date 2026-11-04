@@ -32,7 +32,8 @@ pub async fn list() -> Result<Vec<String>> {
             .map(str::to_string)
             .collect()),
         // No tmux server running means no sessions.
-        Err(crate::Error::Command { stderr, .. }) if stderr.contains("no server running") => {
+        Err(crate::Error::Command { stderr, .. }) if stderr.contains("no server running")
+            || stderr.contains("error connecting to") => {
             Ok(vec![])
         }
         Err(e) => Err(e),

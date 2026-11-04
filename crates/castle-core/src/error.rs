@@ -16,6 +16,12 @@ pub enum Error {
     },
     #[error("invalid name `{0}`: use letters, digits, `-` and `_` only")]
     InvalidName(String),
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+    #[error("agent `{0}` not found")]
+    NotFound(String),
+    #[error("{cause}; rollback also failed: {cleanup}")]
+    RollbackFailed { cause: String, cleanup: String },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
