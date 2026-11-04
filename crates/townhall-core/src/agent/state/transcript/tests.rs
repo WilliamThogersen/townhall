@@ -22,6 +22,16 @@ fn result(id: &str) -> String {
     user(json!([{"type": "tool_result", "tool_use_id": id, "content": "ok"}]))
 }
 
+/// 2026-11-04T10:00:00.000Z and one second later, as unix milliseconds.
+const AT: i64 = 1_793_786_400_000;
+
+fn idle(text: &str, at: Option<i64>) -> Option<Turn> {
+    Some(Turn::Idle {
+        text: text.into(),
+        at,
+    })
+}
+
 fn turn(lines: &[String]) -> Option<Turn> {
     parse(&lines.join("\n"))
 }
@@ -90,24 +100,17 @@ fn an_ended_turn_keeps_the_last_message_text() {
             json!([{"type": "thinking", "thinking": ""}]),
         ),
         assistant("m1", Some("end_turn"), text("Should I push?")),
-        json!({"type": "system", "subtype": "turn_duration"}).to_string(),
+        json!({"type": "system", "subtype": "turn_duration", "timestamp": "2026-11-04T10:00:05.000Z"})
+            .to_string(),
+        json!({"type": "system", "subtype": "away_summary", "timestamp": "2026-11-04T10:09:00.000Z"})
+            .to_string(),
     ];
-    assert_eq!(
-        turn(&lines),
-        Some(Turn::Idle {
-            text: "Should I push?".into()
-        })
-    );
+    assert_eq!(turn(&lines), idle("Should I push?", Some(AT + 5000)));
     let marked = [
         assistant("m1", None, text("done")),
         json!({"type": "system", "subtype": "turn_duration"}).to_string(),
     ];
-    assert_eq!(
-        turn(&marked),
-        Some(Turn::Idle {
-            text: "done".into()
-        })
-    );
+    assert_eq!(turn(&marked), idle("done", Some(AT)));
 }
 
 #[test]
@@ -132,20 +135,10 @@ fn an_interrupt_or_api_error_ends_the_turn() {
         result("t1"),
         user(json!([{"type": "text", "text": "[Request interrupted by user for tool use]"}])),
     ];
-    assert_eq!(
-        turn(&lines),
-        Some(Turn::Idle {
-            text: String::new()
-        })
-    );
+    assert_eq!(turn(&lines), idle("", Some(AT + 1000)));
     let error = json!({"type": "assistant", "isApiErrorMessage": true,
         "message": {"id": "e1", "stop_reason": "stop_sequence", "content": [{"type": "text", "text": "API Error"}]}});
-    assert_eq!(
-        turn(&[error.to_string()]),
-        Some(Turn::Idle {
-            text: "API Error".into()
-        })
-    );
+    assert_eq!(turn(&[error.to_string()]), idle("API Error", None));
 }
 
 #[test]
@@ -164,7 +157,7 @@ fn sidechains_meta_and_noise_are_ignored() {
         "{\"type\":\"api-request\"}".to_string(),
         "{not json".to_string(),
     ];
-    assert_eq!(turn(&lines), Some(Turn::Idle { text: "ok".into() }));
+    assert_eq!(turn(&lines), idle("ok", Some(AT)));
     assert_eq!(turn(&["{\"type\":\"mode\"}".to_string()]), None);
 }
 
@@ -183,7 +176,7 @@ fn read_grows_the_window_past_a_huge_line() {
     ];
     std::fs::write(&path, lines.join("\n")).unwrap();
     match read(&path).unwrap() {
-        Some(Turn::Idle { text }) => assert_eq!(text.len(), big.len()),
+        Some(Turn::Idle { text, .. }) => assert_eq!(text.len(), big.len()),
         other => panic!("{other:?}"),
     }
     assert!(read(&dir.path().join("missing.jsonl")).is_err());

@@ -10,6 +10,7 @@ use std::path::Path;
 use serde_json::Value;
 
 use super::question::{shorten, with_options, Item};
+use super::stamp;
 use crate::steps::{parse_transcript, StepResult};
 
 const FIRST_WINDOW: u64 = 64 * 1024;
@@ -25,8 +26,9 @@ pub(crate) enum Turn {
     Pending { call: String },
     /// `AskUserQuestion` waits for an answer: the question with its options.
     Asking { question: String },
-    /// The turn ended; `text` is what the last message said.
-    Idle { text: String },
+    /// The turn ended; `text` is what the last message said, `at` when it ended (unix
+    /// milliseconds, from the line that ended it).
+    Idle { text: String, at: Option<i64> },
 }
 
 /// What the scan of one window collected, newest line first.
@@ -39,6 +41,8 @@ struct Scan {
     texts: Vec<String>,
     pending: Option<(String, String, Value)>,
     api_error: bool,
+    /// When the newest line that ends or makes the turn was written.
+    at: Option<i64>,
 }
 
 fn text<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
@@ -68,6 +72,12 @@ fn prompt_text(v: &Value) -> Option<String> {
 }
 
 impl Scan {
+    fn stamp(&mut self, v: &Value) {
+        if self.at.is_none() {
+            self.at = text(v, "timestamp").and_then(stamp::millis);
+        }
+    }
+
     /// Takes one line, newest first. `Some` ends the scan early with that answer.
     fn take(&mut self, v: &Value) -> Option<Option<Turn>> {
         if v.get("isSidechain").and_then(Value::as_bool) == Some(true) {
@@ -75,7 +85,10 @@ impl Scan {
         }
         match text(v, "type")? {
             "system" if self.message.is_none() => {
-                self.ended |= text(v, "subtype") == Some("turn_duration");
+                if text(v, "subtype") == Some("turn_duration") {
+                    self.ended = true;
+                    self.stamp(v);
+                }
                 None
             }
             "user" => self.user(v),
@@ -98,6 +111,7 @@ impl Scan {
         Some(Some(if prompt.trim_start().starts_with(INTERRUPTED) {
             Turn::Idle {
                 text: String::new(),
+                at: text(v, "timestamp").and_then(stamp::millis),
             }
         } else {
             Turn::Busy
@@ -108,6 +122,7 @@ impl Scan {
         let id = v.pointer("/message/id").and_then(Value::as_str);
         match (&self.message, id) {
             (None, _) => {
+                self.stamp(v);
                 self.message = Some(id.unwrap_or_default().to_string());
                 self.stop = v
                     .pointer("/message/stop_reason")
@@ -210,6 +225,7 @@ pub(crate) fn parse(window: &str) -> Option<Turn> {
             let texts: Vec<String> = scan.texts.into_iter().rev().collect();
             Turn::Idle {
                 text: texts.join("\n"),
+                at: scan.at,
             }
         }
         None => Turn::Busy,

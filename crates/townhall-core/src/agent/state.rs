@@ -1,20 +1,27 @@
 //! Agent state detection, from tmux and Claude's transcript:
 //! - no session: `ended`; a dead pane (sessions keep it with `remain-on-exit`): `ended`
 //!   when the process exited 0, else `error` with the exit code,
-//! - a live pane is `waiting` when the agent asks something, else `working`. It asks when
-//!   Claude's transcript (written since the session started) has a pending
-//!   `AskUserQuestion` or a turn that ended on a question, when the screen shows a
-//!   selection prompt (a permission request only ever shows there), or, for a program
-//!   without a transcript, when its last line is a question.
+//! - a live pane is `waiting` when the agent asks something. It asks when Claude's
+//!   transcript (written since the session started) has a pending `AskUserQuestion` or a
+//!   turn that ended on a question, when the screen shows a selection prompt (a permission
+//!   request only ever shows there), or, for a program without a transcript, when its last
+//!   line is a question,
+//! - a live Claude whose turn ended without asking, [`IDLE_SETTLE_MS`] ago or longer, is
+//!   `ended`: interactive Claude never exits on its own, and a short pause between tool
+//!   calls must not count. Typing into it starts a new turn, which is `working` again,
+//! - anything else live is `working`.
 
 mod memo;
 mod question;
 mod screen;
+mod stamp;
 mod transcript;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::clock::unix_millis;
 
 pub use question::choices;
 
@@ -23,6 +30,9 @@ use crate::model::AgentState;
 use crate::tmux::{self, Exit, Pane};
 use crate::{steps, Workspace};
 use transcript::Turn;
+
+/// How long a turn must have ended, without a question, before the agent counts as ended.
+pub const IDLE_SETTLE_MS: i64 = 10_000;
 
 /// Overrides where Claude's transcripts are read from (tests point it at a temp folder).
 pub const PROJECTS_ENV: &str = "TOWNHALL_CLAUDE_PROJECTS";
@@ -109,38 +119,47 @@ async fn live(projects: Option<&Path>, ws: &Workspace, agent: &Agent, pane: &Pan
         Some(dir) => current_turn(dir, &agent.worktree, pane.created).await,
         None => None,
     };
+    let asked = |q: Option<String>| q.map_or(AgentState::Working, waiting);
     match turn {
         Some(Turn::Asking { question }) => waiting(question),
         Some(Turn::Busy) => AgentState::Working,
-        Some(Turn::Idle { text }) => match question::closing(&text) {
-            Some(question) => waiting(question),
-            None => on_screen(ws, agent, pane, None, false).await,
-        },
-        Some(Turn::Pending { call }) => on_screen(ws, agent, pane, Some(call), false).await,
-        None => on_screen(ws, agent, pane, None, true).await,
+        Some(Turn::Pending { call }) => asked(
+            on_screen(ws, agent, pane, false)
+                .await
+                .map(|q| question::shorten(&format!("{call}\n{q}"))),
+        ),
+        Some(Turn::Idle { text, at }) => idle(ws, agent, pane, &text, at).await,
+        None => asked(on_screen(ws, agent, pane, true).await),
     }
 }
 
-/// A prompt on screen (any agent) or, when `plain`, a last line asking something. `call`
-/// is the pending tool call the prompt is about.
-async fn on_screen(
+/// A finished turn: waiting when it asked something (in its text or a dialog on screen),
+/// ended once it has been quiet for [`IDLE_SETTLE_MS`], working until then.
+async fn idle(
     ws: &Workspace,
     agent: &Agent,
     pane: &Pane,
-    call: Option<String>,
-    plain: bool,
+    text: &str,
+    at: Option<i64>,
 ) -> AgentState {
-    let Some(text) = screen_text(ws, agent, pane).await else {
-        return AgentState::Working;
-    };
-    let plain_question = || plain.then(|| screen::trailing_question(&text)).flatten();
-    match screen::prompt(&text).or_else(plain_question) {
-        Some(q) => waiting(match call {
-            Some(call) => question::shorten(&format!("{call}\n{q}")),
-            None => q,
-        }),
-        None => AgentState::Working,
+    if let Some(question) = question::closing(text) {
+        return waiting(question);
     }
+    if let Some(question) = on_screen(ws, agent, pane, false).await {
+        return waiting(question);
+    }
+    let now = unix_millis(SystemTime::now());
+    match at {
+        Some(at) if now - at >= IDLE_SETTLE_MS => AgentState::Ended,
+        _ => AgentState::Working,
+    }
+}
+
+/// A prompt on screen (any agent) or, when `plain`, a last line asking something.
+async fn on_screen(ws: &Workspace, agent: &Agent, pane: &Pane, plain: bool) -> Option<String> {
+    let text = screen_text(ws, agent, pane).await?;
+    let plain_question = || plain.then(|| screen::trailing_question(&text)).flatten();
+    screen::prompt(&text).or_else(plain_question)
 }
 
 fn unix_secs(t: SystemTime) -> u64 {
@@ -200,9 +219,22 @@ fn read_turn(projects: &Path, worktree: &Path, since: u64) -> crate::Result<Opti
     if let Some(turn) = memo::turn(&path, stamp) {
         return Ok(turn);
     }
-    let turn = transcript::read(&path).map_err(io)?;
+    let turn = transcript::read(&path)
+        .map_err(io)?
+        .map(|t| ended_at(t, modified));
     memo::keep_turn(&path, stamp, turn.clone());
     Ok(turn)
+}
+
+/// A finished turn without its own time ended when the file was last written.
+fn ended_at(turn: Turn, modified: SystemTime) -> Turn {
+    match turn {
+        Turn::Idle { text, at: None } => Turn::Idle {
+            text,
+            at: Some(unix_millis(modified)),
+        },
+        other => other,
+    }
 }
 
 static LAST_WARNING: Mutex<Option<String>> = Mutex::new(None);

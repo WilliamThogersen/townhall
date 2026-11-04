@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use tempfile::TempDir;
 use townhall_core::agent::{self, state, Agent, LaunchOptions, ShellAdapter};
 use townhall_core::model::AgentState;
-use townhall_core::{steps, tmux, Error, Workspace};
+use townhall_core::{clock, steps, tmux, Error, Workspace};
 
 mod common;
 use common::{fixture, Fixture};
@@ -115,6 +115,16 @@ fn assistant(content: Value, stop: Option<&str>) -> Value {
            "message": {"id": "m1", "stop_reason": stop, "content": content}})
 }
 
+/// A turn that ended `ago_ms` milliseconds ago saying `text`.
+fn finished(text: &str, ago_ms: i64) -> [Value; 2] {
+    let at = clock::from_unix_millis(clock::unix_millis(SystemTime::now()) - ago_ms);
+    [
+        json!({"type": "assistant", "timestamp": at,
+               "message": {"id": "m2", "stop_reason": "end_turn", "content": [{"type": "text", "text": text}]}}),
+        json!({"type": "system", "subtype": "turn_duration", "timestamp": at}),
+    ]
+}
+
 fn ask(question: &str) -> Value {
     let input = json!({"questions": [{"question": question, "header": "q", "multiSelect": false,
         "options": [{"label": "yes", "description": "go"}, {"label": "no", "description": "stop"}]}]});
@@ -202,6 +212,35 @@ async fn a_pending_ask_in_the_transcript_waits_with_its_options() {
     text.push_str(&format!("{answered}\n"));
     std::fs::write(&path, text).unwrap();
     env.wait_for(&AgentState::Working).await;
+    agent::stop(env.ws(), &env.name).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_quiet_finished_turn_ends_and_a_new_prompt_works_again() {
+    let env = start("sleep 30").await;
+    let path = env
+        .write_transcript(&finished("Done, the tests pass.", 60_000))
+        .await;
+    env.wait_for(&AgentState::Ended).await;
+    assert!(env.agent().await.alive, "the session stays");
+    let prompt = json!({"type": "user", "message": {"content": "now add docs"}});
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str(&format!("{prompt}\n"));
+    std::fs::write(&path, text).unwrap();
+    env.wait_for(&AgentState::Working).await;
+    agent::stop(env.ws(), &env.name).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_turn_that_just_finished_is_still_working() {
+    let env = start("sleep 30").await;
+    env.write_transcript(&finished("Done.", 0)).await;
+    env.wait_for(&AgentState::Working).await;
+    let settle = Duration::from_millis(state::IDLE_SETTLE_MS as u64);
+    assert!(
+        settle >= Duration::from_secs(5),
+        "a pause between tool calls is not an end"
+    );
     agent::stop(env.ws(), &env.name).await.unwrap();
 }
 
