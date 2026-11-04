@@ -1,19 +1,37 @@
+import { Button } from "../ui/Button";
+import type { RepoStatus } from "./bridge";
 import type { RepoState } from "./useRepo";
+import "./desktop.css";
 
-/** Header control: shows the current repo and lets the user change it. */
-export function RepoSettings({ repo }: { repo: RepoState }) {
+export function repoLabel(status: RepoStatus | null): string {
+  if (status?.mode === "external") return "daemon on :7777";
+  if (!status?.repo) return "no repository";
+  return status.repo.split("/").filter(Boolean).at(-1) ?? status.repo;
+}
+
+export function RepoSettings({ repo }: { readonly repo: RepoState }) {
   const { status, busy, error, choose } = repo;
-  const label =
-    status?.mode === "external"
-      ? "existing daemon on :7777"
-      : (status?.repo ?? "no repository");
   return (
-    <div className="repo-settings">
-      <span className="muted" title={status?.repo ?? undefined}>{label}</span>
-      <button type="button" onClick={() => void choose()} disabled={busy || status?.mode === "external"}>
-        {busy ? "Working..." : "Change repo"}
-      </button>
-      {error && <span className="error" role="alert">{error}</span>}
+    <div className="th-repo-control">
+      {error ? (
+        <span className="th-repo-control-label" role="alert" title={error}>
+          <span className="th-level">error:</span> {error}
+        </span>
+      ) : (
+        <span className="th-repo-control-label" title={status?.repo ?? undefined}>
+          {repoLabel(status)}
+        </span>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        busy={busy}
+        busyLabel="choosing…"
+        disabled={status?.mode === "external"}
+        onClick={() => void choose()}
+      >
+        change repo…
+      </Button>
     </div>
   );
 }

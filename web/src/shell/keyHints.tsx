@@ -52,8 +52,10 @@ export function useKeyHints(hints: readonly KeyHint[]): void {
   const key = JSON.stringify(hints);
   useEffect(() => {
     if (!register) return;
-    register(id, JSON.parse(key) as readonly KeyHint[]);
     return () => register(id, null);
+  }, [register, id]);
+  useEffect(() => {
+    register?.(id, JSON.parse(key) as readonly KeyHint[]);
   }, [register, id, key]);
 }
 

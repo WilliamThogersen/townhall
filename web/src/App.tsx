@@ -1,57 +1,43 @@
-import { useState, type ReactNode } from "react";
-import { AgentCard } from "./agents/AgentCard";
-import { CreateAgentForm } from "./agents/CreateAgentForm";
-import { useAgents } from "./agents/useAgents";
-import { useDeathNotifications } from "./agents/useDeathNotifications";
+import type { ReactNode } from "react";
+import { AgentsProvider } from "./agents/AgentsProvider";
+import { useRoute } from "./router";
+import { Shell } from "./shell/Shell";
+import { LegacyControlCenter } from "./views/LegacyControlCenter";
+import {
+  ConversationPlaceholder,
+  HomePlaceholder,
+  NotFound,
+  ReposPlaceholder,
+  SearchPlaceholder,
+  SettingsPlaceholder,
+} from "./views/placeholders";
 
-export function App({ toolbar }: { toolbar?: ReactNode }) {
-  const { agents, loading, error, refresh } = useAgents();
-  useDeathNotifications(agents, loading);
-  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+function Screen() {
+  const route = useRoute();
+  switch (route.name) {
+    case "home":
+      return <HomePlaceholder />;
+    case "conversation":
+      return <ConversationPlaceholder id={route.params.id ?? ""} />;
+    case "control":
+      return <LegacyControlCenter />;
+    case "repos":
+      return <ReposPlaceholder />;
+    case "settings":
+      return <SettingsPlaceholder />;
+    case "search":
+      return <SearchPlaceholder />;
+    case "not-found":
+      return <NotFound path={route.path} />;
+  }
+}
 
-  const toggle = (name: string) =>
-    setOpened((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-
-  const created = (name: string) => {
-    setOpened((prev) => new Set(prev).add(name));
-    void refresh();
-  };
-
+export function App({ sidebarFoot }: { readonly sidebarFoot?: ReactNode }) {
   return (
-    <div className="app">
-      <header>
-        <h1>townhall</h1>
-        <span className="count">{agents.length} agents</span>
-        {toolbar}
-      </header>
-      <CreateAgentForm onCreated={created} />
-      {error && (
-        <p className="banner error" role="alert">
-          Cannot refresh agents: {error}
-        </p>
-      )}
-      {loading ? (
-        <p className="muted">Loading agents...</p>
-      ) : agents.length === 0 ? (
-        <p className="muted">No agents yet. Create one above.</p>
-      ) : (
-        <ul className="grid">
-          {agents.map((a) => (
-            <AgentCard
-              key={a.name}
-              agent={a}
-              open={opened.has(a.name)}
-              onToggle={toggle}
-              onStopped={() => void refresh()}
-            />
-          ))}
-        </ul>
-      )}
-    </div>
+    <AgentsProvider>
+      <Shell sidebarFoot={sidebarFoot}>
+        <Screen />
+      </Shell>
+    </AgentsProvider>
   );
 }

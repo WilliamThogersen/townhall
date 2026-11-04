@@ -56,6 +56,25 @@ describe("key hints", () => {
     expect(screen.getByText("r=reply")).toBeInTheDocument();
   });
 
+  it("keeps the order when an older screen changes its hints", () => {
+    const quit: KeyHint = { keys: "q", label: "quit" };
+    const { rerender } = render(
+      <KeyHintsProvider>
+        <Current />
+        <Hints hints={[reply]} />
+        <Hints hints={[search]} />
+      </KeyHintsProvider>,
+    );
+    rerender(
+      <KeyHintsProvider>
+        <Current />
+        <Hints hints={[quit]} />
+        <Hints hints={[search]} />
+      </KeyHintsProvider>,
+    );
+    expect(screen.getByText("/=search")).toBeInTheDocument();
+  });
+
   it("is a no-op outside the provider", () => {
     expect(() => renderHook(() => useKeyHints([reply]))).not.toThrow();
     expect(renderHook(() => useCurrentKeyHints()).result.current).toEqual([]);

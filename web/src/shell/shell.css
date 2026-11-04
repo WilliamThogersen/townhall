@@ -1,0 +1,11 @@
+a.th-btn {
+  text-decoration: none;
+}
+
+.th-sidebar-note {
+  margin: 0;
+  padding: var(--th-space-1) var(--th-space-3) var(--th-space-2) var(--th-space-4);
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+  line-height: var(--th-leading-xs);
+}
