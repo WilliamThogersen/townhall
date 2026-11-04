@@ -1,16 +1,15 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { daemonProxy } from "./src/dev/daemonProxy";
 
-const DAEMON = "http://127.0.0.1:7777";
-
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   server: {
     port: 5173,
     strictPort: true,
     proxy: {
-      "/api": { target: DAEMON, changeOrigin: true, ws: true },
+      "/api": daemonProxy(loadEnv(mode, ".", "TOWNHALL_")),
     },
   },
   test: {
@@ -22,4 +21,4 @@ export default defineConfig({
       reporter: ["text"],
     },
   },
-});
+}));
