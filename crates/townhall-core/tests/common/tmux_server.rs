@@ -11,6 +11,7 @@ use townhall_core::tmux::{server_args, SOCKET_ENV};
 
 /// Points `TOWNHALL_TMUX_SOCKET` at a server only this process uses, once per process,
 /// and kills that server when the process exits. Harnesses call it before any tmux call.
+/// `atexit` only stores a plain function that captures nothing, so the call is sound.
 pub fn private_tmux() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
@@ -23,7 +24,6 @@ pub fn private_tmux() {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.subsec_nanos());
         std::env::set_var(SOCKET_ENV, format!("{own}{nanos}"));
-        // SAFETY: registers a plain function that captures nothing.
         if unsafe { libc::atexit(kill_private_tmux) } != 0 {
             eprintln!("warn: the test tmux server is not killed at exit");
         }
@@ -39,12 +39,12 @@ pub fn tmux() -> Command {
 }
 
 /// Where tmux puts the socket of this process's server: tmux leaves the file behind.
+/// `getuid` has no preconditions and cannot fail, so the call is sound.
 fn socket_file() -> Option<PathBuf> {
     let name = std::env::var(SOCKET_ENV).ok()?;
     let dir = std::env::var_os("TMUX_TMPDIR")
         .filter(|d| !d.is_empty())
         .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
-    // SAFETY: getuid has no preconditions and cannot fail.
     let uid = unsafe { libc::getuid() };
     Some(dir.join(format!("tmux-{uid}")).join(name))
 }
