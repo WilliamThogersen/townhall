@@ -47,7 +47,11 @@ async fn an_empty_home_gets_a_migrated_database() {
         })
         .await
         .unwrap();
-    assert_eq!((mode.as_str(), fks, version), ("wal", 1, 2));
+    let latest = townhall_core::store::migrate::all()
+        .iter()
+        .map(|m| i64::from(m.id))
+        .max();
+    assert_eq!((mode.as_str(), fks, Some(version)), ("wal", 1, latest));
 }
 
 #[tokio::test]

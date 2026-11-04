@@ -10,14 +10,7 @@ use townhall_daemon::router;
 mod common;
 use common::{call, settle, unique, Env};
 
-const STUBS: [(&str, &str); 28] = [
-    ("GET", "/api/conversations"),
-    ("POST", "/api/conversations"),
-    ("GET", "/api/conversations/abc"),
-    ("PATCH", "/api/conversations/abc"),
-    ("POST", "/api/conversations/abc/messages"),
-    ("POST", "/api/conversations/abc/stop"),
-    ("POST", "/api/conversations/abc/end"),
+const STUBS: [(&str, &str); 20] = [
     ("POST", "/api/conversations/abc/mcp"),
     ("GET", "/api/conversations/abc/attachments"),
     ("POST", "/api/conversations/abc/attachments"),
@@ -27,7 +20,6 @@ const STUBS: [(&str, &str); 28] = [
     ("GET", "/api/agents/x/steps"),
     ("GET", "/api/stats"),
     ("GET", "/api/stats?repo=alpha"),
-    ("GET", "/api/events"),
     ("GET", "/api/library/agents"),
     ("GET", "/api/library/agents/coder"),
     ("PUT", "/api/library/agents/coder"),
