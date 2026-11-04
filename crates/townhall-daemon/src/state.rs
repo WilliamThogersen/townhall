@@ -14,7 +14,9 @@ struct Inner {
 
 impl AppState {
     pub fn new(repo: PathBuf) -> Self {
-        Self { inner: Arc::new(Inner { repo }) }
+        Self {
+            inner: Arc::new(Inner { repo }),
+        }
     }
 
     pub fn repo(&self) -> &std::path::Path {
