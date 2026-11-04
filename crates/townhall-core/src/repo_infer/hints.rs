@@ -113,7 +113,8 @@ pub(crate) fn extract(message: &str) -> Vec<Hint> {
         .collect()
 }
 
-/// Single-line backtick spans, and the rest of the message with them left out.
+/// Backtick spans without line breaks or other control characters, and the
+/// rest of the message with every span left out.
 fn split_backticks(message: &str) -> (Vec<String>, String) {
     let parts: Vec<&str> = message.split('`').collect();
     let closed = parts.len() - (parts.len() + 1) % 2;
@@ -121,7 +122,7 @@ fn split_backticks(message: &str) -> (Vec<String>, String) {
     let quoted = parts
         .iter()
         .enumerate()
-        .filter(|(i, part)| inside(*i) && !part.contains('\n'))
+        .filter(|(i, part)| inside(*i) && !part.chars().any(char::is_control))
         .map(|(_, part)| part.trim())
         .filter(|text| (MIN_LEN..=MAX_LEN).contains(&text.len()))
         .map(str::to_string)

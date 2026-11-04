@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::de::value::{Error as ValueError, MapDeserializer, StrDeserializer};
 use serde::de::IntoDeserializer;
@@ -8,97 +8,8 @@ use townhall_core::repo_infer::{event_text, infer, Candidate, Inference, Rule};
 use townhall_core::Error;
 
 mod common;
-use common::{git, init_repo};
-
-/// A temp git repo with `files` committed, plus its candidate entry.
-struct Repo {
-    dir: TempDir,
-    name: &'static str,
-}
-
-impl Repo {
-    fn candidate(&self) -> Candidate {
-        candidate(self.name, self.dir.path())
-    }
-}
-
-fn candidate(name: &str, path: &Path) -> Candidate {
-    Candidate {
-        name: name.to_string(),
-        path: path.to_path_buf(),
-    }
-}
-
-async fn repo(name: &'static str, files: &[(&str, &str)]) -> Repo {
-    let dir = init_repo().await;
-    for (path, body) in files {
-        let full = dir.path().join(path);
-        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
-        std::fs::write(&full, body).unwrap();
-    }
-    if !files.is_empty() {
-        git(dir.path(), &["add", "-A"]).await;
-        git(
-            dir.path(),
-            &[
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@t",
-                "commit",
-                "-m",
-                "files",
-            ],
-        )
-        .await;
-    }
-    Repo { dir, name }
-}
-
-async fn shop_and_townhall() -> (Repo, Repo) {
-    let shop = repo(
-        "shop",
-        &[
-            ("src/search/query.ts", "export const query = 1\n"),
-            ("src/routes.ts", "app.post('/api/login', login)\n"),
-            (
-                "package.json",
-                "{\"dependencies\": {\"@shop/ui\": \"1\"}}\n",
-            ),
-            ("README.md", "shop\n"),
-        ],
-    )
-    .await;
-    let townhall = repo(
-        "townhall",
-        &[
-            ("crates/townhall-core/src/lib.rs", "pub mod repo_infer;\n"),
-            ("README.md", "townhall\n"),
-        ],
-    )
-    .await;
-    (shop, townhall)
-}
-
-fn found(repo: &str, rule: Rule, reason: &str) -> Inference {
-    Inference::Found {
-        repo: repo.to_string(),
-        rule,
-        reason: reason.to_string(),
-    }
-}
-
-fn ask(candidates: &[&str], reason: &str) -> Inference {
-    Inference::Ask {
-        candidates: candidates.iter().map(|c| c.to_string()).collect(),
-        reason: reason.to_string(),
-    }
-}
-
-fn missing_path() -> PathBuf {
-    let dir = TempDir::new().unwrap();
-    dir.path().join("gone")
-}
+mod infer_support;
+use infer_support::{ask, candidate, found, missing_path, repo, shop_and_townhall};
 
 #[tokio::test]
 async fn named_by_word_wins_over_code() {
@@ -264,9 +175,7 @@ async fn missing_and_non_git_paths_are_skipped() {
         candidate("plain", plain.path()),
         shop.candidate(),
     ];
-    let got = infer("gone and plain need work", &candidates)
-        .await
-        .unwrap();
+    let got = infer("make it faster", &candidates).await.unwrap();
     assert_eq!(got, found("shop", Rule::Only, "only repo"));
 }
 

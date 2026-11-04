@@ -26,6 +26,15 @@ where
     Ok(done.into_iter().map(|(_, value)| value).collect())
 }
 
+/// Run blocking work, such as file system calls, off the async executor.
+pub(crate) async fn blocking<T, F>(work: F) -> Result<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(work).await.map_err(lost)
+}
+
 fn lost(e: JoinError) -> Error {
     if e.is_panic() {
         std::panic::resume_unwind(e.into_panic());
@@ -52,6 +61,11 @@ mod tests {
     async fn values_keep_job_order() {
         let jobs = vec![after(30, Ok(1)), after(0, Ok(2)), after(10, Ok(3))];
         assert_eq!(join_all(jobs).await.unwrap(), vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn blocking_work_returns_its_value() {
+        assert_eq!(super::blocking(|| 7).await.unwrap(), 7);
     }
 
     #[tokio::test]

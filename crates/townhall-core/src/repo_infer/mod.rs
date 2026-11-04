@@ -24,15 +24,24 @@ use crate::{Error, Result};
 const CHECK_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Infer the repo for `message` among `candidates`. A candidate whose path is
-/// gone or is not a git repo is skipped. Names must be unique, ignoring case.
+/// gone, is not a git repo or does not answer in time is skipped; naming one
+/// asks instead of guessing. Names must be unique, ignoring case, and come
+/// back trimmed.
 pub async fn infer(message: &str, candidates: &[Candidate]) -> Result<Inference> {
     validate(candidates)?;
-    let usable = usable(candidates).await?;
+    let reachable = reachable(candidates).await?;
+    let usable: Vec<Candidate> = candidates
+        .iter()
+        .zip(&reachable)
+        .filter(|(_, ok)| **ok)
+        .map(|(c, _)| c.clone())
+        .collect();
     if usable.is_empty() {
         return Ok(Inference::NoRepos);
     }
-    let names: Vec<String> = usable.iter().map(|c| c.name.clone()).collect();
-    if let Some(inference) = by_name(message, &usable, &names) {
+    let names: Vec<String> = usable.iter().map(|c| c.name.trim().to_string()).collect();
+    let named = named_in(message, candidates).await?;
+    if let Some(inference) = by_name(&named, candidates, &reachable, &names) {
         return Ok(inference);
     }
     if let Some(inference) = by_code(message, &usable, &names).await? {
@@ -61,7 +70,8 @@ fn validate(candidates: &[Candidate]) -> Result<()> {
     })
 }
 
-async fn usable(candidates: &[Candidate]) -> Result<Vec<Candidate>> {
+/// Whether each candidate is a git work tree that answers in time.
+async fn reachable(candidates: &[Candidate]) -> Result<Vec<bool>> {
     let checks = candidates
         .iter()
         .map(|c| {
@@ -69,13 +79,7 @@ async fn usable(candidates: &[Candidate]) -> Result<Vec<Candidate>> {
             async move { git::is_work_tree(&path, Instant::now() + CHECK_TIMEOUT).await }
         })
         .collect();
-    let ok = parallel::join_all(checks).await?;
-    Ok(candidates
-        .iter()
-        .zip(ok)
-        .filter(|(_, ok)| *ok)
-        .map(|(c, _)| c.clone())
-        .collect())
+    parallel::join_all(checks).await
 }
 
 fn found(repo: &str, rule: Rule, reason: &str) -> Inference {
@@ -86,14 +90,37 @@ fn found(repo: &str, rule: Rule, reason: &str) -> Inference {
     }
 }
 
-fn by_name(message: &str, usable: &[Candidate], names: &[String]) -> Option<Inference> {
+/// Indices of every candidate the message names, usable or not.
+async fn named_in(message: &str, candidates: &[Candidate]) -> Result<Vec<usize>> {
+    let message = message.to_string();
+    let candidates = candidates.to_vec();
     let home = std::env::var_os("HOME")
         .filter(|h| !h.is_empty())
         .map(PathBuf::from);
-    let picked: Vec<String> = named::named(message, usable, home.as_deref())
-        .into_iter()
-        .filter_map(|i| names.get(i).cloned())
-        .collect();
+    parallel::blocking(move || named::named(&message, &candidates, home.as_deref())).await
+}
+
+/// Naming a skipped repo asks among the usable ones; else the named usable repo
+/// wins, and naming several asks among them.
+fn by_name(
+    named: &[usize],
+    candidates: &[Candidate],
+    reachable: &[bool],
+    names: &[String],
+) -> Option<Inference> {
+    let name_of = |i: usize| candidates.get(i).map(|c| c.name.trim().to_string());
+    let (ok, lost): (Vec<usize>, Vec<usize>) = named
+        .iter()
+        .copied()
+        .partition(|&i| reachable.get(i) == Some(&true));
+    if !lost.is_empty() {
+        let lost: Vec<String> = lost.into_iter().filter_map(name_of).collect();
+        return Some(Inference::Ask {
+            candidates: names.to_vec(),
+            reason: copy::unreachable(&lost),
+        });
+    }
+    let picked: Vec<String> = ok.into_iter().filter_map(name_of).collect();
     match picked.as_slice() {
         [] => None,
         [repo] => Some(found(repo, Rule::Named, copy::NAMED)),

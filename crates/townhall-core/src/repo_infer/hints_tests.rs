@@ -88,3 +88,8 @@ fn path_needles() {
     assert_eq!(needle("npm run dev", HintKind::Quoted), None);
     assert_eq!(needle("/", HintKind::Quoted), None);
 }
+
+#[test]
+fn hints_with_control_characters_are_dropped() {
+    assert_eq!(texts("`a\0b.ts` `x\u{1b}[0m` `ok.ts`"), vec!["ok.ts"]);
+}

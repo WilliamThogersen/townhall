@@ -5,7 +5,7 @@ use tempfile::TempDir;
 use tokio::process::Command;
 use tokio::time::Instant;
 
-use super::{first_line, grep_first, is_work_tree, ls_files, Grep};
+use super::{first_line, grep_first, is_work_tree, ls_files, token_pattern, Grep};
 use crate::cmd::run;
 use crate::Error;
 
@@ -79,4 +79,42 @@ async fn first_line_without_a_newline() {
         Some("abc")
     );
     child.wait().await.unwrap();
+}
+
+async fn commit_file(dir: &std::path::Path, name: &str, body: &str) {
+    std::fs::write(dir.join(name), body).unwrap();
+    run("git", &["add", name], Some(dir)).await.unwrap();
+}
+
+#[tokio::test]
+async fn grep_matches_whole_tokens_only() {
+    let git = repo().await;
+    commit_file(
+        git.path(),
+        "a.txt",
+        "import x from 'subquery.tsx'\nconst a = './info'\nmedia.ts\nquery.ts.bak\n",
+    )
+    .await;
+    for needle in ["query.ts", "/info", "a.ts"] {
+        let got = grep_first(git.path(), needle, soon()).await.unwrap();
+        assert_eq!(got, Grep::Miss, "{needle}");
+    }
+    commit_file(
+        git.path(),
+        "b.txt",
+        "see query.ts.\nget('/info')\nload(\"a.ts\")\nconst r = useSearch()\n",
+    )
+    .await;
+    for needle in ["query.ts", "/info", "a.ts", "useSearch()"] {
+        let got = grep_first(git.path(), needle, soon()).await.unwrap();
+        assert_eq!(got, Grep::Hit("b.txt".to_string()), "{needle}");
+    }
+}
+
+#[test]
+fn token_patterns_escape_regex_characters() {
+    assert_eq!(
+        token_pattern("f(x)*.ts"),
+        r"(^|[^[:alnum:]_./@-])f\(x\)\*\.ts($|[^[:alnum:]_./@-]|[.]($|[^[:alnum:]_]))"
+    );
 }

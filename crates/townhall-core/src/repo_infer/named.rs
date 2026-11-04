@@ -1,5 +1,6 @@
 //! The named rule: the message says a repo's name, or a path in it.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use super::Candidate;
@@ -8,15 +9,20 @@ const LEAD: &[char] = &['`', '(', '[', '{', '<', '"', '\''];
 const TRAIL: &[char] = &[
     '`', ')', ']', '}', '>', '"', '\'', ',', ';', ':', '!', '?', '.',
 ];
+/// Distinct path tokens checked per message; the rest are ignored.
+const MAX_PATH_TOKENS: usize = 20;
 
-/// Indices of the candidates the message names, in candidate order.
+/// A candidate's path as written and as the file system resolves it.
+struct RepoPath<'a> {
+    path: &'a Path,
+    real: Option<PathBuf>,
+}
+
+/// Indices of the candidates the message names, in candidate order. Touches
+/// the file system for path tokens, so run it off the async executor.
 pub(crate) fn named(message: &str, candidates: &[Candidate], home: Option<&Path>) -> Vec<usize> {
     let lower = message.to_lowercase();
-    let by_path: Vec<usize> = message
-        .split_whitespace()
-        .filter_map(|token| expand(token, home))
-        .filter_map(|path| deepest(&path, candidates))
-        .collect();
+    let by_path = by_path(message, candidates, home);
     candidates
         .iter()
         .enumerate()
@@ -25,30 +31,59 @@ pub(crate) fn named(message: &str, candidates: &[Candidate], home: Option<&Path>
         .collect()
 }
 
-/// An absolute or `~/` path token as a path; anything else is not one.
+fn by_path(message: &str, candidates: &[Candidate], home: Option<&Path>) -> Vec<usize> {
+    let tokens = path_tokens(message, home);
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+    let repos: Vec<RepoPath> = candidates
+        .iter()
+        .map(|c| RepoPath {
+            path: &c.path,
+            real: c.path.canonicalize().ok(),
+        })
+        .collect();
+    tokens
+        .iter()
+        .filter_map(|path| deepest(path, &repos))
+        .collect()
+}
+
+/// The first few distinct absolute or `~/` path tokens.
+fn path_tokens(message: &str, home: Option<&Path>) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    message
+        .split_whitespace()
+        .map(|token| token.trim_start_matches(LEAD).trim_end_matches(TRAIL))
+        .filter(|token| token.starts_with('/') || token.starts_with("~/"))
+        .filter(|token| seen.insert(*token))
+        .filter_map(|token| expand(token, home))
+        .take(MAX_PATH_TOKENS)
+        .collect()
+}
+
 fn expand(token: &str, home: Option<&Path>) -> Option<PathBuf> {
-    let token = token.trim_start_matches(LEAD).trim_end_matches(TRAIL);
     match token.strip_prefix("~/") {
         Some(rest) => home.map(|h| h.join(rest)),
-        None => token.starts_with('/').then(|| PathBuf::from(token)),
+        None => Some(PathBuf::from(token)),
     }
 }
 
 /// The candidate whose path holds `path` most closely.
-fn deepest(path: &Path, candidates: &[Candidate]) -> Option<usize> {
+fn deepest(path: &Path, repos: &[RepoPath]) -> Option<usize> {
     let real = path.canonicalize().ok();
-    candidates
+    repos
         .iter()
         .enumerate()
-        .filter(|(_, c)| holds(&c.path, path, real.as_deref()))
-        .max_by_key(|(_, c)| c.path.components().count())
+        .filter(|(_, repo)| holds(repo, path, real.as_deref()))
+        .max_by_key(|(_, repo)| repo.path.components().count())
         .map(|(i, _)| i)
 }
 
-fn holds(repo: &Path, path: &Path, real: Option<&Path>) -> bool {
-    path.starts_with(repo)
+fn holds(repo: &RepoPath, path: &Path, real: Option<&Path>) -> bool {
+    path.starts_with(repo.path)
         || real
-            .zip(repo.canonicalize().ok())
+            .zip(repo.real.as_deref())
             .is_some_and(|(real, repo)| real.starts_with(repo))
 }
 

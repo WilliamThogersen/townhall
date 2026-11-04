@@ -91,12 +91,33 @@ pub(crate) async fn ls_files(dir: &Path, deadline: Instant) -> Result<Option<Vec
     Ok(Some(files))
 }
 
-/// The first tracked text file under `dir` that contains `needle` as is.
+/// Characters that continue a token, so a hit must not touch one.
+const TOKEN_CHARS: &str = "[:alnum:]_./@-";
+const REGEX_SPECIAL: &str = "\\.[](){}*+?|^$";
+
+/// An extended regex for `needle` as a whole token. A full stop after it
+/// still ends it, unless more of a name follows (`query.ts.bak`).
+pub(crate) fn token_pattern(needle: &str) -> String {
+    let escaped: String = needle
+        .chars()
+        .flat_map(|c| {
+            REGEX_SPECIAL
+                .contains(c)
+                .then_some('\\')
+                .into_iter()
+                .chain([c])
+        })
+        .collect();
+    format!("(^|[^{TOKEN_CHARS}]){escaped}($|[^{TOKEN_CHARS}]|[.]($|[^[:alnum:]_]))")
+}
+
+/// The first tracked text file under `dir` that has `needle` as a whole token.
 pub(crate) async fn grep_first(dir: &Path, needle: &str, deadline: Instant) -> Result<Grep> {
     if Instant::now() >= deadline {
         return Ok(Grep::TimedOut);
     }
-    let args = ["grep", "-l", "-F", "-I", "--max-count=1", "-e", needle];
+    let pattern = token_pattern(needle);
+    let args = ["grep", "-l", "-E", "-I", "--max-count=1", "-e", &pattern];
     let mut child = spawn(dir, &args).map_err(spawn_error)?;
     let mut stdout = child
         .stdout

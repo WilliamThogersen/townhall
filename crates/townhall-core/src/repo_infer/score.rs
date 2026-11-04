@@ -1,14 +1,35 @@
-//! The code rule's decision: score repos by how many distinct hints they have.
+//! The code rule's decision: score repos by their hints, tracked paths first.
+
+use std::cmp::Reverse;
 
 use super::{copy, Inference, Rule};
 
-/// What one repo has for each hint, in hint order: the concrete hit or nothing.
-pub(crate) type Hits = Vec<Option<String>>;
+/// How a repo has a hint. A tracked path weighs more than a mention in a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum HitKind {
+    Content,
+    Path,
+}
 
-/// `None` when no repo has any hint; else the clear best, or an ask among the tied.
+/// One hint found in one repo: how, and the text for the reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Hit {
+    pub kind: HitKind,
+    pub what: String,
+}
+
+/// What one repo has for each hint, in hint order.
+pub(crate) type Hits = Vec<Option<Hit>>;
+
+/// `None` when no repo has any hint. Else the repo with the most path hits,
+/// then the most content hits, wins; repos with the same score are asked about.
 pub(crate) fn decide(names: &[String], hints: &[String], hits: &[Hits]) -> Option<Inference> {
-    let scores: Vec<usize> = hits.iter().map(|h| h.iter().flatten().count()).collect();
-    let best = scores.iter().copied().max().filter(|&best| best > 0)?;
+    let scores: Vec<(usize, usize)> = hits.iter().map(|h| score(h)).collect();
+    let best = scores
+        .iter()
+        .copied()
+        .max()
+        .filter(|&best| best != (0, 0))?;
     let top: Vec<usize> = (0..scores.len()).filter(|&r| scores[r] == best).collect();
     match top.as_slice() {
         [winner] => Some(Inference::Found {
@@ -20,27 +41,33 @@ pub(crate) fn decide(names: &[String], hints: &[String], hits: &[Hits]) -> Optio
     }
 }
 
-fn has(hits: &[Hits], repo: usize, hint: usize) -> bool {
-    hits.get(repo)
-        .and_then(|h| h.get(hint))
-        .is_some_and(Option::is_some)
+fn score(hits: &[Option<Hit>]) -> (usize, usize) {
+    let count = |kind: HitKind| hits.iter().flatten().filter(|h| h.kind == kind).count();
+    (count(HitKind::Path), count(HitKind::Content))
 }
 
-/// The first hit no other repo has, else the first hit.
+fn kind_of(hits: &[Hits], repo: usize, hint: usize) -> Option<HitKind> {
+    hits.get(repo)?.get(hint)?.as_ref().map(|h| h.kind)
+}
+
+/// The hit that beats every other repo's hit for the same hint, a path hit
+/// before a content hit, earlier hints first.
 fn reason_hit(winner: usize, hits: &[Hits]) -> Option<&str> {
     let mine = hits.get(winner)?;
-    let alone = |hint: usize| (0..hits.len()).all(|r| r == winner || !has(hits, r, hint));
-    let first = |distinct: bool| {
-        mine.iter()
-            .enumerate()
-            .find(|(hint, hit)| hit.is_some() && (!distinct || alone(*hint)))
-            .and_then(|(_, hit)| hit.as_deref())
+    let beats = |hint: usize| {
+        let own = kind_of(hits, winner, hint);
+        (0..hits.len()).all(|r| r == winner || kind_of(hits, r, hint) < own)
     };
-    first(true).or_else(|| first(false))
+    mine.iter()
+        .enumerate()
+        .filter_map(|(hint, hit)| hit.as_ref().map(|hit| (hint, hit)))
+        .max_by_key(|(hint, hit)| (beats(*hint), hit.kind, Reverse(*hint)))
+        .map(|(_, hit)| hit.what.as_str())
 }
 
 fn ask(names: &[String], hints: &[String], hits: &[Hits], top: &[usize]) -> Inference {
-    let shared = (0..hints.len()).find(|&hint| top.iter().all(|&r| has(hits, r, hint)));
+    let shared =
+        (0..hints.len()).find(|&hint| top.iter().all(|&r| kind_of(hits, r, hint).is_some()));
     let reason = shared.map_or_else(
         || copy::could_fit(top.len()),
         |hint| copy::share(top.len(), &hints[hint]),

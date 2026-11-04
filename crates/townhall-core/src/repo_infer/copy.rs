@@ -33,6 +33,16 @@ pub(crate) fn could_fit(n: usize) -> String {
     format!("{} repos could fit. which one?", count(n))
 }
 
+/// `townhall is not reachable. which one?` for named repos that were skipped.
+pub(crate) fn unreachable(names: &[String]) -> String {
+    let (list, verb) = match names {
+        [one] => (one.clone(), "is"),
+        [rest @ .., last] => (format!("{} and {last}", rest.join(", ")), "are"),
+        [] => (String::new(), "are"),
+    };
+    format!("{list} {verb} not reachable. which one?")
+}
+
 /// `~ repo shop · develop, it has src/search/query.ts` for a found repo.
 pub(crate) fn event_text(inference: &Inference, base_branch: &str) -> Option<String> {
     match inference {
@@ -53,5 +63,22 @@ mod tests {
         assert_eq!(named_several(9), "you named nine repos. which one?");
         assert_eq!(share(12, "query.ts"), "12 repos have query.ts. which one?");
         assert_eq!(has("src/a.ts"), "it has src/a.ts");
+    }
+
+    #[test]
+    fn unreachable_lists_the_names() {
+        let names = |list: &[&str]| list.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            unreachable(&names(&["townhall"])),
+            "townhall is not reachable. which one?"
+        );
+        assert_eq!(
+            unreachable(&names(&["a", "b"])),
+            "a and b are not reachable. which one?"
+        );
+        assert_eq!(
+            unreachable(&names(&["a", "b", "c"])),
+            "a, b and c are not reachable. which one?"
+        );
     }
 }

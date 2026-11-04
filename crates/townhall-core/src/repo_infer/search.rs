@@ -8,7 +8,7 @@ use tokio::time::Instant;
 
 use super::git::{self, Grep};
 use super::hints::Hint;
-use super::score::Hits;
+use super::score::{Hit, HitKind, Hits};
 use super::{parallel, Candidate};
 use crate::Result;
 
@@ -33,7 +33,10 @@ async fn search_repo(dir: PathBuf, hints: Vec<Hint>, deadline: Instant) -> Resul
     for hint in &hints {
         let by_path = hint.path_needle().and_then(|needle| tracked.hit(&needle));
         let hit = match by_path {
-            Some(path) => Some(path),
+            Some(what) => Some(Hit {
+                kind: HitKind::Path,
+                what,
+            }),
             None => content_hit(&dir, &hint.text, deadline).await?,
         };
         hits.push(hit);
@@ -41,9 +44,12 @@ async fn search_repo(dir: PathBuf, hints: Vec<Hint>, deadline: Instant) -> Resul
     Ok(hits)
 }
 
-async fn content_hit(dir: &Path, text: &str, deadline: Instant) -> Result<Option<String>> {
+async fn content_hit(dir: &Path, text: &str, deadline: Instant) -> Result<Option<Hit>> {
     Ok(match git::grep_first(dir, text, deadline).await? {
-        Grep::Hit(file) => Some(format!("{text} in {file}")),
+        Grep::Hit(file) => Some(Hit {
+            kind: HitKind::Content,
+            what: format!("{text} in {file}"),
+        }),
         Grep::Miss | Grep::TimedOut => None,
     })
 }
