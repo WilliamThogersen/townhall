@@ -100,16 +100,18 @@ A missing or invalid stored value reads as its default. The store also keeps `de
 
 ## Permission mode
 
-`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
+`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt, add_dirs`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
 
 ```
 claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
-       [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2] [-- PROMPT]
+       [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2]
+       [--add-dir=D ...] [-- PROMPT]
 ```
 
 - Every option and its value is one argv element (`--name=value`), and the launch command shell-quotes every element, so no value can split or start a new flag. `--allowedTools` is one comma-joined element, so its position does not matter.
 - The prompt is the only positional, after the end-of-options `--`. A prompt such as `--dangerously-skip-permissions`, `-p`, `--permission-mode=bypassPermissions` or `--` arrives as the prompt, never as a flag.
 - `claude` still runs a subcommand when the first positional equals its name, even after `--` (`claude -- mcp` runs `claude mcp`). A prompt without any whitespace therefore gets a trailing newline; no subcommand name has one.
+- `add_dirs` are folders outside the worktree claude may read without a permission prompt (in `default`, `acceptEdits` and `plan` its Read asks for anything outside the working directory and `--add-dir` folders): one `--add-dir=<folder>` each, refused unless absolute and UTF-8, and when it starts with `-` or holds control characters.
 - `model`, `session_id` (a UUID) and each `allowed_tools` entry are refused (`InvalidInput`) when they start with `-` or hold control characters; a tool may not hold a comma. The system prompt may hold anything, since it sits inside its own `--append-system-prompt=` element. Blank values add no flag; no prompt means no `--`.
 - `permission_mode`: `default`, `acceptEdits`, `plan` and `auto` become `--permission-mode=<mode>`; `bypassPermissions` becomes `--dangerously-skip-permissions`. `claude` 2.1.318 lists `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` and no longer lists `default`, but still accepts it, so `default` is passed as is for now.
 - Checked against the installed `claude` 2.1.318 (empty environment, throwaway `HOME`, an invalid `--session-id` so it stops right after parsing): `-- --no-such-flag` reaches the session-id check while `--no-such-flag` alone is `unknown option`, and `--allowedTools=Read,Bash(git diff:*),Edit` and the `--name=value` forms parse.

@@ -179,3 +179,29 @@ fn custom_bin_is_quoted_only_when_needed() {
     assert!(plain.starts_with("/opt/fake/claude-1.0 "), "{plain}");
     assert!(spaced.starts_with("'/my tools/claude' "), "{spaced}");
 }
+
+#[test]
+fn add_dirs_are_absolute_folders_before_the_prompt() {
+    let o = LaunchOptions {
+        add_dirs: vec!["/h/tasks/fix-login".into(), "/h/my files".into()],
+        ..opts("go on")
+    };
+    assert_eq!(
+        argv_through_sh(&o),
+        [
+            "--permission-mode=plan",
+            "--add-dir=/h/tasks/fix-login",
+            "--add-dir=/h/my files",
+            "--",
+            "go on",
+        ]
+    );
+    for bad in ["relative/dir", "", "/a\nb", "-/x"] {
+        let o = LaunchOptions {
+            add_dirs: vec![bad.into()],
+            ..opts("x")
+        };
+        let err = ClaudeCodeAdapter::args(&o).unwrap_err();
+        assert!(matches!(err, Error::InvalidInput(_)), "{bad:?}: {err:?}");
+    }
+}

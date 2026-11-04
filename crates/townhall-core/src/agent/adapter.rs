@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::model::PermissionMode;
 use crate::{Error, Result};
 
@@ -17,6 +19,9 @@ pub struct LaunchOptions {
     pub allowed_tools: Vec<String>,
     /// `claude --append-system-prompt`.
     pub system_prompt: Option<String>,
+    /// `claude --add-dir`: absolute folders outside the worktree claude may read without
+    /// asking (a task's brief, its conversation's attachments).
+    pub add_dirs: Vec<PathBuf>,
 }
 
 /// Knows how to turn launch options into the shell command run inside tmux.
