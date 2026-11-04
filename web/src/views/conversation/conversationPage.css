@@ -1,0 +1,80 @@
+.th-convo-view {
+  position: relative;
+}
+
+.th-convo-view > .th-banner {
+  flex: none;
+}
+
+.th-convo-head-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 1ch;
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+}
+
+.th-convo-head-status[data-status="thinking"] {
+  color: var(--th-status-working);
+}
+
+.th-convo-head[data-confirm="true"] {
+  background: var(--th-danger-tint);
+}
+
+.th-event[data-kind="repo"] .th-msg-sign {
+  color: var(--th-accent);
+}
+
+.th-event[data-event="passed"] .th-msg-sign {
+  color: var(--th-ok);
+}
+
+.th-event[data-event="failed"] .th-msg-sign,
+.th-event[data-kind="error"] {
+  color: var(--th-danger);
+}
+
+.th-event[data-kind="thinking"] .th-msg-sign {
+  color: var(--th-status-working);
+}
+
+.th-msg-body pre {
+  overflow-x: auto;
+  padding: var(--th-space-2) var(--th-space-3);
+  background: var(--th-surface-2);
+  white-space: pre;
+}
+
+.th-msg-body pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.th-msg-body a {
+  color: var(--th-fg);
+}
+
+.th-ask[data-answered="true"] {
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--th-line-strong);
+}
+
+.th-ask[data-answered="true"] .th-ask-head {
+  color: var(--th-fg-muted);
+}
+
+.th-ask[data-answered="true"] .th-ask-head .th-status {
+  color: var(--th-fg-faint);
+}
+
+.th-ask .th-prompt {
+  border: var(--th-border) solid var(--th-line-control);
+  background: var(--th-bg);
+}
+
+.th-agent-line[data-open="true"] {
+  background: var(--th-surface-2);
+  box-shadow: inset 2px 0 0 var(--th-accent);
+}
