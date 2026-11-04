@@ -5,7 +5,7 @@ use serde_json::json;
 use tempfile::TempDir;
 use townhall_core::events::EventBus;
 use townhall_core::model::{PermissionMode, SettingKey, Settings};
-use townhall_core::store::{Store, DB_FILE, LOCK_FILE};
+use townhall_core::store::{migrate, Store, DB_FILE, LOCK_FILE};
 use townhall_core::{Error, Home};
 
 mod common;
@@ -47,7 +47,12 @@ async fn an_empty_home_gets_a_migrated_database() {
         })
         .await
         .unwrap();
-    assert_eq!((mode.as_str(), fks, version), ("wal", 1, 2));
+    let newest = migrate::all().iter().map(|m| i64::from(m.id)).max();
+    assert_eq!(
+        (mode.as_str(), fks, Some(version)),
+        ("wal", 1, newest),
+        "user_version is the newest migration, whichever unit added it"
+    );
 }
 
 #[tokio::test]
