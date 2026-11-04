@@ -139,6 +139,15 @@ describe("HomePage", () => {
     await waitFor(() => expect(shownHints()).toBe("/"));
   });
 
+  it("shows the add form's keys on first run while the form is open", async () => {
+    renderHome([]);
+    fireEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+    expect(screen.getByRole("form", { name: "add repository" })).toBeInTheDocument();
+    await waitFor(() => expect(shownHints()).toBe("⏎ esc"));
+    fireEvent.click(screen.getByRole("button", { name: "cancel" }));
+    await waitFor(() => expect(shownHints()).toBe("/"));
+  });
+
   it("still offers the composer when the repos do not load", async () => {
     renderHome(new ApiError("network", "cannot reach the daemon"));
     await composer();
