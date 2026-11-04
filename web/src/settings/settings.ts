@@ -18,8 +18,8 @@ export const PERMISSION_MODES: readonly PermissionMode[] = [
   "auto",
   "bypassPermissions",
 ];
-export const REPO_UNCLEAR_CHOICES: readonly RepoUnclear[] = ["ask", "guess"];
-export const NOTIFY_CHOICES: readonly NotifyWhen[] = ["needsYou", "failed", "everything"];
+export const REPO_UNCLEAR_VALUES: readonly RepoUnclear[] = ["ask", "guess"];
+export const NOTIFY_VALUES: readonly NotifyWhen[] = ["needsYou", "failed", "everything"];
 
 export const AGENTS_AT_ONCE_MIN = 1;
 export const AGENTS_AT_ONCE_MAX = 50;
@@ -67,8 +67,8 @@ export function parseSettings(raw: unknown): Settings {
     permissionMode: oneOf(PERMISSION_MODES, fields.permissionMode, d.permissionMode),
     workWithoutAsking: flag(fields.workWithoutAsking, d.workWithoutAsking),
     agentsAtOnce: agentsAtOnce(fields.agentsAtOnce, d.agentsAtOnce),
-    repoUnclear: oneOf(REPO_UNCLEAR_CHOICES, fields.repoUnclear, d.repoUnclear),
+    repoUnclear: oneOf(REPO_UNCLEAR_VALUES, fields.repoUnclear, d.repoUnclear),
     sessionPanelOpen: flag(fields.sessionPanelOpen, d.sessionPanelOpen),
-    notifyWhen: oneOf(NOTIFY_CHOICES, fields.notifyWhen, d.notifyWhen),
+    notifyWhen: oneOf(NOTIFY_VALUES, fields.notifyWhen, d.notifyWhen),
   });
 }
