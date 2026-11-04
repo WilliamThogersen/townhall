@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aStep, aTask } from "../../api/fixtures";
-import type { TaskState } from "../../api/types";
+import { aStep, aTask } from "../api/fixtures";
+import type { TaskState } from "../api/types";
 import { LOOP_STAGES, loopSummary, stageOf, stepKind, stepVerb } from "./stage";
 
 const bash = (summary: string) => aStep({ tool: "Bash", summary });
@@ -98,6 +98,19 @@ describe("loopSummary", () => {
       ["test", 1, true],
       ["review", 1, true],
       ["ship", 1, false],
+    ]);
+    expect(summary.needsYou).toBe(1);
+  });
+
+  it("reads task states alone without a step lookup", () => {
+    const states: readonly TaskState[] = ["queued", "working", "needsYou", "error", "inCi", "inReview", "merged", "ended"];
+    const summary = loopSummary(states.map((state, i) => aTask({ name: `t${i}`, state })));
+    expect(summary.stages.map((s) => [s.stage, s.count])).toEqual([
+      ["plan", 1],
+      ["code", 2],
+      ["test", 0],
+      ["review", 3],
+      ["ship", 1],
     ]);
     expect(summary.needsYou).toBe(1);
   });

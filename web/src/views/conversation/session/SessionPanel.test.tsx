@@ -67,13 +67,33 @@ describe("SessionPanel head", () => {
 });
 
 describe("SessionPanel loop strip", () => {
-  it("counts tasks per stage and lights the stages that have any", () => {
+  const stagesShown = () =>
+    [...screen.getByLabelText("Tasks per stage").querySelectorAll(".th-loop-stage:not(.th-loop-stage--you)")].map(
+      (s) => s.textContent,
+    );
+
+  it("counts tasks per stage the way the control center does and lights the stages that have any", () => {
     renderPanel();
     const loop = screen.getByLabelText("Tasks per stage");
     const stages = [...loop.querySelectorAll(".th-loop-stage:not(.th-loop-stage--you)")];
-    expect(stages.map((s) => s.textContent)).toEqual(["plan 1", "code 2", "test 1", "review 0", "ship 1"]);
-    expect(stages.map((s) => s.getAttribute("data-active"))).toEqual(["true", "true", "true", null, "true"]);
+    expect(stages.map((s) => s.textContent)).toEqual(["plan 1", "code 1", "test 0", "review 2", "ship 1"]);
+    expect(stages.map((s) => s.getAttribute("data-active"))).toEqual(["true", "true", null, "true", "true"]);
     expect(loop.querySelectorAll(".th-loop-arrow")).toHaveLength(4);
+  });
+
+  it("puts a task waiting on you, on ci or on failed checks under review", () => {
+    renderPanel(
+      fullDetail({
+        tasks: [
+          aTask({ name: "a", state: "needsYou" }),
+          aTask({ name: "b", state: "inReview" }),
+          aTask({ name: "c", state: "error", pr: { number: 41, url: null, checks: "failed" } }),
+          aTask({ name: "d", state: "error" }),
+          aTask({ name: "e", state: "ended" }),
+        ],
+      }),
+    );
+    expect(stagesShown()).toEqual(["plan 0", "code 1", "test 0", "review 3", "ship 0"]);
   });
 
   it("puts needs you on its own line only while a task needs you", () => {

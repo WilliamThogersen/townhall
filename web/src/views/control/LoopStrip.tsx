@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import type { LoopSummary } from "./stage";
+import type { LoopSummary } from "../../tasks/stage";
 
 export function LoopStrip({ loop }: { readonly loop: LoopSummary }) {
   const last = loop.stages.length - 1;

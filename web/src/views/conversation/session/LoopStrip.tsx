@@ -1,10 +1,10 @@
 import { Fragment } from "react";
 import type { Task } from "../../../api/types";
 import { StatusGlyph } from "../../../ui/StatusGlyph";
-import { loopCounts } from "./loopStages";
+import { loopSummary } from "../../../tasks/stage";
 
 export function LoopStrip({ tasks }: { readonly tasks: readonly Task[] }) {
-  const loop = loopCounts(tasks);
+  const loop = loopSummary(tasks);
   const last = loop.stages.length - 1;
   return (
     <div className="th-loop" aria-label="Tasks per stage">

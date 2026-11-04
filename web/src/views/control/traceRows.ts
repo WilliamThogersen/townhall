@@ -1,6 +1,6 @@
 import type { AgentInfo, Step, Task } from "../../api/types";
 import { PATHS } from "../../router";
-import { stepVerb } from "./stage";
+import { stepVerb } from "../../tasks/stage";
 import type { TimeAxis } from "./timeAxis";
 import {
   conversationBar,

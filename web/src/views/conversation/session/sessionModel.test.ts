@@ -1,37 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { aConversation, aDetail, anEntry, aTask, aYouEntry } from "../../../api/fixtures";
-import type { RepoRule, TaskState, ThreadEntry } from "../../../api/types";
+import type { RepoRule, ThreadEntry } from "../../../api/types";
 import { contextView, formatTokens } from "./contextUsage";
-import { loopCounts } from "./loopStages";
 import { repoLine } from "./repoLine";
-
-const tasksIn = (...states: TaskState[]) => states.map((state, i) => aTask({ name: `t${i}`, state }));
-
-describe("loopCounts", () => {
-  it("maps each task state to a stage", () => {
-    const loop = loopCounts(
-      tasksIn("queued", "working", "needsYou", "error", "inCi", "inReview", "inReview", "merged", "ended"),
-    );
-    expect(loop.stages).toEqual([
-      { stage: "plan", count: 1 },
-      { stage: "code", count: 3 },
-      { stage: "test", count: 1 },
-      { stage: "review", count: 2 },
-      { stage: "ship", count: 1 },
-    ]);
-  });
-
-  it("counts what needs you on its own", () => {
-    expect(loopCounts(tasksIn("needsYou", "needsYou", "working")).needsYou).toBe(2);
-    expect(loopCounts(tasksIn("working")).needsYou).toBe(0);
-  });
-
-  it("shows every stage at zero without tasks", () => {
-    const loop = loopCounts([]);
-    expect(loop.stages.map((s) => s.count)).toEqual([0, 0, 0, 0, 0]);
-    expect(loop.needsYou).toBe(0);
-  });
-});
 
 const repoEntry = (id: number, repo: string, rule: RepoRule, reason: string, baseBranch = "main"): ThreadEntry =>
   anEntry(id, { kind: "repo", repo, baseBranch, rule, reason });

@@ -1,5 +1,5 @@
 import type { AgentInfo, Step, Task, TaskState } from "../../api/types";
-import { stageOf, stepKind } from "./stage";
+import { stageOf, stepKind } from "../../tasks/stage";
 import { durationLabel, spanPercents, type TimeAxis } from "./timeAxis";
 import { conversationEnd, type ScopedConversation } from "./traceScope";
 

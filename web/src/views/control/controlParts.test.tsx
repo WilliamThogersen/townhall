@@ -6,7 +6,7 @@ import { TestDataProvider } from "../../data/testing";
 import { ControlHead } from "./ControlHead";
 import { LoopStrip } from "./LoopStrip";
 import { repoChoices } from "./RepoFilter";
-import { loopSummary } from "./stage";
+import { loopSummary } from "../../tasks/stage";
 import { LIVE_STEPS_MS, StepsLoader } from "./StepsLoader";
 import { controlHref } from "./useControlFilter";
 import { controlHints } from "./useControlKeys";

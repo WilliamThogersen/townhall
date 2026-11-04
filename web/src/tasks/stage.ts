@@ -1,4 +1,4 @@
-import type { Step, Task, TaskState } from "../../api/types";
+import type { Step, Task, TaskState } from "../api/types";
 
 export type LoopStage = "plan" | "code" | "test" | "review" | "ship";
 
@@ -86,7 +86,9 @@ export interface LoopSummary {
   readonly needsYou: number;
 }
 
-export function loopSummary(tasks: readonly Task[], latestStep: (name: string) => Step | null): LoopSummary {
+const NO_STEP = (): Step | null => null;
+
+export function loopSummary(tasks: readonly Task[], latestStep: (name: string) => Step | null = NO_STEP): LoopSummary {
   const staged = tasks.map((task) => ({ task, stage: stageOf(task, latestStep(task.name)) }));
   const stages = LOOP_STAGES.map((stage) => {
     const here = staged.filter((entry) => entry.stage === stage);

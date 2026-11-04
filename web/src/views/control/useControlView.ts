@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useAgentInfos, useConversations, useTasks } from "../../data";
-import { loopSummary } from "./stage";
+import { loopSummary } from "../../tasks/stage";
 import { timeAxis } from "./timeAxis";
 import { buildRows, latestStep, toggleKey } from "./traceRows";
 import { earliestStart, scopeTrace } from "./traceScope";
