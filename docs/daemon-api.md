@@ -83,6 +83,17 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 - `Step { id, tool, summary, startedAt, endedAt: string | null, result: "running" | "ok" | "error" }` and `ShippedDay { date: "YYYY-MM-DD", fixes, features, lines, agents }`: the Rust types belong to 2.7 (`steps/`, `stats/`); `types.ts` already mirrors them.
 - `CreateTaskInput`, `NewTask`, `NewMessage`, `ConversationPatch`, `AddRepo`, `PutSetting`: request bodies, see the routes and MCP.
 
+## Attachments
+
+Unit 2.6, `routes/attachments/` and `runner/content.rs`.
+
+- Upload: the origin check comes first (`403`), then the conversation (`404`), then the body: exactly one multipart field `file` holding a non-empty file (`400` otherwise), counted while it streams and stopped past 20 MB (`413`, nothing kept).
+- `mime`: png, jpeg, gif and webp come from the file's first bytes; anything else from the part's content type, then the extension. An image type the bytes do not back up (an svg, text sent as `image/png`) is never kept, so `kind: "image"` is always a real png, jpeg, gif or webp.
+- `name`: the last path part without control or invisible (bidi) characters and without edge dots or spaces, at most 120 bytes with a 1 to 10 letter extension kept, `file` when nothing is left. An image gets the extension of its type (`shot` becomes `shot.png`), so an agent's Read tool shows it as an image.
+- Download: the bytes with `content-type`, `content-length`, `content-disposition` (`inline` for those images, `attachment` for the rest, an ASCII `filename` plus `filename*`), `x-content-type-options: nosniff` and `content-security-policy: sandbox`. Only a regular file directly in its attachment folder is served; a symlink or a missing file is `404`.
+- Townhall's session: up to 10 images per message, each at most 5 MB of base64, go in as `{"type":"image","source":{"type":"base64","media_type":...,"data":...}}` blocks before the text block. The text ends with `attachments of this message (pass their ids to create_task):` and one line per attachment, `- <id> (<name>, <mime>)`, with `image n above` or the reason an image was only listed.
+- Tasks: `Store::attachment` gives the path of the bytes, absolute whenever the home is, for 2.3 to append to an agent's prompt.
+
 ## Settings keys
 
 One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{key}` with `{ "value": ... }` is the only way to change one, and so the only way to choose `skip all`. The browser-settings import (a separate web unit) sends each key the settings screen stored in `localStorage` (`th-settings`) once, then clears it.
