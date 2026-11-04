@@ -1,30 +1,13 @@
-import { useCallback } from "react";
-import { addRepo, listRepos, removeRepo } from "../api/repos";
-import type { AddRepoInput, Repo } from "../api/types";
-import { useDataContext } from "./dataContext";
+import { useMemo } from "react";
+import { useDataStore, useResource } from "./dataContext";
+import { REPOS_KEY } from "./resources";
 import type { ReposState } from "./types";
-import { useLoad } from "./useLoad";
 
 export function useRepos(): ReposState {
-  const { refresh } = useDataContext();
-  const { data, loading, error, reload } = useLoad("repos", (signal) => listRepos(signal), refresh);
-
-  const add = useCallback(
-    async (input: AddRepoInput): Promise<Repo> => {
-      const repo = await addRepo(input);
-      reload();
-      return repo;
-    },
-    [reload],
+  const store = useDataStore();
+  const { data, loading, error } = useResource(REPOS_KEY, (state) => state.repos);
+  return useMemo(
+    () => ({ repos: data, loading, error, add: store.addRepo, remove: store.removeRepo }),
+    [data, loading, error, store],
   );
-
-  const remove = useCallback(
-    async (name: string): Promise<void> => {
-      await removeRepo(name);
-      reload();
-    },
-    [reload],
-  );
-
-  return { repos: data, loading, error, add, remove };
 }

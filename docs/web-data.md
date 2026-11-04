@@ -71,7 +71,7 @@ Common rules:
 - `loading` is `true` only until the first answer for the current input (id, filter, repo). Refetches (resync, reconnect, `reload`, polling) keep the data on screen and do not set `loading`.
 - `error` is the last failure (no `error:` prefix), cleared by the next success. A failed refetch keeps the last good data.
 - Lists are `[]` while loading and on a first-load error, except `repos`, which is `null` until the first answer (so a screen can tell "no repos" from "not known yet").
-- Data loads on demand: nothing is fetched until a hook that needs it mounts. Once loaded it stays live (see below).
+- Data loads on demand: nothing is fetched until a hook that needs it mounts. Once loaded it stays in the store and stays live (see below), so a screen that mounts again shows it at once. A resource whose first load failed is fetched again when a hook for it mounts.
 
 | hook | returns | while loading | on error |
 |------|---------|---------------|----------|
@@ -85,7 +85,7 @@ Common rules:
 | `useConversationActions()` | `{ start(input) -> Promise<ConversationDetail>; send(id, input) -> Promise<ThreadEntry>; stop(id) -> Promise<Conversation>; end(id) -> Promise<Conversation>; patch(id, patch) -> Promise<Conversation> }` | | each rejects with `ApiError` |
 | `useConnection()` | `"connecting" \| "open" \| "closed"` | `"connecting"` | `"closed"` while waiting to reconnect |
 
-`useSteps` polls every `STEPS_POLL_MS` (2 s, or `intervalMs`) while `live` is true and `agent` is not `null`; steps have no event. `useStats` has no event either: it loads once per `repo` and on resync or reconnect.
+`useTasks` filters one live list of every task in the browser (`listTasks()` without a filter), so all filters share one fetch and one event stream; `repo` matches ignoring case. `useSteps` polls every `STEPS_POLL_MS` (2 s, or `intervalMs`) while `live` is true and `agent` is not `null`; steps have no event. `useStats` has no event either: it loads once per `repo` and again on resync or reconnect.
 
 ## Live updates
 
@@ -97,15 +97,20 @@ The store lives inside `DataProvider` and only ever replaces objects (immutable 
 
 | event | store change |
 |-------|--------------|
-| `conversationUpdated` | replaces that conversation in the list (adds it when new, keeps newest activity first) and in a loaded detail |
+| `conversationUpdated` | replaces that conversation in the list (adds it when new, keeps newest activity first) and in a loaded detail; a copy with an older `updatedAt` than the one held is ignored |
 | `entryAppended` | in a loaded detail: entries stay ordered by `id`; an entry whose `id` is there already replaces it (a `tasksCreated` entry grows in place) |
-| `taskUpdated` | replaces or adds the task in the task list and in the loaded detail of its `conversationId` |
-| `agentUpdated` | replaces or adds the agent in the agent list (by `repo` and `name`) |
+| `taskUpdated` | replaces or adds the task (by `name`, ignoring case) in the task list and in the loaded detail of its `conversationId`, then refetches the agent list when it is loaded (a task start or end adds or removes an agent) |
+| `agentUpdated` | replaces or adds the agent in the agent list (by `repo` and `name`, ignoring case) |
 | `resync` | refetches everything that is loaded |
 
-Every reconnect (an `open` after the first) also refetches everything that is loaded, since events were missed while closed. Actions feed their answers into the store as well (a started conversation, your sent entry, a patched, stopped or ended conversation, an added or removed repo), so a screen does not wait for the event.
+- Every reconnect (an `open` after the first) also refetches everything that is loaded, since events were missed while closed. The first `open` refetches only what had already finished loading before it, since those answers may predate the socket.
+- Resync and reconnect bump a generation counter that `useStats` and `useSteps` follow, so they refetch too.
+- The agent list is also refetched every 10 s (`AGENTS_POLL_MS`) while it is loaded: `agentUpdated` only fires when a state changes.
+- An event that arrives while a resource is loading is replayed onto the answer, so nothing is lost between the request and the socket. A refetch asked for while one is in flight runs once more after it.
+- Actions feed their answers into the store as well (a started conversation with its detail and tasks, your sent entry, a patched, stopped or ended conversation, an added or removed repo), so a screen does not wait for the event.
+- Errors from loads are stored without the `error:` prefix (a stray one from the daemon is stripped).
 
-Status: the signatures above are final. The first commit loads on demand and refetches on resync and reconnect; the event reducer lands in the follow-up commit of unit 3.0 without changing any signature.
+Files behind the barrel (3.0 only): `state.ts` (the state shape), `reducers.ts` (pure, immutable updates per event), `resources.ts` (what each resource fetches and how events reduce it), `loader.ts` (loads, in-flight replay), `eventsLink.ts` (socket, resync, reconnect, agent poll), `cell.ts`, `store.ts`, `storeActions.ts`, `dataContext.ts`, `DataProvider.tsx` and one file per hook.
 
 ## Testing screens
 

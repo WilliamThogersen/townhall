@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toMessage } from "../api/errors";
+import { cleanError } from "./loader";
 
 export type Load<T> = (signal: AbortSignal) => Promise<T>;
 
@@ -38,7 +38,7 @@ export function useLoad<T>(key: string | null, load: Load<T>, refresh: number): 
         setSnapshot((prev) => ({
           key,
           data: prev.key === key ? prev.data : null,
-          error: toMessage(e),
+          error: cleanError(e),
           settled: true,
         }));
       },
