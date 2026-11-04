@@ -3,6 +3,7 @@ import { useAgentsContext } from "../../agents/AgentsProvider";
 import type { InfoState } from "../../repos/useInfo";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
+import { DRAG_REGION } from "../../ui/dragRegion";
 import { Loading } from "../../ui/Loading";
 import { RepoRow } from "./RepoRow";
 import "../settings/cap.css";
@@ -35,7 +36,7 @@ export function ReposView({ repo, action, problem }: ReposViewProps) {
   const { info } = repo;
   return (
     <div className="th-page">
-      <header className="th-page-head">
+      <header className="th-page-head" {...DRAG_REGION}>
         <h1>repos</h1>
         {info ? <span className="th-cap">1</span> : null}
         {action}

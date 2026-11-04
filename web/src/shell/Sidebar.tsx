@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useAgentsContext } from "../agents/AgentsProvider";
 import { countByState } from "../agents/agentState";
 import { Link, PATHS, useRoute } from "../router";
+import { DRAG_REGION } from "../ui/dragRegion";
 import { GlyphCounts } from "../ui/StatusGlyph";
 import { Kbd } from "../ui/Kbd";
 import { Logo } from "../ui/Logo";
@@ -51,10 +52,12 @@ export function Sidebar({ foot }: { readonly foot?: ReactNode }) {
   const { name } = useRoute();
   return (
     <nav className="th-sidebar" aria-label="townhall">
-      <Link className="th-sidebar-top" to={PATHS.control} title="control center" aria-current={currentPage(name === "control")}>
-        <Logo />
-        <span className="th-wordmark">townhall</span>
-      </Link>
+      <div className="th-sidebar-top" {...DRAG_REGION}>
+        <Link className="th-sidebar-brand" to={PATHS.control} title="control center" aria-current={currentPage(name === "control")}>
+          <Logo />
+          <span className="th-wordmark">townhall</span>
+        </Link>
+      </div>
       <Nav />
       <div className="th-sidebar-scroll">
         <h3 className="th-section">active 0</h3>
