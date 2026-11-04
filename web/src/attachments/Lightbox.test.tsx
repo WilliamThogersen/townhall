@@ -180,6 +180,15 @@ describe("Lightbox", () => {
     expect(foot).toHaveTextContent("← → step · c copy · esc close");
   });
 
+  it("keeps its keys from the app's global shortcuts", async () => {
+    const onWindowKey = vi.fn();
+    window.addEventListener("keydown", onWindowKey);
+    const user = await openHarness();
+    await user.keyboard("n/");
+    window.removeEventListener("keydown", onWindowKey);
+    expect(onWindowKey).not.toHaveBeenCalled();
+  });
+
   it("clamps a start index past the end", () => {
     render(<Lightbox images={images} startIndex={9} onClose={vi.fn()} />);
     expect(screen.getByText("3 / 3")).toBeInTheDocument();

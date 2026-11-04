@@ -93,6 +93,7 @@ interface KeyActions {
 
 function handleKey(event: KeyboardEvent<HTMLDialogElement>, actions: KeyActions): void {
   const plain = !event.altKey && !event.ctrlKey && !event.metaKey;
+  event.stopPropagation();
   if (event.key === "Tab") trapTab(event, event.currentTarget);
   else if (event.key === "Escape") {
     event.preventDefault();
