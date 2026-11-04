@@ -74,6 +74,19 @@ describe("Thumbs", () => {
     expect(more).toHaveTextContent("+3");
   });
 
+  it("shows every image when collapsing is off, as the session panel's files grid does", () => {
+    const { container } = render(
+      <Thumbs
+        conversationId="c1"
+        attachmentIds={["i1", "i2", "i3", "i4", "i5"]}
+        attachments={all}
+        collapse={false}
+      />,
+    );
+    expect(container.querySelectorAll(".th-thumb img")).toHaveLength(5);
+    expect(container.querySelector(".th-thumb-more")).toBeNull();
+  });
+
   it("opens the lightbox on the clicked image with that message's images", async () => {
     const user = userEvent.setup();
     render(<Thumbs conversationId="c1" attachmentIds={["i1", "i2", "f1"]} attachments={all} />);

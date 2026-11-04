@@ -9,6 +9,7 @@ export interface ThumbsProps {
   readonly attachmentIds: readonly string[];
   readonly attachments: readonly Attachment[];
   readonly from?: string;
+  readonly collapse?: boolean;
 }
 
 const MAX_IMAGES_IN_FULL = 3;
@@ -47,8 +48,13 @@ interface RowProps {
   readonly items: readonly Attachment[];
 }
 
-function ImageRow({ conversationId, items, onOpen }: RowProps & { readonly onOpen: OnOpen }) {
-  const shown = items.length > MAX_IMAGES_IN_FULL ? items.slice(0, SHOWN_WHEN_COLLAPSED) : items;
+interface ImageRowProps extends RowProps {
+  readonly collapse: boolean;
+  readonly onOpen: OnOpen;
+}
+
+function ImageRow({ conversationId, items, collapse, onOpen }: ImageRowProps) {
+  const shown = collapse && items.length > MAX_IMAGES_IN_FULL ? items.slice(0, SHOWN_WHEN_COLLAPSED) : items;
   const hidden = items.length - shown.length;
   return (
     <div className="th-msg-images">
@@ -85,7 +91,7 @@ function FileRow({ conversationId, items }: RowProps) {
   );
 }
 
-export function Thumbs({ conversationId, attachmentIds, attachments, from = "you" }: ThumbsProps) {
+export function Thumbs({ conversationId, attachmentIds, attachments, from = "you", collapse = true }: ThumbsProps) {
   const [opened, setOpened] = useState<Opened | null>(null);
   const shared = useMemo(() => sharedIn(attachmentIds, attachments), [attachmentIds, attachments]);
   const images = shared.filter((attachment) => attachment.kind === "image");
@@ -97,6 +103,7 @@ export function Thumbs({ conversationId, attachmentIds, attachments, from = "you
         <ImageRow
           conversationId={conversationId}
           items={images}
+          collapse={collapse}
           onOpen={(index, opener) => setOpened({ index, opener })}
         />
       )}
