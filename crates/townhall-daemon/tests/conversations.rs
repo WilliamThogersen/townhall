@@ -21,6 +21,31 @@ const FIRST_FLAGS: [&str; 9] = [
     "--include-partial-messages",
 ];
 
+/// The flags of a first turn: the session id, no bypass, townhall's tools only.
+fn check_first_turn(first: &[String], session: &str, config: String) {
+    assert_eq!(first[..9], FIRST_FLAGS);
+    assert_eq!(values_of(first, "--session-id"), [session]);
+    assert!(!first.contains(&"--resume".to_string()), "{first:?}");
+    assert_eq!(values_of(first, "--permission-mode"), ["default"]);
+    assert_eq!(values_of(first, "--mcp-config"), [config]);
+    assert_eq!(
+        values_of(first, "--allowedTools"),
+        [
+            "mcp__townhall__create_task",
+            "mcp__townhall__set_title",
+            "Read",
+            "Grep",
+            "Glob",
+            "LS"
+        ]
+    );
+    assert!(first.contains(&"--strict-mcp-config".to_string()));
+    assert!(!first.iter().any(|a| a.contains("dangerously")));
+    let prompt = values_of(first, "--append-system-prompt").join(" ");
+    assert!(prompt.contains("create_task") && prompt.contains("set_title"));
+    assert!(prompt.contains("alpha"), "{prompt}");
+}
+
 #[tokio::test]
 async fn the_first_turn_starts_the_session_and_later_ones_resume_it() {
     let env = Env::new("alpha").await;
@@ -38,32 +63,8 @@ async fn the_first_turn_starts_the_session_and_later_ones_resume_it() {
 
     let d = idle(&app, &id).await;
     assert_eq!(d["conversation"]["sessionStarted"], true);
-    let first = fake.argv(1);
-    assert_eq!(first[..9], FIRST_FLAGS);
-    assert_eq!(
-        values_of(&first, "--session-id"),
-        std::slice::from_ref(&session)
-    );
-    assert!(!first.contains(&"--resume".to_string()), "{first:?}");
-    assert_eq!(values_of(&first, "--permission-mode"), ["default"]);
     let config = mcp::config_json(state.ctx().base_url(), &id);
-    assert_eq!(values_of(&first, "--mcp-config"), [config]);
-    assert_eq!(
-        values_of(&first, "--allowedTools"),
-        [
-            "mcp__townhall__create_task",
-            "mcp__townhall__set_title",
-            "Read",
-            "Grep",
-            "Glob",
-            "LS"
-        ]
-    );
-    assert!(first.contains(&"--strict-mcp-config".to_string()));
-    assert!(!first.iter().any(|a| a.contains("dangerously")));
-    let prompt = values_of(&first, "--append-system-prompt").join(" ");
-    assert!(prompt.contains("create_task") && prompt.contains("set_title"));
-    assert!(prompt.contains("alpha"), "{prompt}");
+    check_first_turn(&fake.argv(1), &session, config);
     assert_eq!(fake.cwd(1), env.startup);
 
     let (s, v) = message(&app, &id, "and a dark theme").await;
