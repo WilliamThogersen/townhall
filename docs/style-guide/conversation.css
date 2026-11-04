@@ -603,6 +603,7 @@
   cursor: pointer;
 }
 
+.th-option[aria-checked="true"]::before,
 .th-option[aria-selected="true"]::before {
   content: "\2713";
   color: var(--th-accent);
@@ -612,6 +613,10 @@
 .th-option:hover,
 .th-option[data-active="true"] {
   background: var(--th-surface-2);
+}
+
+.th-option:focus-visible {
+  outline-offset: calc(-1 * var(--th-focus-width));
 }
 
 .th-option > span:nth-child(1) {

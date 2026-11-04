@@ -61,11 +61,11 @@ describe("Menu", () => {
     expect(screen.getByRole("menuitem")).not.toHaveAttribute("aria-checked");
   });
 
-  it("marks the checked radio item so the reference css draws its check", () => {
+  it("never sets aria-selected, which menu items do not support", () => {
     renderMenu();
-    expect(item("repo: auto")).toHaveAttribute("aria-selected", "true");
-    expect(item("repo: shop")).not.toHaveAttribute("aria-selected");
-    expect(item("end conversation")).not.toHaveAttribute("aria-selected");
+    ["end conversation", "repo: auto", "repo: shop"].forEach((name) =>
+      expect(item(name)).not.toHaveAttribute("aria-selected"),
+    );
   });
 
   it("focuses the first item on mount and marks it active", () => {

@@ -143,7 +143,6 @@ function MenuOption({ item, active, onSelect, onHover }: MenuOptionProps) {
       className="th-option"
       role={item.role ?? "menuitem"}
       aria-checked={radio ? Boolean(item.checked) : undefined}
-      aria-selected={radio && item.checked ? true : undefined}
       data-active={active ? "true" : undefined}
       tabIndex={-1}
       onClick={onSelect}
