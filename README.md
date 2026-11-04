@@ -1,61 +1,91 @@
-# townhall
+<p align="center">
+  <img src="docs/style-guide/img/wordmark.svg" alt="/townhall" width="264">
+</p>
 
-An AI agent orchestrator. Rust core, React frontend. Built to run 10-50 agents at once and keep them autonomous.
+<p align="center">
+  talk to it. it turns the work into tasks,<br>
+  and agents run them in their own git worktrees.
+</p>
 
-Status: early scaffold.
+<p align="center">
+  <code>rust</code> · <code>react</code> · <code>tauri v2</code> · <code>tmux</code> · built for 10 to 50 agents at once
+</p>
 
-## Goals
+---
 
-- Spawn, supervise and observe many agents in parallel
-- Git worktree per agent
-- Adapter trait so any agent CLI can plug in
-- Live terminal streaming to a React UI
-- Custom behavior lives in plugins, not in core
+## status
 
-## Running
+Early scaffold. The core runs agents today. Conversations and the new interface are designed and come next.
 
-Prerequisites: Rust, Node, git and tmux. Install web deps once with `npm --prefix web install`.
+|   | part | what it does |
+|---|------|--------------|
+| ● | core | one git worktree and one tmux session per agent, adapters for `claude` and `shell` |
+| ● | daemon | http and websocket api on `127.0.0.1:7777`, live terminal snapshots |
+| ● | desktop | tauri app with repo picker, tray and a notification when an agent ends |
+| ◐ | interface | terminal-native redesign, specified in [`docs/style-guide`](docs/style-guide/README.md) |
+| ○ | conversations | talk to townhall; it finds the repo and creates tasks that agents pick up |
+| ○ | control center | one timeline for every agent in every conversation |
 
-### Browser dev mode
+`●` works · `◐` in progress · `○` planned
+
+## goals
+
+- spawn, supervise and observe many agents in parallel
+- a git worktree per agent
+- an adapter trait, so any agent CLI can plug in
+- live terminal streaming to the ui
+- custom behaviour lives in plugins, not in core
+
+## run it
+
+You need Rust, Node, git and tmux. Install the web dependencies once:
+
+```sh
+npm --prefix web install
+```
+
+### in a browser
 
 ```sh
 npm run dev                  # from the repo root; agents work in the current directory
 npm run dev -- /path/to/repo # or TOWNHALL_REPO=/path/to/repo npm run dev
 ```
 
-Builds and runs the daemon (127.0.0.1:7777) next to the Vite dev server
-(http://localhost:5173, proxies `/api`), so the UI opens in a normal browser
-with hot reload and no Tauri. Ctrl-C stops both processes. Agents live in tmux
+Builds and runs the daemon (`127.0.0.1:7777`) next to the Vite dev server
+(`http://localhost:5173`, proxies `/api`), so the UI opens in a normal browser
+with hot reload and no Tauri. `Ctrl-C` stops both processes. Agents live in tmux
 sessions named `townhall-<repo-key>-<name>` and keep running.
 
-### Desktop app (Tauri v2)
+### as a desktop app (tauri v2)
 
-The app wraps the same web UI and runs the daemon in-process on 127.0.0.1:7777.
+The app wraps the same web UI and runs the daemon in-process on `127.0.0.1:7777`.
 
 ```sh
-npm run tauri dev            # from the root (or `npm run tauri dev` inside web/)
+npm run tauri dev            # from the root (or inside web/)
 npm run tauri build          # packaged app; add `-- --debug` for a faster debug bundle
 ```
 
-Output lands under `target/`. Behavior:
+Output lands under `target/`. How it behaves:
 
-- First launch opens a native folder picker. The repo must be a git repo. The
-  choice is saved in `~/.townhall/config.json` (an old `settings.json` in the app config dir is migrated on first launch) and can be changed
-  with "Change repo" in the header; the in-process daemon restarts on the new path.
-- If port 7777 is already taken (a daemon running separately), the app uses it
-  and the repo is whatever that daemon was started with.
-- Closing the window hides it to the tray; use the tray menu "Quit" to exit.
+- **First launch** opens a native folder picker. The repo must be a git repo. The
+  choice is saved in `~/.townhall/config.json` (an old `settings.json` in the app
+  config dir is migrated on first launch) and can be changed with "Change repo" in
+  the header; the in-process daemon restarts on the new path.
+- **Port 7777 taken** (a daemon running separately): the app uses that daemon, and
+  the repo is whatever it was started with.
+- **Closing the window** hides it to the tray; use "Quit" in the tray menu to exit.
   Quitting stops only the in-process server, never the agents (tmux owns them).
-- A native notification fires when an agent's session goes from alive to dead.
-- The UI talks to `http://127.0.0.1:7777/api` and `ws://127.0.0.1:7777/api` inside
-  the app and to same-origin `/api` in a browser. The daemon allows CORS only
+- **Notifications**: a native notification fires when an agent's session goes from
+  alive to dead.
+- **Network**: the UI talks to `http://127.0.0.1:7777/api` and `ws://127.0.0.1:7777/api`
+  inside the app and to same-origin `/api` in a browser. The daemon allows CORS only
   for the desktop and Vite dev origins.
 
-## Where things live
+## where things live
 
 Everything townhall creates lives in one folder, `~/.townhall` (override with
-`TOWNHALL_HOME`; created with mode 0700). Nothing is ever written into your repo
-(no `.townhall` folder, no `.gitignore` edits); git itself only records the
+`TOWNHALL_HOME`; created with mode 0700). Nothing is ever written into your repo:
+no `.townhall` folder, no `.gitignore` edits. Git itself only records the
 worktrees under the repo's own `.git`.
 
 ```
@@ -69,3 +99,20 @@ worktrees under the repo's own `.git`.
 - tmux sessions are named `townhall-<repo-key>-<agent>`, so agent names are per repo.
 - No state is stored: agents are rediscovered from `git worktree list` and tmux.
 - `GET /api/info` returns `{home, repo, repoKey}` for the running daemon.
+
+## repo map
+
+```
+crates/townhall-core     worktrees, tmux sessions, agent adapters
+crates/townhall-daemon   http and websocket api
+src-tauri                desktop app: daemon in-process, tray, notifications, repo settings
+web                      react ui (vite)
+docs/style-guide         design: tokens, components, preview.html
+```
+
+## design
+
+The interface follows [`docs/style-guide`](docs/style-guide/README.md): monospace
+everywhere, monochrome chrome, one amber accent, square corners, and the pixel
+town hall as logo. Open `docs/style-guide/preview.html` in a browser to see every
+screen in dark and light.
