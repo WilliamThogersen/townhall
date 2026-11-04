@@ -19,6 +19,7 @@ vi.mock("./session", () => ({
   SessionPanel: (props: { detail: ConversationDetail; openTask: string | null; onOpenTask: (n: string) => void }) => (
     <aside className="th-session" aria-label="Session">
       <span>open: {props.openTask ?? "none"}</span>
+      <span>files {props.detail.attachments.length}</span>
       <button type="button" onClick={() => props.onOpenTask("fix-login")}>
         panel open fix-login
       </button>
@@ -299,6 +300,37 @@ describe("ConversationPage composer and live thread", () => {
     renderPage();
     const log = await screen.findByRole("log", { name: "Thread" });
     await waitFor(() => expect(log.querySelector(".th-msg-images .th-thumb")).not.toBeNull());
+  });
+
+  it("loads the files a new message names, so its thumbnails and the files count show at once", async () => {
+    const shot = anAttachment({ id: "a9", name: "shot.png" });
+    const notes = anAttachment({ id: "a10", name: "notes.txt", mime: "text/plain", kind: "file" });
+    const sent = anEntry(3, { kind: "you", text: "look", attachments: ["a9", "a10"] });
+    const get = vi
+      .spyOn(conversationsApi, "getConversation")
+      .mockResolvedValueOnce(detail)
+      .mockResolvedValue({ ...detail, entries: [...detail.entries, sent], attachments: [shot, notes] });
+    const { events } = renderPage();
+    await screen.findByRole("heading", { name: "login redirect loop" });
+    expect(screen.getByText("files 0")).toBeInTheDocument();
+    act(() => events.emit({ type: "entryAppended", conversationId: "c1", entry: sent }));
+    const log = screen.getByRole("log", { name: "Thread" });
+    await waitFor(() => expect(log.querySelector(".th-msg-images .th-thumb")).not.toBeNull());
+    expect(log.querySelector(".th-msg-files")).toHaveTextContent("notes.txt");
+    expect(screen.getByText("files 2")).toBeInTheDocument();
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks the daemon once for a file it does not list", async () => {
+    const lost = anEntry(3, { kind: "you", text: "look", attachments: ["gone"] });
+    const get = vi.spyOn(conversationsApi, "getConversation").mockResolvedValue({ ...detail, entries: [lost] });
+    renderPage();
+    await screen.findByRole("heading", { name: "login redirect loop" });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(get).toHaveBeenCalledTimes(2);
   });
 
   it("adds entries and thinking as events arrive", async () => {
