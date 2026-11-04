@@ -1,4 +1,4 @@
-//! castle-core: worktree and tmux primitives for running many agents.
+//! townhall-core: worktree and tmux primitives for running many agents.
 
 pub mod agent;
 pub mod cmd;

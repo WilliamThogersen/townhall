@@ -3,7 +3,7 @@ use std::time::Duration;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Path;
 use axum::response::Response;
-use castle_core::agent;
+use townhall_core::agent;
 
 use crate::error::ApiError;
 

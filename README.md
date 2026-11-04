@@ -1,4 +1,4 @@
-# castle
+# townhall
 
 An AI agent orchestrator. Rust core, React frontend. Built to run 10-50 agents at once and keep them autonomous.
 

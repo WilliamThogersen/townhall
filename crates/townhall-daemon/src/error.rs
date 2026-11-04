@@ -1,10 +1,10 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use castle_core::Error;
+use townhall_core::Error;
 
 use crate::envelope::failure;
 
-/// API error: a castle-core error or a boundary validation failure.
+/// API error: a townhall-core error or a boundary validation failure.
 #[derive(Debug)]
 pub enum ApiError {
     Core(Error),

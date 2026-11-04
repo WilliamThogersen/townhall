@@ -3,14 +3,14 @@ use std::path::Path;
 use crate::cmd::{run, validate_name};
 use crate::Result;
 
-const SESSION_PREFIX: &str = "castle-";
+const SESSION_PREFIX: &str = "townhall-";
 
 fn session_name(name: &str) -> String {
     format!("{SESSION_PREFIX}{name}")
 }
 
 /// Start a detached tmux session running `command` in `cwd`.
-/// tmux owns the process, so it survives the castle daemon exiting.
+/// tmux owns the process, so it survives the townhall daemon exiting.
 pub async fn spawn(name: &str, cwd: &Path, command: &str) -> Result<()> {
     validate_name(name)?;
     let cwd = cwd.to_string_lossy().into_owned();
@@ -23,7 +23,7 @@ pub async fn spawn(name: &str, cwd: &Path, command: &str) -> Result<()> {
     Ok(())
 }
 
-/// Names of live castle sessions, without the prefix.
+/// Names of live townhall sessions, without the prefix.
 pub async fn list() -> Result<Vec<String>> {
     match run("tmux", &["list-sessions", "-F", "#{session_name}"], None).await {
         Ok(out) => Ok(out

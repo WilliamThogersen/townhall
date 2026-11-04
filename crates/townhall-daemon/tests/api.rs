@@ -4,7 +4,7 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;
-use castle_daemon::{router, AppState};
+use townhall_daemon::{router, AppState};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tempfile::TempDir;
@@ -18,7 +18,7 @@ fn unique(prefix: &str) -> String {
 
 async fn init_repo() -> (TempDir, Router) {
     let dir = TempDir::new().unwrap();
-    let git = |args: &'static [&'static str]| castle_core::cmd::run("git", args, Some(dir.path()));
+    let git = |args: &'static [&'static str]| townhall_core::cmd::run("git", args, Some(dir.path()));
     git(&["init", "-b", "main"]).await.unwrap();
     git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "init"])
         .await

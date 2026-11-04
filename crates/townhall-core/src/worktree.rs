@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use crate::cmd::{run, validate_name};
 use crate::Result;
 
-const BRANCH_PREFIX: &str = "castle/";
-const WORKTREE_DIR: &str = ".castle/worktrees";
+const BRANCH_PREFIX: &str = "townhall/";
+const WORKTREE_DIR: &str = ".townhall/worktrees";
 
 /// A git worktree owned by one agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,7 +22,7 @@ fn describe(repo: &Path, name: &str) -> Worktree {
     }
 }
 
-/// Create `<repo>/.castle/worktrees/<name>` on a new branch `castle/<name>`.
+/// Create `<repo>/.townhall/worktrees/<name>` on a new branch `townhall/<name>`.
 pub async fn create(repo: &Path, name: &str, base: &str) -> Result<Worktree> {
     validate_name(name)?;
     let wt = describe(repo, name);
@@ -46,7 +46,7 @@ pub async fn remove(repo: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// List castle-managed worktrees (rediscovered from git, so restarts lose nothing).
+/// List townhall-managed worktrees (rediscovered from git, so restarts lose nothing).
 pub async fn list(repo: &Path) -> Result<Vec<Worktree>> {
     let out = run("git", &["worktree", "list", "--porcelain"], Some(repo)).await?;
     // git reports canonical paths (e.g. /private/var on macOS), so compare against one.

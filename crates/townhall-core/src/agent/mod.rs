@@ -87,7 +87,7 @@ pub async fn stop(repo: &Path, name: &str) -> Result<()> {
 
 /// Worktree already gone: the branch may still linger. True if it was deleted.
 async fn delete_orphan_branch(repo: &Path, name: &str) -> Result<bool> {
-    let branch = format!("castle/{name}");
+    let branch = format!("townhall/{name}");
     match run("git", &["branch", "-D", &branch], Some(repo)).await {
         Ok(_) => Ok(true),
         Err(e) if git_absent(&e) => Ok(false),

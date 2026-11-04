@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use castle_core::agent::{self, LaunchOptions, ShellAdapter};
-use castle_core::{tmux, Error};
+use townhall_core::agent::{self, LaunchOptions, ShellAdapter};
+use townhall_core::{tmux, Error};
 use tempfile::TempDir;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -12,7 +12,7 @@ fn unique(prefix: &str) -> String {
 }
 
 async fn git(dir: &std::path::Path, args: &[&str]) -> String {
-    castle_core::cmd::run("git", args, Some(dir)).await.unwrap()
+    townhall_core::cmd::run("git", args, Some(dir)).await.unwrap()
 }
 
 async fn init_repo() -> TempDir {
@@ -39,22 +39,22 @@ async fn start_list_send_output_stop() {
         .unwrap();
     assert!(a.alive && a.worktree.exists());
     assert_eq!(a.kind.as_deref(), Some("shell"));
-    assert_eq!(a.branch, format!("castle/{name}"));
+    assert_eq!(a.branch, format!("townhall/{name}"));
     settle().await;
 
     let listed = agent::list(repo.path()).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert!(listed[0].alive);
 
-    agent::send(&name, "ping-castle").await.unwrap();
+    agent::send(&name, "ping-townhall").await.unwrap();
     settle().await;
     let out = agent::output(&name).await.unwrap();
-    assert!(out.contains("ready") && out.contains("ping-castle"), "{out}");
+    assert!(out.contains("ready") && out.contains("ping-townhall"), "{out}");
 
     agent::stop(repo.path(), &name).await.unwrap();
     assert!(agent::list(repo.path()).await.unwrap().is_empty());
     assert!(!tmux::list().await.unwrap().contains(&name));
-    assert!(git(repo.path(), &["branch", "--list", "castle/*"]).await.is_empty());
+    assert!(git(repo.path(), &["branch", "--list", "townhall/*"]).await.is_empty());
 }
 
 #[tokio::test]
@@ -70,7 +70,7 @@ async fn failed_spawn_rolls_back_worktree() {
         .unwrap_err();
     assert!(matches!(err, Error::Command { .. }), "{err:?}");
     assert!(agent::list(repo.path()).await.unwrap().is_empty());
-    assert!(git(repo.path(), &["branch", "--list", "castle/*"]).await.is_empty());
+    assert!(git(repo.path(), &["branch", "--list", "townhall/*"]).await.is_empty());
 
     tmux::kill(&name).await.unwrap();
 }

@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use castle_core::{tmux, worktree};
+use townhall_core::{tmux, worktree};
 use tempfile::TempDir;
 
 async fn git(dir: &std::path::Path, args: &[&str]) {
-    castle_core::cmd::run("git", args, Some(dir)).await.unwrap();
+    townhall_core::cmd::run("git", args, Some(dir)).await.unwrap();
 }
 
 async fn init_repo() -> TempDir {
@@ -34,10 +34,10 @@ async fn rejects_bad_names() {
 async fn tmux_session_runs_and_is_discoverable() {
     let dir = TempDir::new().unwrap();
     let name = format!("test-{}", std::process::id());
-    tmux::spawn(&name, dir.path(), "sh -c 'echo hello-castle; sleep 30'").await.unwrap();
+    tmux::spawn(&name, dir.path(), "sh -c 'echo hello-townhall; sleep 30'").await.unwrap();
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(tmux::list().await.unwrap().contains(&name));
-    assert!(tmux::capture(&name).await.unwrap().contains("hello-castle"));
+    assert!(tmux::capture(&name).await.unwrap().contains("hello-townhall"));
     tmux::kill(&name).await.unwrap();
     assert!(!tmux::list().await.unwrap().contains(&name));
 }

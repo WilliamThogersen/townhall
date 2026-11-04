@@ -1,7 +1,7 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
 use axum::Json;
-use castle_core::agent::{
+use townhall_core::agent::{
     self, Agent, AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter,
 };
 use serde::{Deserialize, Serialize};

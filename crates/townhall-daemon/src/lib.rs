@@ -1,4 +1,4 @@
-//! castle-daemon: HTTP and WebSocket API over castle-core agents.
+//! townhall-daemon: HTTP and WebSocket API over townhall-core agents.
 
 pub mod config;
 pub mod envelope;
