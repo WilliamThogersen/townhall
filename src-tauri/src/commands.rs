@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -19,6 +19,7 @@ pub struct Shared {
     pub settings: Mutex<Settings>,
     /// `None` when another townhall (a daemon started on its own) holds the database.
     pub store: Option<Store>,
+    pub home: Home,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -43,15 +44,26 @@ async fn status(shared: &Shared) -> RepoStatus {
     }
 }
 
-/// Starts the daemon at launch when a repo is already saved.
+/// Starts the daemon at launch: on the saved repo, else with no repo at all, so the page
+/// opens on home's first run. A saved repo that is no longer usable is reported and skipped.
 pub async fn start_saved(shared: &Shared) -> Result<(), String> {
     let saved = shared.settings.lock().await.repo.clone();
-    let Some(repo) = saved else {
-        shared.controller.detect_external().await;
-        return Ok(());
+    let folder = match saved.map(|repo| validate_repo(&repo)) {
+        Some(Ok(repo)) => repo,
+        Some(Err(e)) => {
+            eprintln!("townhall-app: warn: saved repo is no longer usable: {e}");
+            no_repo_folder(&shared.home)?
+        }
+        None => no_repo_folder(&shared.home)?,
     };
-    let repo = validate_repo(&repo).map_err(|e| format!("saved repo is no longer usable: {e}"))?;
-    shared.controller.start(&repo).await.map(|_| ())
+    shared.controller.start(&folder).await.map(|_| ())
+}
+
+/// The daemon always starts in some folder. Townhall's own home is never a git repo, so the
+/// daemon registers nothing for it and serves no repo until one is added.
+fn no_repo_folder(home: &Home) -> Result<PathBuf, String> {
+    home.ensure().map_err(|e| format!("townhall home: {e}"))?;
+    Ok(home.root().to_path_buf())
 }
 
 /// Applies a new repo: validate, restart the daemon, then persist.
@@ -90,29 +102,44 @@ pub async fn repo_status(state: State<'_, SharedState>) -> Result<RepoStatus, St
     Ok(status(&state).await)
 }
 
-/// Opens the native folder picker. Cancelling leaves everything unchanged.
-#[tauri::command]
-pub async fn choose_repo(
-    app: AppHandle,
-    state: State<'_, SharedState>,
-) -> Result<RepoStatus, String> {
+/// The native folder picker. `None` when it was cancelled.
+async fn ask_folder(app: &AppHandle, title: &str) -> Result<Option<PathBuf>, String> {
     let (tx, rx) = oneshot::channel();
     app.dialog()
         .file()
-        .set_title("Choose the git repository agents work in")
+        .set_title(title)
         .pick_folder(move |picked| {
             let _ = tx.send(picked);
         });
     let picked = rx
         .await
         .map_err(|_| "folder dialog closed unexpectedly".to_string())?;
-    if let Some(file) = picked {
-        let path = file
-            .into_path()
-            .map_err(|e| format!("invalid selection: {e}"))?;
+    picked
+        .map(|file| {
+            file.into_path()
+                .map_err(|e| format!("invalid selection: {e}"))
+        })
+        .transpose()
+}
+
+/// Opens the native folder picker. Cancelling leaves everything unchanged.
+#[tauri::command]
+pub async fn choose_repo(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+) -> Result<RepoStatus, String> {
+    if let Some(path) = ask_folder(&app, "Choose the git repository agents work in").await? {
         apply_repo(&state, &path).await?;
     }
     Ok(status(&state).await)
+}
+
+/// The folder picker behind "add repository…": only picks. The page adds the folder with
+/// `POST /api/repos`, which checks it, so the running daemon never restarts.
+#[tauri::command]
+pub async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
+    let picked = ask_folder(&app, "add repository").await?;
+    Ok(picked.map(|path| path.display().to_string()))
 }
 
 /// Opens the store, unless another townhall holds it: then the app uses that daemon.
@@ -141,8 +168,95 @@ pub fn build_shared(app: &AppHandle) -> Result<SharedState, String> {
         .parse()
         .map_err(|e| format!("bind address: {e}"))?;
     Ok(Arc::new(Shared {
-        controller: Controller::new(addr, home, store.clone()),
+        controller: Controller::new(addr, home.clone(), store.clone()),
         settings: Mutex::new(loaded),
         store,
+        home,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, TcpStream};
+    use std::process::Command;
+    use townhall_core::events::EventBus;
+
+    fn free_addr() -> SocketAddr {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap()
+    }
+
+    fn shared_at(dir: &Path, addr: SocketAddr, saved: Option<PathBuf>) -> Shared {
+        let home = Home::at(dir.join(".townhall"));
+        let store = Store::open(&home, EventBus::new()).unwrap();
+        Shared {
+            controller: Controller::new(addr, home.clone(), Some(store.clone())),
+            settings: Mutex::new(Settings { repo: saved }),
+            store: Some(store),
+            home,
+        }
+    }
+
+    /// A probed port can be taken by another process before the daemon binds it, which
+    /// reads as External: retry on a fresh port until the daemon is our own.
+    async fn started(dir: &Path, saved: Option<PathBuf>) -> (SocketAddr, Shared) {
+        for _ in 0..10 {
+            let addr = free_addr();
+            let shared = shared_at(dir, addr, saved.clone());
+            start_saved(&shared).await.unwrap();
+            if shared.controller.mode().await == Mode::Embedded {
+                return (addr, shared);
+            }
+        }
+        panic!("no port stayed ours after 10 tries");
+    }
+
+    async fn get(addr: SocketAddr, path: &'static str) -> String {
+        tokio::task::spawn_blocking(move || {
+            let mut stream = TcpStream::connect(addr).unwrap();
+            write!(
+                stream,
+                "GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+            let mut reply = String::new();
+            stream.read_to_string(&mut reply).unwrap();
+            reply
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn without_a_saved_repo_the_daemon_serves_no_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let (addr, shared) = started(dir.path(), None).await;
+        assert!(get(addr, "/api/repos").await.contains(r#""data":[]"#));
+        let home = shared.home.root().canonicalize().unwrap();
+        let info = get(addr, "/api/info").await;
+        assert!(info.contains(&home.display().to_string()), "{info}");
+        shared.controller.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_saved_repo_that_is_gone_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let gone = dir.path().join("gone");
+        let (addr, shared) = started(dir.path(), Some(gone)).await;
+        assert!(get(addr, "/api/repos").await.contains(r#""data":[]"#));
+        shared.controller.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_saved_repo_is_served() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("shop");
+        let init = Command::new("git").arg("init").arg(&repo).output().unwrap();
+        assert!(init.status.success());
+        let (addr, shared) = started(dir.path(), Some(repo)).await;
+        assert!(get(addr, "/api/repos").await.contains(r#""name":"shop""#));
+        shared.controller.stop().await;
+    }
 }

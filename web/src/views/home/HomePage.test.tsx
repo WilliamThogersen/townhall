@@ -134,7 +134,7 @@ describe("HomePage", () => {
   it("shows first run when there is no repo", async () => {
     renderHome([]);
     expect(await screen.findByRole("heading", { name: "add your first repository" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "add repository…" })).toHaveAttribute("href", "/repos");
+    expect(screen.getByRole("button", { name: "add repository…" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
     await waitFor(() => expect(shownHints()).toBe("/"));
   });
