@@ -92,7 +92,8 @@ worktrees under the repo's own `.git`. Townhall keeps no config files.
 ~/.townhall/
   townhall.db                                    every repo, setting, conversation and task (SQLite)
   townhall.lock                                  held while a townhall owns the database
-  conversations/<id>/files/<attachment>/<name>   attachments, the only other files
+  conversations/<id>/files/<attachment>/<name>   attachments
+  tasks/<name>/brief.md                          a task's whole prompt, which its agent reads
   worktrees/<repo-key>/<agent>/                  one git worktree per agent, branch townhall/<agent>
   config.json.imported                           an older config.json, after its one-time import
 ```

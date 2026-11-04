@@ -183,19 +183,27 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
 
 `scheduler::start(ctx)` runs a pass on every `taskUpdated` and every 2 s (`scheduler::TICK`); tests call `scheduler::run_once(ctx)`. A pass:
 
-- starts queued tasks oldest first, each once every `after` task is `ended` or `merged` (an `error` one holds it) and while fewer than `agentsAtOnce` task agents (agents named after a task) are alive. Start: `agent::start` in the task repo's workspace, name = the task name, base = the commit `baseBranch` is at, `ClaudeCodeAdapter::new(ctx.claude_bin())`, prompt = the task prompt plus `Files attached to this task:` and one `- <path>` per attachment, `permission_mode` from settings, a new session id. Then `working`. The agent runs `claude --permission-mode <mode> --session-id <uuid> <prompt>` (`--dangerously-skip-permissions` for `skip all`).
-- sets `error` with an `agent` `failed` entry (`could not start: <reason>`) when the start fails, or when another repo has an agent with the task's name.
-- adopts a queued task whose agent exists already (a start cut short by a restart) as `working`, never starting a second agent; a `working` task is never touched.
+- starts queued tasks oldest first, each once every `after` task is `ended` or `merged` (an `error` one holds it) and while fewer than `agentsAtOnce` tasks are `working` or `needsYou` with a live session (an interactive claude stays alive after its work, so an `ended` task frees its slot; agents that are no task's do not count).
+- Start: writes the task's brief, `# <title>`, the prompt and, with attachments, `Files attached to this task:` and one `- <path>` each, to `<home>/tasks/<name>/brief.md` (never the repo or the worktree), then `agent::start` in the task repo's workspace, name = the task name, base = the commit `baseBranch` is at, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `permission_mode` from settings, a new session id, `add_dirs` = the brief's folder plus, with attachments, the conversation's `files` folder. Then `working`. A prompt of any size fits, since tmux takes the command as one argument of at most about 16 k. The agent runs:
+
+  ```
+  claude --permission-mode=<mode> --session-id=<uuid> --add-dir=<home>/tasks/<name> [--add-dir=<home>/conversations/<id>/files] -- 'read your task brief at <home>/tasks/<name>/brief.md and do it. it is the full task.'
+  ```
+
+  (`--dangerously-skip-permissions` instead of `--permission-mode` for `skip all`). The prompt's own text only ever reaches claude through the brief.
+- sets `error` with an `agent` `failed` entry (`could not start: <reason>`, at most 300 characters) when the start fails, or when another agent has the task's name (in another repo, or in another case).
+- adopts a queued task whose own agent (its exact name, in its repo) exists already (a start cut short by a restart) as `working`, never starting a second agent; a `working` task is never touched.
 - marks an `ended` task `merged`, with an `agent` `passed` entry (`merged into <base>`), when `townhall/<name>` is reachable from its base branch (`git for-each-ref --merged=<base>`) and its tip is not the commit it started from (a branch with no commits of its own is not merged). Read only: it never merges or deletes.
 
 ## Storage: `~/.townhall`
 
 ```
-~/.townhall/                                  (or $TOWNHALL_HOME, mode 0700)
+~/.townhall/                                  (or $TOWNHALL_HOME made absolute, mode 0700)
   townhall.db                                 every repo, setting, conversation, entry and task
   townhall.db-wal, townhall.db-shm            SQLite's WAL files
   townhall.lock                               held while a townhall owns the database (holds its pid)
-  conversations/<id>/files/<attachment>/<name>   attachment bytes, the only other files
+  conversations/<id>/files/<attachment>/<name>   attachment bytes
+  tasks/<name>/brief.md                       a task's whole prompt, written when its agent starts
   worktrees/<repo-key>/<agent>/               one git worktree per agent, unchanged
   config.json.imported                        phase 1's config.json after its one-time import
 ```
