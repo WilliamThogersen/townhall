@@ -25,6 +25,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   repoStatus.mockReset();
   chooseRepo.mockReset();
 });
@@ -57,15 +58,26 @@ describe("DesktopApp", () => {
     expect(chooseRepo).toHaveBeenCalledOnce();
   });
 
-  it("shows the shell with the repo control once the daemon runs", async () => {
+  it("shows the shell once the daemon runs, with no repo control in the sidebar", async () => {
     repoStatus.mockResolvedValue({ repo: "/Users/me/code/demo", mode: "embedded" });
-    chooseRepo.mockResolvedValue({ repo: "/Users/me/code/other", mode: "embedded" });
     render(<DesktopApp />);
     const nav = await screen.findByRole("navigation", { name: "townhall" });
-    const label = within(nav).getByText("demo");
-    expect(label).toHaveAttribute("title", "/Users/me/code/demo");
-    fireEvent.click(within(nav).getByRole("button", { name: "change repo…" }));
-    expect(await within(nav).findByText("other")).toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: /change repo/ })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "settings" })).toBeInTheDocument();
     await waitFor(() => expect(client.listAgents).toHaveBeenCalled());
+  });
+
+  it("changes the repository from the repos page", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    window.history.replaceState(null, "", "/repos");
+    repoStatus.mockResolvedValue({ repo: "/Users/me/code/demo", mode: "embedded" });
+    chooseRepo.mockResolvedValue({ repo: "/Users/me/code/other", mode: "embedded" });
+    vi.mocked(client.getInfo).mockResolvedValue({ home: "/Users/me/.townhall", repo: "/Users/me/code/demo", repoKey: "demo-1" });
+    render(<DesktopApp />);
+    expect(await screen.findByText("demo", { selector: ".th-repo-name b" })).toBeInTheDocument();
+    vi.mocked(client.getInfo).mockResolvedValue({ home: "/Users/me/.townhall", repo: "/Users/me/code/other", repoKey: "other-1" });
+    fireEvent.click(screen.getByRole("button", { name: "change repository…" }));
+    expect(await screen.findByText("other", { selector: ".th-repo-name b" })).toBeInTheDocument();
+    expect(chooseRepo).toHaveBeenCalledOnce();
   });
 });

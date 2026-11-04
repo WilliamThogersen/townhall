@@ -3,7 +3,6 @@ import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { Loading } from "../ui/Loading";
-import { RepoSettings } from "./RepoSettings";
 import { useRepo, type RepoState } from "./useRepo";
 import "./desktop.css";
 
@@ -38,5 +37,5 @@ export function DesktopApp() {
   if (!status && !error) return <Starting />;
   const ready = status !== null && status.mode !== "stopped";
   if (!ready) return <RepoSetup repo={repo} />;
-  return <App sidebarFoot={<RepoSettings repo={repo} />} />;
+  return <App />;
 }

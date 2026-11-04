@@ -27,24 +27,6 @@ export function ConversationPlaceholder({ id }: { readonly id: string }) {
   );
 }
 
-export function ReposPlaceholder() {
-  useKeyHints(BOTH_KEYS);
-  return (
-    <EmptyState title="repos come next">
-      townhall works in one repository for now
-    </EmptyState>
-  );
-}
-
-export function SettingsPlaceholder() {
-  useKeyHints(BOTH_KEYS);
-  return (
-    <EmptyState title="settings come next">
-      permissions, theme and notifications go here
-    </EmptyState>
-  );
-}
-
 export function SearchPlaceholder() {
   useKeyHints([NEW_CONVERSATION_HINT]);
   return (

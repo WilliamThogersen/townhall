@@ -1,17 +1,3 @@
 .th-first-run {
   height: 100dvh;
 }
-
-.th-repo-control {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 1ch;
-  min-width: 0;
-}
-
-.th-repo-control-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}

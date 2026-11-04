@@ -18,14 +18,22 @@ describe("App routes", () => {
   it.each([
     ["/", "conversations come next"],
     ["/c/fix-login", "conversations come next"],
-    ["/repos", "repos come next"],
-    ["/settings", "settings come next"],
     ["/search?q=x", "search comes next"],
     ["/nope", "not found"],
   ])("%s shows %s", async (path, title) => {
     window.history.replaceState(null, "", path);
     render(<App />);
     expect(screen.getByText(title)).toBeInTheDocument();
+    await waitFor(() => expect(client.listAgents).toHaveBeenCalled());
+  });
+
+  it.each([
+    ["/repos", "repos"],
+    ["/settings", "settings"],
+  ])("%s shows the %s page", async (path, title) => {
+    window.history.replaceState(null, "", path);
+    render(<App />);
+    expect(heading(title)).toBeInTheDocument();
     await waitFor(() => expect(client.listAgents).toHaveBeenCalled());
   });
 

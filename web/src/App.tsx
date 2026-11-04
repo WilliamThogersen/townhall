@@ -3,13 +3,13 @@ import { AgentsProvider } from "./agents/AgentsProvider";
 import { useRoute } from "./router";
 import { Shell } from "./shell/Shell";
 import { LegacyControlCenter } from "./views/LegacyControlCenter";
+import { ReposPage } from "./views/repos/ReposPage";
+import { SettingsPage } from "./views/settings/SettingsPage";
 import {
   ConversationPlaceholder,
   HomePlaceholder,
   NotFound,
-  ReposPlaceholder,
   SearchPlaceholder,
-  SettingsPlaceholder,
 } from "./views/placeholders";
 
 function Screen() {
@@ -22,9 +22,9 @@ function Screen() {
     case "control":
       return <LegacyControlCenter />;
     case "repos":
-      return <ReposPlaceholder />;
+      return <ReposPage />;
     case "settings":
-      return <SettingsPlaceholder />;
+      return <SettingsPage />;
     case "search":
       return <SearchPlaceholder />;
     case "not-found":

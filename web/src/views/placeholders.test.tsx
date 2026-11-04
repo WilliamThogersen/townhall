@@ -6,9 +6,7 @@ import {
   ConversationPlaceholder,
   HomePlaceholder,
   NotFound,
-  ReposPlaceholder,
   SearchPlaceholder,
-  SettingsPlaceholder,
 } from "./placeholders";
 
 function Hints() {
@@ -43,8 +41,6 @@ describe("placeholders", () => {
   });
 
   it.each([
-    ["repos", <ReposPlaceholder />, "repos come next", "townhall works in one repository for now", "n /"],
-    ["settings", <SettingsPlaceholder />, "settings come next", "permissions, theme and notifications go here", "n /"],
     ["search", <SearchPlaceholder />, "search comes next", "there are no conversations to search yet", "n"],
   ])("%s says what comes next", (_, view, heading, body, keys) => {
     show(view);
