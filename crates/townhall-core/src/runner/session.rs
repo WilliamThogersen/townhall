@@ -44,6 +44,8 @@ struct Session<'a> {
     used: Option<u64>,
     limit: Option<u64>,
     result: Option<TurnResult>,
+    /// The CLI printed `init`: it found (or created) the session.
+    saw_init: bool,
 }
 
 impl Session<'_> {
@@ -67,7 +69,10 @@ impl Session<'_> {
 
     async fn on(&mut self, event: StreamEvent, proc: &mut Proc) -> Result<()> {
         match event {
-            StreamEvent::Init => self.mark_started().await?,
+            StreamEvent::Init => {
+                self.saw_init = true;
+                self.mark_started().await?;
+            }
             StreamEvent::Text(text) => {
                 let reply = EntryBody::Townhall { text };
                 self.ctx.store()?.append_entry(self.id, reply).await?;
@@ -108,16 +113,21 @@ impl Session<'_> {
         TurnEnd {
             error: failure(self.result.as_ref(), &exit),
             context,
-            lost: lost_session(self.result.as_ref(), &exit),
+            lost: lost_session(self.result.as_ref(), &exit, self.saw_init),
         }
     }
 }
 
-/// Whether claude said it has no such session (a resume of a session it lost).
-fn lost_session(result: Option<&TurnResult>, exit: &Exit) -> bool {
+/// Whether claude could not find the session to resume. It says so on stderr and exits
+/// before any stream output, so only a failed run without `init` counts, and only when
+/// stderr or an error result says it: a reply that quotes the words is no such failure.
+fn lost_session(result: Option<&TurnResult>, exit: &Exit, saw_init: bool) -> bool {
     let said = |text: Option<&str>| text.is_some_and(|t| t.to_lowercase().contains(LOST));
-    !exit.stopped
-        && (said(result.and_then(|r| r.message.as_deref())) || said(exit.last_error.as_deref()))
+    let failed = result.is_none_or(|r| r.is_error);
+    let error_result = result
+        .filter(|r| r.is_error)
+        .and_then(|r| r.message.as_deref());
+    !exit.stopped && !saw_init && failed && (said(exit.last_error.as_deref()) || said(error_result))
 }
 
 /// The error entry's copy, or `None` for a turn that ended well or was stopped.
@@ -162,6 +172,7 @@ pub(super) async fn talk(
         used: None,
         limit: conversation.context.map(|c| c.limit),
         result: None,
+        saw_init: false,
     };
     while let Some(line) = proc.next_line(&mut stop).await {
         for event in parse_line(&line) {
@@ -221,16 +232,49 @@ mod tests {
     }
 
     #[test]
-    fn a_lost_session_is_told_apart() {
+    fn a_lost_session_is_a_failed_run_before_init() {
         let gone = Some("No conversation found with session ID: x");
-        assert!(lost_session(None, &exit(Some(1), gone, false)));
-        assert!(!lost_session(None, &exit(Some(1), gone, true)));
-        assert!(!lost_session(None, &exit(Some(1), Some("boom"), false)));
-        let said = TurnResult {
+        assert!(lost_session(None, &exit(Some(1), gone, false), false));
+        assert!(!lost_session(None, &exit(Some(1), gone, true), false));
+        assert!(!lost_session(None, &exit(Some(1), gone, false), true));
+        assert!(!lost_session(
+            None,
+            &exit(Some(1), Some("boom"), false),
+            false
+        ));
+        let error = TurnResult {
             is_error: true,
             message: Some("no conversation found with session id y".into()),
             ..TurnResult::default()
         };
-        assert!(lost_session(Some(&said), &exit(Some(1), None, false)));
+        assert!(lost_session(
+            Some(&error),
+            &exit(Some(1), None, false),
+            false
+        ));
+        assert!(!lost_session(
+            Some(&error),
+            &exit(Some(1), None, false),
+            true
+        ));
+    }
+
+    #[test]
+    fn a_reply_that_quotes_the_words_is_no_lost_session() {
+        let reply = TurnResult {
+            message: Some("the logs say: No conversation found with session ID 42".into()),
+            ..TurnResult::default()
+        };
+        let quoted = Some("No conversation found with session ID 42");
+        assert!(!lost_session(
+            Some(&reply),
+            &exit(Some(0), quoted, false),
+            false
+        ));
+        assert!(!lost_session(
+            Some(&reply),
+            &exit(Some(0), None, false),
+            true
+        ));
     }
 }
