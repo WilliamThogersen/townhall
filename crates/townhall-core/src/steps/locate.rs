@@ -6,11 +6,16 @@ use crate::{Error, Result};
 
 const TRANSCRIPT_EXT: &str = "jsonl";
 
-/// Claude's folder for sessions started in `cwd`: every char that is not an ASCII letter or
-/// digit becomes `-`, one per UTF-16 unit, as Claude's own JavaScript does.
+/// Longest folder name Claude writes before it cuts the name and adds a hash.
+const MAX_NAME: usize = 200;
+const BASE_36: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+
+/// Claude's folder for sessions started in `cwd`, named as Claude Code's `sanitizePath` does:
+/// each UTF-16 unit that is not an ASCII letter or digit becomes `-`, and a name over 200
+/// chars keeps its first 200, then `-` and the cwd's string hash in base 36.
 pub fn project_dir_for(claude_projects: &Path, cwd: &Path) -> PathBuf {
+    let cwd = cwd.to_string_lossy();
     let name: String = cwd
-        .to_string_lossy()
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() {
@@ -20,7 +25,27 @@ pub fn project_dir_for(claude_projects: &Path, cwd: &Path) -> PathBuf {
             }
         })
         .collect();
-    claude_projects.join(name)
+    if name.len() <= MAX_NAME {
+        return claude_projects.join(name);
+    }
+    let suffix = hash_suffix(string_hash(&cwd));
+    claude_projects.join(format!("{}-{suffix}", &name[..MAX_NAME]))
+}
+
+/// Java's string hash over UTF-16 units, wrapping at 32 bits like JavaScript's `| 0`.
+fn string_hash(text: &str) -> i32 {
+    text.encode_utf16().fold(0, |h: i32, unit| {
+        h.wrapping_mul(31).wrapping_add(i32::from(unit))
+    })
+}
+
+/// `Math.abs(hash).toString(36)`.
+fn hash_suffix(hash: i32) -> String {
+    let digits: Vec<char> =
+        std::iter::successors(Some(hash.unsigned_abs()), |n| (*n >= 36).then_some(n / 36))
+            .map(|n| char::from(BASE_36[(n % 36) as usize]))
+            .collect();
+    digits.into_iter().rev().collect()
 }
 
 /// The newest `.jsonl` transcript for `cwd`, looking under both `cwd` as given and its
@@ -67,5 +92,19 @@ fn transcript(path: PathBuf) -> std::io::Result<Option<(SystemTime, PathBuf)>> {
         Ok(_) => Ok(None),
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hash_suffix;
+
+    #[test]
+    fn hash_suffix_is_the_absolute_value_in_base_36() {
+        assert_eq!(hash_suffix(0), "0");
+        assert_eq!(hash_suffix(-35), "z");
+        assert_eq!(hash_suffix(36), "10");
+        assert_eq!(hash_suffix(i32::MIN), "zik0zk");
+        assert_eq!(hash_suffix(i32::MAX), "zik0zj");
     }
 }

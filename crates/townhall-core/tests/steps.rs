@@ -143,6 +143,49 @@ fn project_dir_counts_utf16_units_like_claude() {
     );
 }
 
+/// Expected suffixes come from Claude Code 2.1.318's own `sanitizePath`, run in node.
+#[test]
+fn project_dir_over_200_chars_keeps_200_and_adds_claudes_hash() {
+    let projects = Path::new("/p");
+    let cwd = format!("/work/{}x", "segment_".repeat(27));
+    assert_eq!(cwd.len(), 223);
+    let sanitized = cwd.replace(|c: char| !c.is_ascii_alphanumeric(), "-");
+    assert_eq!(
+        project_dir_for(projects, Path::new(&cwd)),
+        projects.join(format!("{}-s2ol9h", &sanitized[..200]))
+    );
+}
+
+#[test]
+fn project_dir_hash_runs_over_utf16_units() {
+    let projects = Path::new("/p");
+    let cwd = format!(
+        "/work/café/{}/{}",
+        "\u{1F600}".repeat(3),
+        "segment_".repeat(26)
+    );
+    let sanitized = format!("-work-caf---------{}", "segment-".repeat(26));
+    assert_eq!(
+        project_dir_for(projects, Path::new(&cwd)),
+        projects.join(format!("{}-3lm8in", &sanitized[..200]))
+    );
+}
+
+#[test]
+fn project_dir_is_hashed_only_past_200_chars() {
+    let projects = Path::new("/p");
+    let fits = format!("/{}", "a".repeat(199));
+    assert_eq!(
+        project_dir_for(projects, Path::new(&fits)),
+        projects.join(format!("-{}", "a".repeat(199)))
+    );
+    let over = format!("/{}", "a".repeat(200));
+    assert_eq!(
+        project_dir_for(projects, Path::new(&over)),
+        projects.join(format!("-{}-b6ymvl", "a".repeat(199)))
+    );
+}
+
 #[test]
 fn latest_transcript_picks_the_newest_jsonl() {
     let projects = TempDir::new().unwrap();
