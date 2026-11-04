@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use super::process::STOP_GRACE;
+use super::process::{KILL_WAIT, STOP_GRACE};
 use super::turn;
 use crate::model::{
     Conversation, ConversationDetail, ConversationPatch, ConversationStatus, EntryBody, NewMessage,
@@ -14,8 +14,9 @@ use crate::{ids, mcp, Context, Error, Result};
 
 pub const MAX_MESSAGE_CHARS: usize = 100_000;
 pub const MAX_ATTACHMENTS: usize = 20;
-/// How long `stop` waits for the turn to wind down before it answers.
-const STOP_WAIT: Duration = Duration::from_secs(STOP_GRACE.as_secs() + 2);
+/// How long `stop` waits for the turn to wind down before it answers: the grace, the
+/// wait for the pipes after the kill, and a moment to hand the turn back.
+const STOP_WAIT: Duration = Duration::from_secs(STOP_GRACE.as_secs() + KILL_WAIT.as_secs() + 2);
 const NOT_STUCK: &str = "not stuck";
 
 fn check_message(m: &NewMessage) -> Result<()> {
