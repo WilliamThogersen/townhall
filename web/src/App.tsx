@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AgentCard } from "./agents/AgentCard";
 import { CreateAgentForm } from "./agents/CreateAgentForm";
 import { useAgents } from "./agents/useAgents";
+import { useDeathNotifications } from "./agents/useDeathNotifications";
 
-export function App() {
+export function App({ toolbar }: { toolbar?: ReactNode }) {
   const { agents, loading, error, refresh } = useAgents();
+  useDeathNotifications(agents, loading);
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
 
   const toggle = (name: string) =>
@@ -25,6 +27,7 @@ export function App() {
       <header>
         <h1>townhall</h1>
         <span className="count">{agents.length} agents</span>
+        {toolbar}
       </header>
       <CreateAgentForm onCreated={created} />
       {error && (

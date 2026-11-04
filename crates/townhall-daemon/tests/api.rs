@@ -122,3 +122,24 @@ async fn bad_base_is_500_and_rolls_back() {
     let (_, v) = call(&app, "GET", "/api/agents", None).await;
     assert_eq!(v["data"], json!([]));
 }
+
+#[tokio::test]
+async fn cors_allows_desktop_origin_only() {
+    use axum::http::{header, Method};
+    let dir = tempfile::tempdir().unwrap();
+    let app = townhall_daemon::router_with_cors(AppState::new(dir.path().to_path_buf()));
+    let preflight = |origin: &'static str| {
+        Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/api/agents")
+            .header(header::ORIGIN, origin)
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+            .body(Body::empty())
+            .unwrap()
+    };
+    let ok = app.clone().oneshot(preflight("tauri://localhost")).await.unwrap();
+    assert_eq!(ok.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).unwrap(), "tauri://localhost");
+    let bad = app.oneshot(preflight("https://evil.example")).await.unwrap();
+    assert!(bad.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+}

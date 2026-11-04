@@ -1,0 +1,9 @@
+{
+  "name": "townhall",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "sh scripts/dev.sh",
+    "tauri": "npm --prefix web run tauri --"
+  }
+}

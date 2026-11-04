@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/townhall-core", "crates/townhall-daemon"]
+members = ["crates/townhall-core", "crates/townhall-daemon", "src-tauri"]
 
 [workspace.package]
 edition = "2021"

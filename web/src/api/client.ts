@@ -1,3 +1,4 @@
+import { wsBase } from "./base";
 import { parseAgent, parseAgents, parseString } from "./guards";
 import { request } from "./request";
 import type { Agent, CreateAgentInput } from "./types";
@@ -19,7 +20,12 @@ export const sendText = (name: string, text: string): Promise<string> =>
 export const getOutput = (name: string): Promise<string> =>
   request("GET", `/agents/${enc(name)}/output`, parseString);
 
-export function streamUrl(name: string, loc: Location = window.location): string {
-  const proto = loc.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${loc.host}/api/agents/${enc(name)}/stream`;
+export function streamUrl(
+  name: string,
+  loc: Location = window.location,
+  win: object = window,
+): string {
+  const base =
+    wsBase(win) ?? `${loc.protocol === "https:" ? "wss:" : "ws:"}//${loc.host}/api`;
+  return `${base}/agents/${enc(name)}/stream`;
 }

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window: notifications only. App commands need no grant; the folder dialog is driven from Rust.",
+  "windows": ["main"],
+  "permissions": ["notification:default"]
+}

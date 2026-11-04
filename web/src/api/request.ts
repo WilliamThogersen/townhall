@@ -1,7 +1,6 @@
+import { httpBase } from "./base";
 import { ApiError, toMessage } from "./errors";
 import { parseEnvelope, type Guard } from "./guards";
-
-export const API_BASE = "/api";
 
 async function readJson(res: Response): Promise<unknown> {
   try {
@@ -21,7 +20,7 @@ export async function request<T>(
 ): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetch(`${httpBase()}${path}`, {
       method,
       signal,
       headers: body === undefined ? undefined : { "content-type": "application/json" },

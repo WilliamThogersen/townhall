@@ -45,3 +45,10 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .sendbox { display: flex; gap: 8px; flex-wrap: wrap; }
 .sendbox input { flex: 1; min-width: 160px; }
 @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } .terminal { height: 300px; } }
+
+.repo-settings {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
