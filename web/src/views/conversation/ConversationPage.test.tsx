@@ -1,14 +1,14 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "../../api/client";
 import * as conversationsApi from "../../api/conversations";
 import { ApiError } from "../../api/errors";
-import { aConversation, aDetail, anEntry, aRepo, aTask, aYouEntry } from "../../api/fixtures";
+import { aConversation, aDetail, anAttachment, anEntry, aRepo, aTask, aYouEntry } from "../../api/fixtures";
 import * as reposApi from "../../api/repos";
 import type { ConversationDetail } from "../../api/types";
-import { TestDataProvider } from "../../data/testing";
+import { createFakeEvents, TestDataProvider } from "../../data/testing";
 import { DEFAULT_SETTINGS, type Settings } from "../../settings/settings";
 import { createSettingsStore } from "../../settings/settingsStore";
 import { SettingsStoreContext } from "../../settings/useSettings";
@@ -49,9 +49,10 @@ function settingsStore(initial: Partial<Settings> = {}) {
 
 function renderPage(id = "c1", initial: Partial<Settings> = {}) {
   const { store, put } = settingsStore(initial);
+  const events = createFakeEvents();
   const wrap = (children: ReactNode) => (
     <SettingsStoreContext value={store}>
-      <TestDataProvider>
+      <TestDataProvider events={events}>
         <KeyHintsProvider>
           {children}
           <Hints />
@@ -60,7 +61,7 @@ function renderPage(id = "c1", initial: Partial<Settings> = {}) {
     </SettingsStoreContext>
   );
   render(wrap(<ConversationPage id={id} />));
-  return { put };
+  return { put, events };
 }
 
 const detail = aDetail({
@@ -71,6 +72,12 @@ const detail = aDetail({
   ],
   tasks: [aTask({ name: "fix-login", repo: "townhall", state: "working" })],
 });
+
+function headerOf(title: HTMLElement): HTMLElement {
+  const found = title.closest<HTMLElement>(".th-convo-head");
+  if (found === null) throw new Error("no conversation header");
+  return found;
+}
 
 function layout(): HTMLElement {
   const found = document.querySelector<HTMLElement>(".th-convo-layout");
@@ -200,7 +207,8 @@ describe("ConversationPage actions", () => {
       .spyOn(conversationsApi, "stopTurn")
       .mockRejectedValue(new ApiError("http", "conversation `c1` not found", 404));
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "stop" }));
+    const header = within(await screen.findByRole("heading", { name: "login redirect loop" }).then(headerOf));
+    await userEvent.click(header.getByRole("button", { name: "stop" }));
     expect(stop).toHaveBeenCalledWith("c1");
     expect(await screen.findByRole("alert")).toHaveTextContent("error: conversation `c1` not found");
     await userEvent.click(screen.getByRole("button", { name: "dismiss" }));
@@ -234,5 +242,58 @@ describe("ConversationPage actions", () => {
     expect(send).toHaveBeenCalledWith("fix-login", "y");
     await userEvent.click(screen.getByRole("button", { name: "shop" }));
     expect(message).toHaveBeenCalledWith("c1", { text: "shop" });
+  });
+});
+
+describe("ConversationPage composer and live thread", () => {
+  it("sends from the composer and r focuses it", async () => {
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
+    const send = vi.spyOn(conversationsApi, "sendMessage").mockResolvedValue(aYouEntry(3, "more tests"));
+    renderPage();
+    const box = await screen.findByRole("textbox", { name: "Message" });
+    expect(box).not.toHaveFocus();
+    await userEvent.keyboard("r");
+    expect(box).toHaveFocus();
+    await userEvent.type(box, "more tests{Enter}");
+    expect(send).toHaveBeenCalledWith("c1", { text: "more tests" });
+  });
+
+  it("shows the drop zone while files are dragged over the conversation", async () => {
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
+    renderPage();
+    const view = (await screen.findByRole("heading", { name: "login redirect loop" })).closest("section");
+    if (view === null) throw new Error("no conversation view");
+    fireEvent.dragEnter(view, { dataTransfer: { types: ["Files"], files: [] } });
+    expect(screen.getByText("drop to attach")).toHaveClass("th-drop");
+    fireEvent.dragLeave(view, { dataTransfer: { types: ["Files"], files: [] } });
+    expect(screen.queryByText("drop to attach")).toBeNull();
+  });
+
+  it("shows the images of your message", async () => {
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue({
+      ...detail,
+      entries: [anEntry(1, { kind: "you", text: "look", attachments: ["a1"] })],
+      attachments: [anAttachment({ id: "a1", name: "shot.png" })],
+    });
+    renderPage();
+    const log = await screen.findByRole("log", { name: "Thread" });
+    await waitFor(() => expect(log.querySelector(".th-msg-images .th-thumb")).not.toBeNull());
+  });
+
+  it("adds entries and thinking as events arrive", async () => {
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
+    const { events } = renderPage();
+    await screen.findByRole("heading", { name: "login redirect loop" });
+    act(() => {
+      events.emit({ type: "entryAppended", conversationId: "c1", entry: anEntry(3, { kind: "townhall", text: "on **it**" }) });
+      events.emit({
+        type: "conversationUpdated",
+        conversation: { ...detail.conversation, status: "thinking", updatedAt: "2026-11-04T11:00:00.000Z" },
+      });
+    });
+    const log = screen.getByRole("log", { name: "Thread" });
+    expect(log.querySelector("strong")).toHaveTextContent("it");
+    expect(within(log).getByRole("status")).toHaveTextContent("thinking");
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled();
   });
 });

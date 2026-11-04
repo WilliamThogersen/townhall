@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import type { Attachment, Task } from "../../../api/types";
 
 export interface ThreadContextValue {
+  readonly conversationId: string;
   readonly tasks: readonly Task[];
   readonly attachments: readonly Attachment[];
   readonly thinking: boolean;

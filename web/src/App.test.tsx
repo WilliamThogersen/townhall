@@ -1,6 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "./api/client";
+import * as conversationsApi from "./api/conversations";
+import { aConversation, aDetail } from "./api/fixtures";
 import * as events from "./api/events";
 import { App } from "./App";
 import { navigate } from "./router";
@@ -26,7 +28,6 @@ const heading = (name: string) => screen.getByRole("heading", { level: 1, name }
 describe("App routes", () => {
   it.each([
     ["/", "conversations come next"],
-    ["/c/fix-login", "conversations come next"],
     ["/search?q=x", "search comes next"],
     ["/nope", "not found"],
   ])("%s shows %s", async (path, title) => {
@@ -54,9 +55,11 @@ describe("App routes", () => {
   });
 
   it("switches screens on navigate and keeps one shell", async () => {
+    const chat = aDetail({ conversation: aConversation({ id: "abc", title: "abc chat" }) });
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(chat);
     const { container } = render(<App sidebarFoot={<span>foot</span>} />);
     act(() => navigate("/c/abc"));
-    expect(screen.getByText("conversation abc will open here")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "abc chat" })).toBeInTheDocument();
     expect(container.querySelectorAll(".th-shell")).toHaveLength(1);
     expect(screen.getByText("foot")).toBeInTheDocument();
     await waitFor(() => expect(client.listAgents).toHaveBeenCalledOnce());

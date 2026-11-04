@@ -8,6 +8,7 @@ import { ThreadContext, type ThreadContextValue } from "./threadContext";
 
 function context(over: Partial<ThreadContextValue> = {}): ThreadContextValue {
   return {
+    conversationId: "c1",
     tasks: [],
     attachments: [],
     thinking: false,

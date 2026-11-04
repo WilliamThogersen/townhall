@@ -53,6 +53,7 @@ export interface Commands {
   readonly end: () => Promise<void>;
   readonly sendMessage: (text: string) => Promise<boolean>;
   readonly answerAgent: (agent: string, text: string) => Promise<boolean>;
+  readonly submit: (text: string, attachmentIds: readonly string[]) => Promise<unknown>;
 }
 
 export function useCommands(id: string): Commands {
@@ -75,6 +76,8 @@ export function useCommands(id: string): Commands {
       end: async () => void (await attempt(() => actions.end(id))),
       sendMessage: (text: string) => attempt(() => actions.send(id, { text })),
       answerAgent: (agent: string, text: string) => attempt(() => sendText(agent, text)),
+      submit: (text: string, attachmentIds: readonly string[]) =>
+        actions.send(id, attachmentIds.length > 0 ? { text, attachments: attachmentIds } : { text }),
     };
   }, [actions, id]);
   return { ...calls, problem };
@@ -85,6 +88,7 @@ export function useThreadValue(detail: ConversationDetail, pane: PaneRoute, comm
   const { sendMessage, answerAgent } = commands;
   return useMemo(
     () => ({
+      conversationId: conversation.id,
       tasks,
       attachments,
       thinking: conversation.status === "thinking",
@@ -93,6 +97,6 @@ export function useThreadValue(detail: ConversationDetail, pane: PaneRoute, comm
       sendMessage,
       answerAgent,
     }),
-    [tasks, attachments, conversation.status, pane.task, pane.open, sendMessage, answerAgent],
+    [conversation.id, tasks, attachments, conversation.status, pane.task, pane.open, sendMessage, answerAgent],
   );
 }
