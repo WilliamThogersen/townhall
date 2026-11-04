@@ -36,16 +36,14 @@ describe("DataProvider", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it("refetches what is loaded on resync and on a reconnect, not on the first open", async () => {
+  it("refetches what is loaded on resync and on a reconnect", async () => {
     const list = vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([aConversation()]);
-    const events = createFakeEvents("connecting");
+    const events = createFakeEvents("open");
     const { result } = renderHook(() => useConversations(), { wrapper: wrapWith(events) });
     await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => events.setStatus("open"));
     expect(list).toHaveBeenCalledOnce();
     act(() => events.emit({ type: "resync" }));
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
-    act(() => events.emit({ type: "conversationUpdated", conversation: aConversation() }));
     act(() => {
       events.setStatus("closed");
       events.setStatus("connecting");
@@ -53,6 +51,15 @@ describe("DataProvider", () => {
     });
     await waitFor(() => expect(list).toHaveBeenCalledTimes(3));
     expect(result.current.loading).toBe(false);
+  });
+
+  it("refetches on the first open only what settled before it", async () => {
+    const list = vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([aConversation()]);
+    const events = createFakeEvents("connecting");
+    const { result } = renderHook(() => useConversations(), { wrapper: wrapWith(events) });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => events.setStatus("open"));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
 
   it("disconnects the fake on unmount", () => {

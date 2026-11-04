@@ -1,13 +1,12 @@
-import { listAgents } from "../api/client";
+import { useMemo } from "react";
 import type { AgentInfo } from "../api/types";
-import { useDataContext } from "./dataContext";
+import { useResource } from "./dataContext";
+import { AGENTS_KEY } from "./resources";
 import type { AgentInfosState } from "./types";
-import { useLoad } from "./useLoad";
 
 const NO_AGENTS: readonly AgentInfo[] = [];
 
 export function useAgentInfos(): AgentInfosState {
-  const { refresh } = useDataContext();
-  const { data, loading, error } = useLoad("agents", (signal) => listAgents(signal), refresh);
-  return { agents: data ?? NO_AGENTS, loading, error };
+  const { data, loading, error } = useResource(AGENTS_KEY, (state) => state.agents);
+  return useMemo(() => ({ agents: data ?? NO_AGENTS, loading, error }), [data, loading, error]);
 }

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as client from "../api/client";
 import * as conversationsApi from "../api/conversations";
 import { ApiError } from "../api/errors";
-import { aConversation, aDetail, anAgentInfo, aRepo, aTask, aYouEntry, someStats } from "../api/fixtures";
+import { aConversation, aDetail, anAgentInfo, anEntry, aRepo, aTask, aYouEntry, someStats } from "../api/fixtures";
 import * as reposApi from "../api/repos";
 import * as statsApi from "../api/stats";
 import * as tasksApi from "../api/tasks";
@@ -17,13 +17,18 @@ import {
   useStats,
   useTasks,
 } from ".";
-import { TestDataProvider } from "./testing";
+import { createFakeEvents, TestDataProvider, type FakeEvents } from "./testing";
 
 afterEach(() => vi.restoreAllMocks());
 
 const wrapper = ({ children }: { readonly children: ReactNode }) => (
   <TestDataProvider>{children}</TestDataProvider>
 );
+
+const withEvents = (events: FakeEvents) =>
+  function Wrapper({ children }: { readonly children: ReactNode }) {
+    return <TestDataProvider events={events}>{children}</TestDataProvider>;
+  };
 
 describe("useConversations", () => {
   it("lists conversations newest activity first", async () => {
@@ -83,11 +88,23 @@ describe("useConversation", () => {
 });
 
 describe("useTasks", () => {
-  it("passes the filter to the daemon", async () => {
-    const list = vi.spyOn(tasksApi, "listTasks").mockResolvedValue([aTask()]);
-    const { result } = renderHook(() => useTasks({ conversationId: "c1" }), { wrapper });
-    await waitFor(() => expect(result.current.tasks).toEqual([aTask()]));
-    expect(list.mock.calls[0]?.[0]).toEqual({ conversation: "c1", repo: undefined });
+  it("filters every task by conversation and repo and stays live", async () => {
+    const mine = aTask({ name: "a", conversationId: "c1", repo: "shop" });
+    const other = aTask({ name: "b", conversationId: "c2", repo: "admin" });
+    const list = vi.spyOn(tasksApi, "listTasks").mockResolvedValue([mine, other]);
+    const events = createFakeEvents();
+    const { result } = renderHook(
+      () => ({ byConversation: useTasks({ conversationId: "c1" }), byRepo: useTasks({ repo: "ADMIN" }), all: useTasks() }),
+      { wrapper: withEvents(events) },
+    );
+    await waitFor(() => expect(result.current.all.tasks).toEqual([mine, other]));
+    expect(result.current.byConversation.tasks).toEqual([mine]);
+    expect(result.current.byRepo.tasks).toEqual([other]);
+    const added = aTask({ name: "c", conversationId: "c1", repo: "shop" });
+    act(() => events.emit({ type: "taskUpdated", task: added }));
+    expect(result.current.byConversation.tasks).toEqual([mine, added]);
+    expect(list).toHaveBeenCalledOnce();
+    expect(list.mock.calls[0]?.[0]).toEqual({});
   });
 });
 
@@ -151,5 +168,70 @@ describe("useConversationActions", () => {
     expect(stop).toHaveBeenCalledWith("c1");
     expect(end).toHaveBeenCalledWith("c1");
     expect(patch).toHaveBeenCalledWith("c1", { title: "login" });
+  });
+});
+
+describe("live hooks", () => {
+  it("useConversation follows entries, its conversation and your sent messages", async () => {
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(aDetail({ entries: [aYouEntry(1, "hi")] }));
+    vi.spyOn(conversationsApi, "sendMessage").mockResolvedValue(aYouEntry(3, "more"));
+    const events = createFakeEvents();
+    const { result } = renderHook(() => ({ one: useConversation("c1"), act: useConversationActions() }), {
+      wrapper: withEvents(events),
+    });
+    await waitFor(() => expect(result.current.one.detail).not.toBeNull());
+    const reply = anEntry(2, { kind: "townhall", text: "on it" });
+    act(() => events.emit({ type: "entryAppended", conversationId: "c1", entry: reply }));
+    act(() => events.emit({ type: "conversationUpdated", conversation: aConversation({ status: "thinking" }) }));
+    await act(() => result.current.act.send("c1", { text: "more" }));
+    expect(result.current.one.detail?.entries.map((e) => e.id)).toEqual([1, 2, 3]);
+    expect(result.current.one.detail?.conversation.status).toBe("thinking");
+  });
+
+  it("useConversations and useAgentInfos follow their events", async () => {
+    vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([aConversation()]);
+    vi.spyOn(client, "listAgents").mockResolvedValue([anAgentInfo()]);
+    const events = createFakeEvents();
+    const { result } = renderHook(() => ({ list: useConversations(), agents: useAgentInfos() }), {
+      wrapper: withEvents(events),
+    });
+    await waitFor(() => expect(result.current.agents.loading).toBe(false));
+    await waitFor(() => expect(result.current.list.loading).toBe(false));
+    const fresh = aConversation({ id: "c2", updatedAt: "2026-11-05T00:00:00.000Z" });
+    const waiting = anAgentInfo({ state: { kind: "waiting", question: "go?" } });
+    act(() => {
+      events.emit({ type: "conversationUpdated", conversation: fresh });
+      events.emit({ type: "agentUpdated", agent: waiting });
+    });
+    expect(result.current.list.conversations.map((c) => c.id)).toEqual(["c2", "c1"]);
+    expect(result.current.agents.agents).toEqual([waiting]);
+  });
+
+  it("useStats refetches on resync and keeps the last stats when that fails", async () => {
+    const get = vi.spyOn(statsApi, "getStats").mockResolvedValue(someStats());
+    const events = createFakeEvents();
+    const { result } = renderHook(() => useStats(), { wrapper: withEvents(events) });
+    await waitFor(() => expect(result.current.stats).toEqual(someStats()));
+    get.mockRejectedValue(new ApiError("http", "error: repo not found", 404));
+    act(() => events.emit({ type: "resync" }));
+    await waitFor(() => expect(result.current.error).toBe("repo not found"));
+    expect(result.current).toMatchObject({ stats: someStats(), loading: false });
+    get.mockResolvedValue(someStats());
+    act(() => events.emit({ type: "resync" }));
+    await waitFor(() => expect(result.current.error).toBeNull());
+  });
+
+  it("useStats starts over for another repo and reports a first failure", async () => {
+    const get = vi.spyOn(statsApi, "getStats").mockResolvedValueOnce(someStats());
+    const { result, rerender } = renderHook(({ repo }) => useStats(repo), {
+      wrapper,
+      initialProps: { repo: "shop" },
+    });
+    await waitFor(() => expect(result.current.stats).not.toBeNull());
+    get.mockRejectedValue(new ApiError("network", "cannot reach the daemon: down"));
+    rerender({ repo: "admin" });
+    expect(result.current).toEqual({ stats: null, loading: true, error: null });
+    await waitFor(() => expect(result.current.error).toBe("cannot reach the daemon: down"));
+    expect(result.current.stats).toBeNull();
   });
 });
