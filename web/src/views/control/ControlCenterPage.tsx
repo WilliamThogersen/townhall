@@ -70,14 +70,12 @@ export function ControlCenterPage() {
         </div>
       </div>
       {c.openAgent && (
-        <div className="th-panes">
-          <AgentPane
-            key={c.openAgent.name}
-            agent={c.openAgent}
-            onClose={c.closePane}
-            onStopped={() => void c.stopped()}
-          />
-        </div>
+        <AgentPane
+          key={c.openAgent.name}
+          agent={c.openAgent}
+          onClose={c.closePane}
+          onStopped={() => void c.stopped()}
+        />
       )}
     </div>
   );

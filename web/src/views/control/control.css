@@ -44,3 +44,13 @@
   background: var(--th-surface-2);
   box-shadow: inset 2px 0 0 var(--th-accent);
 }
+
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .th-control.th-convo-layout[data-pane="true"] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .th-control.th-convo-layout > .th-convo-view {
+    border-right: var(--th-border) solid var(--th-line);
+  }
+}
