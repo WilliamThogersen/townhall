@@ -18,6 +18,7 @@ pub mod repo_infer;
 pub mod repos;
 pub mod runner;
 pub mod scheduler;
+pub mod search;
 pub mod stats;
 pub mod steps;
 pub mod store;

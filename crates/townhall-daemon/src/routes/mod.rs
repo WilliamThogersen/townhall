@@ -10,6 +10,7 @@ mod library;
 mod mcp;
 mod repos;
 mod runs;
+mod search;
 mod settings;
 mod stats;
 mod steps;
@@ -91,6 +92,7 @@ pub fn router(state: AppState) -> Router {
         .route("/tasks", get(tasks::list))
         .route("/tasks/{name}", get(tasks::get))
         .route("/stats", get(stats::get))
+        .route("/search", get(search::search))
         .route("/events", get(events::socket))
         .merge(agent_routes())
         .merge(conversation_routes())

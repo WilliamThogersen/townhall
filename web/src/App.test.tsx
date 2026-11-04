@@ -5,7 +5,9 @@ import * as conversationsApi from "./api/conversations";
 import * as events from "./api/events";
 import { aConversation, aDetail, aRepo, someStats } from "./api/fixtures";
 import * as reposApi from "./api/repos";
+import * as searchApi from "./api/search";
 import * as statsApi from "./api/stats";
+import * as tasksApi from "./api/tasks";
 import { App } from "./App";
 import { navigate } from "./router";
 import { DEFAULT_SETTINGS } from "./settings/settings";
@@ -19,6 +21,9 @@ beforeEach(() => {
   vi.spyOn(events, "connectEvents").mockReturnValue({ close: () => undefined });
   vi.spyOn(reposApi, "listRepos").mockResolvedValue([aRepo()]);
   vi.spyOn(statsApi, "getStats").mockResolvedValue(someStats());
+  vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([]);
+  vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
+  vi.spyOn(searchApi, "searchConversations").mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -37,12 +42,12 @@ describe("App routes", () => {
   });
 
   it.each([
-    ["/search?q=x", "search comes next"],
+    ["/search?q=x", "no conversations match x"],
     ["/nope", "not found"],
   ])("%s shows %s", async (path, title) => {
     window.history.replaceState(null, "", path);
     render(<App />);
-    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(await screen.findByText(title)).toBeInTheDocument();
     await waitFor(() => expect(client.listAgents).toHaveBeenCalled());
   });
 
