@@ -41,9 +41,12 @@ esac
 echo '{"type":"system","subtype":"init","session_id":"fake","tools":[]}'
 case "$first" in
   *KIDS*|*ESCAPE*)
-    case "$first" in *ESCAPE*) set -m ;; esac
-    sleep 31 &
-    echo "$!" > "$dir/kid-$n"
+    case "$first" in
+      *ESCAPE*)
+        perl -e 'setpgrp(0,0); open F,">",shift; print F $$; close F; exec @ARGV' "$dir/kid-$n" sleep 31 &
+        while [ ! -s "$dir/kid-$n" ]; do sleep 0.05; done ;;
+      *) sleep 31 & echo "$!" > "$dir/kid-$n" ;;
+    esac
     while IFS= read -r line; do log "$line"; done
     exit 0 ;;
   *SLOW*|*HANG*)
@@ -115,7 +118,13 @@ impl Fake {
     /// The pid of the fake's turn, or of the child it left behind (`kid`).
     pub fn pid(&self, what: &str, turn: usize) -> String {
         let file = self.dir.join(format!("{what}-{turn}"));
-        std::fs::read_to_string(file).unwrap().trim().to_string()
+        for _ in 0..100 {
+            match std::fs::read_to_string(&file) {
+                Ok(text) if !text.trim().is_empty() => return text.trim().to_string(),
+                _ => std::thread::sleep(std::time::Duration::from_millis(50)),
+            }
+        }
+        panic!("{} was never written", file.display());
     }
 
     pub fn cwd(&self, turn: usize) -> PathBuf {
