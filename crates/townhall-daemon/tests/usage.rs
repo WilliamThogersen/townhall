@@ -1,5 +1,7 @@
 //! `GET /api/usage` with an injected source: no Keychain, no network. Capture is thread-local,
-//! so these run on the current-thread runtime `#[tokio::test]` gives.
+//! so these run on the current-thread runtime `#[tokio::test]` gives. Every test holds a
+//! capture: tracing caches whether a callsite is enabled the first time any thread hits it, so
+//! a sibling test without a subscriber could otherwise switch off the event another one reads.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -73,6 +75,7 @@ async fn usage_is_served_as_camel_case_json() {
         "seven_day": { "utilization": 54.0, "resets_at": week },
     });
     let (app, calls, _env) = app_with(Some(SECRET), reply(body)).await;
+    let (_capture, _guard) = test_capture();
 
     let (status, v) = call(&app, "GET", "/api/usage", None).await;
     assert_eq!(status, StatusCode::OK, "{v}");
@@ -97,6 +100,7 @@ async fn usage_is_served_as_camel_case_json() {
 #[tokio::test]
 async fn without_a_token_it_says_to_sign_in() {
     let (app, calls, _env) = app_with(None, Err("unused".into())).await;
+    let (_capture, _guard) = test_capture();
     let (status, v) = call(&app, "GET", "/api/usage", None).await;
     assert_eq!(status, StatusCode::OK, "{v}");
     assert_eq!(v["success"], json!(true));
