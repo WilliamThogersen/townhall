@@ -3,8 +3,9 @@ import type { ConversationDetail, Task } from "../../../api/types";
 import { Link, PATHS } from "../../../router";
 import { LoopStrip } from "./LoopStrip";
 import { ContextSection, FilesSection, RepoSection, TasksEmpty } from "./SessionSections";
+import { ProofSection } from "./ProofSection";
 import { TaskList } from "./TaskList";
-import { taskCount, taskSummary, taskViews } from "./taskRows";
+import { sameTask, taskCount, taskSummary, taskViews } from "./taskRows";
 import { useTaskKeys } from "./useTaskKeys";
 import "./session.css";
 
@@ -35,6 +36,7 @@ function SessionHead({ conversationId, tasks }: { readonly conversationId: strin
 export function SessionPanel({ detail, openTask, onOpenTask }: SessionPanelProps) {
   const { conversation, tasks, attachments } = detail;
   const views = useMemo(() => taskViews(tasks), [tasks]);
+  const openName = tasks.find((task) => sameTask(openTask, task.name))?.name ?? null;
   const listRef = useRef<HTMLUListElement>(null);
   useTaskKeys(listRef);
 
@@ -49,6 +51,7 @@ export function SessionPanel({ detail, openTask, onOpenTask }: SessionPanelProps
         ) : (
           <TasksEmpty />
         )}
+        {openName !== null && <ProofSection key={openName} task={openName} />}
         <h4 className="th-section">repo</h4>
         <RepoSection detail={detail} />
         <h4 className="th-section">files {attachments.length}</h4>

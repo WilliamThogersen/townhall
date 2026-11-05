@@ -1,6 +1,7 @@
 import type {
   AddRepoInput,
   AgentInfo,
+  Artifact,
   ClaudeUsage,
   Conversation,
   ConversationDetail,
@@ -64,6 +65,10 @@ export interface StepsOptions {
 
 export interface StepsState extends Loadable {
   readonly steps: readonly Step[];
+}
+
+export interface ArtifactsState extends Loadable {
+  readonly artifacts: readonly Artifact[];
 }
 
 export interface ConversationActions {
