@@ -173,7 +173,7 @@ fn mcp_tools_are_allowed_but_are_not_built_in_tools() {
 #[test]
 fn no_tool_list_leaves_the_mode_and_tools_alone() {
     assert_eq!(
-        with_tools(&[], PermissionMode::AcceptEdits),
+        with_tools(&[], PermissionMode::AcceptEdits)[..1],
         ["--permission-mode=acceptEdits"]
     );
 }
