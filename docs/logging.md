@@ -55,6 +55,23 @@ tracing::warn!(target: "townhall::task", event = "task.launch_failed",
   `Bearer …`, `AKIA…` keys and the values of `token=`, `password=` and `secret=`
   (as `[REDACTED]`), then cuts the text to 500 chars.
 
+## Frontend reports: `POST /api/logs/client`
+
+The web app forwards its errors here (`routes/logs.rs`). The daemon redacts them and
+re-emits them with target `townhall::web`.
+
+- Body: `{level, event, message, stack?, route?, request_id?, error_kind?, status?}`, or an
+  array of those. `level` is `error`, `warn`, `info` or `debug`. `event` must be `web.*`
+  or `api.*` (e.g. `web.error`, `web.unhandled_rejection`, `web.render_error`, `api.http`),
+  so a client cannot pass for a daemon event. Unknown fields, a bad level or a bad event give
+  `400` and nothing from that body is logged.
+- Bodies over 8 KB give `413`.
+- Rate limit: a token bucket of 30 reports per minute per daemon (a batch costs one per
+  entry). Excess reports are dropped, still with `202`, and `web.dropped` is logged once per
+  burst of drops.
+- Every string field goes through `redact` (masked, cut to 500 chars).
+- Response: `202` with `{success, data: {accepted, dropped}}`.
+
 ## Tests
 
 `logging::test_capture()` returns an in-memory capture and a guard for this thread:
@@ -78,10 +95,11 @@ Later tasks add to this table as they emit events.
 | `panic` | `townhall::panic` | error | `message`, `location`, `backtrace` (≤4 KB) |
 | `logs.pruned` | `townhall::logging` | info | `deleted` |
 | `logs.prune_failed` | `townhall::logging` | warn | `error` |
+| `web.error`, `web.unhandled_rejection`, `web.render_error`, `api.*` | `townhall::web` | as sent | `stack`, `route`, `request_id`, `error_kind`, `status` |
+| `web.dropped` | `townhall::web` | warn | `limit_per_minute` |
 
 Planned (see the logging plan): `http.request`, `http.error`, `ws.open`, `ws.close`,
 `mcp.tool`, `task.created`, `task.state`, `task.launched`, `task.launch_failed`,
 `task.merged`, `agent.state`, `agent.gone`, `agent.tool_error`, `agent.permission_denied`,
 `turn.start`, `turn.end`, `turn.failed`, `claude.spawn`, `claude.exit`, `cmd.run`,
-`worktree.create`, `worktree.remove`, `daemon.mode`, `daemon.restart`, `web.error`,
-`web.unhandled_rejection`, `web.render_error`.
+`worktree.create`, `worktree.remove`, `daemon.mode`, `daemon.restart`.
