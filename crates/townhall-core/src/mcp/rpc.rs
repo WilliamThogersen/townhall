@@ -127,7 +127,7 @@ mod tests {
 
     impl ToolRunner for Echo {
         fn tools(&self) -> Vec<ToolDef> {
-            vec![]
+            crate::mcp::tools()
         }
 
         fn instructions(&self) -> &'static str {
