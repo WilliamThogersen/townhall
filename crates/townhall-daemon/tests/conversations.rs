@@ -31,7 +31,7 @@ fn check_first_turn(first: &[String], session: &str, config: String) {
     assert_eq!(values_of(first, "--tools"), ["Read,Grep,Glob"]);
     assert_eq!(
         values_of(first, "--allowedTools"),
-        ["mcp__townhall__create_task,mcp__townhall__set_title,Read,Grep,Glob"]
+        ["mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,Read,Grep,Glob"]
     );
     assert_eq!(values_of(first, "--setting-sources"), [""]);
     assert_eq!(
@@ -49,6 +49,7 @@ fn check_first_turn(first: &[String], session: &str, config: String) {
     let prompt = values_of(first, "--append-system-prompt").join(" ");
     assert!(prompt.contains('\n'), "the system prompt keeps its lines");
     assert!(prompt.contains("create_task") && prompt.contains("set_title"));
+    assert!(prompt.contains("task_status"));
     assert!(prompt.contains("alpha"), "{prompt}");
 }
 

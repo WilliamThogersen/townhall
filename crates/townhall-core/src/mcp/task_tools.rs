@@ -1,5 +1,6 @@
-//! `create_task` and `set_title` for one conversation's session. Neither takes a permission
-//! mode: a task's agent always gets the saved setting when the scheduler starts it.
+//! `create_task`, `set_title` and `task_status` (`status.rs`) for one conversation's session.
+//! None takes a permission mode: a task's agent always gets the saved setting when the
+//! scheduler starts it.
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -10,7 +11,7 @@ use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
 
 use super::checks::{self, Checked};
 use super::rpc::ToolRunner;
-use super::{tools, CREATE_TASK, MAX_TITLE_LEN, SET_TITLE};
+use super::{status, tools, CREATE_TASK, MAX_TITLE_LEN, SET_TITLE, TASK_STATUS};
 
 /// The tools of the conversation `conversation_id`.
 pub(crate) struct TaskTools<'a> {
@@ -40,6 +41,9 @@ impl ToolRunner for TaskTools<'_> {
         match name {
             CREATE_TASK => as_json(&self.create_task(parse(arguments)?).await?),
             SET_TITLE => as_json(&self.set_title(parse(arguments)?).await?),
+            TASK_STATUS => {
+                status::task_status(self.ctx, self.conversation_id, parse(arguments)?).await
+            }
             other => Err(unknown_tool(other)),
         }
     }

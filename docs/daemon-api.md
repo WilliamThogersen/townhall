@@ -167,7 +167,7 @@ Store writes publish on `Context::bus()` (`townhall_core::events::EventBus`, a t
 
 JSON-RPC 2.0 over plain HTTP JSON (no SSE), like Hive's `src/main/plan/mcp.ts` and `rpc.ts`: `initialize` (answers `protocolVersion` (echo the client's, else `2025-06-18`), `capabilities: { tools: {} }`, `serverInfo: { name: "townhall", version }`, `instructions: mcp::INSTRUCTIONS`), `ping`, `tools/list`, `tools/call`, batches, and notifications (no `id`) answered with `202` and no body. A tool error comes back as a result with `isError: true` and a text content, so Claude can fix the call. Results are `{ content: [{ type: "text", text: <JSON> }] }`. The body goes through `JsonBody`, so a browser cannot post it without a CORS preflight.
 
-The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`townhall`), `tools()`, `allowed_tools()` (`mcp__townhall__create_task`, `mcp__townhall__set_title`), `endpoint(base_url, id)` and `config_json(base_url, id)`, which 2.2 passes as `--mcp-config`:
+The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`townhall`), `tools()`, `allowed_tools()` (`mcp__townhall__create_task`, `mcp__townhall__set_title`, `mcp__townhall__task_status`), `endpoint(base_url, id)` and `config_json(base_url, id)`, which 2.2 passes as `--mcp-config`:
 
 ```json
 {"mcpServers":{"townhall":{"type":"http","url":"http://127.0.0.1:7777/api/conversations/<id>/mcp"}}}
@@ -206,6 +206,17 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
 { "type": "object", "properties": { "title": { "type": "string", "minLength": 1, "maxLength": 80 } },
   "required": ["title"], "additionalProperties": false }
 ```
+
+`task_status` (2.11, `mcp/status.rs`): what this conversation's tasks are doing and did. Townhall's system prompt tells the session to call it whenever it is asked what a task did, instead of guessing.
+
+```json
+{ "type": "object", "properties": { "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "minLength": 1, "maxLength": 64 } },
+  "additionalProperties": false }
+```
+
+- Without `name`: `{ "tasks": [TaskStatus] }`, every task of this conversation, oldest first. `TaskStatus { name, title, repo, branch, state, after, entries }`, `entries` the task's last 3 (`mcp::RECENT_ENTRIES`) `agent` and `needsYou` `ThreadEntry`s, oldest first.
+- With `name` (ignoring case): that task's `TaskStatus` plus `steps` (2.7's `steps_for_agent` for its worktree `<home>/worktrees/<repo-key>/<name>`, the last 20, `mcp::MAX_STEPS`; `[]` without a worktree or transcript) and `lastMessage`: when the task is `ended` or `merged`, what its agent's last finished turn said (the transcript tail reader of agent states, newest transcript since the worktree was made, or any once the folder is gone), at most 2000 characters (`mcp::MAX_MESSAGE_CHARS`, the last one `…` when cut); otherwise, or without such a message, `null`.
+- A task of another conversation (``task `x` belongs to another conversation: ...``), an unknown name or a blank one, and an unknown field are tool errors that list this conversation's tasks where it helps.
 
 2.8b adds `list_agents`, `list_workflows`, `read_definition`, `save_agent` and `save_workflow` in `mcp/library.rs`; 2.8c adds `run_workflow` in `mcp/runs.rs`. `tools()` and `allowed_tools()` pick them up.
 

@@ -127,7 +127,7 @@ mod tests {
                 "--strict-mcp-config",
                 "--mcp-config={}",
                 "--tools=Read,Grep,Glob",
-                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,Read,Grep,Glob",
+                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,Read,Grep,Glob",
                 "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
                 "--setting-sources=",
                 "--settings={\"disableAllHooks\":true}",

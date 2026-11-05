@@ -227,6 +227,37 @@ fn read_turn(projects: &Path, worktree: &Path, since: u64) -> crate::Result<Opti
     Ok(turn)
 }
 
+/// What the agent in `worktree` said when its last turn ended, from its newest transcript
+/// written since the worktree was made (any, once the folder is gone), read like its state.
+/// `None` without a transcript, or when its last turn did not end with text.
+pub async fn last_message(projects: &Path, worktree: &Path) -> crate::Result<Option<String>> {
+    let (projects, worktree) = (projects.to_path_buf(), worktree.to_path_buf());
+    tokio::task::spawn_blocking(move || read_last_message(&projects, &worktree))
+        .await
+        .map_err(|e| crate::Error::Io {
+            context: "read an agent's last message".into(),
+            source: std::io::Error::other(e),
+        })?
+}
+
+fn read_last_message(projects: &Path, worktree: &Path) -> crate::Result<Option<String>> {
+    let newest = match steps::worktree_made(worktree)? {
+        Some(made) => steps::latest_transcript_since(projects, worktree, made)?,
+        None => steps::latest_transcript(projects, worktree)?,
+    };
+    let Some(path) = newest else {
+        return Ok(None);
+    };
+    let turn = transcript::read(&path).map_err(|source| crate::Error::Io {
+        context: format!("read transcript {}", path.display()),
+        source,
+    })?;
+    Ok(match turn {
+        Some(Turn::Idle { text, .. }) if !text.trim().is_empty() => Some(text),
+        _ => None,
+    })
+}
+
 /// A finished turn without its own time ended when the file was last written.
 fn ended_at(turn: Turn, modified: SystemTime) -> Turn {
     match turn {
