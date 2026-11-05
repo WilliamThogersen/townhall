@@ -34,6 +34,9 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/stats?repo=` | | `{ days: ShippedDay[] }`: last 730 days, days with activity only, summed across repos unless `repo` | 404 repo | 2.7 |
 | GET | `/settings` | | `Settings` | 503 | 2.1 (was 2.0) |
 | PUT | `/settings/{key}` | `{ value }` | `Settings` after the change | 400 unknown key or invalid value | 2.1 (was 2.0) |
+| GET | `/profile` | | `{ text }`: the user's profile, `""` when none | 503 | this change |
+| PUT | `/profile` | `{ text }` (at most 20 000 characters) | `{ text }` as stored; replaces the whole profile | 400 too long, not a string, unknown field | this change |
+| DELETE | `/profile` | | `{ text: "" }`: resets the profile to empty, also when it was empty | | this change |
 | GET | `/conversations` | | `Conversation[]`, newest activity first | | 2.2 |
 | POST | `/conversations` | `NewMessage { text, attachments? }`, or `multipart/form-data` with a `text` field and any number of `file` fields (at most 5 files, 20 MB each; 403 foreign origin, 413 over 20 MB), saved as the first message's attachments | `201 ConversationDetail`: created, your message appended, the first turn started | 400 | 2.2 |
 | GET | `/conversations/{id}` | | `ConversationDetail { conversation, entries, tasks, attachments }` | 404 | 2.2 |
@@ -101,7 +104,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 - `Repo { name, path, baseBranch }`. `name`: `[A-Za-z0-9._-]`, starts with a letter or digit, at most 64, unique ignoring case, the folder name by default. `path`: canonical, the top folder of a git work tree, never one of townhall's own worktrees. `baseBranch`: origin's HEAD branch (the local branch when it exists, else `origin/x`), else the current branch, else `HEAD`.
 - `AgentInfo { name, repo, kind, branch, worktree, alive, state }`: phase 1's `Agent` plus `repo` and `state`. `AgentState`: `{ kind: "working" }`, `{ kind: "waiting", question }`, `{ kind: "error", exitCode: number | null }`, `{ kind: "ended" }`.
 - `AgentKey`: `up`, `down`, `enter`, `escape`, `tab`, the `key` of `POST /agents/{name}/send` (`AgentKey::symbol` is how a `sent` entry shows it).
-- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) has no row on the settings page yet.
+- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel, learnAboutMe }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) has no row on the settings page yet.
 - `Conversation { id, sessionId, sessionStarted, title, status: "thinking" | "yourTurn", tasks: string[] (task names, oldest first), linkedRepo: string | null, ended, context: { used, limit } | null, createdAt, updatedAt }`. `title` starts as `new conversation`. `sessionStarted` is false until the first turn went through (that turn uses `--session-id`, later ones `--resume`).
 - `ThreadEntry { id, at } & EntryBody`. `id` counts 1, 2, 3 ... per conversation. `EntryBody` is tagged by `kind`:
 
@@ -150,8 +153,15 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | `sessionPanelOpen` | boolean | `true` |
 | `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
 | `townhallModel` | `sonnet`, `opus`, `haiku`: the model of townhall's own session, `--model=<value>` (2.11) | `sonnet` |
+| `learnAboutMe` | boolean: while on, the profile text (below) is added to townhall's own session prompt. Nothing learns into the profile automatically yet | `false` |
 
 A missing or invalid stored value reads as its default. The store also keeps `desktop.repo` (the desktop app's chosen repo, a path); it is not a setting and not in the API.
+
+## Profile
+
+`/api/profile` (`routes/profile.rs`): one Markdown text the user writes about how they work, their tone of voice and their usual flow. It is one row (`profile.text`, a JSON string) in the `settings` table, so it lives in the local `townhall.db` like the settings, but it is not a setting: it has no `SettingKey` and `PUT /api/settings/{key}` cannot reach it. At most `MAX_PROFILE_CHARS` (20 000) characters. `PUT` replaces the whole text, `DELETE` removes the row, and `GET` answers `{ text: "" }` when there is none.
+
+Only townhall's own planner session ever reads it: when `learnAboutMe` is on and the text is not blank, `runner::prompt::system_prompt` appends it after the repo notes, under a line saying it was written by the user and never overrides the rules. With the setting off (the default) the profile is never read for a turn and never leaves the store. It is not passed to task agents, logged or sent anywhere else.
 
 ## Permission mode
 
