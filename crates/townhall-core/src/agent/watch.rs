@@ -170,6 +170,9 @@ impl Watcher {
         }
         self.settling.remove(&key);
         if changed {
+            if let Some(task) = task {
+                self.record_tokens(info, task).await;
+            }
             let event = ServerEvent::AgentUpdated {
                 agent: info.clone(),
             };
@@ -218,6 +221,27 @@ impl Watcher {
             self.apply(task, Some(Change { state: None, entry })).await;
         }
         true
+    }
+
+    async fn record_tokens(&mut self, info: &AgentInfo, task: &Task) {
+        let found = async {
+            let ws = self.workspace_of(&info.repo).await?;
+            let listed = crate::worktree::list(&ws).await?;
+            let Some(wt) = listed.into_iter().find(|wt| wt.name == info.name) else {
+                return Ok(0);
+            };
+            let projects = crate::steps::claude_projects_dir()?;
+            crate::steps::tokens_for_agent(&projects, &wt.path).await
+        }
+        .await;
+        let saved = match (found, self.ctx.store()) {
+            (Ok(0), _) => Ok(()),
+            (Ok(tokens), Ok(store)) => store.set_task_tokens(&task.name, tokens).await,
+            (Err(e), _) | (_, Err(e)) => Err(e),
+        };
+        if let Err(e) = saved {
+            self.warn(&format!("cannot count the tokens of `{}`: {e}", task.name));
+        }
     }
 
     async fn workspace_of(&self, repo: &str) -> Result<Workspace> {

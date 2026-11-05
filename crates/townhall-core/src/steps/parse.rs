@@ -24,6 +24,22 @@ enum Event {
     Outcome(String, Outcome),
 }
 
+pub fn transcript_tokens(jsonl: &str) -> u64 {
+    jsonl
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|line| {
+            let message = line.get("message")?;
+            let id = message.get("id")?.as_str()?.to_string();
+            let usage = message.get("usage")?;
+            let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+            Some((id, count("input_tokens") + count("output_tokens")))
+        })
+        .collect::<HashMap<String, u64>>()
+        .values()
+        .sum()
+}
+
 /// One step per `tool_use` in an assistant message, paired with its `tool_result` by id
 /// and ordered by start. Lines that do not parse, and sidechain lines, are skipped.
 pub fn parse_transcript(jsonl: &str) -> Vec<Step> {
