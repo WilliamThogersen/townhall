@@ -121,7 +121,7 @@ fn text(e: crate::Error) -> String {
     e.to_string()
 }
 
-fn url(base_url: &str, artifact: &Artifact) -> String {
+pub(super) fn url(base_url: &str, artifact: &Artifact) -> String {
     format!(
         "{}/api/tasks/{}/artifacts/{}",
         base_url.trim_end_matches('/'),

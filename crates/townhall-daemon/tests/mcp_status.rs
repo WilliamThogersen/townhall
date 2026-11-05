@@ -7,7 +7,9 @@ use std::sync::OnceLock;
 
 use serde_json::{json, Value};
 use tempfile::TempDir;
-use townhall_core::model::{AgentEvent, EntryBody, NewTask, Task, TaskState};
+use townhall_core::model::{
+    AgentEvent, ArtifactKind, AuthorRole, EntryBody, NewArtifact, NewTask, Task, TaskState,
+};
 use townhall_core::steps::{project_dir_for, CLAUDE_PROJECTS_ENV};
 use townhall_core::{mcp, worktree};
 
@@ -202,4 +204,38 @@ async fn another_conversations_task_or_an_unknown_one_is_a_tool_error() {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, [mine.as_str()]);
+}
+
+#[tokio::test]
+async fn every_task_lists_the_names_roles_and_urls_of_its_proof() {
+    projects();
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    let (with, without) = (unique("proved"), unique("bare"));
+    m.ok("create_task", task(&with)).await;
+    m.ok("create_task", task(&without)).await;
+    let add = |name: &str, kind: ArtifactKind, role: AuthorRole| NewArtifact {
+        name: name.into(),
+        kind,
+        author_role: role,
+        caption: Some("long caption the planner does not need".into()),
+        bytes: b"x".to_vec(),
+    };
+    let log = add("run.log", ArtifactKind::Log, AuthorRole::Tester);
+    let note = add("notes.md", ArtifactKind::Note, AuthorRole::Coder);
+    let first = m.store().add_artifact(&with, log).await.unwrap();
+    let second = m.store().add_artifact(&with, note).await.unwrap();
+    let base = m.state.ctx().base_url().to_string();
+    let url = |id: &str| format!("{base}/api/tasks/{with}/artifacts/{id}");
+    let expected = json!([
+        {"name": "run.log", "kind": "log", "authorRole": "tester", "url": url(&first.id)},
+        {"name": "notes.md", "kind": "note", "authorRole": "coder", "url": url(&second.id)},
+    ]);
+
+    let all = m.ok("task_status", json!({})).await;
+    let tasks = all["tasks"].as_array().unwrap();
+    assert_eq!(tasks[0]["artifacts"], expected, "{all}");
+    assert_eq!(tasks[1]["artifacts"], json!([]));
+    let one = m.ok("task_status", json!({"name": with})).await;
+    assert_eq!(one["artifacts"], expected, "{one}");
 }
