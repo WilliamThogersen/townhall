@@ -15,6 +15,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep_until, timeout_at, Instant};
 
 use super::prompt::interrupt_line;
+use crate::agent::OUTER_SESSION_ENV;
 use crate::{Error, Result};
 
 /// An interrupted CLI writes its result within a second; this long after a stop it is killed.
@@ -25,8 +26,6 @@ pub const EXIT_GRACE: Duration = Duration::from_secs(10);
 pub const KILL_WAIT: Duration = Duration::from_secs(2);
 const STDERR_TAIL: usize = 8 * 1024;
 const NEVER: Duration = Duration::from_secs(365 * 24 * 3600);
-/// Claude Code refuses to start inside another Claude Code session that set this.
-const NESTED_ENV: &str = "CLAUDECODE";
 
 /// How the process ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,12 +90,15 @@ fn kill_group(group: u32) {
 #[cfg(not(unix))]
 fn kill_group(_group: u32) {}
 
+/// Claude without the variables of a Claude Code session that started townhall.
 fn command(program: &str, args: &[String], cwd: &Path) -> Command {
     let mut command = Command::new(program);
+    for name in OUTER_SESSION_ENV {
+        command.env_remove(name);
+    }
     command
         .args(args)
         .current_dir(cwd)
-        .env_remove(NESTED_ENV)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

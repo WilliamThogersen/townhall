@@ -1,9 +1,11 @@
-//! Questions read off an agent's visible screen. Two shapes:
+//! Questions read off an agent's visible screen. Three shapes:
 //! - a selection prompt at the bottom: a line ending in `?`, then options numbered from 1
-//!   (Claude's permission, trust and question pickers draw this),
+//!   (Claude's permission and question pickers draw this),
+//! - Claude's folder trust dialog: `Yes, I trust this folder` above `No, exit` at the
+//!   bottom, numbered or not, below a question that does not end in `?`,
 //! - a plain program's last line asking something (`continue? [y/n]`).
 
-use super::question::{asks, numbered, with_options, Item};
+use super::question::{asks, numbered, with_options, without_cursor, Item};
 
 /// The last option of a prompt sits within this many lines of the bottom.
 const BOTTOM: usize = 6;
@@ -59,6 +61,25 @@ pub(crate) fn prompt(screen: &str) -> Option<String> {
         .map(|i| lines[i])
         .find(|l| asks(l))?;
     Some(with_options(question, &options))
+}
+
+const TRUST_YES: &str = "yes, i trust this folder";
+const TRUST_NO: &str = "no, exit";
+
+/// An option's label, lowercased, with its cursor and number gone.
+fn label(line: &str) -> String {
+    numbered(line)
+        .map_or_else(|| without_cursor(line).to_string(), |o| o.label)
+        .to_lowercase()
+}
+
+/// Claude's folder trust dialog at the bottom of the screen: its two options, in order.
+pub(crate) fn trust_dialog(screen: &str) -> bool {
+    let lines = content(screen);
+    let from = lines.len().saturating_sub(BOTTOM).max(1);
+    (from..lines.len()).any(|i| {
+        label(lines[i]).starts_with(TRUST_NO) && label(lines[i - 1]).starts_with(TRUST_YES)
+    })
 }
 
 /// The last line of the screen when it asks something, with the numbered options right
@@ -127,6 +148,45 @@ mod tests {
 
 Enter to select \u{b7} \u{2191}/\u{2193} to navigate \u{b7} Esc to cancel
 ";
+
+    /// Claude 2.1.318 in a new worktree: the options carry no numbers and the cursor
+    /// starts on `No, exit`.
+    const TRUST: &str = "\
+ Accessing workspace:
+
+ /Users/me/.townhall/worktrees/k/fix-login
+
+ Quick safety check: Is this a project you created or one you trust? (Like your own
+ code, a well-known open source project, or work from your team). If not, take a
+ moment to review what's in this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+   Yes, I trust this folder
+ \u{276f} No, exit
+
+ Enter to confirm \u{b7} Esc to cancel
+";
+
+    #[test]
+    fn reads_claudes_trust_dialog_numbered_or_not() {
+        assert!(trust_dialog(TRUST));
+        let numbered = TRUST
+            .replace("  Yes, I", "1. Yes, I")
+            .replace(" No, exit", " 2. No, exit");
+        assert!(trust_dialog(&numbered), "{numbered}");
+        assert!(prompt(TRUST).is_none());
+    }
+
+    #[test]
+    fn trust_words_elsewhere_are_no_trust_dialog() {
+        let far = format!("{TRUST}{}", "line\n".repeat(BOTTOM));
+        assert!(!trust_dialog(&far));
+        assert!(!trust_dialog(&TRUST.replace("No, exit", "No")));
+        assert!(!trust_dialog("+ Yes, I trust this folder\n+ No, exit\n"));
+        assert!(!trust_dialog("No, exit"));
+        assert!(!trust_dialog(""));
+    }
 
     #[test]
     fn reads_claudes_permission_prompt() {

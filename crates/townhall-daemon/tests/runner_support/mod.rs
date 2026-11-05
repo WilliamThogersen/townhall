@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 //! A fake `claude` for townhall's own session, and helpers to drive conversations.
-//! The fake logs its argv (NUL-separated), cwd and stdin per turn and picks a script by a word in
+//! The fake logs its argv (NUL-separated), cwd, environment and stdin per turn and picks a script by a word in
 //! the message: `SLOW` waits for the interrupt, `HANG` ignores it, `TOOL` asks for a
 //! disallowed and an allowed tool, `CRASH` dies before it starts, `KIDS` leaves a
 //! `sleep 31` holding its stdout (`ESCAPE` in its own process group) and ignores the
@@ -28,6 +28,7 @@ echo "$n" > "$dir/count"
 printf '%s\0' "$@" > "$dir/argv-$n"
 pwd -P > "$dir/cwd-$n"
 echo "$$" > "$dir/pid-$n"
+env > "$dir/env.tmp-$n" && mv "$dir/env.tmp-$n" "$dir/env-$n"
 IFS= read -r first || exit 4
 printf '%s\n' "$first" > "$dir/stdin-$n"
 log() { printf '%s\n' "$1" >> "$dir/stdin-$n"; }
@@ -40,9 +41,12 @@ esac
 echo '{"type":"system","subtype":"init","session_id":"fake","tools":[]}'
 case "$first" in
   *KIDS*|*ESCAPE*)
-    case "$first" in *ESCAPE*) set -m ;; esac
-    sleep 31 &
-    echo "$!" > "$dir/kid-$n"
+    case "$first" in
+      *ESCAPE*)
+        perl -e 'setpgrp(0,0); open F,">",shift; print F $$; close F; exec @ARGV' "$dir/kid-$n" sleep 31 &
+        while [ ! -s "$dir/kid-$n" ]; do sleep 0.05; done ;;
+      *) sleep 31 & echo "$!" > "$dir/kid-$n" ;;
+    esac
     while IFS= read -r line; do log "$line"; done
     exit 0 ;;
   *SLOW*|*HANG*)
@@ -114,12 +118,30 @@ impl Fake {
     /// The pid of the fake's turn, or of the child it left behind (`kid`).
     pub fn pid(&self, what: &str, turn: usize) -> String {
         let file = self.dir.join(format!("{what}-{turn}"));
-        std::fs::read_to_string(file).unwrap().trim().to_string()
+        for _ in 0..100 {
+            match std::fs::read_to_string(&file) {
+                Ok(text) if !text.trim().is_empty() => return text.trim().to_string(),
+                _ => std::thread::sleep(std::time::Duration::from_millis(50)),
+            }
+        }
+        panic!("{} was never written", file.display());
     }
 
     pub fn cwd(&self, turn: usize) -> PathBuf {
         let text = std::fs::read_to_string(self.dir.join(format!("cwd-{turn}"))).unwrap();
         PathBuf::from(text.trim())
+    }
+
+    /// The turn's environment, `NAME=value` lines, once the fake has written it.
+    pub async fn env(&self, turn: usize) -> String {
+        let file = self.dir.join(format!("env-{turn}"));
+        for _ in 0..250 {
+            if let Ok(text) = std::fs::read_to_string(&file) {
+                return text;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("the fake never wrote the environment of turn {turn}");
     }
 
     /// Every stdin line of the turn, parsed.

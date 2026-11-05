@@ -6,13 +6,24 @@
 use std::path::PathBuf;
 
 use crate::agent::{add_dir, plain};
+use crate::model::TownhallModel;
 use crate::{mcp, Result};
 
 /// Tools townhall's session may use besides its own: reading code to plan, nothing more.
-pub const READ_ONLY_TOOLS: [&str; 4] = ["Read", "Grep", "Glob", "LS"];
+/// They are also the whole built-in set (`--tools`), so no other built-in tool exists.
+pub const READ_ONLY_TOOLS: [&str; 3] = ["Read", "Grep", "Glob"];
 /// Tools that write or run things. Denied outright, so a user's own allow rules in
 /// `~/.claude/settings.json` cannot let townhall's session write to a repo.
 pub const DENIED_TOOLS: [&str; 5] = ["Bash", "Edit", "MultiEdit", "Write", "NotebookEdit"];
+/// Keeps the user's own Claude setup out of townhall's session: no settings files (so no
+/// hooks, plugins, permission rules or CLAUDE.md from them), hooks off even if a source
+/// still had one, and no skills or slash commands. Auth is untouched: it comes from the
+/// login (keychain or credentials file) and the environment, never from these.
+pub const ISOLATION: [&str; 3] = [
+    "--setting-sources=",
+    "--settings={\"disableAllHooks\":true}",
+    "--disable-slash-commands",
+];
 
 /// Every tool the session may use: townhall's MCP tools, then the read-only ones.
 pub fn allowed_tools() -> Vec<String> {
@@ -34,6 +45,8 @@ pub struct TurnArgs {
     pub system_prompt: String,
     pub mcp_config: String,
     pub add_dirs: Vec<PathBuf>,
+    /// The `townhallModel` setting.
+    pub model: TownhallModel,
 }
 
 const FIXED: [&str; 6] = [
@@ -56,13 +69,16 @@ pub fn build(a: &TurnArgs) -> Result<Vec<String>> {
     plain("mcp config", &a.mcp_config)?;
     let options = [
         session(a)?,
+        format!("--model={}", a.model.cli_value()),
         "--permission-mode=default".into(),
         format!("--append-system-prompt={}", a.system_prompt),
         "--strict-mcp-config".into(),
         format!("--mcp-config={}", a.mcp_config),
+        format!("--tools={}", READ_ONLY_TOOLS.join(",")),
         format!("--allowedTools={}", allowed_tools().join(",")),
         format!("--disallowedTools={}", DENIED_TOOLS.join(",")),
     ];
+    let isolation = ISOLATION.iter().map(|s| s.to_string());
     let dirs = a
         .add_dirs
         .iter()
@@ -72,6 +88,7 @@ pub fn build(a: &TurnArgs) -> Result<Vec<String>> {
         .iter()
         .map(|s| s.to_string())
         .chain(options)
+        .chain(isolation)
         .chain(dirs)
         .collect())
 }
@@ -87,6 +104,7 @@ mod tests {
             system_prompt: "plan".into(),
             mcp_config: "{}".into(),
             add_dirs,
+            model: TownhallModel::default(),
         }
     }
 
@@ -103,12 +121,17 @@ mod tests {
                 "--permission-prompt-tool=stdio",
                 "--include-partial-messages",
                 "--session-id=s-1",
+                "--model=sonnet",
                 "--permission-mode=default",
                 "--append-system-prompt=plan",
                 "--strict-mcp-config",
                 "--mcp-config={}",
-                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,Read,Grep,Glob,LS",
+                "--tools=Read,Grep,Glob",
+                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,Read,Grep,Glob",
                 "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
+                "--setting-sources=",
+                "--settings={\"disableAllHooks\":true}",
+                "--disable-slash-commands",
                 "--add-dir=/r/b",
                 "--add-dir=/r/c",
             ]
@@ -117,6 +140,24 @@ mod tests {
         assert_eq!(later[6], "--resume=s-1");
         assert!(!later.iter().any(|a| a.starts_with("--add-dir")));
         assert!(!later.iter().any(|a| a.contains("dangerously")));
+        assert!(!first.iter().any(|a| a == "--bare" || a == "--safe-mode"));
+    }
+
+    #[test]
+    fn the_model_follows_the_setting() {
+        for (model, flag) in [
+            (TownhallModel::Sonnet, "--model=sonnet"),
+            (TownhallModel::Opus, "--model=opus"),
+            (TownhallModel::Haiku, "--model=haiku"),
+        ] {
+            let argv = build(&TurnArgs {
+                model,
+                ..args(true, vec![])
+            })
+            .unwrap();
+            let models: Vec<&String> = argv.iter().filter(|a| a.starts_with("--model")).collect();
+            assert_eq!(models, [flag]);
+        }
     }
 
     #[test]

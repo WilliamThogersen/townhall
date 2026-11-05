@@ -19,6 +19,12 @@ export interface AgentInfo extends Agent {
   readonly state: AgentState;
 }
 
+export type AgentKey = "up" | "down" | "enter" | "escape" | "tab";
+
+export type SendInput =
+  | { readonly text: string; readonly key?: never }
+  | { readonly key: AgentKey; readonly text?: never };
+
 export interface CreateAgentInput {
   readonly name: string;
   readonly adapter: Adapter;
@@ -50,6 +56,7 @@ export interface AddRepoInput {
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
 export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
+export type TownhallModel = "sonnet" | "opus" | "haiku";
 
 export interface Settings {
   readonly permissionMode: PermissionMode;
@@ -58,6 +65,7 @@ export interface Settings {
   readonly repoUnclear: RepoUnclear;
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
+  readonly townhallModel: TownhallModel;
 }
 
 export type SettingKey = keyof Settings;

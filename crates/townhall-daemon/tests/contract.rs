@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use townhall_core::model::{AgentEvent, EntryBody, NewTask};
 use townhall_core::ContextOptions;
 use townhall_daemon::router;
+use townhall_daemon::state::AppState;
 
 const ARGS_DEADLINE: Duration = Duration::from_secs(5);
 
@@ -122,11 +123,9 @@ async fn the_permission_mode_comes_from_settings_only() {
     assert_eq!(args, ["--dangerously-skip-permissions"]);
 }
 
-#[tokio::test]
-async fn sending_to_a_task_agent_notes_it_in_the_conversation() {
-    let env = Env::new("alpha").await;
-    let state = env.state();
-    let app = router(state.clone());
+/// A task's agent running `cat`, in a new conversation: the agent's name and the
+/// conversation id.
+async fn task_agent(state: &AppState, app: &axum::Router) -> (String, String) {
     let store = state.ctx().store().unwrap();
     let name = unique("task");
     let convo = store.create_conversation().await.unwrap();
@@ -141,8 +140,31 @@ async fn sending_to_a_task_agent_notes_it_in_the_conversation() {
     };
     store.create_task(&convo.id, task).await.unwrap();
     let body = json!({"name": name, "adapter": "shell", "command": "cat"});
-    let (s, _) = call(&app, "POST", "/api/agents", Some(body)).await;
+    let (s, _) = call(app, "POST", "/api/agents", Some(body)).await;
     assert_eq!(s, StatusCode::CREATED);
+    (name, convo.id)
+}
+
+/// The text of the conversation's last entry, which must be an `agent` `sent` one.
+async fn last_sent(state: &AppState, convo: &str) -> String {
+    let entries = state.ctx().store().unwrap().entries(convo).await.unwrap();
+    match &entries.last().unwrap().body {
+        EntryBody::Agent {
+            event: AgentEvent::Sent,
+            text,
+            ..
+        } => text.clone(),
+        other => panic!("expected a sent entry, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn sending_to_a_task_agent_notes_it_in_the_conversation() {
+    let env = Env::new("alpha").await;
+    let state = env.state();
+    let app = router(state.clone());
+    let store = state.ctx().store().unwrap();
+    let (name, convo) = task_agent(&state, &app).await;
     let mut events = state.ctx().bus().subscribe();
     let (s, _) = call(
         &app,
@@ -152,7 +174,7 @@ async fn sending_to_a_task_agent_notes_it_in_the_conversation() {
     )
     .await;
     assert_eq!(s, StatusCode::OK);
-    let entries = store.entries(&convo.id).await.unwrap();
+    let entries = store.entries(&convo).await.unwrap();
     assert_eq!(
         entries.last().unwrap().body,
         EntryBody::Agent {
@@ -170,6 +192,49 @@ async fn sending_to_a_task_agent_notes_it_in_the_conversation() {
 }
 
 #[tokio::test]
+async fn send_takes_text_or_one_key_and_notes_the_key_as_a_symbol() {
+    let env = Env::new("alpha").await;
+    let state = env.state();
+    let app = router(state.clone());
+    let (name, convo) = task_agent(&state, &app).await;
+    let uri = format!("/api/agents/{name}/send");
+    let keys = [
+        ("up", "\u{2191}"),
+        ("down", "\u{2193}"),
+        ("enter", "\u{23ce}"),
+        ("escape", "esc"),
+        ("tab", "tab"),
+    ];
+    for (key, symbol) in keys {
+        let (s, v) = call(&app, "POST", &uri, Some(json!({"key": key}))).await;
+        assert_eq!(
+            (s, &v["data"]),
+            (StatusCode::OK, &json!(name)),
+            "{key}: {v}"
+        );
+        assert_eq!(last_sent(&state, &convo).await, symbol);
+    }
+    let bad = [
+        json!({}),
+        json!({"text": "y", "key": "enter"}),
+        json!({"text": null, "key": null}),
+        json!({"key": "Down"}),
+        json!({"key": "C-c"}),
+    ];
+    for body in bad {
+        let (s, v) = call(&app, "POST", &uri, Some(body.clone())).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{body}: {v}");
+    }
+    let (s, v) = call(&app, "POST", &uri, Some(json!({"text": "y"}))).await;
+    assert_eq!((s, &v["data"]), (StatusCode::OK, &json!(name)));
+    assert_eq!(last_sent(&state, &convo).await, "y");
+    let ghost = format!("/api/agents/{}/send", unique("ghost"));
+    let (s, _) = call(&app, "POST", &ghost, Some(json!({"key": "up"}))).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    call(&app, "DELETE", &format!("/api/agents/{name}"), None).await;
+}
+
+#[tokio::test]
 async fn settings_are_read_and_put_one_key_at_a_time() {
     let env = Env::new("alpha").await;
     let app = router(env.state());
@@ -179,7 +244,8 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
         v["data"],
         json!({
             "permissionMode": "acceptEdits", "workWithoutAsking": false, "agentsAtOnce": 6,
-            "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou"
+            "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
+            "townhallModel": "sonnet"
         })
     );
     let (s, v) = call(
@@ -195,10 +261,17 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
     );
     let (_, v) = call(&app, "GET", "/api/settings", None).await;
     assert_eq!(v["data"]["agentsAtOnce"], 12);
+    let put = Some(json!({"value": "haiku"}));
+    let (s, v) = call(&app, "PUT", "/api/settings/townhallModel", put).await;
+    assert_eq!(
+        (s, &v["data"]["townhallModel"]),
+        (StatusCode::OK, &json!("haiku"))
+    );
     let bad = [
         ("/api/settings/theme", json!({"value": "dark"})),
         ("/api/settings/agentsAtOnce", json!({"value": 51})),
         ("/api/settings/permissionMode", json!({"value": "yolo"})),
+        ("/api/settings/townhallModel", json!({"value": "gpt-5"})),
         ("/api/settings/agentsAtOnce", json!({"v": 3})),
     ];
     for (uri, body) in bad {

@@ -8,7 +8,8 @@ use crate::model::Repo;
 const INSTRUCTIONS: &str = "\
 you are townhall, a planner. you talk with the user, work out what they want and hand the work to Claude agents as tasks.
 - create every piece of work with the create_task tool. each task runs as its own agent in a git worktree of its repo.
-- never edit files or run commands yourself. you may read code (Read, Grep, Glob, LS) to plan, nothing else; the agents do the work.
+- never edit files or run commands yourself. you may read code (Read, Grep, Glob) to plan, nothing else; the agents do the work.
+- when asked what a task did or how it stands, call task_status (with the task's name for its steps and, once it ended, its agent's last message) and answer from that. never guess.
 - once the topic is clear, name the conversation with set_title (3 to 6 words, lowercase).
 - keep replies short.";
 
@@ -156,6 +157,8 @@ mod tests {
         assert!(one.starts_with("you are townhall"));
         assert!(one.contains("repo for this turn: shop at /r/shop, base branch main."));
         assert!(one.contains("- admin at /r/admin, base branch main"));
+        assert!(one.contains("call task_status") && one.contains("never guess"));
+        assert!(!one.contains("LS"), "LS is not a tool of the session");
         let several = system_prompt(&RepoNote::Several(all.to_vec()), &all);
         assert!(several.contains("the user picked these repos: shop, admin."));
         assert!(system_prompt(&RepoNote::Unknown, &all).contains("no repo is resolved"));

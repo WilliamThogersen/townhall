@@ -3,8 +3,10 @@ import type * as Ui from "../settings/settings";
 import { DEFAULT_SETTINGS } from "../settings/settings";
 import type {
   AgentInfo,
+  AgentKey,
   Conversation,
   ConversationDetail,
+  SendInput,
   ServerEvent,
   SettingKey,
   Settings,
@@ -91,15 +93,19 @@ const events = [
   { type: "resync" },
 ] as const satisfies readonly ServerEvent[];
 
+const sends = [{ text: "Down" }, { key: "down" }, { key: "enter" }] as const satisfies readonly SendInput[];
+
 const detail = { conversation, entries, tasks: [task], attachments: [] } satisfies ConversationDetail;
 
 describe("api contract types", () => {
   it("use the same settings names and values as the settings screen", () => {
     expectTypeOf<Settings>().toEqualTypeOf<Ui.Settings>();
     expectTypeOf<Settings["permissionMode"]>().toEqualTypeOf<Ui.PermissionMode>();
+    expectTypeOf<Settings["townhallModel"]>().toEqualTypeOf<Ui.TownhallModel>();
     expectTypeOf<SettingKey>().toEqualTypeOf<keyof Ui.Settings>();
     const defaults: Settings = DEFAULT_SETTINGS;
     expect(defaults.permissionMode).toBe("acceptEdits");
+    expect(defaults.townhallModel).toBe("sonnet");
   });
 
   it("describe the shapes the daemon sends", () => {
@@ -115,5 +121,12 @@ describe("api contract types", () => {
     ]);
     expect(events.map((e) => e.type)).toContain("resync");
     expect(detail.tasks[0]?.pr?.checks).toBe("failed");
+  });
+
+  it("send either text or one key, never both", () => {
+    expectTypeOf<AgentKey>().toEqualTypeOf<"up" | "down" | "enter" | "escape" | "tab">();
+    expectTypeOf<{ text: "y"; key: "up" }>().not.toExtend<SendInput>();
+    expectTypeOf<{ key: "left" }>().not.toExtend<SendInput>();
+    expect(sends.map((s) => ("key" in s ? s.key : s.text))).toEqual(["Down", "down", "enter"]);
   });
 });

@@ -16,6 +16,7 @@ const custom: Settings = {
   repoUnclear: "guess",
   sessionPanelOpen: false,
   notifyWhen: "everything",
+  townhallModel: "opus",
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -27,6 +28,7 @@ describe("DEFAULT_SETTINGS", () => {
       repoUnclear: "ask",
       sessionPanelOpen: true,
       notifyWhen: "needsYou",
+      townhallModel: "sonnet",
     });
   });
 
@@ -115,6 +117,8 @@ describe("isSettingValue", () => {
     expect(isSettingValue("sessionPanelOpen", 1)).toBe(false);
     expect(isSettingValue("repoUnclear", "always")).toBe(false);
     expect(isSettingValue("notifyWhen", null)).toBe(false);
+    expect(isSettingValue("townhallModel", "fable")).toBe(false);
+    expect(isSettingValue("townhallModel", "Sonnet")).toBe(false);
     [0, 51, 2.5, "6", Number.NaN].forEach((value) => {
       expect(isSettingValue("agentsAtOnce", value)).toBe(false);
     });

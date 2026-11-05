@@ -1,6 +1,7 @@
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
 export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
+export type TownhallModel = "sonnet" | "opus" | "haiku";
 
 export interface Settings {
   readonly permissionMode: PermissionMode;
@@ -9,6 +10,7 @@ export interface Settings {
   readonly repoUnclear: RepoUnclear;
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
+  readonly townhallModel: TownhallModel;
 }
 
 export const PERMISSION_MODES: readonly PermissionMode[] = [
@@ -20,6 +22,7 @@ export const PERMISSION_MODES: readonly PermissionMode[] = [
 ];
 export const REPO_UNCLEAR_VALUES: readonly RepoUnclear[] = ["ask", "guess"];
 export const NOTIFY_VALUES: readonly NotifyWhen[] = ["needsYou", "failed", "everything"];
+export const TOWNHALL_MODELS: readonly TownhallModel[] = ["sonnet", "opus", "haiku"];
 
 export const AGENTS_AT_ONCE_MIN = 1;
 export const AGENTS_AT_ONCE_MAX = 50;
@@ -31,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   repoUnclear: "ask",
   sessionPanelOpen: true,
   notifyWhen: "needsYou",
+  townhallModel: "sonnet",
 });
 
 export type SettingKey = keyof Settings;
@@ -42,6 +46,7 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "repoUnclear",
   "sessionPanelOpen",
   "notifyWhen",
+  "townhallModel",
 ]);
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -70,6 +75,7 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   repoUnclear: choiceOf(REPO_UNCLEAR_VALUES),
   sessionPanelOpen: isFlag,
   notifyWhen: choiceOf(NOTIFY_VALUES),
+  townhallModel: choiceOf(TOWNHALL_MODELS),
 };
 
 export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
@@ -95,5 +101,6 @@ export function parseSettings(raw: unknown): Settings {
     repoUnclear: pick(fields, "repoUnclear"),
     sessionPanelOpen: pick(fields, "sessionPanelOpen"),
     notifyWhen: pick(fields, "notifyWhen"),
+    townhallModel: pick(fields, "townhallModel"),
   });
 }

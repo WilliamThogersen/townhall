@@ -224,7 +224,7 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names, ["create_task", "set_title"]);
+        assert_eq!(names, ["create_task", "set_title", "task_status"]);
         assert_eq!(got[2]["error"]["code"], INVALID_REQUEST);
     }
 }
