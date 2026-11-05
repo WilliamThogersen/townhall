@@ -1,11 +1,5 @@
 import { httpBase } from "../api/base";
 
-/**
- * Forwards web errors to the daemon (POST /api/logs/client). Reports carry error
- * info only (never message bodies or user content), are batched and debounced, and
- * a failed report is swallowed so it can neither throw nor loop.
- */
-
 type Level = "warn" | "error";
 
 export interface ClientLog {
@@ -46,7 +40,6 @@ function currentRoute(): string | undefined {
 
 function send(batch: ClientLog[]): void {
   try {
-    // Plain fetch, not request(): a report must never go through the reporting path.
     fetch(`${httpBase()}/logs/client`, {
       method: "POST",
       keepalive: true,
@@ -54,11 +47,10 @@ function send(batch: ClientLog[]): void {
       body: JSON.stringify(batch),
     }).catch(() => {});
   } catch {
-    /* swallowed on purpose */
+    return;
   }
 }
 
-/** Sends everything queued right now. */
 export function flushReports(): void {
   if (timer !== null) {
     clearTimeout(timer);
@@ -94,12 +86,10 @@ export function logError(event: string, message: string, error?: unknown, extras
   report("error", event, message, error, extras);
 }
 
-/** Reports without echoing to the console (used for already-surfaced API errors). */
 export function reportQuiet(level: Level, event: string, message: string, extras?: LogExtras): void {
   report(level, event, message, undefined, extras);
 }
 
-/** Hooks window `error` and `unhandledrejection`. Returns a function that removes them. */
 export function installGlobalHandlers(win: Window = window): () => void {
   const onError = (ev: Event) => {
     const { message, error } = ev as ErrorEvent;

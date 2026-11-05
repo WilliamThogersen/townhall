@@ -19,7 +19,6 @@ export async function request<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   const requestId = crypto.randomUUID();
-  // The report endpoint is never itself reported, or a failing daemon would loop.
   const quiet = path.startsWith("/logs/client");
   const fail = (err: ApiError, event: string): never => {
     if (!quiet) {

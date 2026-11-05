@@ -70,7 +70,6 @@ describe("report", () => {
     await vi.advanceTimersByTimeAsync(1500);
     await vi.advanceTimersByTimeAsync(5000);
     expect(reportCalls(fetchFn)).toHaveLength(1);
-    // a synchronous throw from fetch is swallowed too
     vi.stubGlobal("fetch", () => {
       throw new Error("sync");
     });

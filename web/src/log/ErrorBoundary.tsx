@@ -9,7 +9,6 @@ interface State {
   readonly failed: boolean;
 }
 
-/** Catches render errors, reports web.render_error and shows a plain fallback. */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { failed: false };
 
