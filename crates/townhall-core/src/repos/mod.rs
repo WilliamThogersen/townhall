@@ -3,6 +3,7 @@
 
 mod git;
 pub mod names;
+pub mod source;
 
 use std::path::{Path, PathBuf};
 
