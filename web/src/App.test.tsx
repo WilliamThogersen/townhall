@@ -53,6 +53,7 @@ describe("App routes", () => {
 
   it.each([
     ["/repos", "repos"],
+    ["/agents", "agents"],
     ["/settings", "settings"],
   ])("%s shows the %s page", async (path, title) => {
     window.history.replaceState(null, "", path);

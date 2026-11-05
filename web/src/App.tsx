@@ -4,6 +4,7 @@ import { DataProvider } from "./data";
 import { useRoute } from "./router";
 import { useLoadSettings } from "./settings/useSettings";
 import { Shell } from "./shell/Shell";
+import { AgentsPage } from "./views/agents/AgentsPage";
 import { ControlCenterPage } from "./views/control/ControlCenterPage";
 import { ConversationPage } from "./views/conversation/ConversationPage";
 import { HomePage } from "./views/home/HomePage";
@@ -23,6 +24,8 @@ function Screen() {
       return <ControlCenterPage />;
     case "repos":
       return <ReposPage />;
+    case "agents":
+      return <AgentsPage />;
     case "settings":
       return <SettingsPage />;
     case "search":
