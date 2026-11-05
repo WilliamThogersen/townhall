@@ -1,3 +1,19 @@
+.th-term-wrap {
+  position: relative;
+  height: 100%;
+}
+
 .th-term-host {
   height: 100%;
+}
+
+.th-term-state {
+  position: absolute;
+  right: var(--th-space-2);
+  bottom: var(--th-space-2);
+  padding: 2px var(--th-space-2);
+  background: var(--th-bg);
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-sm, 12px);
+  pointer-events: none;
 }

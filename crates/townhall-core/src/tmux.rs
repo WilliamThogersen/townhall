@@ -270,6 +270,50 @@ pub async fn send_key(key: &str, name: &str, pressed: AgentKey) -> Result<()> {
     Ok(())
 }
 
+/// The viewer options of an attachable session: the attached client drives the window
+/// size (`window-size latest`), the status bar is off (the pane has its own header) and
+/// the mouse is on, so the wheel scrolls tmux's history (tmux uses the alternate screen,
+/// so the browser terminal has no scrollback of its own).
+fn viewer_options(target: &str) -> Vec<String> {
+    let settings: [&[&str]; 3] = [
+        &["-t", target, "status", "off"],
+        &["-t", target, "mouse", "on"],
+        &["-w", "-t", target, "window-size", "latest"],
+    ];
+    let mut args = Vec::new();
+    for setting in settings {
+        if !args.is_empty() {
+            args.push(";".to_string());
+        }
+        args.push("set-option".to_string());
+        args.extend(setting.iter().map(|a| a.to_string()));
+    }
+    args
+}
+
+/// The arguments of the `tmux` process that attaches a client to the session: the
+/// server flags, then `attach-session` on the session's exact target.
+fn attach_args(key: &str, name: &str) -> Result<Vec<String>> {
+    let mut args = server_args()?;
+    args.extend([
+        "attach-session".into(),
+        "-t".into(),
+        session_target(key, name),
+    ]);
+    Ok(args)
+}
+
+/// Readies a live session for a viewer (see [`viewer_options`]) and returns the
+/// arguments of the `tmux` process that attaches to it. A dead or missing session is an
+/// error, so a caller can refuse before it opens a terminal.
+pub async fn prepare_attach(key: &str, name: &str) -> Result<Vec<String>> {
+    let target = live_target(key, name).await?;
+    let options = viewer_options(&target);
+    let options: Vec<&str> = options.iter().map(String::as_str).collect();
+    run_tmux(&options).await?;
+    attach_args(key, name)
+}
+
 /// Snapshot of the visible pane plus scrollback, dead or alive.
 pub async fn capture(key: &str, name: &str) -> Result<String> {
     validate_name(name)?;
@@ -338,6 +382,23 @@ mod tests {
         assert!(server_was_exiting(&failed("server exited unexpectedly")));
         assert!(!server_was_exiting(&failed("duplicate session: x")));
         assert!(!server_was_exiting(&crate::Error::InvalidInput("x".into())));
+    }
+
+    #[test]
+    fn attach_targets_the_exact_session_on_the_private_server() {
+        let args = attach_args("k", "a").unwrap();
+        assert_eq!(
+            &args[args.len() - 3..],
+            ["attach-session", "-t", "=townhall-k-a"]
+        );
+    }
+
+    #[test]
+    fn viewer_options_turn_the_status_off_and_follow_the_latest_client() {
+        let args = viewer_options("=s:").join(" ");
+        assert!(args.contains("status off"), "{args}");
+        assert!(args.contains("mouse on"), "{args}");
+        assert!(args.contains("-w -t =s: window-size latest"), "{args}");
     }
 
     #[test]

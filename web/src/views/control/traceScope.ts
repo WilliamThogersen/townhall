@@ -74,7 +74,7 @@ export function scopeTrace(
   return conversations
     .filter(wanted)
     .map((c) => scoped(c, grouped.get(c.id) ?? []))
-    .filter((entry) => filter.conversationId !== null || ranToday(entry, dayStart))
+    .filter((entry) => filter.conversationId !== null || (!entry.conversation.ended && ranToday(entry, dayStart)))
     .map((entry) => inRepo(entry, filter.repo))
     .filter((entry): entry is ScopedConversation => entry !== null)
     .sort(byCreated);

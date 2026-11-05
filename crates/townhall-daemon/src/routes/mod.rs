@@ -2,6 +2,8 @@
 //! file and does not edit this one (ownership map: `docs/daemon-api.md`).
 
 mod agents;
+mod attach;
+mod attach_frames;
 mod attachments;
 mod conversations;
 mod events;
@@ -34,6 +36,7 @@ fn agent_routes() -> Router<AppState> {
         .route("/agents/{name}/send", post(agents::send))
         .route("/agents/{name}/output", get(agents::output))
         .route("/agents/{name}/stream", get(stream::stream))
+        .route("/agents/{name}/attach", get(attach::attach))
         .route("/agents/{name}/steps", get(steps::list))
 }
 
@@ -64,6 +67,7 @@ fn conversation_routes() -> Router<AppState> {
 fn library_routes() -> Router<AppState> {
     Router::new()
         .route("/library/agents", get(library::list_agents))
+        .route("/library/agents/usage", get(library::agent_usage))
         .route(
             "/library/agents/{name}",
             get(library::get_agent)

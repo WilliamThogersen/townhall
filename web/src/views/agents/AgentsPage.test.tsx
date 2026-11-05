@@ -22,6 +22,10 @@ const plannerFull = anAgentType({
 });
 
 beforeEach(() => {
+  vi.spyOn(library, "listAgentUsage").mockResolvedValue([
+    { agent: "builder", runs: 3, tokens: 12_400 },
+    { agent: "planner", runs: 1, tokens: 800 },
+  ]);
   vi.spyOn(library, "listAgentTypes").mockResolvedValue([builder, planner, shellType]);
   vi.spyOn(library, "getAgentType").mockImplementation((name) =>
     Promise.resolve(name === "planner" ? plannerFull : anAgentType({ name, source: `name = "${name}"\n` })),
@@ -92,6 +96,17 @@ describe("AgentsPage", () => {
     expect(await screen.findByRole("button", { name: "copied" })).toBeInTheDocument();
   });
 
+  it("renders the copy button as a ghost button that marks the copied state", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true });
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const button = await screen.findByRole("button", { name: "copy" });
+    expect(button).toHaveClass("th-btn--ghost");
+    expect(button).not.toHaveAttribute("data-copied");
+    await userEvent.click(button);
+    expect(await screen.findByRole("button", { name: "copied" })).toHaveAttribute("data-copied", "true");
+  });
+
   it("offers no edit or delete", async () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
@@ -116,5 +131,31 @@ describe("AgentsPage", () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("agent type gone"));
+  });
+
+  it("shows runs and compact tokens on each row, zero for a type never run", async () => {
+    render(<AgentsPage />);
+    const builderRow = within(await rowOf("builder"));
+    expect(await builderRow.findByText("3 runs")).toBeInTheDocument();
+    expect(builderRow.getByText("12.4K tokens")).toBeInTheDocument();
+    expect(within(await rowOf("planner")).getByText("1 run")).toBeInTheDocument();
+    expect(within(await rowOf("planner")).getByText("800 tokens")).toBeInTheDocument();
+    expect(within(await rowOf("dev-server")).getByText("0 runs")).toBeInTheDocument();
+    expect(within(await rowOf("dev-server")).getByText("0 tokens")).toBeInTheDocument();
+  });
+
+  it("shows runs and tokens in the detail", async () => {
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("builder"));
+    const detail = within(await screen.findByRole("region", { name: "builder" }));
+    expect(await detail.findByText("12.4K")).toBeInTheDocument();
+    expect(detail.getByText("3", { selector: "dd" })).toBeInTheDocument();
+  });
+
+  it("still lists the types when usage fails to load", async () => {
+    vi.spyOn(library, "listAgentUsage").mockRejectedValue(new ApiError("network", "no usage"));
+    render(<AgentsPage />);
+    expect(await rowOf("builder")).toBeInTheDocument();
+    expect(within(await rowOf("builder")).queryByText(/runs?$/)).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import type { AgentTypeSummary } from "../../api/types";
+import type { AgentTypeSummary, AgentUsage } from "../../api/types";
 
 export type PipelineStep = "plan" | "code" | "test" | "review" | "ship";
 
@@ -23,4 +23,17 @@ export function defaultTypeName(types: readonly AgentTypeSummary[]): string | nu
   const builder = types.find((t) => t.name.toLowerCase() === FALLBACK_DEFAULT);
   if (builder) return builder.name;
   return [...types].sort(byName)[0]?.name ?? null;
+}
+
+export interface Usage {
+  readonly runs: number;
+  readonly tokens: number;
+}
+
+const NO_USAGE: Usage = { runs: 0, tokens: 0 };
+
+export function usageOf(rows: readonly AgentUsage[] | null, name: string): Usage | null {
+  if (rows === null) return null;
+  const found = rows.find((row) => row.agent.toLowerCase() === name.toLowerCase());
+  return found ?? NO_USAGE;
 }

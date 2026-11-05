@@ -110,6 +110,104 @@
   color: var(--th-fg);
 }
 
+/* markdown in replies: headings, code blocks, tables, quotes, rules, links, task lists */
+
+.th-msg-body > :is(h1, h2, h3, h4, h5, h6) {
+  margin: var(--th-space-3) 0 var(--th-space-1);
+  font-size: var(--th-text-md);
+  font-weight: var(--th-weight-bold);
+  line-height: var(--th-leading-md);
+}
+
+.th-msg-body > :is(h1, h2) {
+  font-size: var(--th-text-lg);
+  line-height: var(--th-leading-lg);
+}
+
+.th-msg-body > :first-child {
+  margin-top: 0;
+}
+
+.th-msg-body li > :is(ul, ol, p) {
+  margin: 0;
+}
+
+.th-msg-body .contains-task-list {
+  padding-left: 1ch;
+  list-style: none;
+}
+
+.th-msg-body .task-list-item input {
+  margin: 0 1ch 0 0;
+  vertical-align: middle;
+}
+
+.th-msg-body pre {
+  overflow-x: auto;
+  padding: var(--th-space-2) var(--th-space-3);
+  border: var(--th-border) solid var(--th-line);
+  background: var(--th-surface);
+  overflow-wrap: normal;
+}
+
+.th-msg-body pre code {
+  padding: 0;
+  background: none;
+}
+
+.th-md-table {
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+
+.th-md-table table {
+  border-collapse: collapse;
+  font-size: var(--th-text-sm);
+  line-height: var(--th-leading-sm);
+}
+
+.th-md-table :is(th, td) {
+  padding: 3px 1ch;
+  border: var(--th-border) solid var(--th-line-strong);
+  text-align: left;
+  vertical-align: top;
+}
+
+.th-md-table th {
+  background: var(--th-surface-2);
+  font-weight: var(--th-weight-bold);
+}
+
+.th-msg-body blockquote {
+  padding-left: 1ch;
+  box-shadow: inset 2px 0 0 var(--th-line-strong);
+  color: var(--th-fg-muted);
+}
+
+.th-msg-body blockquote > * {
+  margin: 0 0 var(--th-space-1);
+}
+
+.th-msg-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.th-msg-body hr {
+  height: 0;
+  border: 0;
+  border-top: var(--th-border) solid var(--th-line-strong);
+}
+
+.th-msg-body a {
+  color: var(--th-info);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.th-msg-body del {
+  color: var(--th-fg-faint);
+}
+
 .th-msg-time {
   padding-left: 2ch;
   color: var(--th-fg-faint);
@@ -153,9 +251,34 @@
   font-weight: var(--th-weight-normal);
 }
 
+/* the tasks a reply made: on the replies' left edge, as wide as the widest reply, time in its head */
+
+.th-msg--block {
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: var(--th-bubble);
+  justify-self: start;
+}
+
+.th-msg--block > .th-msg-sign {
+  display: none;
+}
+
 .th-block {
   border: var(--th-border) solid var(--th-line-strong);
   background: var(--th-surface);
+}
+
+.th-block-title {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-block-head .th-msg-time {
+  margin-left: auto;
+  padding-left: 0;
 }
 
 .th-block-head {
@@ -194,31 +317,132 @@
   white-space: nowrap;
 }
 
-.th-ask {
-  display: grid;
-  gap: var(--th-space-2);
-  padding: 10px var(--th-space-3);
+/* a question for you: on the left like townhall's replies, amber while open, quiet once answered */
+
+.th-msg--ask {
+  max-width: var(--th-bubble);
+  justify-self: start;
+  padding: 8px var(--th-space-3) 10px 0;
   background: var(--th-accent-tint);
   box-shadow: inset 2px 0 0 var(--th-accent);
 }
 
+.th-msg--ask > .th-msg-sign {
+  color: var(--th-accent);
+}
+
+.th-msg--ask[data-answered] {
+  padding-block: 6px;
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--th-line-strong);
+}
+
+.th-msg--ask[data-answered] > .th-msg-sign {
+  color: var(--th-fg-faint);
+}
+
+.th-ask {
+  display: grid;
+  gap: var(--th-space-2);
+  min-width: 0;
+}
+
+.th-ask[data-answered] {
+  gap: 2px;
+}
+
 .th-ask-head {
-  display: flex;
-  align-items: center;
-  gap: 1ch;
   color: var(--th-accent);
   font-size: var(--th-text-sm);
   font-weight: var(--th-weight-bold);
 }
 
-.th-ask-head .th-status {
-  width: auto;
+.th-ask[data-answered] .th-ask-head {
+  color: var(--th-fg-muted);
+  font-weight: var(--th-weight-normal);
+}
+
+.th-ask-context {
+  display: block;
+  overflow: hidden;
+  padding: 2px 1ch;
+  border: var(--th-border) solid var(--th-line);
+  background: var(--th-surface);
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-ask[data-answered] .th-ask-context {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--th-fg-faint);
 }
 
 .th-ask-quote {
   margin: 0;
   color: var(--th-fg);
   white-space: pre-wrap;
+}
+
+.th-ask[data-answered] .th-ask-quote {
+  color: var(--th-fg-muted);
+}
+
+.th-ask-answer {
+  margin: 0;
+  color: var(--th-fg-faint);
+}
+
+.th-ask-picked {
+  color: var(--th-fg);
+}
+
+.th-ask-options {
+  display: grid;
+  gap: var(--th-space-1);
+}
+
+.th-ask-option {
+  display: grid;
+  grid-template-columns: 3ch minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 1ch;
+  padding: 4px var(--th-space-3) 4px 0;
+  border: var(--th-border) solid var(--th-line-control);
+  background: var(--th-surface);
+  color: var(--th-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.th-ask-option:hover:not(:disabled) {
+  border-color: var(--th-accent);
+}
+
+.th-ask-option:focus-visible {
+  outline: var(--th-focus-width) solid var(--th-accent);
+  outline-offset: var(--th-focus-offset);
+}
+
+.th-ask-option:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.th-ask-key {
+  color: var(--th-accent);
+  font-weight: var(--th-weight-bold);
+  text-align: center;
+}
+
+.th-ask-hint {
+  grid-column: 2;
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
 }
 
 .th-ask-actions {

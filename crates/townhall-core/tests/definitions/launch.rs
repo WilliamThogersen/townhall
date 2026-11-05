@@ -1,7 +1,9 @@
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
-use townhall_core::agent::{AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter};
+use townhall_core::agent::{
+    AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter, AGENT_ISOLATION,
+};
 use townhall_core::definitions::{parse_agent, AgentDef, PermissionMode};
 use townhall_core::model::PermissionMode as SettingsMode;
 
@@ -16,7 +18,8 @@ const SETTINGS_MODES: [SettingsMode; 5] = [
     SettingsMode::BypassPermissions,
 ];
 
-/// The argv the real `ClaudeCodeAdapter` command hands to its program.
+/// The argv the real `ClaudeCodeAdapter` command hands to its program, without the
+/// isolation flags every agent gets: checked here, right before the prompt.
 fn argv(options: &LaunchOptions) -> Vec<String> {
     let dir = tempfile::tempdir().unwrap();
     let echo = dir.path().join("echo-args");
@@ -28,7 +31,11 @@ fn argv(options: &LaunchOptions) -> Vec<String> {
     let out = Command::new("sh").args(["-c", &command]).output().unwrap();
     let text = String::from_utf8(out.stdout).unwrap();
     let words: Vec<String> = text.split('|').map(str::to_string).collect();
-    words[..words.len() - 1].to_vec()
+    let words = &words[..words.len() - 1];
+    let end = words.iter().position(|w| w == "--").unwrap_or(words.len());
+    let start = end - AGENT_ISOLATION.len();
+    assert_eq!(words[start..end], AGENT_ISOLATION, "{words:?}");
+    [&words[..start], &words[end..]].concat()
 }
 
 fn agent(extra: &str) -> AgentDef {

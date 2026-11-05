@@ -2,10 +2,6 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AgentPane } from "./AgentPane";
 
-vi.mock("./useAgentStream", () => ({
-  useAgentStream: () => ({ snapshot: "", status: "connecting", error: null }),
-}));
-
 vi.mock("./Terminal", () => new Promise(() => {}));
 
 describe("AgentPane while the terminal loads", () => {

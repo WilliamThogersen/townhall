@@ -187,6 +187,12 @@ export interface AgentTypeSummary {
   readonly updatedAt: string;
 }
 
+export interface AgentUsage {
+  readonly agent: string;
+  readonly runs: number;
+  readonly tokens: number;
+}
+
 export interface AgentType {
   readonly name: string;
   readonly description: string;

@@ -57,10 +57,10 @@ Chat. `.th-thread-inner` caps the thread at 76ch and centers in its column; insi
 | Part | Class | Look |
 |------|-------|------|
 | Your message | `.th-msg.th-msg--you` | Right-aligned `surface-2` bubble, 2px amber right edge, no gutter sign, time on the right |
-| Townhall's reply | `.th-msg.th-msg--townhall` | Left-aligned `info-tint` bubble, 2px blue left edge, empty gutter. Markdown: paragraphs, lists, `code` |
+| Townhall's reply | `.th-msg.th-msg--townhall` | Left-aligned `info-tint` bubble, 2px blue left edge, empty gutter. GitHub markdown via react-markdown + remark-gfm: headings, lists, task lists, `code`, code blocks, tables (scroll sideways when wide), quotes, rules, web and mail links only, no raw HTML or images |
 | Event | `.th-event` | One faint centered `sm` line with a glyph: `~` repo picked, `✓` passed, `→` sent, `×` failed, `○` ended, spinner for thinking |
-| Task block | `.th-block` + `.th-agent-line` | The tasks a reply created: `3 tasks for townhall · main`, then status, bold name, kind, title, `open` |
-| Needs you | `.th-ask` | Amber tint and edge, `◆ <agent> needs you`, the agent's question quoted verbatim, direct answers (`send y`, `send n`) and `open pane` |
+| Task block | `.th-msg.th-msg--block` + `.th-block` + `.th-agent-line` | The tasks a reply created, on the replies' left edge and as wide as the widest reply (`--th-bubble`): `3 tasks for townhall · main` with the time on the right of that head, then status, bold name, kind, title, `open` |
+| Needs you | `.th-msg.th-msg--ask` + `.th-ask` | Left like a reply, amber tint and edge, `◆` in the gutter, `<agent> needs you`. A permission dialog splits into the command (`.th-ask-context`, one line), the question, and one `.th-ask-option` button per numbered option (`3  Yes, and switch to auto mode`, hint faint). y/n questions keep `send y`, `send n` and a free text answer. Once answered: `◇`, no tint, `<agent> asked`, the question muted and `→ <picked option>`; the `sent` line that carried the answer is not shown again |
 
 - Answers in a needs-you block send that text to the agent's terminal and add a `→ sent to <agent>` event.
 - New; the thread replaces the create form and card grid in `App.tsx`.
@@ -123,8 +123,8 @@ Every task it creates carries its repo and base branch, so the agent that picks 
 Images and files, in both directions. Styles in [attachments.css](attachments.css).
 
 - **Adding**: `+ attach` in the composer tools, paste (screenshots), or drop anywhere on the conversation. While dragging, `.th-drop` covers the conversation: dashed amber border, `drop to attach`, `images, text, code, pdf · up to 20 MB each`.
-- **In the composer** (`.th-composer-attachments`, above the text): images as 64 by 48 thumbnails with `×`, files as chips (`.th-file`: extension tag, name, size, `×`). Uploading shows a blue progress line at the bottom of the thumbnail; a failed one gets a red border and `×`, and the tools row says why in red (`error: screenshot-3.png is over 20 MB`). Send stays enabled for the rest.
-- **In messages**: `.th-msg-images` (104px tall thumbnails, more than 3 collapse into `+N`) and `.th-msg-files` (chips that open or download). Agents can post images too, for example a screenshot after a fix; those say `from <agent>` in the lightbox.
+- **In the composer** (`.th-composer-attachments`, above the text): images as 64 by 48 thumbnails with `×` (a finished one is a `.th-thumb-open` button that opens the lightbox), files as cards (`.th-file`: page icon, name with ellipsis, a small `TYPE · size` line, and `×`). The `×` of either shows on hover or focus. Uploading shows a blue progress line at the bottom of the thumbnail; a failed one gets a red border and `×`, and the tools row says why in red (`error: screenshot-3.png is over 20 MB`). Send stays enabled for the rest.
+- **In messages**: `.th-msg-images` (104px tall thumbnails, more than 3 collapse into `+N`) and `.th-msg-files` (the same cards, which download). A pasted marker such as `[Image #1]`, or a line that is just an attached file's path, is dropped from the text because the thumbnail or card replaces it. Corners stay square like everything else. Agents can post images too, for example a screenshot after a fix; those say `from <agent>` in the lightbox.
 - **Where they go**: images go to townhall's session as image input. Files are stored with the conversation (`~/.townhall/conversations/<id>/files/`) and attached to the tasks that need them, so the agent gets the path.
 - New.
 

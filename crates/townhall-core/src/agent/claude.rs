@@ -3,7 +3,7 @@
 //! `env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT
 //! -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
 //! [--append-system-prompt=P] [--session-id=ID] [--tools=B1,B2 --allowedTools=T1,T2] [--add-dir=D ...]
-//! [-- PROMPT]`
+//! --setting-sources= --settings=S --strict-mcp-config [-- PROMPT]`
 //!
 //! Every option is one argv element (`--name=value`) and every element is shell-quoted, so
 //! no value can split or start a flag. The prompt is the only positional, after `--`.
@@ -21,6 +21,22 @@ use crate::{Error, Result};
 
 pub const DEFAULT_CLAUDE_BIN: &str = "claude";
 const END_OF_OPTIONS: &str = "--";
+
+/// Settings for every claude townhall starts: no hooks, and no auto-memory (`MEMORY.md`),
+/// which loads even when no settings source does.
+pub const ISOLATED_SETTINGS: &str =
+    "--settings={\"disableAllHooks\":true,\"autoMemoryEnabled\":false}";
+
+/// An agent runs only on what townhall gives it: no settings files (so no hooks, plugins,
+/// status line, permission rules, CLAUDE.md or rules from the user or the repo), no
+/// auto-memory, and no MCP server, since none comes with `--mcp-config`. Built-in tools,
+/// skills and slash commands stay. Auth is untouched: it comes from the login and the
+/// environment, never from these.
+pub const AGENT_ISOLATION: [&str; 3] = [
+    "--setting-sources=",
+    ISOLATED_SETTINGS,
+    "--strict-mcp-config",
+];
 
 /// What a running Claude Code sets for the programs it starts. A claude that inherits them
 /// runs as part of that outer session (`CLAUDE_EFFORT` even sets its effort), so no claude
@@ -204,6 +220,7 @@ impl ClaudeCodeAdapter {
             session(options)?,
             tools(&entries),
             add_dirs(options)?,
+            AGENT_ISOLATION.map(String::from).to_vec(),
             prompt(options),
         ]
         .concat())

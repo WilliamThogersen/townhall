@@ -1,7 +1,8 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type { ThreadEntry } from "../../../api/types";
 import { Button } from "../../../ui/Button";
 import { useThread } from "./threadContext";
+import { answerText, askView, type AskOption } from "./askView";
 import { Message } from "./ThreadLines";
 import { askChoices } from "./threadModel";
 import { choiceKeys, takesKeys } from "./trustDialog";
@@ -26,18 +27,58 @@ interface AskProps {
   readonly who: string;
   readonly open: boolean;
   readonly question: string;
+  /** Lines before the question, such as the command a permission dialog is about. */
+  readonly context?: readonly string[];
+  /** What the answer picked, once there was one. */
+  readonly picked?: string | null;
   readonly children?: ReactNode;
 }
 
-function Ask({ who, open, question, children }: AskProps) {
+function Ask({ who, open, question, context = [], picked = null, children }: AskProps) {
+  const label = open ? `${who} needs you` : `${who} asked`;
   return (
-    <div className="th-ask" role="group" aria-label={`${who} needs you`} data-answered={open ? undefined : "true"}>
-      <div className="th-ask-head">
-        <span className="th-status" data-state="waiting" aria-hidden="true" />
-        {open ? `${who} needs you` : `${who} asked`}
-      </div>
-      <p className="th-ask-quote">{question}</p>
+    <div className="th-ask" role="group" aria-label={label} data-answered={open ? undefined : "true"}>
+      <div className="th-ask-head">{label}</div>
+      {context.map((line, i) => (
+        <code key={i} className="th-ask-context" title={line}>
+          {line}
+        </code>
+      ))}
+      {question === "" ? null : <p className="th-ask-quote">{question}</p>}
+      {picked === null ? null : (
+        <p className="th-ask-answer">
+          <span aria-hidden="true">{"\u2192"} </span>
+          <span className="th-ask-picked">{picked}</span>
+        </p>
+      )}
       {children}
+    </div>
+  );
+}
+
+interface AskOptionsProps {
+  readonly options: readonly AskOption[];
+  readonly busy: boolean;
+  readonly onPick: (number: string) => void;
+}
+
+function AskOptions({ options, busy, onPick }: AskOptionsProps) {
+  return (
+    <div className="th-ask-options">
+      {options.map((option) => (
+        <button
+          key={option.number}
+          type="button"
+          className="th-ask-option"
+          disabled={busy}
+          aria-label={option.hint === null ? `${option.number} ${option.label}` : `${option.number} ${option.label}, ${option.hint}`}
+          onClick={() => onPick(option.number)}
+        >
+          <span className="th-ask-key">{option.number}</span>
+          <span className="th-ask-label">{option.label}</span>
+          {option.hint === null ? null : <span className="th-ask-hint">{option.hint}</span>}
+        </button>
+      ))}
     </div>
   );
 }
@@ -76,19 +117,30 @@ function AnswerForm({ agent, busy, onAnswer }: AnswerFormProps) {
   );
 }
 
-export function NeedsYouBlock({ entry, open }: { readonly entry: NeedsYouEntry; readonly open: boolean }) {
+interface NeedsYouBlockProps {
+  readonly entry: NeedsYouEntry;
+  readonly open: boolean;
+  /** The answer the agent got, when the thread has it. */
+  readonly answer?: string;
+}
+
+export function NeedsYouBlock({ entry, open, answer: sent }: NeedsYouBlockProps) {
   const { tasks, onOpenTask, answerAgent, answerKeys } = useThread();
   const { busy, run } = useBusy();
+  const view = useMemo(() => askView(entry.question, entry.choices), [entry.question, entry.choices]);
   const isTask = tasks.some((task) => task.name === entry.agent);
   const answer = (text: string) => run(() => answerAgent(entry.agent, text));
   const pick = (choice: string) => {
     const keys = choiceKeys(entry.question, choice);
     return keys === null ? answer(choice) : run(() => answerKeys(entry.agent, keys));
   };
-  const choices = open ? entry.choices : [];
+  const hasOptions = view.options.length > 0;
+  const choices = open && !hasOptions ? entry.choices : [];
+  const picked = sent === undefined ? null : answerText(view, sent);
   return (
-    <Message at={entry.at}>
-      <Ask who={entry.agent} open={open} question={entry.question}>
+    <Message from="ask" at={entry.at} answered={!open}>
+      <Ask who={entry.agent} open={open} question={view.prompt} context={view.context} picked={picked}>
+        {open && hasOptions ? <AskOptions options={view.options} busy={busy} onPick={(n) => void pick(n)} /> : null}
         {choices.length > 0 || isTask ? (
           <div className="th-ask-actions">
             {choices.map((choice) => (
@@ -103,7 +155,9 @@ export function NeedsYouBlock({ entry, open }: { readonly entry: NeedsYouEntry; 
             ) : null}
           </div>
         ) : null}
-        {open && !takesKeys(entry.question) ? <AnswerForm agent={entry.agent} busy={busy} onAnswer={answer} /> : null}
+        {open && !hasOptions && !takesKeys(entry.question) ? (
+          <AnswerForm agent={entry.agent} busy={busy} onAnswer={answer} />
+        ) : null}
       </Ask>
     </Message>
   );
@@ -116,7 +170,7 @@ export function RepoAskBlock({ entry, open }: { readonly entry: RepoAskEntry; re
   const pick = (text: string) => void run(() => sendMessage(text));
   const disabled = busy || thinking;
   return (
-    <Message at={entry.at}>
+    <Message from="ask" at={entry.at} answered={!open}>
       <Ask who="townhall" open={open} question={entry.question}>
         {open ? (
           <div className="th-ask-actions">

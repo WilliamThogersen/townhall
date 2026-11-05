@@ -62,6 +62,16 @@ describe("scopeTrace", () => {
     expect(scoped.find((s) => s.conversation.id === "today")?.tasks.map((t) => t.name)).toEqual(["ci-cache"]);
   });
 
+  it("hides ended conversations and their tasks from the overview but not from a direct view", () => {
+    const ended = aConversation({ id: "gone", ended: true, createdAt: local(19), updatedAt: local(20) });
+    const endedTasks = [...TASKS, aTask({ name: "gone-task", conversationId: "gone", state: "inCi" })];
+    const overview = scopeTrace([...ALL, ended], endedTasks, { conversationId: null, repo: null }, NOW);
+    expect(overview.map((s) => s.conversation.id)).not.toContain("gone");
+    expect(overview.flatMap((s) => s.tasks.map((t) => t.name))).not.toContain("gone-task");
+    const direct = scopeTrace([ended], endedTasks, { conversationId: "gone", repo: null }, NOW);
+    expect(direct.map((s) => s.conversation.id)).toEqual(["gone"]);
+  });
+
   it("shows one conversation by id even when it ran before today", () => {
     const scoped = scopeTrace(ALL, TASKS, { conversationId: "old-done", repo: null }, NOW);
     expect(scoped.map((s) => s.conversation.id)).toEqual(["old-done"]);

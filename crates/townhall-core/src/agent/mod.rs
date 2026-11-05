@@ -11,7 +11,9 @@ use std::path::PathBuf;
 
 pub use adapter::{shell_quote, AgentAdapter, LaunchOptions, ShellAdapter};
 pub(crate) use claude::{add_dir, plain};
-pub use claude::{ClaudeCodeAdapter, DEFAULT_CLAUDE_BIN, OUTER_SESSION_ENV};
+pub use claude::{
+    ClaudeCodeAdapter, AGENT_ISOLATION, DEFAULT_CLAUDE_BIN, ISOLATED_SETTINGS, OUTER_SESSION_ENV,
+};
 
 use crate::cmd::{run, validate_name};
 use crate::model::AgentKey;
@@ -152,6 +154,14 @@ pub async fn send_key(ws: &Workspace, name: &str, key: AgentKey) -> Result<()> {
 /// answered once the session was gone, so the stream still ends when the agent does.
 pub async fn output(ws: &Workspace, name: &str) -> Result<String> {
     tmux::capture_live(ws.key(), name)
+        .await
+        .map_err(|e| missing_session(name, e))
+}
+
+/// The `tmux` arguments that attach a client to the agent's live session, which is first
+/// set up for a viewer. A dead session is `NotFound`.
+pub async fn attach_args(ws: &Workspace, name: &str) -> Result<Vec<String>> {
+    tmux::prepare_attach(ws.key(), name)
         .await
         .map_err(|e| missing_session(name, e))
 }

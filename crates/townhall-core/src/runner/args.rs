@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use crate::agent::{add_dir, plain};
+use crate::agent::{add_dir, plain, ISOLATED_SETTINGS};
 use crate::model::TownhallModel;
 use crate::{mcp, Result};
 
@@ -16,12 +16,12 @@ pub const READ_ONLY_TOOLS: [&str; 3] = ["Read", "Grep", "Glob"];
 /// `~/.claude/settings.json` cannot let townhall's session write to a repo.
 pub const DENIED_TOOLS: [&str; 5] = ["Bash", "Edit", "MultiEdit", "Write", "NotebookEdit"];
 /// Keeps the user's own Claude setup out of townhall's session: no settings files (so no
-/// hooks, plugins, permission rules or CLAUDE.md from them), hooks off even if a source
-/// still had one, and no skills or slash commands. Auth is untouched: it comes from the
+/// hooks, plugins, permission rules or CLAUDE.md from them), hooks and auto-memory off,
+/// and no skills or slash commands. Auth is untouched: it comes from the
 /// login (keychain or credentials file) and the environment, never from these.
 pub const ISOLATION: [&str; 3] = [
     "--setting-sources=",
-    "--settings={\"disableAllHooks\":true}",
+    ISOLATED_SETTINGS,
     "--disable-slash-commands",
 ];
 
@@ -130,7 +130,7 @@ mod tests {
                 "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,Read,Grep,Glob",
                 "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
                 "--setting-sources=",
-                "--settings={\"disableAllHooks\":true}",
+                "--settings={\"disableAllHooks\":true,\"autoMemoryEnabled\":false}",
                 "--disable-slash-commands",
                 "--add-dir=/r/b",
                 "--add-dir=/r/c",

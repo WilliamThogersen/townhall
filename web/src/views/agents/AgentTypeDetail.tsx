@@ -3,6 +3,8 @@ import { useAgentType } from "../../data";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Loading } from "../../ui/Loading";
+import { compactNumber } from "../home/format";
+import type { Usage } from "./agentTypes";
 import { StepBadge } from "./AgentTypeRow";
 
 const COPIED_MS = 1500;
@@ -21,7 +23,7 @@ function CopyButton({ text }: { readonly text: string }) {
     );
   };
   return (
-    <Button size="sm" onClick={copy}>
+    <Button size="sm" variant="ghost" onClick={copy} data-copied={copied || undefined}>
       {copied ? "copied" : "copy"}
     </Button>
   );
@@ -36,7 +38,7 @@ function Field({ label, value }: { readonly label: string; readonly value: strin
   );
 }
 
-export function AgentTypeDetail({ name }: { readonly name: string }) {
+export function AgentTypeDetail({ name, usage }: { readonly name: string; readonly usage: Usage | null }) {
   const { data, error, loading } = useAgentType(name);
   if (error !== null && data === null) return <Banner level="error">{error}</Banner>;
   if (data === null || loading) {
@@ -60,6 +62,12 @@ export function AgentTypeDetail({ name }: { readonly name: string }) {
         <Field label="model" value={data.model ?? "default"} />
         <Field label="permission mode" value={data.permissionMode ?? "default"} />
         <Field label="tools" value={data.tools.length > 0 ? data.tools.join(", ") : "claude defaults"} />
+        {usage === null ? null : (
+          <>
+            <Field label="runs" value={String(usage.runs)} />
+            <Field label="tokens" value={compactNumber(usage.tokens)} />
+          </>
+        )}
       </dl>
       <pre className="th-agent-source" tabIndex={0}>
         {data.source}

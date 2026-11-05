@@ -1,4 +1,4 @@
-import type { StreamState } from "./useAgentStream";
+import type { AttachState } from "./attachSocket";
 
 export type PaneStreamStatus = "open" | "connecting" | "ended" | "error";
 
@@ -19,7 +19,7 @@ const closedView = (reason: string): PaneStreamView =>
   SESSION_GONE.test(reason) ? ENDED : { status: "error", glyph: "×", label: `error: ${reason}` };
 
 export function paneStreamView(
-  stream: Pick<StreamState, "status" | "error">,
+  stream: AttachState,
   alive: boolean,
 ): PaneStreamView {
   if (stream.error !== null) return closedView(stream.error);

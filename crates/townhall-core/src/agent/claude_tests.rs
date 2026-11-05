@@ -47,6 +47,16 @@ fn argv_through_sh(options: &LaunchOptions) -> Vec<String> {
         .collect()
 }
 
+/// `flags`, then the isolation flags every agent gets.
+fn with_isolation(flags: &[&str]) -> Vec<String> {
+    flags
+        .iter()
+        .copied()
+        .chain(AGENT_ISOLATION)
+        .map(String::from)
+        .collect()
+}
+
 /// What a flag parser sees: everything before the first `--` is options, after it data.
 fn split(argv: &[String]) -> (&[String], &[String]) {
     let end = argv.iter().position(|a| a == "--").unwrap_or(argv.len());
@@ -65,7 +75,7 @@ fn hostile_prompts_arrive_as_the_one_positional() {
     for p in hostile {
         let argv = argv_through_sh(&opts(p));
         let (flags, data) = split(&argv);
-        assert_eq!(flags, ["--permission-mode=plan"], "{p}");
+        assert_eq!(flags, with_isolation(&["--permission-mode=plan"]), "{p}");
         assert_eq!(data, [format!("{p}\n")], "{p}");
     }
     let spaced = "-p and --dangerously-skip-permissions please";
@@ -96,9 +106,11 @@ fn every_option_is_one_element_before_the_prompt() {
             format!("--session-id={ID}"),
             "--tools=Read,Bash".into(),
             "--allowedTools=Read,Bash(git diff:*)".into(),
-            "--".into(),
-            "fix it".into(),
         ]
+        .into_iter()
+        .chain(AGENT_ISOLATION.map(String::from))
+        .chain(["--".into(), "fix it".into()])
+        .collect::<Vec<String>>()
     );
     assert_eq!(ClaudeCodeAdapter::args(&o).unwrap(), argv);
 }
@@ -213,17 +225,19 @@ fn permission_modes() {
         })
         .unwrap()
     };
-    assert_eq!(
-        mode(PermissionMode::AcceptEdits),
-        ["--permission-mode=acceptEdits"]
-    );
-    assert_eq!(mode(PermissionMode::Plan), ["--permission-mode=plan"]);
-    assert_eq!(mode(PermissionMode::Auto), ["--permission-mode=auto"]);
-    assert_eq!(mode(PermissionMode::Default), ["--permission-mode=default"]);
-    assert_eq!(
-        mode(PermissionMode::BypassPermissions),
-        ["--dangerously-skip-permissions"]
-    );
+    let cases = [
+        (PermissionMode::AcceptEdits, "--permission-mode=acceptEdits"),
+        (PermissionMode::Plan, "--permission-mode=plan"),
+        (PermissionMode::Auto, "--permission-mode=auto"),
+        (PermissionMode::Default, "--permission-mode=default"),
+        (
+            PermissionMode::BypassPermissions,
+            "--dangerously-skip-permissions",
+        ),
+    ];
+    for (m, flag) in cases {
+        assert_eq!(mode(m), with_isolation(&[flag]), "{flag}");
+    }
 }
 
 #[test]
@@ -236,11 +250,15 @@ fn no_prompt_means_no_positional_and_blank_values_add_nothing() {
     };
     assert_eq!(
         ClaudeCodeAdapter::args(&o).unwrap(),
-        ["--permission-mode=acceptEdits"]
+        with_isolation(&["--permission-mode=acceptEdits"])
     );
+    let quoted: Vec<String> = with_isolation(&["--permission-mode=acceptEdits"])
+        .iter()
+        .map(|a| shell_quote(a))
+        .collect();
     assert_eq!(
         ClaudeCodeAdapter::default().launch_command(&o).unwrap(),
-        format!("{UNSET} claude '--permission-mode=acceptEdits'")
+        format!("{UNSET} claude {}", quoted.join(" "))
     );
     assert_eq!(split(&argv_through_sh(&opts("  "))).1, ["  "]);
 }
@@ -292,16 +310,13 @@ fn add_dirs_are_absolute_folders_before_the_prompt() {
         add_dirs: vec!["/h/tasks/fix-login".into(), "/h/my files".into()],
         ..opts("go on")
     };
-    assert_eq!(
-        argv_through_sh(&o),
-        [
-            "--permission-mode=plan",
-            "--add-dir=/h/tasks/fix-login",
-            "--add-dir=/h/my files",
-            "--",
-            "go on",
-        ]
-    );
+    let mut expected = with_isolation(&[
+        "--permission-mode=plan",
+        "--add-dir=/h/tasks/fix-login",
+        "--add-dir=/h/my files",
+    ]);
+    expected.extend(["--".to_string(), "go on".to_string()]);
+    assert_eq!(argv_through_sh(&o), expected);
     for bad in ["relative/dir", "", "/a\nb", "-/x"] {
         let o = LaunchOptions {
             add_dirs: vec![bad.into()],
@@ -310,4 +325,20 @@ fn add_dirs_are_absolute_folders_before_the_prompt() {
         let err = ClaudeCodeAdapter::args(&o).unwrap_err();
         assert!(matches!(err, Error::InvalidInput(_)), "{bad:?}: {err:?}");
     }
+}
+
+#[test]
+fn agents_start_without_the_users_claude_setup() {
+    let argv = ClaudeCodeAdapter::args(&LaunchOptions::default()).unwrap();
+    for flag in [
+        "--setting-sources=",
+        "--settings={\"disableAllHooks\":true,\"autoMemoryEnabled\":false}",
+        "--strict-mcp-config",
+    ] {
+        assert!(argv.iter().any(|a| a == flag), "{flag} missing: {argv:?}");
+    }
+    assert!(
+        !argv.iter().any(|a| a.starts_with("--mcp-config")),
+        "agents get no MCP server: {argv:?}"
+    );
 }

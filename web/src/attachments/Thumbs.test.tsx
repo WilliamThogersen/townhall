@@ -46,8 +46,9 @@ describe("Thumbs", () => {
     expect(log).toHaveClass("th-file");
     expect(log).toHaveAttribute("href", "/api/conversations/c1/attachments/f1");
     expect(log).toHaveAttribute("download", "staging-nginx.log");
-    expect(log.querySelector(".th-file-ext")).toHaveTextContent("log");
-    expect(log.querySelector(".th-file-size")).toHaveTextContent("1.1 MB");
+    expect(log.querySelector(".th-file-icon")).not.toBeNull();
+    expect(log.querySelector(".th-file-name")).toHaveTextContent("staging-nginx.log");
+    expect(log.querySelector(".th-file-size")).toHaveTextContent("LOG · 1.1 MB");
   });
 
   it("leaves out the image row when there are only files", () => {

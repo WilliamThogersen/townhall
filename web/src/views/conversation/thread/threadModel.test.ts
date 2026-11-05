@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { aConversation, anEntry, aTask, aYouEntry } from "../../../api/fixtures";
 import type { EntryBody } from "../../../api/types";
 import {
+  askAnswers,
   askChoices,
   clockTime,
   conversationStatus,
@@ -86,5 +87,19 @@ describe("endQuestion", () => {
   it("names the conversation and the tasks that keep running", () => {
     expect(endQuestion("login loop", 1)).toBe("end login loop? 1 task keeps running");
     expect(endQuestion("login loop", 2)).toBe("end login loop? 2 tasks keep running");
+  });
+});
+
+describe("askAnswers", () => {
+  const sent = (agent: string, text: string): EntryBody => ({ kind: "agent", agent, event: "sent", text });
+
+  it("pairs a question with the first answer its agent got", () => {
+    const entries = [anEntry(1, ask), anEntry(2, sent("other", "x")), anEntry(3, sent("fix-login", "y")), anEntry(4, sent("fix-login", "later"))];
+    expect(askAnswers(entries)).toEqual(new Map([[0, 2]]));
+  });
+
+  it("gives a question no answer once a newer one from its agent came", () => {
+    const entries = [anEntry(1, ask), anEntry(2, ask), anEntry(3, sent("fix-login", "y"))];
+    expect(askAnswers(entries)).toEqual(new Map([[1, 2]]));
   });
 });

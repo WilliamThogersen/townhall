@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { attachmentUrl } from "../api/attachments";
 import type { Attachment } from "../api/types";
-import { extensionTag, formatClock, formatSize } from "./format";
+import { FileCardBody } from "./FileCardBody";
+import { formatClock, formatSize } from "./format";
 import { Lightbox, type LightboxImage } from "./Lightbox";
 
 export interface ThumbsProps {
@@ -82,9 +83,7 @@ function FileRow({ conversationId, items }: RowProps) {
     <div className="th-msg-files">
       {items.map((file) => (
         <a key={file.id} className="th-file" href={attachmentUrl(conversationId, file.id)} download={file.name}>
-          <span className="th-file-ext">{extensionTag(file.name)}</span>
-          <span className="th-file-name">{file.name}</span>
-          <span className="th-file-size">{formatSize(file.size)}</span>
+          <FileCardBody name={file.name} detail={formatSize(file.size)} />
         </a>
       ))}
     </div>
