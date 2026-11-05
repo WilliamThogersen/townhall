@@ -4,8 +4,11 @@
 //! - a live pane is `waiting` when the agent asks something. It asks when Claude's
 //!   transcript (written since the session started) has a pending `AskUserQuestion` or a
 //!   turn that ended on a question, when the screen shows a selection prompt (a permission
-//!   request only ever shows there), or, for a program without a transcript, when its last
-//!   line is a question,
+//!   request only ever shows there, even while the transcript reads busy: Claude writes a
+//!   message with parallel tool calls only once every call has a result), or, for a program
+//!   without a transcript, when its last line is a question. Claude's folder trust dialog
+//!   in a new worktree asks too, as [`question::TRUST_QUESTION`]; it is never answered
+//!   for you,
 //! - a live Claude whose turn ended without asking, [`IDLE_SETTLE_MS`] ago or longer, is
 //!   `ended`: interactive Claude never exits on its own, and a short pause between tool
 //!   calls must not count. Typing into it starts a new turn, which is `working` again,
@@ -85,6 +88,23 @@ const SIGNALS: [(&str, i32); 12] = [
     ("term", 15),
 ];
 
+/// A signal as tmux prints it: a name in any case, with or without `SIG`, or a bare number
+/// (what tmux prints on Linux).
+fn signal_number(text: &str) -> Option<i32> {
+    let text = text.trim();
+    if let Ok(number) = text.parse::<i32>() {
+        return (number > 0).then_some(number);
+    }
+    let bare = match text.get(..3) {
+        Some(prefix) if prefix.eq_ignore_ascii_case("sig") => &text[3..],
+        _ => text,
+    };
+    SIGNALS
+        .iter()
+        .find(|(n, _)| bare.eq_ignore_ascii_case(n))
+        .map(|(_, number)| *number)
+}
+
 /// A dead pane's state: exit 0 ended, anything else an error. A signal is reported the
 /// way a shell does, 128 plus its number.
 fn exited(exit: &Exit) -> AgentState {
@@ -94,10 +114,7 @@ fn exited(exit: &Exit) -> AgentState {
             exit_code: Some(*code),
         },
         Exit::Signal(name) => AgentState::Error {
-            exit_code: SIGNALS
-                .iter()
-                .find(|(n, _)| name.eq_ignore_ascii_case(n))
-                .map(|(_, number)| 128 + number),
+            exit_code: signal_number(name).map(|number| 128 + number),
         },
         Exit::Unknown => AgentState::Error { exit_code: None },
     }
@@ -115,7 +132,7 @@ async fn live(projects: Option<&Path>, ws: &Workspace, agent: &Agent, pane: &Pan
     let asked = |q: Option<String>| q.map_or(AgentState::Working, waiting);
     match turn {
         Some(Turn::Asking { question }) => waiting(question),
-        Some(Turn::Busy) => AgentState::Working,
+        Some(Turn::Busy) => asked(on_screen(ws, agent, pane, false).await),
         Some(Turn::Pending { call }) => asked(
             on_screen(ws, agent, pane, false)
                 .await
@@ -149,8 +166,12 @@ async fn idle(
 }
 
 /// A prompt on screen (any agent) or, when `plain`, a last line asking something.
+/// Claude's folder trust dialog is asked as [`question::TRUST_QUESTION`].
 async fn on_screen(ws: &Workspace, agent: &Agent, pane: &Pane, plain: bool) -> Option<String> {
     let text = screen_text(ws, agent, pane).await?;
+    if screen::trust_dialog(&text) {
+        return Some(question::TRUST_QUESTION.to_string());
+    }
     let plain_question = || plain.then(|| screen::trailing_question(&text)).flatten();
     screen::prompt(&text).or_else(plain_question)
 }
@@ -266,6 +287,25 @@ mod tests {
             exited(&Exit::Unknown),
             AgentState::Error { exit_code: None }
         );
+    }
+
+    #[test]
+    fn a_signal_is_read_as_a_name_in_any_case_or_a_number() {
+        for form in ["TERM", "term", "SIGTERM", "sigterm", "15"] {
+            assert_eq!(signal_number(form), Some(15), "{form}");
+            assert_eq!(
+                exited(&Exit::Signal(form.into())),
+                AgentState::Error {
+                    exit_code: Some(143)
+                },
+                "{form}"
+            );
+        }
+        assert_eq!(signal_number("9"), Some(9));
+        assert_eq!(signal_number("SIGKILL"), Some(9));
+        for form in ["", "0", "-3", "usr1", "SIG", "sig"] {
+            assert_eq!(signal_number(form), None, "{form}");
+        }
     }
 
     #[test]

@@ -19,6 +19,12 @@ export interface AgentInfo extends Agent {
   readonly state: AgentState;
 }
 
+export type AgentKey = "up" | "down" | "enter" | "escape" | "tab";
+
+export type SendInput =
+  | { readonly text: string; readonly key?: never }
+  | { readonly key: AgentKey; readonly text?: never };
+
 export interface CreateAgentInput {
   readonly name: string;
   readonly adapter: Adapter;

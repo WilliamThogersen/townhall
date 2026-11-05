@@ -11,7 +11,7 @@ mod settings;
 mod task;
 mod thread;
 
-pub use agent::{AgentInfo, AgentState};
+pub use agent::{AgentInfo, AgentKey, AgentState};
 pub use attachment::{Attachment, AttachmentKind, MAX_ATTACHMENT_BYTES};
 pub use conversation::{
     ContextUsage, Conversation, ConversationDetail, ConversationPatch, ConversationStatus,

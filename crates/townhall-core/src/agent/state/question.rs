@@ -9,6 +9,11 @@ const ELLIPSIS: char = '\u{2026}';
 /// Cursor marks a selection list draws in front of the current option.
 const CURSORS: [char; 5] = ['\u{276f}', '\u{203a}', '>', '\u{25b8}', '\u{25ba}'];
 
+/// What townhall asks for claude's folder trust dialog, and the answers it offers. The
+/// dialog takes arrow keys, not text: the cursor starts on `no, exit`.
+pub(crate) const TRUST_QUESTION: &str = "claude asks whether to trust this worktree";
+const TRUST_CHOICES: [&str; 2] = ["yes, trust it", "no, exit"];
+
 /// One numbered option: `1. Yes`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Item {
@@ -35,13 +40,18 @@ pub(crate) fn shorten(text: &str) -> String {
     format!("{ELLIPSIS}{}", tail.trim_start())
 }
 
-/// A line `1. label` or `2) label`, after an optional selection cursor.
-pub(crate) fn numbered(line: &str) -> Option<Item> {
+/// `line` without its leading space and selection cursor.
+pub(crate) fn without_cursor(line: &str) -> &str {
     let line = line.trim_start();
-    let line = match line.strip_prefix(CURSORS) {
+    match line.strip_prefix(CURSORS) {
         Some(rest) if rest.starts_with(' ') => rest.trim_start(),
         _ => line,
-    };
+    }
+}
+
+/// A line `1. label` or `2) label`, after an optional selection cursor.
+pub(crate) fn numbered(line: &str) -> Option<Item> {
+    let line = without_cursor(line);
     let digits: String = line.chars().take_while(char::is_ascii_digit).collect();
     if digits.is_empty() || digits.len() > 2 {
         return None;
@@ -108,8 +118,11 @@ fn numbers(lines: &[&str]) -> Vec<String> {
 }
 
 /// What can be typed back: the numbers of the question's numbered options, else the two
-/// words of a `y/n` marker. Empty when it offers neither.
+/// words of a `y/n` marker. Empty when it offers neither. The trust question has its own.
 pub fn choices(question: &str) -> Vec<String> {
+    if question == TRUST_QUESTION {
+        return TRUST_CHOICES.map(String::from).to_vec();
+    }
     let lines: Vec<&str> = question.lines().collect();
     let found = numbers(&lines);
     if !found.is_empty() {
@@ -188,6 +201,15 @@ mod tests {
         assert!(choices("read and/or write?").is_empty());
         assert_eq!(choices("read and/or write? [y/n]"), ["y", "n"]);
         assert_eq!(choices("1. a\n2. b\n1. c\nnext?"), ["1", "2"]);
+    }
+
+    #[test]
+    fn the_trust_question_offers_its_own_answers() {
+        assert_eq!(
+            choices("claude asks whether to trust this worktree"),
+            ["yes, trust it", "no, exit"]
+        );
+        assert_eq!(TRUST_QUESTION, "claude asks whether to trust this worktree");
     }
 
     #[test]

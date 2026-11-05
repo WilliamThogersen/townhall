@@ -1,6 +1,7 @@
 //! `ClaudeCodeAdapter`: the `claude` command line for one agent.
 //!
-//! `claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
+//! `env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT
+//! -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
 //! [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2] [--add-dir=D ...]
 //! [-- PROMPT]`
 //!
@@ -8,7 +9,8 @@
 //! no value can split or start a flag. The prompt is the only positional, after `--`.
 //! claude still runs a subcommand when the first positional equals its name (`-- update`
 //! is `claude update`), so a prompt without whitespace gets a trailing newline: no
-//! subcommand name has one.
+//! subcommand name has one. `env -u` drops [`OUTER_SESSION_ENV`]: tmux starts the agent
+//! with the tmux server's environment, which can hold them even when the daemon has not.
 
 use std::path::Path;
 
@@ -19,6 +21,24 @@ use crate::{Error, Result};
 
 pub const DEFAULT_CLAUDE_BIN: &str = "claude";
 const END_OF_OPTIONS: &str = "--";
+
+/// What a running Claude Code sets for the programs it starts. A claude that inherits them
+/// runs as part of that outer session (`CLAUDE_EFFORT` even sets its effort), so no claude
+/// townhall starts gets them. Other `CLAUDE_*` and `ANTHROPIC_*` variables stay: they can
+/// carry the user's auth or provider setup.
+pub const OUTER_SESSION_ENV: [&str; 5] = [
+    "CLAUDECODE",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_EFFORT",
+];
+
+/// `env -u NAME` for each of [`OUTER_SESSION_ENV`], in front of the program.
+fn without_outer_session() -> Vec<String> {
+    let unset = OUTER_SESSION_ENV.iter().flat_map(|name| ["-u", name]);
+    ["env"].into_iter().chain(unset).map(String::from).collect()
+}
 
 /// Launches the `claude` CLI; see the module docs for the exact argv.
 #[derive(Debug, Clone)]
@@ -165,8 +185,9 @@ impl AgentAdapter for ClaudeCodeAdapter {
     }
 
     fn launch_command(&self, options: &LaunchOptions) -> Result<String> {
-        let words: Vec<String> = [shell_word(&self.bin)]
+        let words: Vec<String> = without_outer_session()
             .into_iter()
+            .chain([shell_word(&self.bin)])
             .chain(Self::args(options)?.iter().map(|a| shell_quote(a)))
             .collect();
         Ok(words.join(" "))

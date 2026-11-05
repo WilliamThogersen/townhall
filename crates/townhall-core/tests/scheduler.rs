@@ -246,3 +246,25 @@ async fn a_start_that_fails_sets_error_with_a_short_reason() {
     assert!(text.chars().count() <= 300, "{}", text.len());
     assert!(text.starts_with("could not start: ") && text.ends_with("..."));
 }
+
+/// tmux refuses a command line this long; its reason must survive the 300 character cap.
+#[tokio::test]
+async fn a_start_tmux_refuses_keeps_the_reason_before_the_command() {
+    let mut s = Sched::new().await;
+    s.claude = format!("/{}", "c".repeat(20_000));
+    s.restart().await;
+    let name = unique("refused");
+    s.create(&name, &[]).await;
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert_eq!(pass.failed, [name.as_str()]);
+    let text = s.failed_text(&name).await;
+    assert!(
+        text.starts_with("could not start: command too long (`tmux "),
+        "{text}"
+    );
+    assert!(
+        text.chars().count() <= 300 && text.ends_with("..."),
+        "{text}"
+    );
+    assert!(s.agents().await.is_empty());
+}

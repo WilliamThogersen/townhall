@@ -22,6 +22,31 @@ pub enum AgentState {
     Ended,
 }
 
+/// A key `POST /api/agents/{name}/send` presses on its own (`{ "key": "down" }`): what
+/// answers a dialog that moves a cursor, like claude's folder trust dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentKey {
+    Up,
+    Down,
+    Enter,
+    Escape,
+    Tab,
+}
+
+impl AgentKey {
+    /// How the key reads in a conversation's `agent` `sent` entry.
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Self::Up => "\u{2191}",
+            Self::Down => "\u{2193}",
+            Self::Enter => "\u{23ce}",
+            Self::Escape => "esc",
+            Self::Tab => "tab",
+        }
+    }
+}
+
 /// `GET /api/agents` rows: the phase 1 fields plus `repo` and `state`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,6 +99,31 @@ mod tests {
         for (state, want) in cases {
             assert_eq!(serde_json::to_value(&state).unwrap(), want);
             assert_eq!(serde_json::from_value::<AgentState>(want).unwrap(), state);
+        }
+    }
+
+    #[test]
+    fn keys_are_lowercase_words_shown_as_symbols() {
+        let keys = [
+            (AgentKey::Up, "up", "\u{2191}"),
+            (AgentKey::Down, "down", "\u{2193}"),
+            (AgentKey::Enter, "enter", "\u{23ce}"),
+            (AgentKey::Escape, "escape", "esc"),
+            (AgentKey::Tab, "tab", "tab"),
+        ];
+        for (key, wire, symbol) in keys {
+            assert_eq!(serde_json::to_value(key).unwrap(), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<AgentKey>(json!(wire)).unwrap(),
+                key
+            );
+            assert_eq!(key.symbol(), symbol);
+        }
+        for bad in ["Down", "left", "C-c", ""] {
+            assert!(
+                serde_json::from_value::<AgentKey>(json!(bad)).is_err(),
+                "{bad}"
+            );
         }
     }
 

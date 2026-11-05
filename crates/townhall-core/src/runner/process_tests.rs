@@ -30,14 +30,37 @@ async fn gone(pid: &str) -> bool {
     false
 }
 
+#[test]
+fn claude_goes_without_exactly_the_outer_sessions_variables() {
+    let built = command("/bin/sh", &[], Path::new("/"));
+    let changed: Vec<_> = built.as_std().get_envs().collect();
+    assert!(
+        changed.iter().all(|(_, value)| value.is_none()),
+        "{changed:?}"
+    );
+    let mut removed: Vec<String> = changed
+        .iter()
+        .map(|(name, _)| name.to_string_lossy().into_owned())
+        .collect();
+    removed.sort();
+    let mut want = crate::agent::OUTER_SESSION_ENV.map(String::from).to_vec();
+    want.sort();
+    assert_eq!(removed, want);
+}
+
 /// A script that starts `sleep 31` holding its stdout, says `ready`, then ignores stdin.
 fn with_kid(dir: &Path, own_group: bool) -> (Proc, PathBuf) {
     let kid = dir.join("kid");
-    let monitor = if own_group { "set -m; " } else { "" };
-    let script = format!(
-        "{monitor}sleep 31 & echo $! > '{}'; echo ready; while read l; do :; done",
-        kid.display()
-    );
+    let file = kid.display();
+    let start = if own_group {
+        format!(
+            "perl -e 'setpgrp(0,0); open F,\">\",shift; print F $$; close F; exec @ARGV' '{file}' sleep 31 & \
+             while [ ! -s '{file}' ]; do sleep 0.05; done"
+        )
+    } else {
+        format!("sleep 31 & echo $! > '{file}'")
+    };
+    let script = format!("{start}; echo ready; while read l; do :; done");
     (sh(&script), kid)
 }
 

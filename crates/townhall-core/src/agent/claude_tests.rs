@@ -1,6 +1,22 @@
+use std::os::unix::fs::PermissionsExt;
+
 use super::*;
 
 const ID: &str = "0b8e7f8a-3c1d-4f7e-9a2b-1c2d3e4f5a6b";
+const UNSET: &str = "env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT \
+                     -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT";
+
+/// The launch command of a fake claude running `script`, and the folder that holds it.
+fn fake_command(script: &str, options: &LaunchOptions) -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let fake = dir.path().join("fake claude");
+    std::fs::write(&fake, format!("#!/bin/sh\n{script}\n")).unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let command = ClaudeCodeAdapter::new(fake.to_string_lossy())
+        .launch_command(options)
+        .unwrap();
+    (dir, command)
+}
 
 fn opts(prompt: &str) -> LaunchOptions {
     LaunchOptions {
@@ -13,14 +29,9 @@ fn opts(prompt: &str) -> LaunchOptions {
 /// Runs the launch command through `sh` with a fake claude that prints its argv,
 /// NUL-separated, so newlines inside a value survive.
 fn argv_through_sh(options: &LaunchOptions) -> Vec<String> {
-    let dir = tempfile::tempdir().unwrap();
-    let fake = dir.path().join("fake claude");
-    std::fs::write(&fake, "#!/bin/sh\nprintf '%s\\0' \"$@\"\n").unwrap();
-    let command = ClaudeCodeAdapter::new(fake.to_string_lossy())
-        .launch_command(options)
-        .unwrap();
+    let (_dir, command) = fake_command("printf '%s\\0' \"$@\"", options);
     let out = std::process::Command::new("sh")
-        .args(["-c", &format!("sh {command}")])
+        .args(["-c", &command])
         .output()
         .unwrap();
     assert!(
@@ -162,7 +173,7 @@ fn no_prompt_means_no_positional_and_blank_values_add_nothing() {
     );
     assert_eq!(
         ClaudeCodeAdapter::default().launch_command(&o).unwrap(),
-        "claude '--permission-mode=acceptEdits'"
+        format!("{UNSET} claude '--permission-mode=acceptEdits'")
     );
     assert_eq!(split(&argv_through_sh(&opts("  "))).1, ["  "]);
 }
@@ -176,8 +187,36 @@ fn custom_bin_is_quoted_only_when_needed() {
     let spaced = ClaudeCodeAdapter::new("/my tools/claude")
         .launch_command(&o)
         .unwrap();
-    assert!(plain.starts_with("/opt/fake/claude-1.0 "), "{plain}");
-    assert!(spaced.starts_with("'/my tools/claude' "), "{spaced}");
+    assert!(
+        plain.starts_with(&format!("{UNSET} /opt/fake/claude-1.0 ")),
+        "{plain}"
+    );
+    assert!(
+        spaced.starts_with(&format!("{UNSET} '/my tools/claude' ")),
+        "{spaced}"
+    );
+}
+
+#[test]
+fn claude_runs_without_the_outer_sessions_variables() {
+    let (_dir, command) = fake_command("env", &LaunchOptions::default());
+    let outer = OUTER_SESSION_ENV.map(|name| (name, "outer"));
+    let out = std::process::Command::new("sh")
+        .args(["-c", &command])
+        .envs(outer)
+        .envs([
+            ("CLAUDE_CONFIG_DIR", "/kept"),
+            ("ANTHROPIC_API_KEY", "kept"),
+        ])
+        .output()
+        .unwrap();
+    let env = String::from_utf8(out.stdout).unwrap();
+    for name in OUTER_SESSION_ENV {
+        assert!(!env.contains(&format!("{name}=")), "{name}:\n{env}");
+    }
+    for kept in ["CLAUDE_CONFIG_DIR=/kept", "ANTHROPIC_API_KEY=kept"] {
+        assert!(env.lines().any(|l| l == kept), "{kept}:\n{env}");
+    }
 }
 
 #[test]

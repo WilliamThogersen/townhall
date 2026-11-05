@@ -8,7 +8,7 @@ use townhall_core::agent::{
     self, state, AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter,
 };
 use townhall_core::cmd::validate_name;
-use townhall_core::model::{AgentEvent, AgentInfo, EntryBody};
+use townhall_core::model::{AgentEvent, AgentInfo, AgentKey, EntryBody};
 use townhall_core::repos::verify_branch;
 use townhall_core::{fleet, Context, Error, Workspace};
 
@@ -31,9 +31,38 @@ pub struct CreateAgent {
     repo: Option<String>,
 }
 
+/// `POST /api/agents/{name}/send` body: exactly one of `text` (typed as it is, then
+/// Enter) and `key` (pressed alone). Unknown fields are ignored, as in phase 1.
 #[derive(Debug, Deserialize)]
 pub struct SendText {
-    text: String,
+    text: Option<String>,
+    key: Option<AgentKey>,
+}
+
+/// What one send puts into the agent's pane.
+enum Sent {
+    Text(String),
+    Key(AgentKey),
+}
+
+impl Sent {
+    fn from_body(body: SendText) -> Result<Self, ApiError> {
+        match (body.text, body.key) {
+            (Some(text), None) => Ok(Self::Text(text)),
+            (None, Some(key)) => Ok(Self::Key(key)),
+            _ => Err(ApiError::BadRequest(
+                "give exactly one of `text` and `key`".into(),
+            )),
+        }
+    }
+
+    /// How the send reads in a task's conversation: the text, or the key's symbol.
+    fn noted(&self) -> &str {
+        match self {
+            Self::Text(text) => text,
+            Self::Key(key) => key.symbol(),
+        }
+    }
 }
 
 /// `?repo=<name>` on every `/api/agents/{name}...` route.
@@ -134,14 +163,18 @@ pub async fn send(
     Query(q): Query<RepoQuery>,
     JsonBody(req): JsonBody<SendText>,
 ) -> Result<Response, ApiError> {
+    let sent = Sent::from_body(req)?;
     let ctx = state.ctx();
     let at = fleet::locate(ctx, &name, q.repo.as_deref()).await?;
-    agent::send(&at.workspace, &name, &req.text).await?;
-    note_sent(ctx, &name, &req.text).await;
+    match &sent {
+        Sent::Text(text) => agent::send(&at.workspace, &name, text).await?,
+        Sent::Key(key) => agent::send_key(&at.workspace, &name, *key).await?,
+    }
+    note_sent(ctx, &name, sent.noted()).await;
     Ok(ok(name))
 }
 
-/// A task's agent got text: add `→ sent to <agent>` to its conversation. The text was
+/// A task's agent got text or a key: add `→ sent to <agent>` to its conversation. It was
 /// already sent, so a failure here is logged rather than failing the request.
 async fn note_sent(ctx: &Context, name: &str, text: &str) {
     let noted = async {
