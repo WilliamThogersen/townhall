@@ -88,11 +88,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("SettingsPage", () => {
-  it("shows the three groups and how changes are saved", async () => {
+  it("shows the four groups and how changes are saved", async () => {
     await renderLoaded();
     expect(screen.getByRole("heading", { level: 1, name: "settings" })).toBeInTheDocument();
     expect(screen.getByText("saved as you change them")).toBeInTheDocument();
-    ["agents", "conversations", "appearance and notifications"].forEach((name) => {
+    ["agents", "conversations", "appearance and notifications", "about you"].forEach((name) => {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: /save/ })).not.toBeInTheDocument();
@@ -109,7 +109,31 @@ describe("SettingsPage", () => {
       "session panel",
       "theme",
       "notify me when",
+      "learn about me",
     ]);
+  });
+
+  it("switches learn about me, off by default, and explains what it keeps", async () => {
+    await renderLoaded();
+    const toggle = screen.getByRole("switch", { name: "Learn about me" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    const help = screen.getByText("learn about me", { selector: ".th-setting-label" }).nextElementSibling;
+    expect(help).toHaveTextContent(/how you work, your tone of voice, your typical flow/);
+    expect(help).toHaveTextContent(/stored locally/);
+    expect(help).toHaveTextContent(/edit or reset it below at any time/);
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => expect(daemon.settings().learnAboutMe).toBe(true));
+    expect(lastPut()).toEqual(["/api/settings/learnAboutMe", { value: true }]);
+  });
+
+  it("rolls the learn about me switch back when saving fails", async () => {
+    await renderLoaded();
+    daemon.failing.add("learnAboutMe");
+    const toggle = screen.getByRole("switch", { name: "Learn about me" });
+    await userEvent.click(toggle);
+    expect(await screen.findByRole("alert")).toHaveTextContent(`error: settings not saved: ${HELD}`);
+    expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 
   it("shows the keys that move through the settings", async () => {

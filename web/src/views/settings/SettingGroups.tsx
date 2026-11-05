@@ -57,6 +57,21 @@ export function ConversationsGroup() {
   );
 }
 
+export function AboutYouGroup() {
+  const { settings, update } = useSettings();
+  return (
+    <SettingGroup title="about you">
+      <SettingRow label="learn about me" help={HELP.learnAboutMe}>
+        <Switch
+          label="Learn about me"
+          checked={settings.learnAboutMe}
+          onChange={(learnAboutMe) => update({ learnAboutMe })}
+        />
+      </SettingRow>
+    </SettingGroup>
+  );
+}
+
 export function AppearanceGroup() {
   const { settings, update } = useSettings();
   const theme = useTheme();
