@@ -38,7 +38,10 @@ fn merge_open(conn: &mut Connection, cid: &str, task: &str) -> Result<Option<Thr
     get(conn, cid)?;
     let tx = conn.transaction()?;
     let turn_start: u64 = tx.query_row(
-        "select coalesce(max(id), 0) from messages where conversation_id = ?1 and author = 'you'",
+        "select coalesce(max(id), 0) from (
+             select id from messages where conversation_id = ?1 and author = 'you'
+             union all
+             select id from events where conversation_id = ?1 and kind = 'event')",
         [cid],
         |r| r.get(0),
     )?;
@@ -85,7 +88,7 @@ fn launches(conn: &Connection, filter: &str, args: &[&dyn ToSql]) -> Result<Vec<
 
 impl Store {
     /// Records that `task` was created in the current turn: one `tasksCreated` entry per turn.
-    /// A turn is everything after your latest message (the whole thread before your first).
+    /// A turn is everything after your latest message or task event (the whole thread before the first).
     /// The turn's first task appends the entry; each later one is added to that entry in
     /// place (same id and time), which is sent again as `entryAppended`, so a client replaces
     /// the entry it has with that id.

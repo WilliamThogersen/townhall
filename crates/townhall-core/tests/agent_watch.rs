@@ -68,7 +68,11 @@ struct Env {
 
 fn open(repo: &Path, home: &Path) -> Context {
     let ws = Workspace::new(Home::at(home.join(".townhall")), repo).unwrap();
-    Context::open(ws, ContextOptions::default()).unwrap()
+    let options = ContextOptions {
+        notify_delay: Duration::from_secs(3600),
+        ..ContextOptions::default()
+    };
+    Context::open(ws, options).unwrap()
 }
 
 async fn env() -> Env {
@@ -205,6 +209,7 @@ async fn exit_three_fails_its_task_once_even_after_a_restart() {
     env.polls(&mut watcher, 3).await;
     let once = vec![failed(&name, "exited with code 3")];
     assert_eq!(env.agent_entries().await, once);
+    assert!(env.ctx().notes().is_waiting(&env.conversation));
     let seen = updates(&mut rx, &name);
     let last = seen.last().expect("agentUpdated was published");
     assert_eq!(last.state, AgentState::Error { exit_code: Some(3) });
@@ -237,6 +242,10 @@ async fn exit_zero_ends_its_task_once() {
         text: "ended".into(),
     };
     assert_eq!(env.agent_entries().await, vec![ended]);
+    assert!(
+        env.ctx().notes().is_waiting(&env.conversation),
+        "the planner is told it ended"
+    );
     agent::stop(env.ctx().startup(), &name).await.unwrap();
 }
 
@@ -279,6 +288,7 @@ async fn an_answered_y_n_prompt_works_again_with_one_entry() {
     let mut watcher = Watcher::new(env.ctx().clone()).await;
     env.poll_until(&mut watcher, &name, TaskState::NeedsYou)
         .await;
+    assert!(env.ctx().notes().is_waiting(&env.conversation));
     agent::send(env.ctx().startup(), &name, "y").await.unwrap();
     env.poll_until(&mut watcher, &name, TaskState::Working)
         .await;
@@ -305,11 +315,13 @@ async fn queued_and_merged_tasks_are_left_alone() {
     assert_eq!(env.state_of(&asking).await, TaskState::Queued);
     assert_eq!(env.state_of(&failing).await, TaskState::Merged);
     assert!(env.agent_entries().await.is_empty());
+    assert!(!env.ctx().notes().is_waiting(&env.conversation));
 
     env.set_state(&asking, TaskState::Working).await;
     env.poll_until(&mut watcher, &asking, TaskState::NeedsYou)
         .await;
     assert_eq!(env.agent_entries().await.len(), 1);
+    assert!(env.ctx().notes().is_waiting(&env.conversation));
     for name in [&asking, &failing] {
         agent::stop(env.ctx().startup(), name).await.unwrap();
     }

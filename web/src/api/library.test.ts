@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch, sent } from "../test/fetchMock";
 import { anAgentType, anAgentTypeSummary } from "./fixtures";
-import { getAgentType, listAgentTypes } from "./library";
+import { getAgentType, listAgentTypes, listAgentUsage } from "./library";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -33,5 +33,16 @@ describe("library api", () => {
   it("refuses a type without source", async () => {
     mockFetch(200, { ...anAgentType(), source: undefined });
     await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
+  });
+
+  it("lists runs and tokens per agent type", async () => {
+    const fn = mockFetch(200, [{ agent: "builder", runs: 2, tokens: 1500 }]);
+    expect(await listAgentUsage()).toEqual([{ agent: "builder", runs: 2, tokens: 1500 }]);
+    expect(sent(fn)).toEqual({ url: "/api/library/agents/usage", method: "GET", body: undefined });
+  });
+
+  it("refuses usage without a token count", async () => {
+    mockFetch(200, [{ agent: "builder", runs: 2 }]);
+    await expect(listAgentUsage()).rejects.toMatchObject({ kind: "protocol" });
   });
 });

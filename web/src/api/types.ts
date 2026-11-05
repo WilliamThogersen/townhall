@@ -126,6 +126,7 @@ export type EntryBody =
       readonly event: AgentEvent;
       readonly text: string;
     }
+  | { readonly kind: "event"; readonly text: string }
   | { readonly kind: "error"; readonly message: string };
 
 export type ThreadEntry = { readonly id: number; readonly at: string } & EntryBody;
@@ -185,6 +186,12 @@ export interface AgentTypeSummary {
   readonly model: string | null;
   readonly permissionMode: AgentTypeMode | null;
   readonly updatedAt: string;
+}
+
+export interface AgentUsage {
+  readonly agent: string;
+  readonly runs: number;
+  readonly tokens: number;
 }
 
 export interface AgentType {

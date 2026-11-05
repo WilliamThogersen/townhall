@@ -6,6 +6,7 @@
 //! Claude's folder trust dialog in townhall's own worktrees is answered once per session
 //! (`trust.rs`).
 
+mod event;
 mod sync;
 mod trust;
 
@@ -19,7 +20,7 @@ use tokio::time::MissedTickBehavior;
 use crate::context::Context;
 use crate::home::{repo_key, WORKTREES_DIR};
 use crate::model::{AgentInfo, AgentState, ServerEvent, Task};
-use crate::{fleet, tmux, Error, Result, Workspace};
+use crate::{fleet, runner, tmux, Error, Result, Workspace};
 use sync::Change;
 
 pub const INTERVAL: Duration = Duration::from_millis(1500);
@@ -170,6 +171,9 @@ impl Watcher {
         }
         self.settling.remove(&key);
         if changed {
+            if let Some(task) = task {
+                self.record_tokens(info, task).await;
+            }
             let event = ServerEvent::AgentUpdated {
                 agent: info.clone(),
             };
@@ -220,6 +224,27 @@ impl Watcher {
         true
     }
 
+    async fn record_tokens(&mut self, info: &AgentInfo, task: &Task) {
+        let found = async {
+            let ws = self.workspace_of(&info.repo).await?;
+            let listed = crate::worktree::list(&ws).await?;
+            let Some(wt) = listed.into_iter().find(|wt| wt.name == info.name) else {
+                return Ok(0);
+            };
+            let projects = crate::steps::claude_projects_dir()?;
+            crate::steps::tokens_for_agent(&projects, &wt.path).await
+        }
+        .await;
+        let saved = match (found, self.ctx.store()) {
+            (Ok(0), _) => Ok(()),
+            (Ok(tokens), Ok(store)) => store.set_task_tokens(&task.name, tokens).await,
+            (Err(e), _) | (_, Err(e)) => Err(e),
+        };
+        if let Err(e) = saved {
+            self.warn(&format!("cannot count the tokens of `{}`: {e}", task.name));
+        }
+    }
+
     async fn workspace_of(&self, repo: &str) -> Result<Workspace> {
         let repo = self.ctx.repo(repo).await?;
         self.ctx.workspace(&repo)
@@ -256,12 +281,18 @@ impl Watcher {
             }
         }
         if let Some(entry) = change.entry {
-            if let Err(e) = store.append_entry(&task.conversation_id, entry).await {
+            if let Err(e) = store
+                .append_entry(&task.conversation_id, entry.clone())
+                .await
+            {
                 self.warn(&format!(
                     "cannot note `{}` in its conversation: {e}",
                     task.name
                 ));
                 return false;
+            }
+            if let Some(text) = event::for_entry(&self.ctx, task, &entry).await {
+                runner::notify(&self.ctx, &task.conversation_id, text);
             }
         }
         true

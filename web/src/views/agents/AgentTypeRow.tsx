@@ -1,10 +1,12 @@
 import type { AgentTypeSummary } from "../../api/types";
-import { pipelineStep } from "./agentTypes";
+import { compactNumber } from "../home/format";
+import { pipelineStep, type Usage } from "./agentTypes";
 
 export interface AgentTypeRowProps {
   readonly type: AgentTypeSummary;
   readonly isDefault: boolean;
   readonly selected: boolean;
+  readonly usage: Usage | null;
   readonly onSelect: (name: string) => void;
 }
 
@@ -13,7 +15,7 @@ export function StepBadge({ name }: { readonly name: string }) {
   return step === null ? null : <span className="th-tag th-tag--ok" title="pipeline step">{step}</span>;
 }
 
-export function AgentTypeRow({ type, isDefault, selected, onSelect }: AgentTypeRowProps) {
+export function AgentTypeRow({ type, isDefault, selected, usage, onSelect }: AgentTypeRowProps) {
   return (
     <button type="button" className="th-agent-row" aria-pressed={selected} onClick={() => onSelect(type.name)}>
       <span className="th-agent-row-head">
@@ -26,6 +28,12 @@ export function AgentTypeRow({ type, isDefault, selected, onSelect }: AgentTypeR
         <span>{type.adapter}</span>
         {type.model ? <span>{type.model}</span> : null}
         {type.permissionMode ? <span className="th-agent-mode">{type.permissionMode}</span> : null}
+        {usage === null ? null : (
+          <>
+            <span>{usage.runs === 1 ? "1 run" : `${usage.runs} runs`}</span>
+            <span>{`${compactNumber(usage.tokens)} tokens`}</span>
+          </>
+        )}
       </span>
     </button>
   );
