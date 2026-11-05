@@ -113,7 +113,11 @@ fn create_task_schema() -> Value {
                 "description": "Branch the worktree starts from. Default: the repo's base branch."
             },
             "after": names_array("Names of tasks that must finish before this one starts."),
-            "attachments": names_array("Attachment ids of this conversation the agent needs.")
+            "attachments": names_array("Attachment ids of this conversation the agent needs."),
+            "agent": {
+                "type": "string", "pattern": NAME_PATTERN, "minLength": 1, "maxLength": MAX_NAME_LEN,
+                "description": "The agent type the task runs as (list_agent_types). Default: builder when it exists, else the first type by name."
+            }
         },
         "required": ["name", "title", "prompt"],
         "additionalProperties": false
@@ -140,7 +144,7 @@ fn task_tools() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: CREATE_TASK,
-            description: "Create one task for a Claude agent. It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. Returns the task.",
+            description: "Create one task for an agent of a saved agent type (`agent`). It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. Returns the task.",
             input_schema: create_task_schema(),
         },
         ToolDef {
@@ -190,6 +194,7 @@ mod tests {
             props,
             [
                 "after",
+                "agent",
                 "attachments",
                 "baseBranch",
                 "name",

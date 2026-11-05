@@ -111,6 +111,29 @@ fn default_of(types: &[AgentType]) -> Option<&AgentType> {
         .or(types.first())
 }
 
+/// The stored name of the type a task runs as: `wanted` (ignoring case), else the default.
+pub(super) async fn resolve(ctx: &Context, wanted: Option<&str>) -> Checked<String> {
+    let types = ctx
+        .store()
+        .map_err(text)?
+        .agent_types()
+        .await
+        .map_err(text)?;
+    let found = match wanted {
+        Some(name) => types.iter().find(|t| t.def.name.eq_ignore_ascii_case(name)),
+        None => default_of(&types),
+    };
+    found
+        .map(|t| t.def.name.clone())
+        .ok_or_else(|| match wanted {
+            Some(name) => format!(
+                "unknown agent type `{name}`: pass `agent`, one of: {}",
+                names(&types)
+            ),
+            None => format!("no agent type to run the task as: {}", names(&types)),
+        })
+}
+
 pub(super) async fn list(ctx: &Context, _input: ListInput) -> Checked<Value> {
     let types = ctx
         .store()

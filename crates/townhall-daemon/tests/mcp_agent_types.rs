@@ -170,3 +170,48 @@ async fn the_session_may_use_the_agent_type_tools() {
         .collect();
     assert!(names.contains(&"save_agent_type"), "{names:?}");
 }
+
+#[tokio::test]
+async fn create_task_runs_as_a_saved_type() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    let first = m
+        .ok("create_task", mcp_support::task(&common::unique("a")))
+        .await;
+    assert_eq!(first["agent"], "builder");
+    work_without_asking(&m, true).await;
+    m.ok("save_agent_type", json!({"source": REVIEWER})).await;
+    let mut args = mcp_support::task(&common::unique("b"));
+    args["agent"] = json!("REVIEWER");
+    assert_eq!(m.ok("create_task", args).await["agent"], "reviewer");
+    let mut ghost = mcp_support::task(&common::unique("c"));
+    ghost["agent"] = json!("ghost");
+    let text = m.refused("create_task", ghost).await;
+    assert!(
+        text.contains("ghost") && text.contains("builder, reviewer"),
+        "{text}"
+    );
+
+    let status = m.ok("task_status", json!({})).await;
+    let agents: Vec<&Value> = status["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| &t["agent"])
+        .collect();
+    assert_eq!(agents, [&json!("builder"), &json!("reviewer")]);
+    let (s, _) = call(&m.app, "DELETE", "/api/library/agents/builder", None).await;
+    assert_eq!(s, StatusCode::OK);
+    let fallback = m
+        .ok("create_task", mcp_support::task(&common::unique("d")))
+        .await;
+    assert_eq!(fallback["agent"], "reviewer");
+    let (_, v) = call(
+        &m.app,
+        "GET",
+        &format!("/api/tasks/{}", first["name"].as_str().unwrap()),
+        None,
+    )
+    .await;
+    assert_eq!(v["data"]["agent"], "builder");
+}

@@ -132,6 +132,7 @@ async fn task_agent(state: &AppState, app: &axum::Router) -> (String, String) {
         base_branch: "main".into(),
         after: vec![],
         attachments: vec![],
+        agent: "builder".into(),
     };
     store.create_task(&convo.id, task).await.unwrap();
     let body = json!({"name": name, "adapter": "shell", "command": "cat"});

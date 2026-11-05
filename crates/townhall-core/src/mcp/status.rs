@@ -39,6 +39,8 @@ struct TaskStatus {
     branch: String,
     state: TaskState,
     after: Vec<String>,
+    /// The agent type it runs as.
+    agent: String,
     entries: Vec<ThreadEntry>,
 }
 
@@ -123,6 +125,7 @@ fn status(task: &Task, entries: &[ThreadEntry]) -> TaskStatus {
         branch: task.branch(),
         state: task.state,
         after: task.after.clone(),
+        agent: task.agent.clone(),
         entries: mine.into_iter().skip(recent).cloned().collect(),
     }
 }

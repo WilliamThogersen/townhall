@@ -54,6 +54,8 @@ pub struct Task {
     pub attachments: Vec<String>,
     pub created_at: String,
     pub pr: Option<Pr>,
+    /// The agent type it runs as (`AgentType`), resolved when it was created.
+    pub agent: String,
 }
 
 impl Task {
@@ -72,6 +74,8 @@ pub struct NewTask {
     pub base_branch: String,
     pub after: Vec<String>,
     pub attachments: Vec<String>,
+    /// The stored name of its agent type.
+    pub agent: String,
 }
 
 /// The `create_task` MCP tool's arguments (see `docs/daemon-api.md`).
@@ -89,6 +93,9 @@ pub struct CreateTaskInput {
     pub after: Vec<String>,
     #[serde(default)]
     pub attachments: Vec<String>,
+    /// The agent type's name. Default: `builder` when it exists, else the first by name.
+    #[serde(default)]
+    pub agent: Option<String>,
 }
 
 #[cfg(test)]
@@ -114,11 +121,13 @@ mod tests {
                 url: None,
                 checks: Checks::Failed,
             }),
+            agent: "builder".into(),
         };
         let v = serde_json::to_value(&t).unwrap();
         assert_eq!(v["state"], "needsYou");
         assert_eq!(v["baseBranch"], "develop");
         assert_eq!(v["conversationId"], "a1b2c3d4e5f6");
+        assert_eq!(v["agent"], "builder");
         assert_eq!(
             v["pr"],
             json!({"number": 41, "url": null, "checks": "failed"})

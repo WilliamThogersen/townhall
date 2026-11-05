@@ -3,7 +3,8 @@
 //! the TOML again. `0801_seed_builder` saves the type `builder` once, on the first open
 //! with no agent types; it is never saved again after you delete it. `agent_type_asks`
 //! keeps the agent types townhall's session asked you to confirm, one per conversation and
-//! name, so a confirmed save can be checked against what you were shown.
+//! name, so a confirmed save can be checked against what you were shown. `0803_task_agent`
+//! adds `tasks.agent`, the type a task runs as (`builder` for tasks from before it).
 //! Migrations 0800 to 0849, files `migrations/08xx_<name>.sql`.
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -29,6 +30,11 @@ pub const MIGRATIONS: &[Migration] = &[
         id: 802,
         name: "0802_agent_type_asks",
         sql: include_str!("migrations/0802_agent_type_asks.sql"),
+    },
+    Migration {
+        id: 803,
+        name: "0803_task_agent",
+        sql: include_str!("migrations/0803_task_agent.sql"),
     },
 ];
 
