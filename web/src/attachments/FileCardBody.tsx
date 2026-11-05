@@ -2,11 +2,9 @@ import { extensionTag } from "./format";
 
 export interface FileCardBodyProps {
   readonly name: string;
-  /** Size text, or a percent while uploading. */
   readonly detail: string;
 }
 
-/** Icon, name and a small `TYPE · size` line, shared by sent files and the composer's pending ones. */
 export function FileCardBody({ name, detail }: FileCardBodyProps) {
   return (
     <>
