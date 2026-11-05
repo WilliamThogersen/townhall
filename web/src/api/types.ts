@@ -55,6 +55,7 @@ export interface Settings {
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
+  readonly learnAboutMe: boolean;
 }
 
 export type SettingKey = keyof Settings;

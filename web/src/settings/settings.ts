@@ -11,6 +11,7 @@ export interface Settings {
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
+  readonly learnAboutMe: boolean;
 }
 
 export const PERMISSION_MODES: readonly PermissionMode[] = [
@@ -35,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   sessionPanelOpen: true,
   notifyWhen: "needsYou",
   townhallModel: "sonnet",
+  learnAboutMe: false,
 });
 
 export type SettingKey = keyof Settings;
@@ -47,6 +49,7 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "sessionPanelOpen",
   "notifyWhen",
   "townhallModel",
+  "learnAboutMe",
 ]);
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -76,6 +79,7 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   sessionPanelOpen: isFlag,
   notifyWhen: choiceOf(NOTIFY_VALUES),
   townhallModel: choiceOf(TOWNHALL_MODELS),
+  learnAboutMe: isFlag,
 };
 
 export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
@@ -102,5 +106,6 @@ export function parseSettings(raw: unknown): Settings {
     sessionPanelOpen: pick(fields, "sessionPanelOpen"),
     notifyWhen: pick(fields, "notifyWhen"),
     townhallModel: pick(fields, "townhallModel"),
+    learnAboutMe: pick(fields, "learnAboutMe"),
   });
 }

@@ -17,6 +17,7 @@ const custom: Settings = {
   sessionPanelOpen: false,
   notifyWhen: "everything",
   townhallModel: "opus",
+  learnAboutMe: true,
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -29,6 +30,7 @@ describe("DEFAULT_SETTINGS", () => {
       sessionPanelOpen: true,
       notifyWhen: "needsYou",
       townhallModel: "sonnet",
+      learnAboutMe: false,
     });
   });
 
