@@ -36,7 +36,7 @@ fn check_first_turn(first: &[String], session: &str, config: String) {
     assert_eq!(values_of(first, "--setting-sources"), [""]);
     assert_eq!(
         values_of(first, "--settings"),
-        [r#"{"disableAllHooks":true}"#]
+        [r#"{"disableAllHooks":true,"autoMemoryEnabled":false}"#]
     );
     assert!(first.contains(&"--disable-slash-commands".to_string()));
     assert!(!first.iter().any(|a| a == "--bare" || a == "--safe-mode"));

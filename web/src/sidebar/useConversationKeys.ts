@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { navigate, PATHS } from "../router";
+import { isInTerminal } from "../shell/globalKeys";
 
 export const OVERLAY_SELECTOR = '[role="menu"], [role="dialog"]';
 
@@ -29,7 +30,7 @@ export function useConversationKeys(ids: readonly string[], currentId: string | 
     const onKeyDown = (e: KeyboardEvent) => {
       const step = STEPS.get(e.key);
       if (step === undefined || !e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      if (e.defaultPrevented || e.isComposing || insideOverlay(e.target)) return;
+      if (e.defaultPrevented || e.isComposing || insideOverlay(e.target) || isInTerminal(e.target)) return;
       const next = nextConversation(latest.current.ids, latest.current.currentId, step);
       e.preventDefault();
       if (next !== null) navigate(PATHS.conversation(next));

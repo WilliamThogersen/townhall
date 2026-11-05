@@ -1,7 +1,6 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { StreamState } from "../../../agents/useAgentStream";
 import * as client from "../../../api/client";
 import * as conversationsApi from "../../../api/conversations";
 import { aDetail, anAgentInfo, aTask } from "../../../api/fixtures";
@@ -10,12 +9,8 @@ import { createFakeEvents, TestDataProvider } from "../../../data/testing";
 import { renderWithHints } from "../../../test/renderWithHints";
 import { TaskTerminal } from "./index";
 
-const stream = vi.hoisted(() => ({ state: { snapshot: "$ ready", status: "open", error: null } as StreamState }));
-
-vi.mock("../../../agents/useAgentStream", () => ({ useAgentStream: () => stream.state }));
-
 vi.mock("../../../agents/Terminal", () => ({
-  Terminal: ({ snapshot }: { snapshot: string }) => <pre data-testid="terminal">{snapshot}</pre>,
+  Terminal: ({ name }: { name: string }) => <pre data-testid="terminal">{name}</pre>,
 }));
 
 const login = aTask({ name: "fix-login", state: "needsYou", repo: "shop" });
@@ -40,10 +35,6 @@ function renderTerminal(task: Task) {
 
 const pane = (name: string) => screen.getByRole("article", { name: `${name} terminal` });
 
-beforeEach(() => {
-  stream.state = { snapshot: "$ ready", status: "open", error: null };
-});
-
 afterEach(() => vi.restoreAllMocks());
 
 describe("TaskTerminal with a live agent", () => {
@@ -51,7 +42,7 @@ describe("TaskTerminal with a live agent", () => {
 
   it("shows the agent pane inside the panes column", async () => {
     renderTerminal(login);
-    expect(await screen.findByTestId("terminal")).toHaveTextContent("$ ready");
+    expect(await screen.findByTestId("terminal")).toHaveTextContent("fix-login");
     expect(pane("fix-login").parentElement).toHaveClass("th-panes");
     expect(pane("fix-login")).toHaveAttribute("data-active", "true");
     expect(pane("fix-login").querySelector(".th-pane-branch")).toHaveTextContent("townhall/fix-login");
@@ -72,11 +63,9 @@ describe("TaskTerminal with a live agent", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("leaves esc to a field and to the terminal", async () => {
+  it("leaves esc to the program in the terminal", async () => {
     const { onClose } = renderTerminal(login);
     const terminal = await screen.findByTestId("terminal");
-    await userEvent.click(screen.getByRole("textbox", { name: "Input for fix-login" }));
-    await userEvent.keyboard("{Escape}");
     fireEvent.keyDown(terminal, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
   });

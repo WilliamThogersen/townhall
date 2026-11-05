@@ -30,3 +30,11 @@ export function streamUrl(
 ): string {
   return `${wsApiBase(loc, win)}/agents/${enc(name)}/stream`;
 }
+
+export function attachUrl(
+  name: string,
+  loc: PageLocation = window.location,
+  win: object = window,
+): string {
+  return `${wsApiBase(loc, win)}/agents/${enc(name)}/attach`;
+}

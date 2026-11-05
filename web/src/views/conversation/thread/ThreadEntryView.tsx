@@ -10,6 +10,8 @@ import { Message, PlainText } from "./ThreadLines";
 export interface ThreadEntryViewProps {
   readonly entry: ThreadEntry;
   readonly open: boolean;
+  /** For an agent question: the answer the agent got, when there was one. */
+  readonly answer?: string;
 }
 
 type YouEntry = Extract<ThreadEntry, { kind: "you" }>;
@@ -26,7 +28,7 @@ function YouMessage({ entry }: { readonly entry: YouEntry }) {
   );
 }
 
-export function ThreadEntryView({ entry, open }: ThreadEntryViewProps) {
+export function ThreadEntryView({ entry, open, answer }: ThreadEntryViewProps) {
   switch (entry.kind) {
     case "you":
       return <YouMessage entry={entry} />;
@@ -45,7 +47,7 @@ export function ThreadEntryView({ entry, open }: ThreadEntryViewProps) {
     case "tasksCreated":
       return <TaskBlock entry={entry} />;
     case "needsYou":
-      return <NeedsYouBlock entry={entry} open={open} />;
+      return <NeedsYouBlock entry={entry} open={open} answer={answer} />;
     case "agent":
       return <AgentEventLine entry={entry} />;
     case "error":

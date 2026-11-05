@@ -23,7 +23,7 @@ function CopyButton({ text }: { readonly text: string }) {
     );
   };
   return (
-    <Button size="sm" onClick={copy}>
+    <Button size="sm" variant="ghost" onClick={copy} data-copied={copied || undefined}>
       {copied ? "copied" : "copy"}
     </Button>
   );

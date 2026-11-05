@@ -53,7 +53,13 @@ async fn the_agent_reads_its_brief_with_the_settings_permission_mode() {
     let id = lines[1].strip_prefix("--session-id=").unwrap();
     assert!(is_session_id(id), "{args}");
     let dir = format!("--add-dir={}", brief.parent().unwrap().display());
-    assert_eq!(lines[2..], [dir.as_str(), "--", &brief_order(&brief)]);
+    let order = brief_order(&brief);
+    let rest: Vec<&str> = [dir.as_str()]
+        .into_iter()
+        .chain(townhall_core::agent::AGENT_ISOLATION)
+        .chain(["--", order.as_str()])
+        .collect();
+    assert_eq!(lines[2..], rest);
     let text = std::fs::read_to_string(&brief).unwrap();
     assert_eq!(text, format!("# do {name}\n\nthe brief for {name}\n"));
     let launch = s.store().task_launch(&name).await.unwrap().unwrap();

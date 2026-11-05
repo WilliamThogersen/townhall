@@ -106,6 +106,18 @@ describe("ControlCenterPage keys", () => {
     expect(url()).toBe("/c/c1?t=fix-login");
   });
 
+  it("only folds a task row on click without navigating", async () => {
+    stubDaemon();
+    const user = userEvent.setup();
+    renderControl();
+    await user.click(await findItem("auth-tests"));
+    expect(item("auth-tests")).toHaveAttribute("aria-expanded", "true");
+    expect(url()).toBe("/townhall");
+    await user.click(item("auth-tests"));
+    expect(item("auth-tests")).toHaveAttribute("aria-expanded", "false");
+    expect(url()).toBe("/townhall");
+  });
+
   it("opens a conversation row on click", async () => {
     stubDaemon();
     const user = userEvent.setup();

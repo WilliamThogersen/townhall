@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { isTextField } from "../../shell/globalKeys";
+import { useEffect, useRef, useState } from "react";
+import { isInTerminal, isTextField } from "../../shell/globalKeys";
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 import { CLOSE_TERMINAL_HINT, SESSION_KEY_HINTS } from "./session";
 
@@ -21,12 +21,34 @@ export interface ConversationKeys {
   readonly terminalOpen: boolean;
 }
 
-export function conversationHints(panelKeys: boolean, terminalOpen: boolean): readonly KeyHint[] {
+/** While the terminal has focus esc goes to the program in it (it interrupts claude). */
+export const TERMINAL_FOCUSED_HINT: KeyHint = { keys: "esc", label: "interrupt claude" };
+
+export function conversationHints(
+  panelKeys: boolean,
+  terminalOpen: boolean,
+  terminalFocused = false,
+): readonly KeyHint[] {
   return [
     ...CONVERSATION_HINTS,
     ...(panelKeys ? SESSION_KEY_HINTS : []),
-    ...(terminalOpen ? [CLOSE_TERMINAL_HINT] : []),
+    ...(terminalOpen ? [terminalFocused ? TERMINAL_FOCUSED_HINT : CLOSE_TERMINAL_HINT] : []),
   ];
+}
+
+/** Whether keyboard focus is inside the live terminal. */
+function useTerminalFocused(): boolean {
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    const update = () => setFocused(isInTerminal(document.activeElement));
+    document.addEventListener("focusin", update);
+    document.addEventListener("focusout", update);
+    return () => {
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", update);
+    };
+  }, []);
+  return focused;
 }
 
 function inDialog(target: EventTarget | null): boolean {
@@ -34,13 +56,14 @@ function inDialog(target: EventTarget | null): boolean {
 }
 
 function ignored(e: KeyboardEvent): boolean {
-  if (e.defaultPrevented || e.isComposing) return true;
+  if (e.defaultPrevented || e.isComposing || isInTerminal(e.target)) return true;
   if (e.metaKey || e.ctrlKey || e.altKey) return true;
   return isTextField(e.target) || inDialog(e.target);
 }
 
 export function useConversationKeys(keys: ConversationKeys): void {
-  useKeyHints(conversationHints(keys.panelKeys, keys.terminalOpen));
+  const terminalFocused = useTerminalFocused();
+  useKeyHints(conversationHints(keys.panelKeys, keys.terminalOpen, terminalFocused));
   const latest = useRef(keys);
   useEffect(() => {
     latest.current = keys;

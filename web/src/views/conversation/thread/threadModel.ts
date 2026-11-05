@@ -40,6 +40,22 @@ export function isNeedsYouOpen(entries: readonly ThreadEntry[], index: number, t
     );
 }
 
+/**
+ * Which `sent` line answered which agent question: question index to answer index. The
+ * answer is the first `sent` to the same agent before that agent asks again.
+ */
+export function askAnswers(entries: readonly ThreadEntry[]): ReadonlyMap<number, number> {
+  const pairs = entries.flatMap((entry, i) => {
+    if (entry.kind !== "needsYou") return [];
+    const later = entries.slice(i + 1);
+    const end = later.findIndex((e) => e.kind === "needsYou" && e.agent === entry.agent);
+    const window = end === -1 ? later : later.slice(0, end);
+    const answer = window.findIndex((e) => e.kind === "agent" && e.agent === entry.agent && e.event === "sent");
+    return answer === -1 ? [] : [[i, i + 1 + answer] as const];
+  });
+  return new Map(pairs);
+}
+
 export function isRepoAskOpen(entries: readonly ThreadEntry[], index: number): boolean {
   return !entries.slice(index + 1).some((later) => later.kind === "you");
 }

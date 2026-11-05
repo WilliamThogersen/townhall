@@ -1,7 +1,7 @@
 import type { Task, ThreadEntry } from "../../../api/types";
 import { Button } from "../../../ui/Button";
 import { useThread } from "./threadContext";
-import { Message, TaskGlyph } from "./ThreadLines";
+import { EntryTime, Message, TaskGlyph } from "./ThreadLines";
 import { taskBlockHead, taskWords } from "./taskView";
 
 type TasksEntry = Extract<ThreadEntry, { kind: "tasksCreated" }>;
@@ -36,10 +36,13 @@ export function TaskBlock({ entry }: { readonly entry: TasksEntry }) {
   const mine = entry.tasks.flatMap((name) => tasks.filter((task) => task.name === name));
   const head = taskBlockHead(mine, entry.tasks.length);
   return (
-    <Message at={entry.at}>
+    <Message from="block" at={entry.at} time={false}>
       <div className="th-msg-body">
         <div className="th-block" role="group" aria-label={head}>
-          <div className="th-block-head">{head}</div>
+          <div className="th-block-head">
+            <span className="th-block-title">{head}</span>
+            <EntryTime at={entry.at} />
+          </div>
           {entry.tasks.map((name) => (
             <TaskLine key={name} name={name} task={mine.find((task) => task.name === name) ?? null} tasks={tasks} />
           ))}

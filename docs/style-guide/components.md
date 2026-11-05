@@ -57,10 +57,10 @@ Chat. `.th-thread-inner` caps the thread at 76ch and centers in its column; insi
 | Part | Class | Look |
 |------|-------|------|
 | Your message | `.th-msg.th-msg--you` | Right-aligned `surface-2` bubble, 2px amber right edge, no gutter sign, time on the right |
-| Townhall's reply | `.th-msg.th-msg--townhall` | Left-aligned `info-tint` bubble, 2px blue left edge, empty gutter. Markdown: paragraphs, lists, `code` |
+| Townhall's reply | `.th-msg.th-msg--townhall` | Left-aligned `info-tint` bubble, 2px blue left edge, empty gutter. GitHub markdown via react-markdown + remark-gfm: headings, lists, task lists, `code`, code blocks, tables (scroll sideways when wide), quotes, rules, web and mail links only, no raw HTML or images |
 | Event | `.th-event` | One faint centered `sm` line with a glyph: `~` repo picked, `✓` passed, `→` sent, `×` failed, `○` ended, spinner for thinking |
-| Task block | `.th-block` + `.th-agent-line` | The tasks a reply created: `3 tasks for townhall · main`, then status, bold name, kind, title, `open` |
-| Needs you | `.th-ask` | Amber tint and edge, `◆ <agent> needs you`, the agent's question quoted verbatim, direct answers (`send y`, `send n`) and `open pane` |
+| Task block | `.th-msg.th-msg--block` + `.th-block` + `.th-agent-line` | The tasks a reply created, on the replies' left edge and as wide as the widest reply (`--th-bubble`): `3 tasks for townhall · main` with the time on the right of that head, then status, bold name, kind, title, `open` |
+| Needs you | `.th-msg.th-msg--ask` + `.th-ask` | Left like a reply, amber tint and edge, `◆` in the gutter, `<agent> needs you`. A permission dialog splits into the command (`.th-ask-context`, one line), the question, and one `.th-ask-option` button per numbered option (`3  Yes, and switch to auto mode`, hint faint). y/n questions keep `send y`, `send n` and a free text answer. Once answered: `◇`, no tint, `<agent> asked`, the question muted and `→ <picked option>`; the `sent` line that carried the answer is not shown again |
 
 - Answers in a needs-you block send that text to the agent's terminal and add a `→ sent to <agent>` event.
 - New; the thread replaces the create form and card grid in `App.tsx`.

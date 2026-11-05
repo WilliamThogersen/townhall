@@ -118,6 +118,15 @@ describe("Thread task block", () => {
     expect(lines[1]?.querySelector(".th-spin")).not.toBeNull();
   });
 
+  it("lines up with the replies and keeps its time in its head", () => {
+    renderThread([block], { tasks });
+    const group = screen.getByRole("group", { name: "4 tasks for townhall · main" });
+    const message = group.closest(".th-msg");
+    expect(message).toHaveClass("th-msg--block");
+    expect(group.querySelector(".th-block-head time")).not.toBeNull();
+    expect(message?.querySelectorAll("time")).toHaveLength(1);
+  });
+
   it("opens a task's terminal and marks the open one", async () => {
     const { value } = renderThread([block], { tasks, openTask: "auth-tests" });
     expect(screen.getByRole("button", { name: "open auth-tests" })).toHaveAttribute("aria-pressed", "true");
@@ -157,15 +166,62 @@ describe("Thread needs-you block", () => {
     expect(input).toHaveValue("later");
   });
 
-  it("drops the answers once the agent got one", () => {
+  it("drops the answers once the agent got one and shows that answer instead of a sent line", () => {
     const sent = entry(5, { kind: "agent", agent: "fix-login", event: "sent", text: "y" });
     renderThread([ask, sent], { tasks });
-    const group = screen.getByRole("group", { name: "fix-login needs you" });
+    const group = screen.getByRole("group", { name: "fix-login asked" });
     expect(group).toHaveAttribute("data-answered", "true");
     expect(within(group).getByText("fix-login asked")).toBeInTheDocument();
+    expect(within(group).getByText("y")).toHaveClass("th-ask-picked");
     expect(within(group).queryByRole("button", { name: "send y" })).toBeNull();
     expect(within(group).queryByRole("textbox")).toBeNull();
     expect(within(group).getByRole("button", { name: "open terminal" })).toBeInTheDocument();
+    expect(screen.queryByText(/sent to/)).toBeNull();
+  });
+
+  it("still shows a sent line that answered no question", () => {
+    const later = entry(6, { kind: "agent", agent: "fix-login", event: "sent", text: "also the logout" });
+    const sent = entry(5, { kind: "agent", agent: "fix-login", event: "sent", text: "y" });
+    renderThread([ask, sent, later], { tasks });
+    expect(screen.getByText(/sent to/)).toHaveTextContent("sent to fix-login: also the logout");
+  });
+});
+
+describe("Thread permission dialog", () => {
+  const question = [
+    "Bash: cd /w/web/\u2026",
+    "Do you want to proceed?",
+    "\u276f 1. Yes",
+    "2. Yes, and don\u2019t ask again for: cd *",
+    "3. Yes, and switch to auto mode \u00b7 auto mode handles these prompts for you",
+    "4. No",
+  ].join("\n");
+  const dialog = entry(4, { kind: "needsYou", agent: "fix-login", question, choices: ["1", "2", "3", "4"] });
+  const tasks = [aTask({ name: "fix-login", state: "needsYou" })];
+
+  it("shows the command, the question and one button per option", async () => {
+    const { value } = renderThread([dialog], { tasks });
+    const group = screen.getByRole("group", { name: "fix-login needs you" });
+    expect(within(group).getByText("Bash: cd /w/web/\u2026")).toHaveClass("th-ask-context");
+    expect(within(group).getByText("Do you want to proceed?")).toHaveClass("th-ask-quote");
+    const options = within(group).getAllByRole("button", { name: /^\d / });
+    expect(options.map((b) => b.textContent)).toEqual([
+      "1Yes",
+      "2Yes, and don\u2019t ask again for: cd *",
+      "3Yes, and switch to auto modeauto mode handles these prompts for you",
+      "4No",
+    ]);
+    expect(within(group).queryByRole("textbox")).toBeNull();
+    await userEvent.click(within(group).getByRole("button", { name: /^3 Yes, and switch to auto mode/ }));
+    expect(value.answerAgent).toHaveBeenCalledWith("fix-login", "3");
+  });
+
+  it("names the picked option once answered", () => {
+    const sent = entry(5, { kind: "agent", agent: "fix-login", event: "sent", text: "3" });
+    renderThread([dialog, sent], { tasks: [aTask({ name: "fix-login", state: "working" })] });
+    const group = screen.getByRole("group", { name: "fix-login asked" });
+    expect(within(group).getByText("3 \u00b7 Yes, and switch to auto mode")).toHaveClass("th-ask-picked");
+    expect(within(group).queryByRole("button", { name: /^\d / })).toBeNull();
   });
 });
 

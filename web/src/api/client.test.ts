@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getInfo, listAgents, sendKey, sendText, streamUrl } from "./client";
+import { getInfo, listAgents, sendKey, sendText, streamUrl, attachUrl } from "./client";
 import { ApiError } from "./errors";
 
 const agent = { name: "a", kind: "shell", branch: "townhall/a", worktree: "/w/a", alive: true };
@@ -80,6 +80,9 @@ describe("api client", () => {
   it("builds ws urls from the page location", () => {
     expect(streamUrl("a b", { protocol: "https:", host: "h:1" } as Location)).toBe(
       "wss://h:1/api/agents/a%20b/stream",
+    );
+    expect(attachUrl("a b", { protocol: "http:", host: "h:1" } as Location)).toBe(
+      "ws://h:1/api/agents/a%20b/attach",
     );
   });
 });
