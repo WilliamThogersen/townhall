@@ -27,7 +27,30 @@ pub(crate) fn tool_problem(tool: &str) -> Option<String> {
             tool.contains(',')
                 .then_some("must not hold a comma: give each tool its own entry")
         })
+        .or_else(|| rule_problem(tool))
         .map(|problem| format!("entry \"{}\" {problem}", tool.escape_debug()))
+}
+
+fn rule_problem(tool: &str) -> Option<&'static str> {
+    let (name, rest) = match tool.find('(') {
+        Some(at) => (&tool[..at], Some(&tool[at..])),
+        None => (tool, None),
+    };
+    let balanced = tool.matches('(').count() == tool.matches(')').count();
+    if !balanced || (rest.is_none() && tool.contains(')')) {
+        return Some("has unbalanced parentheses");
+    }
+    if name.is_empty() {
+        return Some("has no tool name before the parentheses");
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Some("has a tool name with characters other than letters, digits and underscores");
+    }
+    let rest = rest?;
+    if !rest.ends_with(')') {
+        return Some("has text after the closing parenthesis");
+    }
+    (rest.len() == 2).then_some("has an empty pattern")
 }
 
 fn flag_problem(value: &str) -> Option<&'static str> {
