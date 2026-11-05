@@ -7,6 +7,7 @@ pub mod cors;
 pub mod envelope;
 pub mod error;
 pub mod extract;
+pub mod logging;
 pub mod routes;
 pub mod serve;
 pub mod state;
