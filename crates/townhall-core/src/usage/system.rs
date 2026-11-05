@@ -108,8 +108,7 @@ impl UsageSource for SystemSource {
         Box::pin(async move {
             let config = curl_config(token).ok_or("the token is not a valid header value")?;
             let mut child = Command::new("curl")
-                .args(["--silent", "--show-error", "--proto", "=https"])
-                .args(["--max-time", &REQUEST_SECS.to_string(), "--config", "-"])
+                .args(curl_args())
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -137,6 +136,28 @@ impl UsageSource for SystemSource {
             parse_curl_output(&String::from_utf8_lossy(&output.stdout))
         })
     }
+}
+
+/// curl's arguments. `-q` has to come first or curl reads the user's `~/.curlrc`, which could
+/// print the Authorization header (verbose, trace) or include other files.
+fn curl_args() -> Vec<String> {
+    let mut args = vec!["-q".to_string()];
+    args.extend(
+        [
+            "--silent",
+            "--show-error",
+            "--proto",
+            "=https",
+            "--max-time",
+        ]
+        .map(String::from),
+    );
+    args.extend([
+        REQUEST_SECS.to_string(),
+        "--config".to_string(),
+        "-".to_string(),
+    ]);
+    args
 }
 
 /// The request as a curl config read from stdin. A token with a control character could add
@@ -187,6 +208,13 @@ mod tests {
         assert!(config.contains(r#"header = "Authorization: Bearer tok-1""#));
         assert!(config.contains(r#"header = "anthropic-beta: oauth-2025-04-20""#));
         assert!(config.contains(r#"write-out = "\n%{http_code}""#));
+    }
+
+    #[test]
+    fn curl_ignores_the_users_curlrc() {
+        let args = curl_args();
+        assert_eq!(args.first().map(String::as_str), Some("-q"));
+        assert!(args.contains(&"--config".to_string()));
     }
 
     #[test]
