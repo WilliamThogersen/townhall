@@ -133,8 +133,8 @@ impl RepoRegistry {
             .ok_or_else(|| Error::missing("repo", name))
     }
 
-    /// `POST /api/repos`: a git folder, a free name (`409` when taken, ignoring case) and a
-    /// base branch that resolves.
+    /// `POST /api/repos`: a folder (`git init` first when it is in no repo) or a git link
+    /// (cloned), a free name (`409` when taken, ignoring case) and a base branch that resolves.
     pub async fn add(&self, req: &AddRepo) -> Result<Repo> {
         match source::classify(&req.path)? {
             Source::Path(input) => self.add_folder(&input, req).await,

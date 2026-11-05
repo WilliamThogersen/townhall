@@ -106,6 +106,18 @@ describe("ReposPage", () => {
     expect(screen.getByText("3", { selector: ".th-page-head .th-cap" })).toBeInTheDocument();
   });
 
+  it("takes a github or gitlab link in the path field and sends it as the path", async () => {
+    const link = "git@github.com:acme/data-hub.git";
+    const added = aRepo({ name: "data-hub", path: "/Users/me/.townhall/repos/data-hub", baseBranch: "main" });
+    const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+    expect(screen.getByPlaceholderText(/or a github\/gitlab link/)).toBe(screen.getByRole("textbox", { name: "path" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "path" }), `${link}{Enter}`);
+    expect(add).toHaveBeenCalledWith({ path: link });
+    expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
+  });
+
   it("shows the daemon's refusal in the form and keeps what you typed", async () => {
     vi.spyOn(reposApi, "addRepo").mockRejectedValue(
       new ApiError("http", "/Users/me/Developer is not the top folder of a git repo", 400),
