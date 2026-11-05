@@ -25,7 +25,28 @@ fn extend_path() {
     }
 }
 
+/// Starts file logging once for the whole process (the embedded daemon shares it).
+fn init_logging() -> Option<townhall_daemon::logging::Guard> {
+    let logs = townhall_core::Home::from_env()
+        .and_then(|home| home.logs_dir())
+        .map_err(|e| eprintln!("townhall-app: logging disabled: {e}"))
+        .ok()?;
+    let guard = townhall_daemon::logging::init(townhall_daemon::logging::LogConfig {
+        dir: logs,
+        prefix: "app".into(),
+        stderr_level: tracing::Level::WARN,
+    });
+    tracing::info!(
+        target: "townhall::app",
+        event = "app.start",
+        version = env!("CARGO_PKG_VERSION"),
+        "app started"
+    );
+    Some(guard)
+}
+
 pub fn run() {
+    let _log_guard = init_logging();
     extend_path();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

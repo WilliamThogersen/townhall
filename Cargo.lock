@@ -4613,6 +4613,7 @@ dependencies = [
  "tokio",
  "townhall-core",
  "townhall-daemon",
+ "tracing",
 ]
 
 [[package]]
