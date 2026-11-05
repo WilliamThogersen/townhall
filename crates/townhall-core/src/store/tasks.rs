@@ -84,7 +84,7 @@ fn select(conn: &Connection, filter: &str, args: &[&dyn ToSql]) -> Result<Vec<Ta
     rows.into_iter().map(build).collect()
 }
 
-fn find(conn: &Connection, name: &str) -> Result<Option<Task>> {
+pub(super) fn find(conn: &Connection, name: &str) -> Result<Option<Task>> {
     Ok(select(conn, "where name = ?1", &[&name])?
         .into_iter()
         .next())
@@ -166,7 +166,7 @@ fn insert(tx: &Transaction<'_>, t: &Task) -> Result<()> {
     Ok(())
 }
 
-fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
+pub(super) fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
     let (number, url, checks) = match &t.pr {
         Some(pr) => (Some(pr.number), pr.url.clone(), Some(name_of(&pr.checks))),
         None => (None, None, None),

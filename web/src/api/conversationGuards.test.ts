@@ -17,6 +17,7 @@ const bodies: readonly EntryBody[] = [
   { kind: "needsYou", agent: "fix-login", question: "go?", choices: ["y", "n"] },
   { kind: "agent", agent: "fix-login", event: "passed", text: "merged into main" },
   { kind: "event", text: "task fix ended (ended)" },
+  { kind: "handoff", task: "fix-login", from: "shipper", to: "coder", reason: "lint fails" },
   { kind: "error", message: "claude exited with 1" },
 ];
 

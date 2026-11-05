@@ -79,6 +79,9 @@ pub struct AgentDef {
     /// The `shell` adapter's command. Required for `shell`, refused for `claude`.
     #[serde(default)]
     pub command: Option<String>,
+    /// The agent types this one may hand its task back to. `None`: any type.
+    #[serde(default)]
+    pub can_hand_back_to: Option<Vec<String>>,
 }
 
 /// Parse an agent definition, keeping `source` as written.
@@ -98,11 +101,15 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
         .filter(|m| !m.trim().is_empty())
         .and_then(model_problem);
     let tools = def.tools.iter().filter_map(|tool| tool_problem(tool));
+    let hand_back = hand_back_problems(def)
+        .into_iter()
+        .map(|m| error("can_hand_back_to", m));
     let command = command_problem(def).map(|m| error("command", m.to_string()));
     let errors = name
         .into_iter()
         .chain(model.map(|m| error("model", m)))
         .chain(tools.map(|m| error("tools", m)))
+        .chain(hand_back)
         .chain(command);
     into_result(errors.collect())
 }
@@ -120,5 +127,36 @@ fn command_problem(def: &AgentDef) -> Option<&'static str> {
         AdapterKind::Shell if !runnable => Some("is required for the shell adapter"),
         AdapterKind::Claude if def.command.is_some() => Some("is only for the shell adapter"),
         _ => None,
+    }
+}
+
+fn hand_back_problems(def: &AgentDef) -> Vec<String> {
+    let names = def.can_hand_back_to.as_deref().unwrap_or_default();
+    names
+        .iter()
+        .enumerate()
+        .filter_map(|(at, name)| {
+            let repeated = names[..at].iter().any(|n| n.eq_ignore_ascii_case(name));
+            match (invalid_name(name), repeated) {
+                (Some(problem), _) => Some(format!("entry \"{}\" {problem}", name.escape_debug())),
+                (None, true) => Some(format!("entry \"{}\" is listed twice", name.escape_debug())),
+                (None, false) => None,
+            }
+        })
+        .collect()
+}
+
+impl AgentDef {
+    /// The saved types (`all`, by name) this agent may hand back to, in the order of `all`:
+    /// never itself, and only the listed ones when `can_hand_back_to` is set.
+    pub fn hand_back_targets(&self, own: &str, all: &[String]) -> Vec<String> {
+        all.iter()
+            .filter(|name| !name.eq_ignore_ascii_case(own))
+            .filter(|name| match &self.can_hand_back_to {
+                None => true,
+                Some(allowed) => allowed.iter().any(|a| a.eq_ignore_ascii_case(name)),
+            })
+            .cloned()
+            .collect()
     }
 }

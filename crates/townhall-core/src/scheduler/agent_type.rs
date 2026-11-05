@@ -4,6 +4,7 @@
 use crate::agent::{AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter};
 use crate::context::Context;
 use crate::definitions::AdapterKind;
+use crate::mcp;
 use crate::model::Task;
 use crate::{Error, Result};
 
@@ -31,16 +32,40 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
             names.join(", ")
         )));
     };
-    let options = found
+    let mut options = found
         .def
         .launch_options(ctx.settings().await?.permission_mode);
+    let names: Vec<String> = store
+        .agent_types()
+        .await?
+        .into_iter()
+        .map(|t| t.def.name)
+        .collect();
+    let targets = found.def.hand_back_targets(&found.def.name, &names);
     let (adapter, claude): (Box<dyn AgentAdapter>, bool) = match found.def.adapter {
         AdapterKind::Claude => (Box::new(ClaudeCodeAdapter::new(ctx.claude_bin())), true),
         AdapterKind::Shell => (Box::new(ShellAdapter), false),
     };
+    if claude && !targets.is_empty() {
+        options.mcp_config = Some(mcp::task_config_json(ctx.base_url(), &task.name));
+        options.mcp_tools = mcp::task_allowed_tools();
+        options.system_prompt = Some(with_hand_back(options.system_prompt, &targets));
+    }
     Ok(Launcher {
         adapter,
         options,
         claude,
     })
+}
+
+/// The type's own prompt, then what the agent may hand back to.
+fn with_hand_back(own: Option<String>, targets: &[String]) -> String {
+    let line = format!(
+        "you can hand back to: {}. when the work needs one of those types, call the hand_back tool with `to` and `reason`, then stop.",
+        targets.join(", ")
+    );
+    match own.filter(|p| !p.trim().is_empty()) {
+        Some(own) => format!("{own}\n\n{line}"),
+        None => line,
+    }
 }

@@ -919,3 +919,25 @@
     border-bottom: var(--th-border) solid var(--th-line);
   }
 }
+
+.th-ask-allow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--th-space-2);
+  margin-top: var(--th-space-2);
+}
+
+.th-ask-allow .th-prompt-input {
+  flex: 1 1 16ch;
+  min-width: 0;
+  border: var(--th-border) solid var(--th-line-control);
+  padding: 4px var(--th-space-2);
+}
+
+.th-ask-allow-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+}

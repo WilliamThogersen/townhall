@@ -35,11 +35,19 @@ async fn a_builder_task_runs_claude_with_the_types_flags() {
     let brief = s.brief(&name);
     let dir = format!("--add-dir={}", brief.parent().unwrap().display());
     let end = lines.iter().position(|l| *l == "--").unwrap();
-    let isolation = end - townhall_core::agent::AGENT_ISOLATION.len();
-    assert_eq!(lines[isolation..end], townhall_core::agent::AGENT_ISOLATION);
+    let isolation = end - 1 - townhall_core::agent::AGENT_ISOLATION.len();
+    assert_eq!(
+        lines[isolation..end - 1],
+        townhall_core::agent::AGENT_ISOLATION
+    );
+    assert!(lines[end - 1].starts_with("--mcp-config="), "{args}");
     assert_eq!(lines[isolation - 1], dir);
     assert!(lines[end + 1].contains(&brief.display().to_string()));
-    assert!(!args.contains("--allowedTools"));
+    assert!(!args.contains("--tools="), "{args}");
+    assert!(
+        args.contains("--allowedTools=mcp__townhall__hand_back"),
+        "{args}"
+    );
 }
 
 #[tokio::test]

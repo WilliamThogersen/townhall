@@ -95,7 +95,7 @@ export interface ConversationPatch {
 }
 
 export type RepoRule = "named" | "code" | "only" | "picked" | "linked";
-export type AgentEvent = "sent" | "passed" | "failed" | "ended";
+export type AgentEvent = "sent" | "passed" | "failed" | "ended" | "allowed";
 
 export type EntryBody =
   | { readonly kind: "you"; readonly text: string; readonly attachments: readonly string[] }
@@ -127,6 +127,13 @@ export type EntryBody =
       readonly text: string;
     }
   | { readonly kind: "event"; readonly text: string }
+  | {
+      readonly kind: "handoff";
+      readonly task: string;
+      readonly from: string;
+      readonly to: string;
+      readonly reason: string;
+    }
   | { readonly kind: "error"; readonly message: string };
 
 export type ThreadEntry = { readonly id: number; readonly at: string } & EntryBody;
@@ -203,6 +210,7 @@ export interface AgentType {
   readonly tools: readonly string[];
   readonly prompt: string | null;
   readonly command: string | null;
+  readonly canHandBackTo: readonly string[] | null;
   readonly source: string;
   readonly updatedAt: string;
 }

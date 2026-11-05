@@ -80,3 +80,31 @@ export function answerText(view: AskView, sent: string): string {
   const option = view.options.find((o) => o.number === text);
   return option === undefined ? text : `${option.number}${HINT_SEPARATOR}${option.label}`;
 }
+
+const TOOL_CALL = /^(\w+): (\S.*)$/;
+const SHELL_BREAK = /[;|&<>`$()\n]/;
+const PROGRAM = /^[\w./+-]+$/;
+const SUBCOMMAND = /^[A-Za-z][\w-]*$/;
+
+function commandPattern(command: string): string | null {
+  const words = (command.split(SHELL_BREAK)[0] ?? "")
+    .replace(/\u2026/g, "")
+    .split(/\s+/)
+    .filter((word) => word !== "");
+  while (words[0] !== undefined && /^\w+=/.test(words[0])) words.shift();
+  const [program, next] = words;
+  if (program === undefined || !PROGRAM.test(program)) return null;
+  const sub = next !== undefined && SUBCOMMAND.test(next) ? ` ${next}` : "";
+  return `Bash(${program}${sub} *)`;
+}
+
+export function permissionTool(context: readonly string[]): string | null {
+  const match = context.map((line) => TOOL_CALL.exec(line.trim())).find((m) => m !== null);
+  if (match === undefined || match === null) return null;
+  const [, tool = "", what = ""] = match;
+  return tool === "Bash" ? commandPattern(what) : tool;
+}
+
+export function yesOption(options: readonly AskOption[]): string | null {
+  return options.find((o) => /^yes\b/i.test(o.label))?.number ?? null;
+}

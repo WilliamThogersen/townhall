@@ -27,6 +27,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` or `{ key }` (2.10), exactly one | the name. `text` is typed as it is (`tmux send-keys -l`, so `Down` or `C-c` stay text), then Enter. `key` (`up`, `down`, `enter`, `escape`, `tab`) is pressed alone, without text or Enter. When the agent is a task's, adds an `agent` `sent` entry to its conversation: the text, or the key as `↑`, `↓`, `⏎`, `esc`, `tab` | 400 (neither or both, an unknown key), 404 (also a dead pane), 409 | phase 1, 2.1, 2.10 |
+| POST | `/agents/{name}/allow` | `{ tool }` | adds `tool` (trimmed, checked like a `tools` entry) to the `tools` list of the agent type of the task named `name`, keeping the rest of its TOML as written, and adds an `agent` `allowed` entry to the conversation. `{ agentType, tool, added }`: `added` is false, with no entry, when the type lists it already. Only the web ask calls it, after the user picks `always allow for <type>`. It applies from the next launch of the type: a running agent keeps the list it started with | 400 (an invalid tool), 404 (no such task or type) | this change |
 | GET | `/agents/{name}/output` | | the pane text | 400, 404 (also a dead pane), 409 | phase 1, 2.1 |
 | GET (ws) | `/agents/{name}/stream` | | text frames with the pane, `error: ...` then close when it ends | 400, 404, 409 before the upgrade | phase 1, 2.1 |
 | GET | `/agents/{name}/steps` | | `Step[]` | 404 | 2.7 |
@@ -45,6 +46,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | POST | `/conversations/{id}/mcp` | JSON-RPC 2.0, see MCP | JSON-RPC answer, or `202` with no body for notifications | 404 | 2.3 |
 | GET | `/tasks?conversation=&repo=&state=` | | `Task[]`, oldest first | | 2.3 |
 | GET | `/tasks/{name}` | | `Task` | 404 | 2.3 |
+| POST | `/tasks/{name}/mcp` | JSON-RPC 2.0, see Task agent MCP | JSON-RPC answer, or `202` with no body for notifications | 404 | 2.3 |
 | POST | `/conversations/{id}/attachments` | multipart, one field `file` per request | `201 Attachment` | 400, 403 origin, 404, 413 | 2.6 |
 | GET | `/conversations/{id}/attachments` | | `Attachment[]` | 404 | 2.6 |
 | GET | `/conversations/{id}/attachments/{attachment}` | | the bytes with their `content-type` (not the envelope) | 404 | 2.6 |
@@ -111,15 +113,16 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 | `repoAsk` | `question, candidates: string[], offerAll` | needs-you block from townhall: one button per candidate, plus `both` (2 candidates) or `all` when `offerAll`. A button sends its text as a normal message |
 | `tasksCreated` | `tasks: string[]` | task block |
 | `needsYou` | `agent, question, choices: string[]` | `◆ <agent> needs you`, the question verbatim, one `send <choice>` per choice (through `/agents/{name}/send`). A choice goes as `text`, except in claude's folder trust dialog (`claude asks whether to trust this worktree`), which reads keys and would take any text as `no, exit`: `yes, trust it` sends the key `up`, then `enter` (200 ms apart), and `no, exit` sends `enter`. That dialog has no free text answer |
-| `agent` | `agent, event: "sent" \| "passed" \| "failed" \| "ended", text` | `→` `✓` `×` `○` lines |
+| `agent` | `agent, event: "sent" \| "passed" \| "failed" \| "ended" \| "allowed", text` | `→` `✓` `×` `○` `+` lines. `allowed` has the text `<tool> to <agent type>` |
 | `event` | `text` | `◇` line: a task event townhall's own session was woken with, not a message from you (see below) |
+| `handoff` | `task, from, to, reason` | `↩ <task>: <from> handed back to <to>, <reason>` |
 | `error` | `message` | townhall's own failure |
 
 - `RepoRule`: `named`, `code`, `only` (2.4's `repo_infer::Rule`, same names), `picked` (an answer to a `repoAsk`), `linked` (the row menu).
 - `Task { name, title, prompt, repo, baseBranch, after: string[], state, conversationId, attachments: string[], createdAt, pr: { number, url: string | null, checks: "pending" | "passed" | "failed" | "none" } | null, agent }`. `agent` (2.12) is the stored name of the agent type it runs as, resolved when it was created (`builder` for tasks from before 2.12). `types.ts` has it optional until a web unit reads it (`parseTask` drops it for now). `name` is the agent name and the branch `townhall/<name>` (`Task::branch()`), unique across every conversation and repo ignoring case. `TaskState`: `queued`, `working`, `needsYou`, `inCi`, `inReview`, `merged`, `ended`, `error`.
 - `Attachment { id, conversationId, name, mime, size, kind: "image" | "file", createdAt }`. `kind` is `image` for `image/*`. At most 20 MB (`MAX_ATTACHMENT_BYTES`).
 - `Step { id, tool, summary, startedAt, endedAt: string | null, result: "running" | "ok" | "error" }` and `ShippedDay { date: "YYYY-MM-DD", fixes, features, lines, agents }`: the Rust types belong to 2.7 (`steps/`, `stats/`); `types.ts` already mirrors them.
-- `AgentType { name, description, adapter: "claude" | "shell", model, permissionMode: "default" | "acceptEdits" | "plan" | null, tools: string[], prompt, command, source, updatedAt }` (2.12): the parsed `AgentDef` plus its TOML as written. `AgentTypeSummary { name, description, adapter, model, permissionMode, updatedAt }`: a row of the list. `DefinitionError { kind: "agent" | "workflow", name, step, field, message, line }`: 2.8a's error.
+- `AgentType { name, description, adapter: "claude" | "shell", model, permissionMode: "default" | "acceptEdits" | "plan" | null, tools: string[], prompt, command, canHandBackTo: string[] | null, source, updatedAt }` (2.12): the parsed `AgentDef` plus its TOML as written. `AgentTypeSummary { name, description, adapter, model, permissionMode, updatedAt }`: a row of the list. `canHandBackTo` is the TOML key `can_hand_back_to`: the agent types this type may hand a task back to; `null` (the key is left out) is any type, `[]` is none. Names are checked like type names, with no repeats ignoring case. `DefinitionError { kind: "agent" | "workflow", name, step, field, message, line }`: 2.8a's error.
 - `CreateTaskInput`, `NewTask`, `NewMessage`, `ConversationPatch`, `AddRepo`, `PutSetting`: request bodies, see the routes and MCP. `NewTask` carries the resolved `agent`.
 - `SearchHit { conversationId, title, match: "title" | "message", entryId: number | null, snippet: string | null, updatedAt }` (`townhall_core::search`, mirrored in `web/src/api/search.ts`): one per conversation whose title or one of whose `you` and `townhall` entries holds `q`, ignoring case (every letter, not only ASCII) and runs of whitespace; `%` and `_` are plain characters. A title match wins and has `entryId` and `snippet` `null`; else `entryId` is the newest matching entry and `snippet` that entry on one line, about 80 characters around the first match, cut between words where it can, with `…` where it was cut. `updatedAt` is the conversation's.
 
@@ -152,15 +155,16 @@ A missing or invalid stored value reads as its default. The store also keeps `de
 
 ## Permission mode
 
-`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt, add_dirs`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
+`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt, add_dirs, mcp_config, mcp_tools`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
 
 ```
 claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
        [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2]
-       [--add-dir=D ...] [-- PROMPT]
+       [--add-dir=D ...] [--mcp-config=JSON] [-- PROMPT]
 ```
 
 - Every option and its value is one argv element (`--name=value`), and the launch command shell-quotes every element, so no value can split or start a new flag. `--allowedTools` is one comma-joined element, so its position does not matter.
+- `mcp_config` is the JSON of the one MCP server an agent gets, after the isolation flags (`--strict-mcp-config` stays: no other server loads). `mcp_tools` are its tools, allowed without asking: they join `--allowedTools` (and the tool notice) when the type lists tools, and are the only `--allowedTools` entry when it lists none, so they never turn a type without a tool list into one (no `--tools=`). Both are checked like `allowed_tools`.
 - The prompt is the only positional, after the end-of-options `--`. A prompt such as `--dangerously-skip-permissions`, `-p`, `--permission-mode=bypassPermissions` or `--` arrives as the prompt, never as a flag.
 - `claude` still runs a subcommand when the first positional equals its name, even after `--` (`claude -- mcp` runs `claude mcp`). A prompt without any whitespace therefore gets a trailing newline; no subcommand name has one.
 - `add_dirs` are folders outside the worktree claude may read without a permission prompt (in `default`, `acceptEdits` and `plan` its Read asks for anything outside the working directory and `--add-dir` folders): one `--add-dir=<folder>` each, refused unless absolute and UTF-8, and when it starts with `-` or holds control characters.
@@ -288,6 +292,14 @@ Workflow tools (`list_workflows`, `save_workflow`) wait for 2.8c, which also add
 - sets `error` with an `agent` `failed` entry (`could not start: <reason>`, at most 300 characters; a failed command reads ``<its stderr> (`<command>` exited with <code>)``, so the cut drops the long command line, never the reason) when the start fails, or when another agent has the task's name (in another repo, or in another case).
 - adopts a queued task whose own agent (its exact name, in its repo) exists already (a start cut short by a restart) as `working`, never starting a second agent; a `working` task is never touched.
 - marks an `ended` task `merged`, with an `agent` `passed` entry (`merged into <base>`), when `townhall/<name>` is reachable from its base branch (`git for-each-ref --merged=<base>`) and its tip is not the commit it started from (a branch with no commits of its own is not merged). Read only: it never merges or deletes.
+
+## Task agent MCP: `POST /api/tasks/{name}/mcp`
+
+Same JSON-RPC handling as the conversation endpoint (`mcp::handle_task`), for the agent of one task, which gets one tool, `hand_back`. A `claude` task whose type can hand back to at least one other type starts with `--mcp-config=` (`mcp::task_config_json(base_url, name)`), `mcp::task_allowed_tools()` (`mcp__townhall__hand_back`) and, in its system prompt, ``you can hand back to: <types>``. A `shell` type, or a type with `can_hand_back_to = []`, gets none of it.
+
+`hand_back { to, reason, summary? }`: `to` is a saved agent type (never the task's own, and one of `can_hand_back_to` when the type sets it), `reason` is required, `summary` is what the agent did. Refusals are texts that name the types it can hand back to. It writes once (`Store::hand_back`): a `task_handoffs` row (`reason`, and `summary` plus the branch's commit subjects since its first start), the task `queued` again with `agent` = `to`, and a `handoff` entry in its conversation. Only a `working` or `needsYou` task can be handed back, and at most `MAX_HANDOFFS` (5) times per task, then `Conflict`.
+
+The next scheduler pass resumes it: the brief gains a `This task was handed back` section with each hand back's `Why` and `What was done so far`, and `agent::restart` kills the old session and runs the target type in the same worktree and branch. The commit its merge is told from stays the first one; the task takes a slot like a start.
 
 ## Agent states
 
