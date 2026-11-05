@@ -49,7 +49,7 @@ export const usageLevel = (usedPercent: number): UsageLevel =>
 
 const resetPassed = (window: UsageWindow, now: number) => window.resetsAt !== null && window.resetsAt <= now;
 
-const displayWindow = (window: UsageWindow, now: number): UsageWindow =>
+export const displayWindow = (window: UsageWindow, now: number): UsageWindow =>
   resetPassed(window, now) ? { usedPercent: 0, resetsAt: null, ratePerHour: null } : window;
 
 export function projectRunOut(window: UsageWindow, readAt: number): RunOut {
