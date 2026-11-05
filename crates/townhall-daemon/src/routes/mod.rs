@@ -2,6 +2,7 @@
 //! file and does not edit this one (ownership map: `docs/daemon-api.md`).
 
 mod agents;
+mod artifacts;
 mod attach;
 mod attach_frames;
 mod attachments;
@@ -107,6 +108,8 @@ pub fn router(state: AppState) -> Router {
             "/tasks/{name}/mcp",
             post(mcp::task_rpc).layer(DefaultBodyLimit::max(TASK_MCP_BODY_LIMIT)),
         )
+        .route("/tasks/{name}/artifacts", get(artifacts::list))
+        .route("/tasks/{name}/artifacts/{id}", get(artifacts::download))
         .route("/stats", get(stats::get))
         .route("/usage", get(usage::get))
         .route("/search", get(search::search))

@@ -14,15 +14,13 @@ use super::Store;
 use crate::files::{mime, naming};
 use crate::fsutil::write_atomic;
 use crate::model::{
-    Artifact, ArtifactKind, NewArtifact, MAX_ARTIFACTS_PER_TASK, MAX_ARTIFACT_BYTES,
-    MAX_CAPTION_CHARS,
+    Artifact, ArtifactKind, NewArtifact, LOG_MIME, MAX_ARTIFACTS_PER_TASK, MAX_ARTIFACT_BYTES,
+    MAX_CAPTION_CHARS, NOTE_MIME,
 };
 use crate::{clock, ids, Error, Result};
 
 const COLUMNS: &str =
     "id, task, conversation_id, name, kind, mime, size, author_role, caption, created_at";
-const LOG_MIME: &str = "text/plain; charset=utf-8";
-const NOTE_MIME: &str = "text/markdown; charset=utf-8";
 
 fn list(conn: &Connection, task: &str) -> Result<Vec<Artifact>> {
     let sql = format!("select {COLUMNS} from artifacts where task = ?1 order by created_at, rowid");

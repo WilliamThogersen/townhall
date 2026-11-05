@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::files::mime::image_extensions;
+
 pub const MAX_ARTIFACT_BYTES: u64 = 5 * 1024 * 1024;
 pub const MAX_ARTIFACTS_PER_TASK: usize = 50;
 pub const MAX_CAPTION_CHARS: usize = 300;
@@ -45,6 +47,17 @@ pub struct Artifact {
     pub author_role: AuthorRole,
     pub caption: Option<String>,
     pub created_at: String,
+}
+
+pub const LOG_MIME: &str = "text/plain; charset=utf-8";
+pub const NOTE_MIME: &str = "text/markdown; charset=utf-8";
+
+impl Artifact {
+    pub fn shows_inline(&self) -> bool {
+        self.mime == LOG_MIME
+            || self.mime == NOTE_MIME
+            || (self.kind == ArtifactKind::Screenshot && image_extensions(&self.mime).is_some())
+    }
 }
 
 /// An artifact to store: its bytes and the fields the agent chose.

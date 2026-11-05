@@ -15,8 +15,8 @@ mod thread;
 
 pub use agent::{AgentInfo, AgentKey, AgentState};
 pub use artifact::{
-    Artifact, ArtifactKind, AuthorRole, NewArtifact, MAX_ARTIFACTS_PER_TASK, MAX_ARTIFACT_BYTES,
-    MAX_CAPTION_CHARS,
+    Artifact, ArtifactKind, AuthorRole, NewArtifact, LOG_MIME, MAX_ARTIFACTS_PER_TASK,
+    MAX_ARTIFACT_BYTES, MAX_CAPTION_CHARS, NOTE_MIME,
 };
 pub use attachment::{Attachment, AttachmentKind, MAX_ATTACHMENT_BYTES};
 pub use conversation::{
