@@ -14,8 +14,8 @@ use axum::response::{IntoResponse, Response};
 use townhall_core::model::{Attachment, AttachmentKind, MAX_ATTACHMENT_BYTES};
 use townhall_core::Error;
 
-use super::mime::{image_extensions, UNKNOWN};
-use super::naming::disposition;
+use townhall_core::files::mime::{image_extensions, UNKNOWN};
+use townhall_core::files::naming::disposition;
 use crate::envelope::failure;
 use crate::error::ApiError;
 

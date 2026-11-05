@@ -8,6 +8,7 @@ pub mod context;
 pub mod definitions;
 pub mod error;
 pub mod events;
+pub mod files;
 pub mod fleet;
 pub mod fsutil;
 pub mod home;

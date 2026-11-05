@@ -4,8 +4,6 @@
 //! store writes `conversations/<id>/files/<attachment>/<name>`.
 
 mod form;
-mod mime;
-mod naming;
 mod serve;
 
 use axum::extract::multipart::{Multipart, MultipartRejection};
@@ -13,6 +11,7 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 
+use townhall_core::files::{mime, naming};
 use townhall_core::runner::StartFile;
 
 use super::events::FOREIGN_ORIGIN;
