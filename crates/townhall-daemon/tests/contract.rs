@@ -244,7 +244,8 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
         v["data"],
         json!({
             "permissionMode": "acceptEdits", "workWithoutAsking": false, "agentsAtOnce": 6,
-            "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou"
+            "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
+            "townhallModel": "sonnet"
         })
     );
     let (s, v) = call(
@@ -260,10 +261,17 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
     );
     let (_, v) = call(&app, "GET", "/api/settings", None).await;
     assert_eq!(v["data"]["agentsAtOnce"], 12);
+    let put = Some(json!({"value": "haiku"}));
+    let (s, v) = call(&app, "PUT", "/api/settings/townhallModel", put).await;
+    assert_eq!(
+        (s, &v["data"]["townhallModel"]),
+        (StatusCode::OK, &json!("haiku"))
+    );
     let bad = [
         ("/api/settings/theme", json!({"value": "dark"})),
         ("/api/settings/agentsAtOnce", json!({"value": 51})),
         ("/api/settings/permissionMode", json!({"value": "yolo"})),
+        ("/api/settings/townhallModel", json!({"value": "gpt-5"})),
         ("/api/settings/agentsAtOnce", json!({"v": 3})),
     ];
     for (uri, body) in bad {

@@ -63,7 +63,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 - `Repo { name, path, baseBranch }`. `name`: `[A-Za-z0-9._-]`, starts with a letter or digit, at most 64, unique ignoring case, the folder name by default. `path`: canonical, the top folder of a git work tree, never one of townhall's own worktrees. `baseBranch`: origin's HEAD branch (the local branch when it exists, else `origin/x`), else the current branch, else `HEAD`.
 - `AgentInfo { name, repo, kind, branch, worktree, alive, state }`: phase 1's `Agent` plus `repo` and `state`. `AgentState`: `{ kind: "working" }`, `{ kind: "waiting", question }`, `{ kind: "error", exitCode: number | null }`, `{ kind: "ended" }`.
 - `AgentKey`: `up`, `down`, `enter`, `escape`, `tab`, the `key` of `POST /agents/{name}/send` (`AgentKey::symbol` is how a `sent` entry shows it).
-- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it).
+- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) has no row on the settings page yet.
 - `Conversation { id, sessionId, sessionStarted, title, status: "thinking" | "yourTurn", tasks: string[] (task names, oldest first), linkedRepo: string | null, ended, context: { used, limit } | null, createdAt, updatedAt }`. `title` starts as `new conversation`. `sessionStarted` is false until the first turn went through (that turn uses `--session-id`, later ones `--resume`).
 - `ThreadEntry { id, at } & EntryBody`. `id` counts 1, 2, 3 ... per conversation. `EntryBody` is tagged by `kind`:
 
@@ -107,6 +107,7 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | `repoUnclear` | `ask`, `guess` | `ask` |
 | `sessionPanelOpen` | boolean | `true` |
 | `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
+| `townhallModel` | `sonnet`, `opus`, `haiku`: the model of townhall's own session, `--model=<value>` (2.11) | `sonnet` |
 
 A missing or invalid stored value reads as its default. The store also keeps `desktop.repo` (the desktop app's chosen repo, a path); it is not a setting and not in the API.
 
@@ -128,7 +129,23 @@ claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
 - `permission_mode`: `default`, `acceptEdits`, `plan` and `auto` become `--permission-mode=<mode>`; `bypassPermissions` becomes `--dangerously-skip-permissions`. `claude` 2.1.318 lists `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` and no longer lists `default`, but still accepts it, so `default` is passed as is for now.
 - Checked against the installed `claude` 2.1.318 (empty environment, throwaway `HOME`, an invalid `--session-id` so it stops right after parsing): `-- --no-such-flag` reaches the session-id check while `--no-such-flag` alone is `unknown option`, and `--allowedTools=Read,Bash(git diff:*),Edit` and the `--name=value` forms parse.
 - The launch command puts `env -u <name>` for each of `agent::OUTER_SESSION_ENV` in front of `claude` (see Environment below). `ClaudeCodeAdapter::args(&options)` returns the argv after the program unquoted, without that prefix, for a caller that spawns `claude` without a shell (2.2's runner, which removes the same variables itself).
-- Townhall's own session (`runner/args.rs`) follows the same rules, spawned without a shell: `claude -p --output-format=stream-json --verbose --input-format=stream-json --permission-prompt-tool=stdio --include-partial-messages (--session-id=ID | --resume=ID) --permission-mode=default --append-system-prompt=P --strict-mcp-config --mcp-config=JSON --allowedTools=T1,T2 --disallowedTools=T1,T2 [--add-dir=D ...]`. The session id, the MCP config and each folder are refused (`InvalidInput`, the turn fails) when they start with `-` or hold control characters, a folder also unless absolute and UTF-8. The system prompt may hold newlines.
+- Townhall's own session (`runner/args.rs`) follows the same rules, spawned without a shell: `claude -p --output-format=stream-json --verbose --input-format=stream-json --permission-prompt-tool=stdio --include-partial-messages (--session-id=ID | --resume=ID) --model=M --permission-mode=default --append-system-prompt=P --strict-mcp-config --mcp-config=JSON --tools=Read,Grep,Glob --allowedTools=T1,T2 --disallowedTools=T1,T2 --setting-sources= --settings={"disableAllHooks":true} --disable-slash-commands [--add-dir=D ...]`. `M` is the `townhallModel` setting, read at the start of every turn. The session id, the MCP config and each folder are refused (`InvalidInput`, the turn fails) when they start with `-` or hold control characters, a folder also unless absolute and UTF-8. The system prompt may hold newlines.
+
+### Townhall's session leaves your own Claude setup out
+
+Unit 2.11. Townhall's session plans tasks; your hooks, CLAUDE.md, skills, slash commands, plugins and extra built-in tools must not steer it. The flags were picked from `claude --help` of `claude` 2.1.318 (nothing else was run), all as one `--name=value` element each (`runner::ISOLATION` plus `--tools`):
+
+| flag | why |
+|------|-----|
+| `--setting-sources=` (empty) | loads none of the user, project and local settings files: no hooks, `enabledPlugins`, permission rules or `env` from them, and no CLAUDE.md, which claude loads only for an enabled source (the Agent SDK runs claude the same way when its `settingSources` is empty). Managed (policy) settings still apply, as they should |
+| `--settings={"disableAllHooks":true}` | hooks stay off even if some source still had one (a plugin, a future default) |
+| `--disable-slash-commands` | "disable all skills and commands" |
+| `--tools=Read,Grep,Glob` | the whole built-in tool set: no Bash, Edit, Write, WebFetch, Task and the like exist in the session. MCP tools are not built in, so townhall's own stay |
+| `--strict-mcp-config --mcp-config=...` (as before) | townhall's MCP server only, none of yours |
+
+`--allowedTools` (townhall's MCP tools plus `READ_ONLY_TOOLS` = Read, Grep, Glob) and `--disallowedTools` stay as they were; `LS` left the list, since `--tools` names the built-in set.
+
+Auth keeps working: it comes from your login (the macOS keychain or `~/.claude/.credentials.json`, with the account in `~/.claude.json`) and from `ANTHROPIC_*` / `CLAUDE_*` variables, which pass through (see Environment). None of these flags reads or skips them. Not chosen: `--bare`, which never reads OAuth or the keychain (only `ANTHROPIC_API_KEY` or an `apiKeyHelper`), so a subscription login would stop working; `--safe-mode`, a troubleshooting mode that also disables MCP servers, which could take townhall's own with it; `--restricted`, which overlaps the flags above but also confines and gates writes in ways townhall does not need. One limit: a provider or `apiKeyHelper` set only in your `~/.claude/settings.json` (not in the environment) is no longer read by townhall's session.
 
 `permission_mode` always comes from `Context::settings()`, never from a request body or a tool call: `POST /api/agents` ignores any such field. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
 

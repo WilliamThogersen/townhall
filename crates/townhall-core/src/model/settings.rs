@@ -51,6 +51,27 @@ pub enum NotifyWhen {
     Everything,
 }
 
+/// The model of townhall's own session (`claude --model=<alias>`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TownhallModel {
+    #[default]
+    Sonnet,
+    Opus,
+    Haiku,
+}
+
+impl TownhallModel {
+    /// The alias `claude --model` takes.
+    pub fn cli_value(self) -> &'static str {
+        match self {
+            Self::Sonnet => "sonnet",
+            Self::Opus => "opus",
+            Self::Haiku => "haiku",
+        }
+    }
+}
+
 /// One row of the `settings` table: the key is the field name, the value its JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,16 +82,18 @@ pub enum SettingKey {
     RepoUnclear,
     SessionPanelOpen,
     NotifyWhen,
+    TownhallModel,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 6] = [
+    pub const ALL: [SettingKey; 7] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
         Self::RepoUnclear,
         Self::SessionPanelOpen,
         Self::NotifyWhen,
+        Self::TownhallModel,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -81,6 +104,7 @@ impl SettingKey {
             Self::RepoUnclear => "repoUnclear",
             Self::SessionPanelOpen => "sessionPanelOpen",
             Self::NotifyWhen => "notifyWhen",
+            Self::TownhallModel => "townhallModel",
         }
     }
 
@@ -98,6 +122,7 @@ impl SettingKey {
             Self::PermissionMode => parses::<PermissionMode>(value),
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
+            Self::TownhallModel => parses::<TownhallModel>(value),
             Self::WorkWithoutAsking | Self::SessionPanelOpen => value.is_boolean(),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
@@ -115,7 +140,8 @@ fn parses<T: serde::de::DeserializeOwned>(value: &Value) -> bool {
     serde_json::from_value::<T>(value.clone()).is_ok()
 }
 
-/// `GET /api/settings`. Same names, values and defaults as the web UI.
+/// `GET /api/settings`. Same names, values and defaults as the web UI; `townhallModel`
+/// has no row on the settings page yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -125,6 +151,7 @@ pub struct Settings {
     pub repo_unclear: RepoUnclear,
     pub session_panel_open: bool,
     pub notify_when: NotifyWhen,
+    pub townhall_model: TownhallModel,
 }
 
 impl Default for Settings {
@@ -136,6 +163,7 @@ impl Default for Settings {
             repo_unclear: RepoUnclear::Ask,
             session_panel_open: true,
             notify_when: NotifyWhen::NeedsYou,
+            townhall_model: TownhallModel::Sonnet,
         }
     }
 }
@@ -158,6 +186,7 @@ impl Settings {
             repo_unclear: field(raw, SettingKey::RepoUnclear, d.repo_unclear),
             session_panel_open: field(raw, SettingKey::SessionPanelOpen, d.session_panel_open),
             notify_when: field(raw, SettingKey::NotifyWhen, d.notify_when),
+            townhall_model: field(raw, SettingKey::TownhallModel, d.townhall_model),
         }
     }
 
@@ -195,7 +224,8 @@ mod tests {
                 "agentsAtOnce": 6,
                 "repoUnclear": "ask",
                 "sessionPanelOpen": true,
-                "notifyWhen": "needsYou"
+                "notifyWhen": "needsYou",
+                "townhallModel": "sonnet"
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -207,12 +237,15 @@ mod tests {
 
     #[test]
     fn invalid_fields_fall_back_one_by_one() {
-        let raw = json!({"permissionMode": "plan", "agentsAtOnce": 99, "notifyWhen": "x", "repoUnclear": "guess"});
+        let raw = json!({"permissionMode": "plan", "agentsAtOnce": 99, "notifyWhen": "x", "repoUnclear": "guess", "townhallModel": "gpt"});
         let s: Settings = serde_json::from_value(raw).unwrap();
         assert_eq!(s.permission_mode, PermissionMode::Plan);
         assert_eq!(s.agents_at_once, AGENTS_AT_ONCE_DEFAULT);
         assert_eq!(s.notify_when, NotifyWhen::NeedsYou);
         assert_eq!(s.repo_unclear, RepoUnclear::Guess);
+        assert_eq!(s.townhall_model, TownhallModel::Sonnet);
+        let opus: Settings = serde_json::from_value(json!({"townhallModel": "opus"})).unwrap();
+        assert_eq!(opus.townhall_model, TownhallModel::Opus);
         assert_eq!(
             serde_json::from_value::<Settings>(json!(7)).unwrap(),
             Settings::default()
@@ -226,6 +259,9 @@ mod tests {
             (SettingKey::AgentsAtOnce, json!(50)),
             (SettingKey::WorkWithoutAsking, json!(true)),
             (SettingKey::NotifyWhen, json!("everything")),
+            (SettingKey::TownhallModel, json!("sonnet")),
+            (SettingKey::TownhallModel, json!("opus")),
+            (SettingKey::TownhallModel, json!("haiku")),
         ];
         for (key, value) in ok {
             assert_eq!(key.check(&value).unwrap(), value);
@@ -236,6 +272,10 @@ mod tests {
             (SettingKey::AgentsAtOnce, json!(51)),
             (SettingKey::AgentsAtOnce, json!("6")),
             (SettingKey::SessionPanelOpen, json!("yes")),
+            (SettingKey::TownhallModel, json!("fable")),
+            (SettingKey::TownhallModel, json!("Sonnet")),
+            (SettingKey::TownhallModel, json!("claude-sonnet-4-5")),
+            (SettingKey::TownhallModel, json!(null)),
         ];
         for (key, value) in bad {
             assert!(key.check(&value).is_err(), "{key:?} {value}");
@@ -245,6 +285,17 @@ mod tests {
             SettingKey::AgentsAtOnce
         );
         assert!(SettingKey::parse("theme").is_err());
+        assert_eq!(
+            SettingKey::parse("townhallModel").unwrap(),
+            SettingKey::TownhallModel
+        );
+    }
+
+    #[test]
+    fn townhall_models_are_claude_aliases() {
+        assert_eq!(TownhallModel::default().cli_value(), "sonnet");
+        assert_eq!(TownhallModel::Opus.cli_value(), "opus");
+        assert_eq!(TownhallModel::Haiku.cli_value(), "haiku");
     }
 
     #[test]
