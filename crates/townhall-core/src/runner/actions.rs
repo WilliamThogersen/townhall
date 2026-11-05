@@ -86,19 +86,34 @@ pub async fn send(ctx: &Context, id: &str, message: NewMessage) -> Result<Thread
     store.conversation(id).await?;
     check_attachments(store, id, &message.attachments).await?;
     let guard = ctx.turns().begin(id)?;
-    let thinking = |c: Conversation| {
-        Ok(Conversation {
-            status: ConversationStatus::Thinking,
-            ended: false,
-            ..c
-        })
-    };
     let yours = EntryBody::You {
         text: message.text.clone(),
         attachments: message.attachments.clone(),
     };
+    open_turn(ctx, id, guard, vec![yours], message, false).await
+}
+
+/// Sets `thinking`, appends `entries` (your message, or the task events) and spawns the
+/// turn for `message`. Returns the last entry. `event` turns leave `ended` alone and skip
+/// repo inference.
+pub(super) async fn open_turn(
+    ctx: &Context,
+    id: &str,
+    guard: super::TurnGuard,
+    entries: Vec<EntryBody>,
+    message: NewMessage,
+    event: bool,
+) -> Result<ThreadEntry> {
+    let store = ctx.store()?;
+    let thinking = move |c: Conversation| {
+        Ok(Conversation {
+            status: ConversationStatus::Thinking,
+            ended: c.ended && event,
+            ..c
+        })
+    };
     let opened = match store.update_conversation(id, thinking).await {
-        Ok(_) => store.append_entry(id, yours).await,
+        Ok(_) => append_all(store, id, entries).await,
         Err(e) => Err(e),
     };
     let entry = match opened {
@@ -109,9 +124,23 @@ pub async fn send(ctx: &Context, id: &str, message: NewMessage) -> Result<Thread
         }
     };
     let generation = guard.generation();
-    let task = tokio::spawn(turn::run(ctx.clone(), id.to_string(), message, guard));
+    let task = tokio::spawn(turn::run(
+        ctx.clone(),
+        id.to_string(),
+        message,
+        event,
+        guard,
+    ));
     ctx.turns().attach(id, generation, task.abort_handle());
     Ok(entry)
+}
+
+async fn append_all(store: &Store, id: &str, entries: Vec<EntryBody>) -> Result<ThreadEntry> {
+    let mut last = None;
+    for body in entries {
+        last = Some(store.append_entry(id, body).await?);
+    }
+    last.ok_or_else(|| Error::InvalidInput("a turn needs an entry".into()))
 }
 
 async fn give_back(store: &Store, id: &str, guard: super::TurnGuard) {

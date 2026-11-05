@@ -95,6 +95,13 @@ describe("Thread messages", () => {
     expect(document.querySelector(".th-event[data-event='failed']")).not.toBeNull();
   });
 
+  it("writes a task event as a system line, not a message from you", () => {
+    renderThread([entry(1, { kind: "event", text: "task fix ended (ended)" })]);
+    const line = document.querySelector(".th-event[data-kind='event']");
+    expect(line).toHaveTextContent("◇task fix ended (ended)10:42");
+    expect(document.querySelector(".th-msg-you, [data-from='you']")).toBeNull();
+  });
+
   it("shows a thinking row while townhall thinks, else the ended note", () => {
     renderThread([aYouEntry(1, "hi")], { thinking: true }, true);
     expect(screen.getByRole("status")).toHaveTextContent("thinking");

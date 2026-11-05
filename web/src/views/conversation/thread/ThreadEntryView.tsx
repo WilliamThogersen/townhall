@@ -1,7 +1,7 @@
 import type { ThreadEntry } from "../../../api/types";
 import { stripAttachmentMarkers, Thumbs } from "../../../attachments";
 import { NeedsYouBlock, RepoAskBlock } from "./AskBlocks";
-import { AgentEventLine, ErrorEvent, RepoEvent } from "./EventEntries";
+import { AgentEventLine, ErrorEvent, RepoEvent, TaskEvent } from "./EventEntries";
 import { Markdown } from "./markdown/Markdown";
 import { TaskBlock } from "./TaskBlock";
 import { useThread } from "./threadContext";
@@ -51,6 +51,8 @@ export function ThreadEntryView({ entry, open, answer }: ThreadEntryViewProps) {
       return <NeedsYouBlock entry={entry} open={open} answer={answer} />;
     case "agent":
       return <AgentEventLine entry={entry} />;
+    case "event":
+      return <TaskEvent entry={entry} />;
     case "error":
       return <ErrorEvent entry={entry} />;
   }
