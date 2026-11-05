@@ -10,7 +10,7 @@ Files and images in a conversation, styled by `styles/attachments.css` (preview 
 ## Composer side
 
 - `useUploads(conversationId)`: `items` (`PendingUpload`: `status` `uploading` with `percent`, `done` with `attachment`, `failed` with `error` and `retryable`), `uploading`, `attachmentIds` (done only), `error` (last failure, no `error:` prefix), `canRetry`, `add(files)`, `retry(key)`, `retryFailed()`, `remove(key)` (cancels a running upload), `clear()`. Checks each file first: `<name> is over 20 MB`, `<name> is empty`, `<name> is not an image, text, code or pdf` (those fail for good, no request). A dropped connection or a 5xx can be retried; a 4xx cannot. A new `conversationId` or unmounting cancels everything. The composer owns one; you rarely need it directly.
-- `UploadChips({ items, onRemove })`: `.th-composer-attachments`. Images as 64 by 48 thumbnails (progress line while uploading, red border on failure, click a failed one to remove it), files as `.th-file` chips (`60%` in place of the size while uploading).
+- `UploadChips({ items, onRemove })`: `.th-composer-attachments`. Images as 64 by 48 thumbnails (a finished one opens the lightbox on click; progress line while uploading, red border on failure, click a failed one to remove it), files as `.th-file` chips (`60%` in place of the size while uploading).
 
 ## Conversation page
 

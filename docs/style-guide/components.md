@@ -123,7 +123,7 @@ Every task it creates carries its repo and base branch, so the agent that picks 
 Images and files, in both directions. Styles in [attachments.css](attachments.css).
 
 - **Adding**: `+ attach` in the composer tools, paste (screenshots), or drop anywhere on the conversation. While dragging, `.th-drop` covers the conversation: dashed amber border, `drop to attach`, `images, text, code, pdf · up to 20 MB each`.
-- **In the composer** (`.th-composer-attachments`, above the text): images as 64 by 48 thumbnails with `×`, files as chips (`.th-file`: extension tag, name, size, `×`). Uploading shows a blue progress line at the bottom of the thumbnail; a failed one gets a red border and `×`, and the tools row says why in red (`error: screenshot-3.png is over 20 MB`). Send stays enabled for the rest.
+- **In the composer** (`.th-composer-attachments`, above the text): images as 64 by 48 thumbnails with `×` (a finished one is a `.th-thumb-open` button that opens the lightbox), files as chips (`.th-file`: extension tag, name, size, `×`). Uploading shows a blue progress line at the bottom of the thumbnail; a failed one gets a red border and `×`, and the tools row says why in red (`error: screenshot-3.png is over 20 MB`). Send stays enabled for the rest.
 - **In messages**: `.th-msg-images` (104px tall thumbnails, more than 3 collapse into `+N`) and `.th-msg-files` (chips that open or download). Agents can post images too, for example a screenshot after a fix; those say `from <agent>` in the lightbox.
 - **Where they go**: images go to townhall's session as image input. Files are stored with the conversation (`~/.townhall/conversations/<id>/files/`) and attached to the tasks that need them, so the agent gets the path.
 - New.

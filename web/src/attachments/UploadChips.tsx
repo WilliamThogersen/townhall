@@ -1,5 +1,6 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { extensionTag, formatSize } from "./format";
+import { Lightbox } from "./Lightbox";
 import type { PendingUpload } from "./uploads";
 import "./chips.css";
 
@@ -49,16 +50,34 @@ function FailedImageChip({ upload, onRemove }: ChipProps) {
 }
 
 function ImageChip({ upload, onRemove }: ChipProps) {
+  const [opener, setOpener] = useState<HTMLElement | null>(null);
   if (upload.status === "failed") return <FailedImageChip upload={upload} onRemove={onRemove} />;
   const uploading = upload.status === "uploading";
   const name = upload.file.name;
   const style = uploading ? ({ "--progress": `${upload.percent}%` } as CSSProperties) : undefined;
+  const preview = upload.previewUrl;
+  const alt = uploading ? `${name}, uploading ${upload.percent}%` : name;
   return (
     <div className="th-thumb" data-state={chipState(upload)} style={style}>
-      {upload.previewUrl && (
-        <img src={upload.previewUrl} alt={uploading ? `${name}, uploading ${upload.percent}%` : name} />
+      {preview && !uploading && (
+        <button
+          type="button"
+          className="th-thumb-open"
+          aria-label={`View ${name}`}
+          onClick={(event) => setOpener(event.currentTarget)}
+        >
+          <img src={preview} alt={alt} />
+        </button>
       )}
+      {preview && uploading && <img src={preview} alt={alt} />}
       <RemoveButton upload={upload} onRemove={onRemove} />
+      {opener && (
+        <Lightbox
+          images={[{ src: upload.previewUrl ?? "", name, meta: formatSize(upload.file.size) }]}
+          returnFocusTo={opener}
+          onClose={() => setOpener(null)}
+        />
+      )}
     </div>
   );
 }

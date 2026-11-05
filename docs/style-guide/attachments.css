@@ -34,6 +34,16 @@
   outline-offset: 1px;
 }
 
+.th-thumb-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
 .th-thumb-remove {
   position: absolute;
   top: 2px;
