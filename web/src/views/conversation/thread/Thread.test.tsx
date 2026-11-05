@@ -1,0 +1,249 @@
+import { act, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { anEntry, aTask, aYouEntry } from "../../../api/fixtures";
+import type { EntryBody, ThreadEntry } from "../../../api/types";
+import { Thread } from "./Thread";
+import { ThreadContext, type ThreadContextValue } from "./threadContext";
+
+function context(over: Partial<ThreadContextValue> = {}): ThreadContextValue {
+  return {
+    conversationId: "c1",
+    tasks: [],
+    attachments: [],
+    thinking: false,
+    openTask: null,
+    onOpenTask: vi.fn(),
+    sendMessage: vi.fn(async () => true),
+    answerAgent: vi.fn(async () => true),
+    ...over,
+  };
+}
+
+function renderThread(entries: readonly ThreadEntry[], over: Partial<ThreadContextValue> = {}, ended = false) {
+  const value = context(over);
+  const view = render(
+    <ThreadContext value={value}>
+      <Thread entries={entries} ended={ended} />
+    </ThreadContext>,
+  );
+  const rerender = (next: readonly ThreadEntry[]) =>
+    view.rerender(
+      <ThreadContext value={value}>
+        <Thread entries={next} ended={ended} />
+      </ThreadContext>,
+    );
+  return { value, rerender };
+}
+
+const at = new Date(2026, 10, 4, 10, 42).toISOString();
+const entry = (id: number, body: EntryBody) => anEntry(id, body, at);
+
+describe("Thread messages", () => {
+  it("shows your message with its time and townhall's reply as markdown", () => {
+    renderThread([entry(1, { kind: "you", text: "fix it\nplease", attachments: [] }), entry(2, { kind: "townhall", text: "on it: `a.ts`" })]);
+    const log = screen.getByRole("log", { name: "Thread" });
+    const [you, reply] = log.querySelectorAll(".th-msg");
+    expect(you).toHaveClass("th-msg--you");
+    expect(you?.querySelector(".th-msg-body")?.innerHTML).toBe("<p>fix it<br>please</p>");
+    expect(you?.querySelector("time")).toHaveTextContent("10:42");
+    expect(reply).not.toHaveClass("th-msg--you");
+    expect(reply?.querySelector("code")).toHaveTextContent("a.ts");
+  });
+
+  it("writes repo events with the reason", () => {
+    renderThread([
+      entry(1, { kind: "repo", repo: "shop", baseBranch: "develop", rule: "code", reason: "it has src/search/query.ts" }),
+      entry(2, { kind: "repo", repo: "townhall", baseBranch: "main", rule: "named", reason: "" }),
+    ]);
+    const events = document.querySelectorAll(".th-event[data-kind='repo']");
+    expect(events[0]).toHaveTextContent("~repo shop · develop, it has src/search/query.ts10:42");
+    expect(events[1]).toHaveTextContent("repo townhall · main, you named it");
+  });
+
+  it("writes agent lines and errors with their glyphs", () => {
+    renderThread([
+      entry(1, { kind: "agent", agent: "fix-login", event: "sent", text: "y" }),
+      entry(2, { kind: "agent", agent: "fix-login", event: "passed", text: "merged into main" }),
+      entry(3, { kind: "agent", agent: "auth", event: "failed", text: "exited with code 1" }),
+      entry(4, { kind: "agent", agent: "auth", event: "ended", text: "" }),
+      entry(5, { kind: "error", message: "claude exited" }),
+    ]);
+    const lines = [...document.querySelectorAll(".th-event")].map((line) => line.textContent);
+    expect(lines).toEqual([
+      "→sent to fix-login: y10:42",
+      "✓fix-login merged into main10:42",
+      "×auth exited with code 110:42",
+      "○auth ended10:42",
+      "×error: claude exited10:42",
+    ]);
+    expect(document.querySelector(".th-event[data-event='failed']")).not.toBeNull();
+  });
+
+  it("shows a thinking row while townhall thinks, else the ended note", () => {
+    renderThread([aYouEntry(1, "hi")], { thinking: true }, true);
+    expect(screen.getByRole("status")).toHaveTextContent("thinking");
+    expect(screen.queryByText("info: ended. a message continues it")).toBeNull();
+  });
+
+  it("notes an ended conversation", () => {
+    renderThread([aYouEntry(1, "hi")], {}, true);
+    expect(screen.getByText("info: ended. a message continues it")).toBeInTheDocument();
+  });
+});
+
+describe("Thread task block", () => {
+  const tasks = [
+    aTask({ name: "fix-login", title: "clear the session", repo: "townhall", baseBranch: "main", state: "needsYou" }),
+    aTask({ name: "auth-tests", title: "cover expiry", repo: "townhall", state: "working" }),
+    aTask({ name: "logout", title: "clear the cookie", repo: "townhall", state: "queued", after: ["fix-login"] }),
+  ];
+  const block = entry(3, { kind: "tasksCreated", tasks: ["fix-login", "auth-tests", "logout", "unknown"] });
+
+  it("lists each task with its glyph, words and title", () => {
+    renderThread([block], { tasks });
+    const group = screen.getByRole("group", { name: "4 tasks for townhall · main" });
+    const lines = group.querySelectorAll(".th-agent-line");
+    expect([...lines].map((line) => line.querySelector(".th-status")?.getAttribute("data-state"))).toEqual([
+      "waiting",
+      "working",
+      "queued",
+      "queued",
+    ]);
+    expect(lines[0]).toHaveTextContent("fix-loginneeds youclear the sessionopen");
+    expect(lines[2]).toHaveTextContent("logoutafter fix-loginclear the cookieopen");
+    expect(lines[1]?.querySelector(".th-spin")).not.toBeNull();
+  });
+
+  it("opens a task's terminal and marks the open one", async () => {
+    const { value } = renderThread([block], { tasks, openTask: "auth-tests" });
+    expect(screen.getByRole("button", { name: "open auth-tests" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "open fix-login" }));
+    expect(value.onOpenTask).toHaveBeenCalledWith("fix-login");
+  });
+});
+
+describe("Thread needs-you block", () => {
+  const ask = entry(4, { kind: "needsYou", agent: "fix-login", question: "commit the fix? (y/n)", choices: ["y", "n"] });
+  const tasks = [aTask({ name: "fix-login", state: "needsYou" })];
+
+  it("quotes the question and sends a choice to the agent", async () => {
+    const { value } = renderThread([ask], { tasks });
+    const group = screen.getByRole("group", { name: "fix-login needs you" });
+    expect(within(group).getByText("commit the fix? (y/n)")).toHaveClass("th-ask-quote");
+    await userEvent.click(within(group).getByRole("button", { name: "send y" }));
+    expect(value.answerAgent).toHaveBeenCalledWith("fix-login", "y");
+    await userEvent.click(within(group).getByRole("button", { name: "open terminal" }));
+    expect(value.onOpenTask).toHaveBeenCalledWith("fix-login");
+  });
+
+  it("sends a free text answer and clears it", async () => {
+    const { value } = renderThread([ask], { tasks });
+    const input = screen.getByRole("textbox", { name: "Answer for fix-login" });
+    const send = screen.getByRole("button", { name: "send" });
+    expect(send).toBeDisabled();
+    await userEvent.type(input, "commit as wip{Enter}");
+    expect(value.answerAgent).toHaveBeenCalledWith("fix-login", "commit as wip");
+    expect(input).toHaveValue("");
+  });
+
+  it("keeps the text when the answer fails", async () => {
+    renderThread([ask], { tasks, answerAgent: vi.fn(async () => false) });
+    const input = screen.getByRole("textbox", { name: "Answer for fix-login" });
+    await userEvent.type(input, "later{Enter}");
+    expect(input).toHaveValue("later");
+  });
+
+  it("drops the answers once the agent got one", () => {
+    const sent = entry(5, { kind: "agent", agent: "fix-login", event: "sent", text: "y" });
+    renderThread([ask, sent], { tasks });
+    const group = screen.getByRole("group", { name: "fix-login needs you" });
+    expect(group).toHaveAttribute("data-answered", "true");
+    expect(within(group).getByText("fix-login asked")).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: "send y" })).toBeNull();
+    expect(within(group).queryByRole("textbox")).toBeNull();
+    expect(within(group).getByRole("button", { name: "open terminal" })).toBeInTheDocument();
+  });
+});
+
+describe("Thread repo question", () => {
+  const ask = entry(2, { kind: "repoAsk", question: "two repos have a checkout flow. which one?", candidates: ["shop", "shop-b2b"], offerAll: true });
+
+  it("offers each candidate and both, sending the text as a message", async () => {
+    const { value } = renderThread([aYouEntry(1, "fix checkout"), ask]);
+    const group = screen.getByRole("group", { name: "townhall needs you" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["shop", "shop-b2b", "both"]);
+    await userEvent.click(within(group).getByRole("button", { name: "both" }));
+    expect(value.sendMessage).toHaveBeenCalledWith("both");
+  });
+
+  it("disables the answers while townhall thinks and drops them once you wrote", () => {
+    const { rerender } = renderThread([aYouEntry(1, "fix checkout"), ask], { thinking: true });
+    expect(screen.getByRole("button", { name: "shop" })).toBeDisabled();
+    rerender([aYouEntry(1, "fix checkout"), ask, aYouEntry(3, "shop")]);
+    expect(screen.queryByRole("button", { name: "shop" })).toBeNull();
+  });
+});
+
+describe("Thread scrolling", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function sizeBox(box: HTMLElement, sizes: { scrollHeight: number; clientHeight: number }) {
+    Object.defineProperty(box, "scrollHeight", { configurable: true, get: () => sizes.scrollHeight });
+    Object.defineProperty(box, "clientHeight", { configurable: true, get: () => sizes.clientHeight });
+  }
+
+  it("follows new entries while at the bottom, and stays put once you scrolled up", () => {
+    const first = [aYouEntry(1, "one")];
+    const { rerender } = renderThread(first);
+    const box = screen.getByRole("log");
+    const sizes = { scrollHeight: 1000, clientHeight: 400 };
+    sizeBox(box, sizes);
+    rerender([...first, aYouEntry(2, "two")]);
+    expect(box.scrollTop).toBe(1000);
+
+    box.scrollTop = 100;
+    act(() => {
+      box.dispatchEvent(new Event("scroll"));
+    });
+    sizes.scrollHeight = 1400;
+    rerender([...first, aYouEntry(2, "two"), aYouEntry(3, "three")]);
+    expect(box.scrollTop).toBe(100);
+
+    box.scrollTop = 1000;
+    act(() => {
+      box.dispatchEvent(new Event("scroll"));
+    });
+    sizes.scrollHeight = 1600;
+    rerender([...first, aYouEntry(2, "two"), aYouEntry(3, "three"), aYouEntry(4, "four")]);
+    expect(box.scrollTop).toBe(1600);
+  });
+
+  it("stays at the bottom when the thread box itself gets shorter", () => {
+    const resize = { observed: [] as Element[], callback: () => undefined as void };
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize.callback = callback;
+        }
+        observe(target: Element) {
+          resize.observed.push(target);
+        }
+        disconnect() {}
+      },
+    );
+    renderThread([aYouEntry(1, "one")]);
+    const box = screen.getByRole("log");
+    const sizes = { scrollHeight: 1000, clientHeight: 400 };
+    sizeBox(box, sizes);
+    box.scrollTop = 600;
+    act(() => {
+      box.dispatchEvent(new Event("scroll"));
+    });
+    expect(resize.observed).toContain(box);
+    sizes.clientHeight = 320;
+    act(() => resize.callback());
+    expect(box.scrollTop).toBe(1000);
+  });
+});

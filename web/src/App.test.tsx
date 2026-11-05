@@ -1,6 +1,13 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "./api/client";
+import * as conversationsApi from "./api/conversations";
+import * as events from "./api/events";
+import { aConversation, aDetail, aRepo, someStats } from "./api/fixtures";
+import * as reposApi from "./api/repos";
+import * as searchApi from "./api/search";
+import * as statsApi from "./api/stats";
+import * as tasksApi from "./api/tasks";
 import { App } from "./App";
 import { navigate } from "./router";
 import { DEFAULT_SETTINGS } from "./settings/settings";
@@ -11,6 +18,12 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/");
   vi.spyOn(client, "listAgents").mockResolvedValue([]);
   vi.spyOn(client, "getInfo").mockResolvedValue({ home: "/h", repo: "/r", repoKey: "r-1" });
+  vi.spyOn(events, "connectEvents").mockReturnValue({ close: () => undefined });
+  vi.spyOn(reposApi, "listRepos").mockResolvedValue([aRepo()]);
+  vi.spyOn(statsApi, "getStats").mockResolvedValue(someStats());
+  vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([]);
+  vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
+  vi.spyOn(searchApi, "searchConversations").mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -22,15 +35,19 @@ afterEach(() => {
 const heading = (name: string) => screen.getByRole("heading", { level: 1, name });
 
 describe("App routes", () => {
+  it("/ shows home", async () => {
+    render(<App />);
+    expect(await screen.findByRole("textbox", { name: "Describe the work" })).toBeInTheDocument();
+    await waitFor(() => expect(client.listAgents).toHaveBeenCalled());
+  });
+
   it.each([
-    ["/", "conversations come next"],
-    ["/c/fix-login", "conversations come next"],
-    ["/search?q=x", "search comes next"],
+    ["/search?q=x", "no conversations match x"],
     ["/nope", "not found"],
   ])("%s shows %s", async (path, title) => {
     window.history.replaceState(null, "", path);
     render(<App />);
-    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(await screen.findByText(title)).toBeInTheDocument();
     await waitFor(() => expect(client.listAgents).toHaveBeenCalled());
   });
 
@@ -45,16 +62,20 @@ describe("App routes", () => {
   });
 
   it("/townhall shows the control center", async () => {
+    vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([]);
+    vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
     window.history.replaceState(null, "", "/townhall");
     render(<App />);
     expect(heading("control center")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "no agents yet" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "nothing ran today" })).toBeInTheDocument();
   });
 
   it("switches screens on navigate and keeps one shell", async () => {
+    const chat = aDetail({ conversation: aConversation({ id: "abc", title: "abc chat" }) });
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(chat);
     const { container } = render(<App sidebarFoot={<span>foot</span>} />);
     act(() => navigate("/c/abc"));
-    expect(screen.getByText("conversation abc will open here")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "abc chat" })).toBeInTheDocument();
     expect(container.querySelectorAll(".th-shell")).toHaveLength(1);
     expect(screen.getByText("foot")).toBeInTheDocument();
     await waitFor(() => expect(client.listAgents).toHaveBeenCalledOnce());
@@ -72,7 +93,7 @@ describe("App routes", () => {
         <App />
       </SettingsStoreContext>,
     );
-    expect(screen.getByText("conversations come next")).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "Describe the work" })).toBeInTheDocument();
     await waitFor(() => expect(localStorage.getItem("th-settings")).toBeNull());
     expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
       "GET /api/settings",

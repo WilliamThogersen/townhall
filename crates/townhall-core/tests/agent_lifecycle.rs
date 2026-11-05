@@ -75,6 +75,7 @@ async fn tmux_session_runs_and_is_discoverable() {
         name,
         dir.path(),
         "sh -c 'echo hello-townhall; sleep 30'",
+        "shell",
     )
     .await
     .unwrap();

@@ -14,6 +14,7 @@ mod import;
 mod lock;
 pub mod migrate;
 mod repos;
+mod search;
 mod settings;
 mod tasks;
 mod thread;

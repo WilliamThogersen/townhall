@@ -1,82 +1,110 @@
-import { useMemo, useState } from "react";
-import { AgentPane } from "../../agents/AgentPane";
-import { useAgentsContext } from "../../agents/AgentsProvider";
-import { CreateAgentForm } from "../../agents/CreateAgentForm";
-import { ControlBody } from "./ControlBody";
-import { ControlHead, NEW_AGENT_FORM_ID } from "./ControlHead";
-import { findAgent, sortAgents } from "./controlModel";
+import { useRef, useState, type RefObject } from "react";
+import type { Task } from "../../api/types";
+import { useConnection, useRepos } from "../../data";
+import { Link, navigate, PATHS } from "../../router";
+import { EmptyState } from "../../ui/EmptyState";
+import { Loading } from "../../ui/Loading";
+import { ControlHead } from "./ControlHead";
+import { ControlStats } from "./ControlStats";
+import { LoopStrip } from "./LoopStrip";
+import { RepoFilter } from "./RepoFilter";
+import { focusCurrentRow } from "./rowFocus";
+import { StepsLoader } from "./StepsLoader";
+import type { StepsEntry, TraceRow } from "./traceRows";
+import type { ControlFilter } from "./traceScope";
+import { TraceTree } from "./TraceTree";
+import { controlHref } from "./useControlFilter";
 import { useControlKeys } from "./useControlKeys";
-import { useOpenAgent } from "./useOpenAgent";
-import { useRowFocus } from "./useRowFocus";
+import { useControlView } from "./useControlView";
+import { useDocumentVisible } from "./useDocumentVisible";
 import "./control.css";
 
-function useControlCenter() {
-  const { agents, loading, refresh } = useAgentsContext();
-  const { openName, open, close } = useOpenAgent();
-  const [formOpen, setFormOpen] = useState(false);
-  const focus = useRowFocus();
-  const sorted = useMemo(() => sortAgents(agents), [agents]);
-  const openAgent = findAgent(agents, openName);
+type ControlView = ReturnType<typeof useControlView>;
 
-  const closePane = () => {
-    close();
-    focus.focusRow(openName);
-  };
+const LIVE_STEPS: ReadonlySet<Task["state"]> = new Set(["working", "needsYou"]);
 
-  const stopped = async () => {
-    close();
-    await refresh();
-    focus.focusRowAfterRender(openName);
-  };
+const openRow = (row: TraceRow) => navigate(row.href);
 
-  const created = async (name: string) => {
-    setFormOpen(false);
-    open(name);
-    await refresh();
-    focus.focusRowAfterRender(name);
-  };
+function StepsLoaders({ tasks, onSteps }: { readonly tasks: readonly Task[]; readonly onSteps: (key: string, entry: StepsEntry) => void }) {
+  const visible = useDocumentVisible();
+  return tasks
+    .filter((task) => task.state !== "queued")
+    .map((task) => (
+      <StepsLoader key={`${task.repo}/${task.name}`} task={task} live={visible && LIVE_STEPS.has(task.state)} onSteps={onSteps} />
+    ));
+}
 
-  useControlKeys({
-    hasRows: sorted.length > 0,
-    paneOpen: openAgent !== null,
-    onClosePane: closePane,
-    onFocusRows: () => focus.focusRow(null),
-  });
+function Empty({ filter, error }: { readonly filter: ControlFilter; readonly error: string | null }) {
+  if (error) return <EmptyState title={`error: ${error}`} />;
+  if (filter.conversationId) {
+    const all = controlHref({ conversationId: null, repo: filter.repo });
+    const action = <Link className="th-btn" to={all} replace>all conversations</Link>;
+    return <EmptyState title="nothing to show for this conversation" action={action} />;
+  }
+  const home = <Link className="th-btn" to={PATHS.home}>new conversation</Link>;
+  return (
+    <EmptyState title="nothing ran today" action={home}>
+      {filter.repo ? `in ${filter.repo}` : null}
+    </EmptyState>
+  );
+}
 
-  return { loading, sorted, openName, openAgent, open, formOpen, setFormOpen, focus, closePane, stopped, created };
+function Timeline({ view, treeRef }: { readonly view: ControlView; readonly treeRef: RefObject<HTMLDivElement | null> }) {
+  if (view.loading) {
+    return (
+      <div className="th-empty">
+        <Loading verb="loading timeline" />
+      </div>
+    );
+  }
+  if (view.entries.length === 0) return <Empty filter={view.filter} error={view.error} />;
+  return (
+    <>
+      <LoopStrip loop={view.loop} />
+      <ControlStats stats={view.stats} />
+      <TraceTree rows={view.rows} axis={view.axis} treeRef={treeRef} onOpen={openRow} onToggle={view.toggle} />
+    </>
+  );
+}
+
+function useRepoNames(): readonly string[] {
+  const { repos } = useRepos();
+  return repos?.map((repo) => repo.name) ?? [];
 }
 
 export function ControlCenterPage() {
-  const c = useControlCenter();
-  const paneOpen = c.openAgent !== null;
+  const view = useControlView();
+  const connection = useConnection();
+  const repos = useRepoNames();
+  const treeRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLButtonElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  useControlKeys({
+    hasRows: view.rows.length > 0,
+    onFocusRows: () => focusCurrentRow(treeRef.current),
+    onFilter: () => setMenuOpen(true),
+  });
+  const { conversationId, repo } = view.filter;
   return (
-    <div className={paneOpen ? "th-control th-convo-layout" : "th-control"} data-pane={paneOpen ? "true" : undefined}>
-      <div className="th-page th-convo-view">
-        <ControlHead
-          count={c.loading && c.sorted.length === 0 ? null : c.sorted.length}
-          formOpen={c.formOpen}
-          onToggleForm={() => c.setFormOpen((open) => !open)}
-          toggleRef={c.focus.fallbackRef}
+    <div className="th-page th-control">
+      <ControlHead
+        caption={view.loading ? null : view.caption}
+        connection={connection}
+        allConversationsHref={conversationId ? controlHref({ conversationId: null, repo }) : null}
+      >
+        <RepoFilter
+          repos={repos}
+          value={repo}
+          open={menuOpen}
+          buttonRef={filterRef}
+          onOpenChange={setMenuOpen}
+          onPick={view.setRepo}
         />
-        <div className="th-trace th-control-trace">
-          {c.formOpen && <CreateAgentForm id={NEW_AGENT_FORM_ID} onCreated={(name) => void c.created(name)} />}
-          <ControlBody
-            loading={c.loading}
-            agents={c.sorted}
-            openName={c.openName}
-            onOpen={c.open}
-            listRef={c.focus.listRef}
-          />
-        </div>
+      </ControlHead>
+      <div className="th-trace">
+        <StepsLoaders tasks={view.shownTasks} onSteps={view.record} />
+        <Timeline view={view} treeRef={treeRef} />
       </div>
-      {c.openAgent && (
-        <AgentPane
-          key={c.openAgent.name}
-          agent={c.openAgent}
-          onClose={c.closePane}
-          onStopped={() => void c.stopped()}
-        />
-      )}
     </div>
   );
 }

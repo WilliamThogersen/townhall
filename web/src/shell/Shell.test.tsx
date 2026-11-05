@@ -3,25 +3,34 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { AgentsProvider } from "../agents/AgentsProvider";
 import * as client from "../api/client";
+import * as conversationsApi from "../api/conversations";
 import { ApiError } from "../api/errors";
-import type { Agent } from "../api/types";
+import { aRepo } from "../api/fixtures";
+import * as reposApi from "../api/repos";
+import * as tasksApi from "../api/tasks";
+import type { AgentInfo } from "../api/types";
+import { TestDataProvider } from "../data/testing";
 import { navigate } from "../router";
 import { useKeyHints } from "./keyHints";
 import { daemonErrorText } from "./DaemonBanner";
 import { Shell } from "./Shell";
 
-const mk = (name: string, alive: boolean): Agent => ({
+const mk = (name: string, alive: boolean): AgentInfo => ({
   name, kind: "shell", branch: `townhall/${name}`, worktree: `/w/${name}`, alive,
+  repo: "demo", state: { kind: alive ? "working" : "ended" },
 });
 const info = { home: "/h/.townhall", repo: "/r/demo", repoKey: "demo-0123abcd" };
 
 let listAgents: MockInstance<typeof client.listAgents>;
-let getInfo: MockInstance<typeof client.getInfo>;
+let listRepos: MockInstance<typeof reposApi.listRepos>;
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
   listAgents = vi.spyOn(client, "listAgents").mockResolvedValue([mk("a", true), mk("b", false)]);
-  getInfo = vi.spyOn(client, "getInfo").mockResolvedValue(info);
+  vi.spyOn(client, "getInfo").mockResolvedValue(info);
+  listRepos = vi.spyOn(reposApi, "listRepos").mockResolvedValue([aRepo({ name: "shop" }), aRepo({ name: "site" })]);
+  vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([]);
+  vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -33,11 +42,13 @@ function Screen() {
 
 function renderShell(foot?: ReactNode) {
   return render(
-    <AgentsProvider intervalMs={60_000}>
-      <Shell sidebarFoot={foot}>
-        <Screen />
-      </Shell>
-    </AgentsProvider>,
+    <TestDataProvider>
+      <AgentsProvider intervalMs={60_000}>
+        <Shell sidebarFoot={foot}>
+          <Screen />
+        </Shell>
+      </AgentsProvider>
+    </TestDataProvider>,
   );
 }
 
@@ -94,8 +105,8 @@ describe("Shell", () => {
 
   it("shows the repo count and agents by state", async () => {
     renderShell();
-    await waitFor(() => expect(link(/repos/)).toHaveTextContent("repos1"));
-    expect(getInfo).toHaveBeenCalledOnce();
+    await waitFor(() => expect(link(/repos/)).toHaveTextContent("repos2"));
+    expect(listRepos).toHaveBeenCalledOnce();
     expect(link(/control center/)).toHaveTextContent("1 running, 1 ended");
     const status = screen.getByRole("contentinfo").querySelector(".th-keybar-status");
     expect(status).toHaveTextContent("1 running");
@@ -103,17 +114,17 @@ describe("Shell", () => {
   });
 
   it("shows no repo count when the daemon cannot say", async () => {
-    getInfo.mockRejectedValue(new ApiError("network", "cannot reach the daemon: down"));
+    listRepos.mockRejectedValue(new ApiError("network", "cannot reach the daemon: down"));
     renderShell();
-    await waitFor(() => expect(getInfo).toHaveBeenCalled());
+    await waitFor(() => expect(listRepos).toHaveBeenCalled());
     expect(link(/repos/)).toHaveTextContent(/^~repos$/);
   });
 
   it("shows the empty conversation sections", async () => {
     renderShell();
-    expect(screen.getByRole("heading", { name: "active 0" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^active 0/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "older 0" })).toBeInTheDocument();
-    expect(screen.getByText("no conversations yet")).toBeInTheDocument();
+    expect(await screen.findByText("no conversations yet")).toBeInTheDocument();
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
   });
 
@@ -137,7 +148,8 @@ describe("Shell", () => {
     window.history.replaceState(null, "", "/townhall");
     renderShell();
     fireEvent.keyDown(document.body, { key: "/" });
-    expect(link(/search/)).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("searchbox", { name: "search conversations" })).toHaveFocus();
+    expect(window.location.pathname).toBe("/townhall");
     fireEvent.keyDown(document.body, { key: "n" });
     expect(link(/new conversation/)).toHaveAttribute("aria-current", "page");
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
@@ -161,15 +173,5 @@ describe("daemon banner", () => {
       "cannot reach the daemon: HTTP 502: response is not JSON",
     );
     expect(daemonErrorText("cannot reach the daemon: x")).toBe("cannot reach the daemon: x");
-  });
-
-  it("fetches the repo count once the daemon is back", async () => {
-    listAgents.mockRejectedValue(new ApiError("network", "cannot reach the daemon: down"));
-    renderShell();
-    const banner = await screen.findByRole("alert");
-    expect(getInfo).not.toHaveBeenCalled();
-    listAgents.mockResolvedValue([]);
-    fireEvent.click(within(banner).getByRole("button", { name: "retry" }));
-    await waitFor(() => expect(link(/repos/)).toHaveTextContent("repos1"));
   });
 });

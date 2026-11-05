@@ -1,9 +1,104 @@
-.th-repos-note {
-  display: -webkit-box;
+.th-repo-meta span {
   min-width: 0;
-  margin: 0 var(--th-space-2) 0 auto;
   overflow: hidden;
-  text-align: right;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+}
+
+.th-repo-agents {
+  white-space: nowrap;
+}
+
+.th-repo-agents .th-glyphs {
+  margin-right: 1ch;
+}
+
+.th-repo-actions,
+.th-repo-confirm,
+.th-repo-add-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--th-space-2);
+  min-width: 0;
+}
+
+.th-repo-confirm {
+  grid-column: 2 / -1;
+  justify-content: flex-end;
+  font-size: var(--th-text-sm);
+}
+
+.th-repo-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26ch 16ch auto;
+  align-items: end;
+  gap: var(--th-space-2) var(--th-space-4);
+  padding: var(--th-space-3) var(--th-space-2) var(--th-space-3) var(--th-space-4);
+  border-bottom: var(--th-border) solid var(--th-line);
+  background: var(--th-surface);
+}
+
+.th-repo-field {
+  display: grid;
+  gap: var(--th-space-1);
+  min-width: 0;
+}
+
+.th-repo-field > span {
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+  line-height: var(--th-leading-xs);
+}
+
+.th-repo-add-actions {
+  height: var(--th-control-lg);
+}
+
+.th-repo-add-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.th-repo-add[data-layout="stack"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(56ch, 100%);
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.th-repo-add[data-layout="stack"] .th-repo-field--path,
+.th-repo-add[data-layout="stack"] .th-repo-add-actions {
+  grid-column: 1 / -1;
+}
+
+.th-repo-add[data-layout="stack"] .th-repo-add-actions {
+  justify-content: center;
+}
+
+.th-repo-add[data-layout="stack"] .th-repo-add-error {
+  max-width: none;
+}
+
+@media (max-width: 1023px) {
+  .th-repo[data-confirm="true"] > .th-repo-confirm {
+    grid-area: 2 / 1 / 3 / -1;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .th-repo-add {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .th-repo-add .th-repo-field--path,
+  .th-repo-add .th-repo-add-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-height: 599px) {
+  .th-empty:has(> .th-repo-add) > .th-logo {
+    display: none;
+  }
 }

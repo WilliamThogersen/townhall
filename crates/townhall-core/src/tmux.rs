@@ -73,9 +73,12 @@ fn pane_target(key: &str, name: &str) -> String {
     format!("={}:", session_name(key, name))
 }
 
+/// The session option that remembers which adapter started the agent.
+const KIND_OPTION: &str = "@townhall_kind";
+
 /// The pane gets its own `PWD`, so it never inherits the stale one of whoever started
-/// the tmux server.
-fn new_session(key: &str, name: &str, cwd: &str, command: &str) -> Vec<String> {
+/// the tmux server. The session keeps `kind` in [`KIND_OPTION`].
+fn new_session(key: &str, name: &str, cwd: &str, command: &str, kind: &str) -> Vec<String> {
     let session = session_name(key, name);
     [
         "new-session",
@@ -94,6 +97,12 @@ fn new_session(key: &str, name: &str, cwd: &str, command: &str) -> Vec<String> {
         &pane_target(key, name),
         "remain-on-exit",
         "on",
+        ";",
+        "set-option",
+        "-t",
+        &pane_target(key, name),
+        KIND_OPTION,
+        kind,
     ]
     .map(String::from)
     .to_vec()
@@ -127,12 +136,12 @@ async fn run_new_session(args: &[String]) -> Result<String> {
     }
 }
 
-/// Start a detached tmux session running `command` in `cwd`.
+/// Start a detached tmux session running `command` in `cwd`, started by the adapter `kind`.
 /// tmux owns the process, so it survives the townhall daemon exiting. A dead session
 /// left by an earlier agent of the same name is replaced; a live one is a conflict.
-pub async fn spawn(key: &str, name: &str, cwd: &Path, command: &str) -> Result<()> {
+pub async fn spawn(key: &str, name: &str, cwd: &Path, command: &str, kind: &str) -> Result<()> {
     validate_name(name)?;
-    let args = new_session(key, name, &cwd.to_string_lossy(), command);
+    let args = new_session(key, name, &cwd.to_string_lossy(), command, kind);
     let first = run_new_session(&args).await;
     let result = match first {
         Err(e) if duplicate(&e) && dead_leftover(key, name).await? => {
@@ -373,7 +382,7 @@ mod tests {
 
     #[test]
     fn a_new_session_gets_its_own_pwd() {
-        let args = new_session("k", "a", "/w/a", "run it");
+        let args = new_session("k", "a", "/w/a", "run it", "shell");
         let at = args.iter().position(|a| a == "-e").unwrap();
         assert_eq!(args[at + 1], "PWD=/w/a");
         let command = args.iter().position(|a| a == "run it").unwrap();

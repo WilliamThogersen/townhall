@@ -1,36 +1,36 @@
-import type { Ref } from "react";
-import { Button } from "../../ui/Button";
+import type { ReactNode } from "react";
+import type { ConnectionStatus } from "../../data";
+import { Link } from "../../router";
 import { DRAG_REGION } from "../../ui/dragRegion";
 
-export const NEW_AGENT_FORM_ID = "th-new-agent-form";
+const LIVE_WORDS: Readonly<Record<ConnectionStatus, string>> = {
+  open: "● live",
+  connecting: "connecting…",
+  closed: "reconnecting…",
+};
 
 export interface ControlHeadProps {
-  readonly count: number | null;
-  readonly formOpen: boolean;
-  readonly onToggleForm: () => void;
-  readonly toggleRef?: Ref<HTMLButtonElement>;
+  readonly caption: string | null;
+  readonly connection: ConnectionStatus;
+  readonly allConversationsHref: string | null;
+  readonly children?: ReactNode;
 }
 
-function countLabel(count: number): string {
-  return count === 1 ? "1 agent" : `${count} agents`;
-}
-
-export function ControlHead({ count, formOpen, onToggleForm, toggleRef }: ControlHeadProps) {
+export function ControlHead({ caption, connection, allConversationsHref, children }: ControlHeadProps) {
   return (
     <header className="th-page-head" {...DRAG_REGION}>
       <h1>control center</h1>
-      {count !== null && <span className="th-control-cap">{countLabel(count)}</span>}
+      {caption ? <span className="th-control-cap">{caption}</span> : null}
       <div className="th-page-head-actions">
-        <Button
-          ref={toggleRef}
-          variant="ghost"
-          size="sm"
-          aria-expanded={formOpen}
-          aria-controls={formOpen ? NEW_AGENT_FORM_ID : undefined}
-          onClick={onToggleForm}
-        >
-          new agent…
-        </Button>
+        {allConversationsHref ? (
+          <Link className="th-btn th-btn--ghost th-btn--sm" to={allConversationsHref} replace>
+            all conversations
+          </Link>
+        ) : null}
+        <span className="th-stream" data-status={connection === "open" ? "open" : undefined}>
+          {LIVE_WORDS[connection]}
+        </span>
+        {children}
       </div>
     </header>
   );

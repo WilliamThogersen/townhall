@@ -20,7 +20,7 @@ use crate::{tmux, worktree, Error, Result, Workspace};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Agent {
     pub name: String,
-    /// Known only for agents started in this call; not rediscoverable.
+    /// The adapter that started it, kept by its tmux session; unknown once the session is gone.
     pub kind: Option<String>,
     pub branch: String,
     pub worktree: PathBuf,
@@ -67,7 +67,7 @@ pub async fn start(
     validate_name(name)?;
     let command = adapter.launch_command(options)?;
     let wt = worktree::create(ws, name, base).await?;
-    if let Err(cause) = tmux::spawn(ws.key(), name, &wt.path, &command).await {
+    if let Err(cause) = tmux::spawn(ws.key(), name, &wt.path, &command, adapter.kind()).await {
         return Err(match worktree::remove(ws, name).await {
             Ok(()) => cause,
             Err(cleanup) => Error::RollbackFailed {
@@ -110,15 +110,18 @@ async fn delete_orphan_branch(ws: &Workspace, name: &str) -> Result<bool> {
     }
 }
 
-/// Worktrees joined with live sessions. A worktree whose session is missing or dead is
-/// `alive: false`.
+/// Worktrees joined with their sessions. A worktree whose session is missing or dead is
+/// `alive: false`; the kind comes from the session, dead or alive.
 pub async fn list(ws: &Workspace) -> Result<Vec<Agent>> {
-    let (worktrees, sessions) = (worktree::list(ws).await?, tmux::list(ws.key()).await?);
+    let (worktrees, panes) = (worktree::list(ws).await?, tmux::panes(ws.key()).await?);
     Ok(worktrees
         .into_iter()
         .map(|wt| {
-            let alive = sessions.contains(&wt.name);
-            from_worktree(wt, None, alive)
+            let session = tmux::session_name(ws.key(), &wt.name);
+            let pane = panes.iter().find(|p| p.session == session);
+            let alive = pane.is_some_and(|p| !p.dead());
+            let kind = pane.and_then(|p| p.kind.clone());
+            from_worktree(wt, kind, alive)
         })
         .collect())
 }

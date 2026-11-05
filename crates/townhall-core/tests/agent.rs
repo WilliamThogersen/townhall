@@ -51,6 +51,7 @@ async fn start_list_send_output_stop() {
     let listed = agent::list(ws).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert!(listed[0].alive);
+    assert_eq!(listed[0].kind.as_deref(), Some("shell"));
 
     agent::send(ws, &name, "ping-townhall").await.unwrap();
     settle().await;
@@ -75,7 +76,7 @@ async fn failed_spawn_rolls_back_worktree() {
     let name = unique("roll");
     // Occupy the session name so tmux spawn fails after the worktree exists.
     let blocker = TempDir::new().unwrap();
-    tmux::spawn(ws.key(), &name, blocker.path(), "sleep 30")
+    tmux::spawn(ws.key(), &name, blocker.path(), "sleep 30", "shell")
         .await
         .unwrap();
 

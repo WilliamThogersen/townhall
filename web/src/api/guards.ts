@@ -1,15 +1,7 @@
-import { ApiError } from "./errors";
-import type { Agent, Info } from "./types";
+import { bool, fail, isRecord, listOf, nullable, num, record, str, type Guard } from "./guardKit";
+import type { Agent, AgentInfo, AgentState, Info, Repo } from "./types";
 
-export type Guard<T> = (value: unknown) => T;
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-function fail(what: string): never {
-  throw new ApiError("protocol", `unexpected response shape: ${what}`);
-}
+export type { Guard } from "./guardKit";
 
 export interface Envelope {
   readonly success: boolean;
@@ -28,30 +20,66 @@ export function parseEnvelope(value: unknown): Envelope {
 }
 
 export function parseAgent(value: unknown): Agent {
-  if (!isRecord(value)) return fail("agent is not an object");
-  const { name, kind, branch, worktree, alive } = value;
-  if (typeof name !== "string") return fail("agent.name");
-  if (kind !== null && kind !== undefined && typeof kind !== "string") return fail("agent.kind");
-  if (typeof branch !== "string") return fail("agent.branch");
-  if (typeof worktree !== "string") return fail("agent.worktree");
-  if (typeof alive !== "boolean") return fail("agent.alive");
-  return { name, kind: kind ?? null, branch, worktree, alive };
+  const r = record(value, "agent");
+  return {
+    name: str(r.name, "agent.name"),
+    kind: nullable(r.kind, "agent.kind", str),
+    branch: str(r.branch, "agent.branch"),
+    worktree: str(r.worktree, "agent.worktree"),
+    alive: bool(r.alive, "agent.alive"),
+  };
 }
 
-export function parseAgents(value: unknown): readonly Agent[] {
-  if (!Array.isArray(value)) return fail("agents is not an array");
-  return value.map(parseAgent);
+export const parseAgents: Guard<readonly Agent[]> = listOf(parseAgent, "agents");
+
+export function parseAgentState(value: unknown): AgentState {
+  const r = record(value, "agent.state");
+  switch (r.kind) {
+    case "working":
+      return { kind: "working" };
+    case "waiting":
+      return { kind: "waiting", question: str(r.question, "agent.state.question") };
+    case "error":
+      return { kind: "error", exitCode: nullable(r.exitCode, "agent.state.exitCode", num) };
+    case "ended":
+      return { kind: "ended" };
+    default:
+      return fail("agent.state.kind");
+  }
 }
+
+export function parseAgentInfo(value: unknown): AgentInfo {
+  const r = record(value, "agent");
+  return {
+    ...parseAgent(r),
+    repo: str(r.repo, "agent.repo"),
+    state: parseAgentState(r.state),
+  };
+}
+
+export const parseAgentInfos: Guard<readonly AgentInfo[]> = listOf(parseAgentInfo, "agents");
 
 export function parseString(value: unknown): string {
   return typeof value === "string" ? value : fail("expected a string");
 }
 
 export function parseInfo(value: unknown): Info {
-  if (!isRecord(value)) return fail("info is not an object");
-  const { home, repo, repoKey } = value;
-  if (typeof home !== "string") return fail("info.home");
-  if (typeof repo !== "string") return fail("info.repo");
-  if (typeof repoKey !== "string") return fail("info.repoKey");
-  return { home, repo, repoKey };
+  const r = record(value, "info");
+  return {
+    home: str(r.home, "info.home"),
+    repo: str(r.repo, "info.repo"),
+    repoKey: str(r.repoKey, "info.repoKey"),
+    userName: nullable(r.userName, "info.userName", str),
+  };
 }
+
+export function parseRepo(value: unknown): Repo {
+  const r = record(value, "repo");
+  return {
+    name: str(r.name, "repo.name"),
+    path: str(r.path, "repo.path"),
+    baseBranch: str(r.baseBranch, "repo.baseBranch"),
+  };
+}
+
+export const parseRepos: Guard<readonly Repo[]> = listOf(parseRepo, "repos");

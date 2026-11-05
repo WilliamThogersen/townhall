@@ -17,3 +17,9 @@ export function httpBase(win: object = window): string {
 export function wsBase(win: object = window): string | null {
   return isDesktop(win) ? DESKTOP_WS_BASE : null;
 }
+
+export type PageLocation = Pick<Location, "protocol" | "host">;
+
+export function wsApiBase(loc: PageLocation = window.location, win: object = window): string {
+  return wsBase(win) ?? `${loc.protocol === "https:" ? "wss:" : "ws:"}//${loc.host}/api`;
+}
