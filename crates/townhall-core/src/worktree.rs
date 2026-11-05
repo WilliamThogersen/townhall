@@ -33,6 +33,10 @@ pub async fn create(ws: &Workspace, name: &str, base: &str) -> Result<Worktree> 
         Some(ws.repo()),
     )
     .await?;
+    tracing::info!(
+        target: "townhall::git", event = "worktree.create", agent = %name, base = %base,
+        path = %path, "worktree created"
+    );
     Ok(wt)
 }
 
@@ -48,6 +52,10 @@ pub async fn remove(ws: &Workspace, name: &str) -> Result<()> {
     )
     .await?;
     run("git", &["branch", "-D", &wt.branch], Some(ws.repo())).await?;
+    tracing::info!(
+        target: "townhall::git", event = "worktree.remove", agent = %name, path = %path,
+        "worktree removed"
+    );
     Ok(())
 }
 
