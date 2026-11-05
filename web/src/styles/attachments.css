@@ -65,6 +65,19 @@
   color: var(--th-fg);
 }
 
+/* In the composer the remove button shows on hover or focus (always where there is no hover). */
+@media (hover: hover) {
+  .th-composer-attachments .th-thumb-remove {
+    opacity: 0;
+  }
+
+  .th-composer-attachments .th-thumb:hover .th-thumb-remove,
+  .th-composer-attachments .th-file:hover .th-thumb-remove,
+  .th-composer-attachments .th-thumb-remove:focus-visible {
+    opacity: 1;
+  }
+}
+
 .th-thumb[data-state="uploading"] img {
   opacity: 0.5;
 }
@@ -104,30 +117,35 @@
 /* ---------- file chips ---------- */
 
 .th-file {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 1ch;
-  max-width: 300px;
-  height: var(--th-control);
-  padding: 0 var(--th-space-1) 0 6px;
+  gap: var(--th-space-2);
+  width: 220px;
+  max-width: 100%;
+  height: 48px;
+  padding: 0 var(--th-space-2);
   border: var(--th-border) solid var(--th-line-strong);
-  background: var(--th-surface);
+  background: var(--th-surface-2);
   color: var(--th-fg);
   font-size: var(--th-text-sm);
   text-decoration: none;
 }
 
-a.th-file:hover {
+a.th-file:hover,
+.th-file:focus-within {
   border-color: var(--th-fg-muted);
 }
 
-.th-file-ext {
+.th-file-icon {
   flex: none;
-  padding: 0 3px;
-  border: var(--th-border) solid var(--th-line-control);
   color: var(--th-fg-muted);
-  font-size: 10px;
-  line-height: 14px;
+}
+
+.th-file-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
 }
 
 .th-file-name {
@@ -138,9 +156,11 @@ a.th-file:hover {
 }
 
 .th-file-size {
-  flex: none;
+  overflow: hidden;
   color: var(--th-fg-faint);
   font-size: var(--th-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .th-file[data-state="error"] {

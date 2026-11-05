@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from "react";
-import { extensionTag, formatSize } from "./format";
+import { FileCardBody } from "./FileCardBody";
+import { formatSize } from "./format";
 import { Lightbox } from "./Lightbox";
 import type { PendingUpload } from "./uploads";
 import "./chips.css";
@@ -91,9 +92,7 @@ function FileChip({ upload, onRemove }: ChipProps) {
       data-state={chipState(upload)}
       title={upload.status === "failed" ? failureText(upload) : undefined}
     >
-      <span className="th-file-ext">{extensionTag(name)}</span>
-      <span className="th-file-name">{name}</span>
-      <span className="th-file-size">{size}</span>
+      <FileCardBody name={name} detail={size} />
       <RemoveButton upload={upload} onRemove={onRemove} />
     </span>
   );

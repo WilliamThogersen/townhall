@@ -42,7 +42,7 @@ const entry = (id: number, body: EntryBody) => anEntry(id, body, at);
 
 describe("Thread messages", () => {
   it("replaces a pasted image marker with the thumbnail", () => {
-    const shot = { id: "i1", name: "shot.png", mime: "image/png", size: 2048, kind: "image", createdAt: at } as const;
+    const shot = { id: "i1", conversationId: "c1", name: "shot.png", mime: "image/png", size: 2048, kind: "image", createdAt: at } as const;
     const { container } = render(
       <ThreadContext value={context({ attachments: [shot] })}>
         <Thread entries={[entry(1, { kind: "you", text: "why red?\n[Image #1]", attachments: ["i1"] })]} ended={false} />
