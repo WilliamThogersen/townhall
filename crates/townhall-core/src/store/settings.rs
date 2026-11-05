@@ -23,7 +23,10 @@ fn rows(conn: &Connection) -> Result<Map<String, Value>> {
             Ok(value) => {
                 map.insert(key, value);
             }
-            Err(e) => eprintln!("warn: setting `{key}` ignored: {e}"),
+            Err(e) => tracing::warn!(
+                target: "townhall::store", event = "store.setting_ignored", key = %key,
+                error = %crate::redact::redact(&e.to_string()), "setting ignored"
+            ),
         }
     }
     Ok(map)

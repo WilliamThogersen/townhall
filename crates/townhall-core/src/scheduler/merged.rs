@@ -62,6 +62,10 @@ async fn mark(store: &Store, task: &Task) -> Result<bool> {
         text: format!("merged into {}", task.base_branch),
     };
     store.append_entry(&task.conversation_id, body).await?;
+    tracing::info!(
+        target: "townhall::task", event = "task.merged", task = %task.name,
+        base = %task.base_branch, "task merged"
+    );
     Ok(true)
 }
 

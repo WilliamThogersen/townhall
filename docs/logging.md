@@ -21,7 +21,9 @@ Stderr also gets a human-readable layer at `warn` and above.
 ## Filter
 
 `TOWNHALL_LOG` takes `EnvFilter` syntax (e.g. `info,townhall::http=debug`). Default:
-`info,townhall=debug`. It filters the files only.
+`info,townhall=debug,townhall::git=info,townhall::tmux=info` (the per-command `cmd.run`
+debug lines are noisy, so they stay off until you ask: `TOWNHALL_LOG=info,townhall::git=debug`).
+It filters the files only.
 
 ## Line schema
 
@@ -78,10 +80,31 @@ Later tasks add to this table as they emit events.
 | `panic` | `townhall::panic` | error | `message`, `location`, `backtrace` (≤4 KB) |
 | `logs.pruned` | `townhall::logging` | info | `deleted` |
 | `logs.prune_failed` | `townhall::logging` | warn | `error` |
+| `task.created` | `townhall::task` | info | `task`, `conversation`, `repo`, `agent_type`, `after`, `prompt_chars` (never the prompt) |
+| `task.state` | `townhall::task` | info | `task`, `conversation`, `from`, `to` (every change through `Store::update_task`) |
+| `task.needs_you` | `townhall::task` | info | `task` |
+| `task.failed` | `townhall::task` | warn | `task` (state became `error`) |
+| `task.ended` | `townhall::task` | info | `task` |
+| `task.launched` | `townhall::task` | info | `task`, `repo`, `duration_ms`, `worktree` |
+| `task.launch_failed` | `townhall::task` | warn | `task`, `repo`, `error_kind`, `error` |
+| `task.merged` | `townhall::task` | info | `task`, `base` |
+| `scheduler.off` | `townhall::task` | warn | `error_kind`, `error` |
+| `scheduler.pass_warning` | `townhall::task` | warn | `error` (once until it changes) |
+| `cmd.run` | `townhall::git` or `townhall::tmux` | debug; warn on failure | `program`, `args` (first 2 only), `duration_ms`, `exit_code`, on failure `stderr` (redacted) or `error_kind`, `error` |
+| `worktree.create` | `townhall::git` | info | `agent`, `base`, `path` |
+| `worktree.remove` | `townhall::git` | info | `agent`, `path` |
+| `fleet.repo_skipped` | `townhall::store` | warn | `repo`, `error_kind`, `error` |
+| `repo.startup_not_registered` | `townhall::store` | warn | `path`, `error_kind`, `error` |
+| `fs.tmp_remove_failed` | `townhall::store` | warn | `path`, `error` |
+| `store.config_import_failed` | `townhall::store` | warn | `error_kind`, `error` |
+| `store.import_repo_skipped` | `townhall::store` | warn | `path`, `error_kind`, `error` |
+| `store.setting_ignored` | `townhall::store` | warn | `key`, `error` |
+| `store.attachment_cleanup_failed` | `townhall::store` | warn | `path`, `error` |
+| `store.agent_type_unreadable` | `townhall::store` | warn | `error_kind`, `error` |
 
 Planned (see the logging plan): `http.request`, `http.error`, `ws.open`, `ws.close`,
-`mcp.tool`, `task.created`, `task.state`, `task.launched`, `task.launch_failed`,
-`task.merged`, `agent.state`, `agent.gone`, `agent.tool_error`, `agent.permission_denied`,
+`mcp.tool`, `task.launch_failed`,
+`agent.state`, `agent.gone`, `agent.tool_error`, `agent.permission_denied`,
 `turn.start`, `turn.end`, `turn.failed`, `claude.spawn`, `claude.exit`, `cmd.run`,
-`worktree.create`, `worktree.remove`, `daemon.mode`, `daemon.restart`, `web.error`,
+`daemon.mode`, `daemon.restart`, `web.error`,
 `web.unhandled_rejection`, `web.render_error`.

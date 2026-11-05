@@ -60,7 +60,10 @@ pub struct Pass {
 /// Starts the scheduler loop. `None` when there is no store to read tasks from.
 pub fn start(ctx: &Context) -> Option<JoinHandle<()>> {
     if let Err(e) = ctx.store() {
-        eprintln!("warn: the task scheduler is off: {e}");
+        tracing::warn!(
+            target: "townhall::task", event = "scheduler.off", error_kind = e.kind(),
+            error = %crate::redact::redact(&e.to_string()), "the task scheduler is off"
+        );
         return None;
     }
     Some(tokio::spawn(run(ctx.clone())))
@@ -96,7 +99,10 @@ fn report(result: Result<Pass>, last: String) -> String {
         Err(e) => e.to_string(),
     };
     if !text.is_empty() && text != last {
-        eprintln!("warn: task scheduler: {text}");
+        tracing::warn!(
+            target: "townhall::task", event = "scheduler.pass_warning",
+            error = %crate::redact::redact(&text), "task scheduler could not do something"
+        );
     }
     text
 }

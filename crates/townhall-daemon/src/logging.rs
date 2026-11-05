@@ -23,7 +23,7 @@ use tracing_subscriber::{EnvFilter, Layer};
 
 /// Env var holding the file filter (`EnvFilter` syntax).
 pub const FILTER_ENV: &str = "TOWNHALL_LOG";
-const DEFAULT_FILTER: &str = "info,townhall=debug";
+const DEFAULT_FILTER: &str = "info,townhall=debug,townhall::git=info,townhall::tmux=info";
 const SUFFIX: &str = "jsonl";
 const KEEP_FILES: usize = 14;
 /// The folder is pruned to this many bytes.

@@ -23,10 +23,17 @@ pub async fn list(ctx: &Context) -> Result<Vec<AgentInfo>> {
     for repo in ctx.repos().await? {
         match agents_of(ctx, &repo).await {
             Ok(found) => all.extend(found),
-            Err(e) => eprintln!("warn: repo `{}` skipped: {e}", repo.name),
+            Err(e) => skipped(&repo.name, &e),
         }
     }
     Ok(all)
+}
+
+fn skipped(repo: &str, e: &crate::Error) {
+    tracing::warn!(
+        target: "townhall::store", event = "fleet.repo_skipped", repo = %repo,
+        error_kind = e.kind(), error = %crate::redact::redact(&e.to_string()), "repo skipped"
+    );
 }
 
 async fn agents_of(ctx: &Context, repo: &Repo) -> Result<Vec<AgentInfo>> {
@@ -60,7 +67,7 @@ pub async fn holders(ctx: &Context, name: &str) -> Result<Vec<Located>> {
         let ws = match ctx.workspace(&repo) {
             Ok(ws) => ws,
             Err(e) => {
-                eprintln!("warn: repo `{}` skipped: {e}", repo.name);
+                skipped(&repo.name, &e);
                 continue;
             }
         };
@@ -71,7 +78,7 @@ pub async fn holders(ctx: &Context, name: &str) -> Result<Vec<Located>> {
                 workspace: ws,
             }),
             Ok(None) => {}
-            Err(e) => eprintln!("warn: repo `{}` skipped: {e}", repo.name),
+            Err(e) => skipped(&repo.name, &e),
         }
     }
     Ok(found)

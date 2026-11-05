@@ -145,7 +145,11 @@ impl Store {
             let dir = store_bytes(&home, &attachment, &bytes)?;
             if let Err(e) = record(conn, &attachment) {
                 if let Err(cleanup) = std::fs::remove_dir_all(&dir) {
-                    eprintln!("warn: cannot remove {}: {cleanup}", dir.display());
+                    tracing::warn!(
+                        target: "townhall::store", event = "store.attachment_cleanup_failed",
+                        path = %dir.display(), error = %crate::redact::redact(&cleanup.to_string()),
+                        "cannot remove attachment folder"
+                    );
                 }
                 return Err(e);
             }
