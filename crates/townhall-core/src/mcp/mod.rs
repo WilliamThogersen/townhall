@@ -6,6 +6,7 @@
 //! Units 2.8b and 2.8c add their tools in `library.rs` and `runs.rs`, and a match arm for
 //! each in `TaskTools::call`. The agent type tools (2.12) live in `library.rs` and `ask.rs`.
 
+mod artifacts;
 mod ask;
 mod checks;
 mod hand_back;
@@ -20,6 +21,7 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 
+pub use artifacts::{ADD_ARTIFACT, LIST_ARTIFACTS};
 pub use hand_back::HAND_BACK;
 pub use library::{LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
@@ -95,9 +97,14 @@ pub fn task_config_json(base_url: &str, task: &str) -> String {
     .to_string()
 }
 
-/// The tool a task's agent may use without asking.
+/// Every tool a task's agent gets, in `tools/list` order.
+pub fn task_tools_list() -> Vec<ToolDef> {
+    [hand_back::tools(), artifacts::tools()].concat()
+}
+
+/// The tools a task's agent may use without asking.
 pub fn task_allowed_tools() -> Vec<String> {
-    hand_back::tools()
+    task_tools_list()
         .iter()
         .map(|t| format!("mcp__{SERVER_NAME}__{}", t.name))
         .collect()

@@ -11,13 +11,15 @@ use crate::context::Context;
 use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
 use crate::redact::redact;
 
+use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
 use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
 use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 use super::logs::{self as log_tools, LOG_SUMMARY, READ_LOGS};
 use super::rpc::ToolRunner;
 use super::{
-    status, tools, ToolDef, CREATE_TASK, INSTRUCTIONS, MAX_TITLE_LEN, SET_TITLE, TASK_STATUS,
+    status, task_tools_list, tools, ToolDef, CREATE_TASK, INSTRUCTIONS, MAX_TITLE_LEN, SET_TITLE,
+    TASK_STATUS,
 };
 
 /// The tools of the conversation `conversation_id`.
@@ -163,7 +165,7 @@ impl ToolRunner for HandBackTools<'_> {
     }
 
     fn tools(&self) -> Vec<ToolDef> {
-        hand_back::tools()
+        task_tools_list()
     }
 
     fn instructions(&self) -> &'static str {
@@ -173,7 +175,15 @@ impl ToolRunner for HandBackTools<'_> {
     async fn call(&self, name: &str, arguments: Value) -> Checked<Value> {
         match name {
             HAND_BACK => hand_back::hand_back(self.ctx, self.task, parse(arguments)?).await,
-            other => Err(format!("unknown tool `{other}`: use hand_back")),
+            ADD_ARTIFACT => artifacts::add(self.ctx, self.task, parse(arguments)?).await,
+            LIST_ARTIFACTS => artifacts::list(self.ctx, self.task, parse(arguments)?).await,
+            other => {
+                let names: Vec<&str> = task_tools_list().iter().map(|t| t.name).collect();
+                Err(format!(
+                    "unknown tool `{other}`: use one of {}",
+                    names.join(", ")
+                ))
+            }
         }
     }
 }

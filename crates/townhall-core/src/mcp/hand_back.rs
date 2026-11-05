@@ -15,7 +15,7 @@ use super::{ToolDef, MAX_NAME_LEN, MAX_PROMPT_LEN, NAME_PATTERN};
 
 pub const HAND_BACK: &str = "hand_back";
 
-pub const INSTRUCTIONS: &str = "townhall tool: hand_back sends your task to another agent type with the reason, then ends your run. Use it when the work needs another type, for example a failing check that the type that wrote the code must fix.";
+pub const INSTRUCTIONS: &str = "townhall tools: hand_back sends your task to another agent type with the reason, then ends your run. Use it when the work needs another type, for example a failing check that the type that wrote the code must fix. add_artifact attaches proof (a screenshot, log, note or report) to your own task outside the repo, and list_artifacts reads the proof of any task of this conversation; proof can be added but never changed or deleted.";
 
 const MAX_REASON_LEN: u64 = 2_000;
 const MAX_COMMITS: usize = 30;

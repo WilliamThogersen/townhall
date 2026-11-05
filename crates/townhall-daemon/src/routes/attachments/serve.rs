@@ -14,10 +14,10 @@ use axum::response::{IntoResponse, Response};
 use townhall_core::model::{Attachment, AttachmentKind, MAX_ATTACHMENT_BYTES};
 use townhall_core::Error;
 
-use townhall_core::files::mime::{image_extensions, UNKNOWN};
-use townhall_core::files::naming::disposition;
 use crate::envelope::failure;
 use crate::error::ApiError;
+use townhall_core::files::mime::{image_extensions, UNKNOWN};
+use townhall_core::files::naming::disposition;
 
 fn gone(a: &Attachment) -> Response {
     let message = format!("the file of attachment `{}` is gone", a.id);

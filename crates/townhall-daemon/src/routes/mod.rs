@@ -24,7 +24,7 @@ mod usage;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
 use axum::Router;
-use townhall_core::model::MAX_ATTACHMENT_BYTES;
+use townhall_core::model::{MAX_ARTIFACT_BYTES, MAX_ATTACHMENT_BYTES};
 
 use crate::state::AppState;
 
@@ -32,6 +32,9 @@ use crate::state::AppState;
 pub const UPLOAD_BODY_LIMIT: usize = MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
 
 pub const START_BODY_LIMIT: usize = 5 * MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
+
+/// One artifact as base64 inside a JSON-RPC call, plus room for the rest of the call.
+pub const TASK_MCP_BODY_LIMIT: usize = MAX_ARTIFACT_BYTES as usize / 3 * 4 + 64 * 1024;
 
 fn agent_routes() -> Router<AppState> {
     Router::new()
@@ -100,7 +103,10 @@ pub fn router(state: AppState) -> Router {
         .route("/settings/{key}", put(settings::put))
         .route("/tasks", get(tasks::list))
         .route("/tasks/{name}", get(tasks::get))
-        .route("/tasks/{name}/mcp", post(mcp::task_rpc))
+        .route(
+            "/tasks/{name}/mcp",
+            post(mcp::task_rpc).layer(DefaultBodyLimit::max(TASK_MCP_BODY_LIMIT)),
+        )
         .route("/stats", get(stats::get))
         .route("/usage", get(usage::get))
         .route("/search", get(search::search))
