@@ -40,35 +40,6 @@
   color: var(--th-status-working);
 }
 
-.th-msg-body pre {
-  overflow-x: auto;
-  padding: var(--th-space-2) var(--th-space-3);
-  background: var(--th-surface-2);
-  white-space: pre;
-}
-
-.th-msg-body pre code {
-  padding: 0;
-  background: transparent;
-}
-
-.th-msg-body a {
-  color: var(--th-fg);
-}
-
-.th-ask[data-answered="true"] {
-  background: transparent;
-  box-shadow: inset 2px 0 0 var(--th-line-strong);
-}
-
-.th-ask[data-answered="true"] .th-ask-head {
-  color: var(--th-fg-muted);
-}
-
-.th-ask[data-answered="true"] .th-ask-head .th-status {
-  color: var(--th-fg-faint);
-}
-
 .th-ask .th-prompt {
   border: var(--th-border) solid var(--th-line-control);
   background: var(--th-bg);

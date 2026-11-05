@@ -41,28 +41,39 @@ export function EventLine({ sign, kind, event, at, children }: EventLineProps) {
   );
 }
 
-/** Who wrote a chat message: you on the right, townhall's reply on the left in blue. Blocks leave it out. */
-export type MessageFrom = "you" | "townhall";
+/**
+ * Who wrote a chat message: you on the right, townhall's reply on the left in blue, a
+ * question for you on the left in amber, a block (the tasks a reply made) on the replies' edge.
+ */
+export type MessageFrom = "you" | "townhall" | "ask" | "block";
 
 export interface MessageProps {
   readonly from?: MessageFrom;
   readonly at: string;
+  /** A question that got its answer: drawn quiet. */
+  readonly answered?: boolean;
+  /** False when the content shows the time itself. */
+  readonly time?: boolean;
   readonly children: ReactNode;
 }
 
 const MESSAGE_CLASS: Readonly<Record<MessageFrom, string>> = {
   you: "th-msg th-msg--you",
   townhall: "th-msg th-msg--townhall",
+  ask: "th-msg th-msg--ask",
+  block: "th-msg th-msg--block",
 };
 
-export function Message({ from, at, children }: MessageProps) {
+const SIGN: Readonly<Record<MessageFrom, string>> = { you: "›", townhall: "", ask: "◆", block: "" };
+
+export function Message({ from, at, answered = false, time = true, children }: MessageProps) {
   return (
-    <div className={from === undefined ? "th-msg" : MESSAGE_CLASS[from]}>
+    <div className={from === undefined ? "th-msg" : MESSAGE_CLASS[from]} data-answered={answered ? "true" : undefined}>
       <span className="th-msg-sign" aria-hidden="true">
-        {from === "you" ? "›" : ""}
+        {from === undefined ? "" : answered ? "◇" : SIGN[from]}
       </span>
       {children}
-      <EntryTime at={at} />
+      {time ? <EntryTime at={at} /> : null}
     </div>
   );
 }
