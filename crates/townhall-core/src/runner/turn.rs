@@ -193,8 +193,13 @@ async fn plan(
         .map(|r| r.path.clone())
         .filter(|p| p != cwd)
         .collect();
-    let system = prompt::system_prompt(attempt.note, &repos);
-    let model = ctx.settings().await?.townhall_model;
+    let settings = ctx.settings().await?;
+    let profile = match settings.learn_about_me {
+        true => ctx.store()?.profile().await?,
+        false => String::new(),
+    };
+    let system = prompt::system_prompt(attempt.note, &repos, Some(&profile));
+    let model = settings.townhall_model;
     let turn = TurnArgs {
         session_id: conversation.session_id.clone(),
         resume: conversation.session_started,

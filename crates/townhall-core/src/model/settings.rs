@@ -126,7 +126,9 @@ impl SettingKey {
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
             Self::TownhallModel => parses::<TownhallModel>(value),
-            Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::LearnAboutMe => value.is_boolean(),
+            Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::LearnAboutMe => {
+                value.is_boolean()
+            }
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
             }),
@@ -205,6 +207,13 @@ impl<'de> Deserialize<'de> for Settings {
     fn deserialize<D: Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
         Value::deserialize(d).map(|raw| Self::from_value(&raw))
     }
+}
+
+/// `PUT /api/profile` body.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutProfile {
+    pub text: String,
 }
 
 /// `PUT /api/settings/{key}` body.
