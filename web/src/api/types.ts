@@ -126,6 +126,7 @@ export type EntryBody =
       readonly event: AgentEvent;
       readonly text: string;
     }
+  | { readonly kind: "event"; readonly text: string }
   | { readonly kind: "error"; readonly message: string };
 
 export type ThreadEntry = { readonly id: number; readonly at: string } & EntryBody;
