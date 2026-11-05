@@ -92,7 +92,8 @@ fn no_server(e: &Error) -> bool {
     matches!(e, Error::Command { stderr, .. }
         if stderr.contains("no server running")
             || stderr.contains("error connecting to")
-            || stderr.contains("server exited unexpectedly"))
+            || stderr.contains("server exited unexpectedly")
+            || stderr.contains("no current target"))
 }
 
 fn store(panes: Arc<Vec<Pane>>) {
