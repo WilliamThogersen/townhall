@@ -1,7 +1,9 @@
 //! Unit 2.8b library (agent types, 2.12): the `agents` table, one row per saved agent type
 //! with its TOML as written. Every save runs 2.8a's `check_agent` first, every read parses
 //! the TOML again. `0801_seed_builder` saves the type `builder` once, on the first open
-//! with no agent types; it is never saved again after you delete it.
+//! with no agent types; it is never saved again after you delete it. `agent_type_asks`
+//! keeps the agent types townhall's session asked you to confirm, one per conversation and
+//! name, so a confirmed save can be checked against what you were shown.
 //! Migrations 0800 to 0849, files `migrations/08xx_<name>.sql`.
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -22,6 +24,11 @@ pub const MIGRATIONS: &[Migration] = &[
         id: 801,
         name: "0801_seed_builder",
         sql: include_str!("migrations/0801_seed_builder.sql"),
+    },
+    Migration {
+        id: 802,
+        name: "0802_agent_type_asks",
+        sql: include_str!("migrations/0802_agent_type_asks.sql"),
     },
 ];
 
@@ -180,5 +187,64 @@ impl Store {
     pub async fn delete_agent_type(&self, name: &str) -> Result<String> {
         let name = name.to_string();
         self.call(move |conn| delete(conn, &name)).await
+    }
+}
+
+impl Store {
+    /// Records that townhall showed `source` for the type `name` in the entry `entry_id`
+    /// of the conversation and asked you to confirm. Replaces an earlier ask for that name.
+    pub async fn ask_agent_type(
+        &self,
+        conversation_id: &str,
+        name: &str,
+        source: &str,
+        entry_id: u64,
+    ) -> Result<()> {
+        let (cid, name, source) = (
+            conversation_id.to_string(),
+            name.to_string(),
+            source.to_string(),
+        );
+        self.call(move |conn| {
+            conn.execute(
+                "insert or replace into agent_type_asks (conversation_id, name, source, entry_id, asked_at)
+                 values (?1, ?2, ?3, ?4, ?5)",
+                params![cid, name, source, entry_id, clock::now_rfc3339()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The source and entry id of the conversation's open ask for the type `name`.
+    pub async fn agent_type_ask(
+        &self,
+        conversation_id: &str,
+        name: &str,
+    ) -> Result<Option<(String, u64)>> {
+        let (cid, name) = (conversation_id.to_string(), name.to_string());
+        self.call(move |conn| {
+            Ok(conn
+                .query_row(
+                    "select source, entry_id from agent_type_asks where conversation_id = ?1 and name = ?2",
+                    params![cid, name],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?)
+        })
+        .await
+    }
+
+    /// Closes the conversation's ask for the type `name`, once it was answered.
+    pub async fn forget_agent_type_ask(&self, conversation_id: &str, name: &str) -> Result<()> {
+        let (cid, name) = (conversation_id.to_string(), name.to_string());
+        self.call(move |conn| {
+            conn.execute(
+                "delete from agent_type_asks where conversation_id = ?1 and name = ?2",
+                params![cid, name],
+            )?;
+            Ok(())
+        })
+        .await
     }
 }

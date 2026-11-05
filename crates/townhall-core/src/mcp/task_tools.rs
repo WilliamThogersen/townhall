@@ -1,4 +1,5 @@
-//! `create_task`, `set_title` and `task_status` (`status.rs`) for one conversation's session.
+//! `create_task`, `set_title`, `task_status` (`status.rs`) and the agent type tools
+//! (`library.rs`) for one conversation's session.
 //! None takes a permission mode: a task's agent always gets the saved setting when the
 //! scheduler starts it.
 
@@ -10,6 +11,7 @@ use crate::context::Context;
 use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
 
 use super::checks::{self, Checked};
+use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 use super::rpc::ToolRunner;
 use super::{status, tools, CREATE_TASK, MAX_TITLE_LEN, SET_TITLE, TASK_STATUS};
 
@@ -43,6 +45,11 @@ impl ToolRunner for TaskTools<'_> {
             SET_TITLE => as_json(&self.set_title(parse(arguments)?).await?),
             TASK_STATUS => {
                 status::task_status(self.ctx, self.conversation_id, parse(arguments)?).await
+            }
+            LIST_AGENT_TYPES => library::list(self.ctx, parse(arguments)?).await,
+            READ_AGENT_TYPE => library::read(self.ctx, parse(arguments)?).await,
+            SAVE_AGENT_TYPE => {
+                library::save(self.ctx, self.conversation_id, parse(arguments)?).await
             }
             other => Err(unknown_tool(other)),
         }

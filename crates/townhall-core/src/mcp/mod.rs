@@ -4,8 +4,9 @@
 //! passes; `handle` answers the requests (`rpc.rs`) with the task tools (`task_tools.rs`,
 //! `status.rs`).
 //! Units 2.8b and 2.8c add their tools in `library.rs` and `runs.rs`, and a match arm for
-//! each in `TaskTools::call`.
+//! each in `TaskTools::call`. The agent type tools (2.12) live in `library.rs` and `ask.rs`.
 
+mod ask;
 mod checks;
 mod library;
 mod rpc;
@@ -17,6 +18,7 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 
+pub use library::{LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
 pub use status::{MAX_MESSAGE_CHARS, MAX_STEPS, RECENT_ENTRIES};
 
@@ -41,7 +43,7 @@ pub const MAX_TITLE_LEN: u64 = 80;
 pub const MAX_PROMPT_LEN: u64 = 50_000;
 pub const MAX_LIST_LEN: u64 = 20;
 
-pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to a Claude agent in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did.";
+pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to an agent of a saved agent type in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did; list_agent_types, read_agent_type and save_agent_type show and save the agent types tasks run as.";
 
 /// One tool as `tools/list` returns it.
 #[derive(Debug, Clone, PartialEq)]
@@ -170,7 +172,10 @@ mod tests {
             [
                 "mcp__townhall__create_task",
                 "mcp__townhall__set_title",
-                "mcp__townhall__task_status"
+                "mcp__townhall__task_status",
+                "mcp__townhall__list_agent_types",
+                "mcp__townhall__read_agent_type",
+                "mcp__townhall__save_agent_type"
             ]
         );
     }
@@ -178,7 +183,7 @@ mod tests {
     #[test]
     fn schemas_match_the_input_types() {
         let tools = tools();
-        assert_eq!(tools.len(), 3);
+        assert_eq!(tools.len(), 6);
         let create = &tools[0].input_schema;
         let props: Vec<&String> = create["properties"].as_object().unwrap().keys().collect();
         assert_eq!(
@@ -204,5 +209,12 @@ mod tests {
         assert_eq!(tools[2].name, "task_status");
         assert!(status.get("required").is_none());
         assert_eq!(status["additionalProperties"], false);
+        let save = &tools[5].input_schema;
+        assert_eq!(tools[5].name, "save_agent_type");
+        assert_eq!(save["required"], json!(["source"]));
+        assert_eq!(tools[4].input_schema["required"], json!(["name"]));
+        assert!(tools
+            .iter()
+            .all(|t| t.input_schema["additionalProperties"] == false));
     }
 }

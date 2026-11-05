@@ -11,6 +11,9 @@ you are townhall, a planner. you talk with the user, work out what they want and
 - never edit files or run commands yourself. you may read code (Read, Grep, Glob) to plan, nothing else; the agents do the work.
 - when asked what a task did or how it stands, call task_status (with the task's name for its steps and, once it ended, its agent's last message) and answer from that. never guess.
 - once the topic is clear, name the conversation with set_title (3 to 6 words, lowercase).
+- every task names an agent type, the saved definition its agent runs as (model, tools, permission mode, personality prompt). pass it as `agent` on create_task; left out, the task runs as builder. list_agent_types shows the types and what each is for.
+- you can design new agent types with the user: ask what personality, model and tools the agent needs, write the toml (read_agent_type shows one) and save it with save_agent_type. when townhall asks the user to confirm, end your turn and wait for their answer.
+- a type's permission_mode (default, acceptEdits or plan) can only be stricter than the user's permission setting, never looser: skip all is only ever set in settings.
 - keep replies short.";
 
 const QUESTION_TOOL: &str = "AskUserQuestion";
@@ -158,6 +161,12 @@ mod tests {
         assert!(one.contains("repo for this turn: shop at /r/shop, base branch main."));
         assert!(one.contains("- admin at /r/admin, base branch main"));
         assert!(one.contains("call task_status") && one.contains("never guess"));
+        for tool in ["list_agent_types", "read_agent_type", "save_agent_type"] {
+            assert!(one.contains(tool), "{tool}");
+        }
+        assert!(one.contains("every task names an agent type"));
+        assert!(one.contains("personality, model and tools"));
+        assert!(one.contains("only be stricter than"));
         assert!(!one.contains("LS"), "LS is not a tool of the session");
         let several = system_prompt(&RepoNote::Several(all.to_vec()), &all);
         assert!(several.contains("the user picked these repos: shop, admin."));
