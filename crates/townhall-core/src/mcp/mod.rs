@@ -1,7 +1,8 @@
 //! Townhall's MCP server for its own Claude session: JSON-RPC 2.0 over plain HTTP JSON
 //! (no SSE) at `POST /api/conversations/{id}/mcp`, like Hive's `src/main/plan/mcp.ts`.
 //! This module fixes the names, the tool schemas and the `--mcp-config` the runner (2.2)
-//! passes; `handle` answers the requests (`rpc.rs`) with the task tools (`task_tools.rs`).
+//! passes; `handle` answers the requests (`rpc.rs`) with the task tools (`task_tools.rs`,
+//! `status.rs`).
 //! Units 2.8b and 2.8c add their tools in `library.rs` and `runs.rs`, and a match arm for
 //! each in `TaskTools::call`.
 
@@ -9,6 +10,7 @@ mod checks;
 mod library;
 mod rpc;
 mod runs;
+mod status;
 mod task_tools;
 
 use serde_json::{json, Value};
@@ -16,6 +18,7 @@ use serde_json::{json, Value};
 use crate::context::Context;
 
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
+pub use status::{MAX_MESSAGE_CHARS, MAX_STEPS, RECENT_ENTRIES};
 
 /// Answers one JSON-RPC message or batch for the conversation `conversation_id` (which the
 /// route checked exists). `None` when there is nothing to send back: the route answers `202`.
@@ -31,13 +34,14 @@ pub const SERVER_NAME: &str = "townhall";
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub const CREATE_TASK: &str = "create_task";
 pub const SET_TITLE: &str = "set_title";
+pub const TASK_STATUS: &str = "task_status";
 pub const NAME_PATTERN: &str = "^[A-Za-z0-9_-]+$";
 pub const MAX_NAME_LEN: u64 = 64;
 pub const MAX_TITLE_LEN: u64 = 80;
 pub const MAX_PROMPT_LEN: u64 = 50_000;
 pub const MAX_LIST_LEN: u64 = 20;
 
-pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to a Claude agent in its own git worktree; set_title names this conversation once the topic is clear.";
+pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to a Claude agent in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did.";
 
 /// One tool as `tools/list` returns it.
 #[derive(Debug, Clone, PartialEq)]
@@ -142,6 +146,11 @@ fn task_tools() -> Vec<ToolDef> {
             description: "Name this conversation in townhall's sidebar (3 to 6 words, lowercase), once the topic is clear. Returns the conversation.",
             input_schema: set_title_schema(),
         },
+        ToolDef {
+            name: TASK_STATUS,
+            description: "What this conversation's tasks are doing and did. Without `name`: every task with its state, branch, `after` and its last 3 agent and needs-you entries. With `name`: that task plus its agent's last 20 steps and, once it is ended or merged, the agent's last message. Call it whenever you are asked what a task did or how it stands, instead of guessing.",
+            input_schema: status::schema(),
+        },
     ]
 }
 
@@ -158,14 +167,18 @@ mod tests {
         );
         assert_eq!(
             allowed_tools(),
-            ["mcp__townhall__create_task", "mcp__townhall__set_title"]
+            [
+                "mcp__townhall__create_task",
+                "mcp__townhall__set_title",
+                "mcp__townhall__task_status"
+            ]
         );
     }
 
     #[test]
     fn schemas_match_the_input_types() {
         let tools = tools();
-        assert_eq!(tools.len(), 2);
+        assert_eq!(tools.len(), 3);
         let create = &tools[0].input_schema;
         let props: Vec<&String> = create["properties"].as_object().unwrap().keys().collect();
         assert_eq!(
@@ -187,5 +200,9 @@ mod tests {
             .chars()
             .all(|c| c != '\u{2014}' && c != '\u{2013}'));
         assert_eq!(tools[1].input_schema["required"], json!(["title"]));
+        let status = &tools[2].input_schema;
+        assert_eq!(tools[2].name, "task_status");
+        assert!(status.get("required").is_none());
+        assert_eq!(status["additionalProperties"], false);
     }
 }

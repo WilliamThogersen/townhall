@@ -38,7 +38,7 @@ async fn initialize_echoes_the_version_and_lists_the_tools() {
         .await;
     let tools = list["result"]["tools"].as_array().unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["create_task", "set_title"]);
+    assert_eq!(names, ["create_task", "set_title", "task_status"]);
     for t in tools {
         assert!(t["description"].is_string());
         assert_eq!(t["inputSchema"]["type"], "object");

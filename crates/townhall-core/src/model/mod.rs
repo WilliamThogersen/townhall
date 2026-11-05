@@ -20,7 +20,7 @@ pub use conversation::{
 pub use event::ServerEvent;
 pub use repo::{AddRepo, Repo};
 pub use settings::{
-    NotifyWhen, PermissionMode, PutSetting, RepoUnclear, SettingKey, Settings,
+    NotifyWhen, PermissionMode, PutSetting, RepoUnclear, SettingKey, Settings, TownhallModel,
     AGENTS_AT_ONCE_DEFAULT, AGENTS_AT_ONCE_MAX, AGENTS_AT_ONCE_MIN,
 };
 pub use task::{Checks, CreateTaskInput, NewTask, Pr, Task, TaskState, TASK_BRANCH_PREFIX};

@@ -3,20 +3,23 @@
 //! `needsYou` or `agent` entry. The state it acted on is remembered in the store, so a
 //! restart repeats neither entries nor events. An exit (error or ended) counts once seen
 //! on two polls in a row: a task's worktree exists a moment before its session does.
+//! Claude's folder trust dialog in townhall's own worktrees is answered once per session
+//! (`trust.rs`).
 
 mod sync;
+mod trust;
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 
 use crate::context::Context;
-use crate::home::repo_key;
+use crate::home::{repo_key, WORKTREES_DIR};
 use crate::model::{AgentInfo, AgentState, ServerEvent, Task};
-use crate::{fleet, tmux, Error};
+use crate::{fleet, tmux, Error, Result, Workspace};
 use sync::Change;
 
 pub const INTERVAL: Duration = Duration::from_millis(1500);
@@ -67,6 +70,10 @@ pub struct Watcher {
     /// Exits seen once, waiting for the next poll to confirm them.
     settling: HashMap<Key, AgentState>,
     missing: HashMap<Key, u32>,
+    /// `<home>/worktrees`: only agents below it get their trust dialog answered.
+    worktrees: PathBuf,
+    /// Sessions (pane id and start) whose trust dialog was answered, never twice.
+    trusted: HashSet<(Key, String)>,
     last_warning: Option<String>,
 }
 
@@ -77,11 +84,14 @@ fn terminal(state: &AgentState) -> bool {
 impl Watcher {
     /// A watcher that remembers what the store remembers.
     pub async fn new(ctx: Context) -> Self {
+        let worktrees = ctx.home().root().join(WORKTREES_DIR);
         let mut watcher = Self {
             ctx,
             seen: HashMap::new(),
             settling: HashMap::new(),
             missing: HashMap::new(),
+            worktrees,
+            trusted: HashSet::new(),
             last_warning: None,
         };
         let stored = match watcher.ctx.store() {
@@ -138,15 +148,18 @@ impl Watcher {
         self.missing.remove(&key);
         let before = self.seen.get(&key).map(|s| s.state.clone());
         let changed = before.as_ref() != Some(&info.state);
+        let task = tasks
+            .get(&key.agent)
+            .filter(|t| t.repo.eq_ignore_ascii_case(&info.repo));
+        if changed && self.trust(info, &key, task).await {
+            return;
+        }
         if changed && terminal(&info.state) {
             let first = self.settling.insert(key.clone(), info.state.clone());
             if first.as_ref() != Some(&info.state) {
                 return;
             }
         }
-        let task = tasks
-            .get(&key.agent)
-            .filter(|t| t.repo.eq_ignore_ascii_case(&info.repo));
         if let Some(task) = task {
             if !self
                 .apply(task, sync::plan(task, &info.state, before.as_ref()))
@@ -163,6 +176,53 @@ impl Watcher {
             self.ctx.bus().publish(event);
             self.remember(key, info).await;
         }
+    }
+
+    /// Answers the trust dialog of an agent in townhall's worktrees, once per session and
+    /// only when the dialog is not the state acted on already. True when it answered: this
+    /// poll's state is not acted on, and the next poll shows whether the dialog went away.
+    async fn trust(&mut self, info: &AgentInfo, key: &Key, task: Option<&Task>) -> bool {
+        if !trust::answers(info, &self.worktrees) {
+            return false;
+        }
+        let ws = match self.workspace_of(&info.repo).await {
+            Ok(ws) => ws,
+            Err(e) => {
+                self.warn(&format!(
+                    "cannot trust the worktree of `{}`: {e}",
+                    info.name
+                ));
+                return false;
+            }
+        };
+        let session = match tmux::pane(ws.key(), &info.name).await {
+            Ok(Some(pane)) => format!("{}@{}", pane.id, pane.created),
+            Ok(None) => return false,
+            Err(e) => {
+                self.warn(&format!("cannot find the session of `{}`: {e}", info.name));
+                return false;
+            }
+        };
+        if !self.trusted.insert((key.clone(), session)) {
+            return false;
+        }
+        if let Err(e) = trust::answer(&ws, &info.name).await {
+            self.warn(&format!(
+                "cannot trust the worktree of `{}`: {e}",
+                info.name
+            ));
+            return false;
+        }
+        if let Some(task) = task {
+            let entry = Some(trust::entry(&task.name));
+            self.apply(task, Some(Change { state: None, entry })).await;
+        }
+        true
+    }
+
+    async fn workspace_of(&self, repo: &str) -> Result<Workspace> {
+        let repo = self.ctx.repo(repo).await?;
+        self.ctx.workspace(&repo)
     }
 
     /// Applies `change` unless the task moved meanwhile. False when it must be retried.
@@ -275,6 +335,7 @@ impl Watcher {
         self.seen.remove(key);
         self.missing.remove(key);
         self.settling.remove(key);
+        self.trusted.retain(|(k, _)| k != key);
         let forgotten = match self.ctx.store() {
             Ok(store) => store.forget_agent_state(&seen.repo, &seen.agent).await,
             Err(e) => Err(e),

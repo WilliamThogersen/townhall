@@ -10,6 +10,7 @@ const daemon: Settings = {
   repoUnclear: "guess",
   sessionPanelOpen: false,
   notifyWhen: "failed",
+  townhallModel: "haiku",
 };
 
 function mockFetch(status: number, body: unknown) {

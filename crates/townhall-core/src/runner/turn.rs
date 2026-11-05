@@ -150,6 +150,7 @@ async fn plan(
         .filter(|p| p != cwd)
         .collect();
     let system = prompt::system_prompt(attempt.note, &repos);
+    let model = ctx.settings().await?.townhall_model;
     let turn = TurnArgs {
         session_id: conversation.session_id.clone(),
         resume: conversation.session_started,
@@ -159,6 +160,7 @@ async fn plan(
         },
         mcp_config: mcp::config_json(ctx.base_url(), &conversation.id),
         add_dirs,
+        model,
     };
     args::build(&turn)
 }

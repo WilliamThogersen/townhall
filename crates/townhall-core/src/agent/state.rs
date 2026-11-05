@@ -7,8 +7,8 @@
 //!   request only ever shows there, even while the transcript reads busy: Claude writes a
 //!   message with parallel tool calls only once every call has a result), or, for a program
 //!   without a transcript, when its last line is a question. Claude's folder trust dialog
-//!   in a new worktree asks too, as [`question::TRUST_QUESTION`]; it is never answered
-//!   for you,
+//!   in a new worktree asks too, as [`question::TRUST_QUESTION`]; the watcher answers it
+//!   once for townhall's own worktrees (`watch/trust.rs`),
 //! - a live Claude whose turn ended without asking, [`IDLE_SETTLE_MS`] ago or longer, is
 //!   `ended`: interactive Claude never exits on its own, and a short pause between tool
 //!   calls must not count. Typing into it starts a new turn, which is `working` again,
@@ -27,6 +27,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::clock::unix_millis;
 
 pub use question::choices;
+pub(crate) use question::TRUST_QUESTION;
 
 use super::Agent;
 use crate::model::AgentState;
@@ -238,6 +239,37 @@ fn read_turn(projects: &Path, worktree: &Path, since: u64) -> crate::Result<Opti
         .map(|t| ended_at(t, modified));
     memo::keep_turn(&path, stamp, turn.clone());
     Ok(turn)
+}
+
+/// What the agent in `worktree` said when its last turn ended, from its newest transcript
+/// written since the worktree was made (any, once the folder is gone), read like its state.
+/// `None` without a transcript, or when its last turn did not end with text.
+pub async fn last_message(projects: &Path, worktree: &Path) -> crate::Result<Option<String>> {
+    let (projects, worktree) = (projects.to_path_buf(), worktree.to_path_buf());
+    tokio::task::spawn_blocking(move || read_last_message(&projects, &worktree))
+        .await
+        .map_err(|e| crate::Error::Io {
+            context: "read an agent's last message".into(),
+            source: std::io::Error::other(e),
+        })?
+}
+
+fn read_last_message(projects: &Path, worktree: &Path) -> crate::Result<Option<String>> {
+    let newest = match steps::worktree_made(worktree)? {
+        Some(made) => steps::latest_transcript_since(projects, worktree, made)?,
+        None => steps::latest_transcript(projects, worktree)?,
+    };
+    let Some(path) = newest else {
+        return Ok(None);
+    };
+    let turn = transcript::read(&path).map_err(|source| crate::Error::Io {
+        context: format!("read transcript {}", path.display()),
+        source,
+    })?;
+    Ok(match turn {
+        Some(Turn::Idle { text, .. }) if !text.trim().is_empty() => Some(text),
+        _ => None,
+    })
 }
 
 /// A finished turn without its own time ended when the file was last written.
