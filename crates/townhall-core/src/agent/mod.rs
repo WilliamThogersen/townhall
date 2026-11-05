@@ -157,3 +157,11 @@ pub async fn output(ws: &Workspace, name: &str) -> Result<String> {
         .await
         .map_err(|e| missing_session(name, e))
 }
+
+/// The `tmux` arguments that attach a client to the agent's live session, which is first
+/// set up for a viewer. A dead session is `NotFound`.
+pub async fn attach_args(ws: &Workspace, name: &str) -> Result<Vec<String>> {
+    tmux::prepare_attach(ws.key(), name)
+        .await
+        .map_err(|e| missing_session(name, e))
+}

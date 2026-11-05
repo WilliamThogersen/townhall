@@ -32,8 +32,13 @@ export function isTextField(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement && !NON_TEXT_INPUTS.has(target.type);
 }
 
+/** Keys typed into the live agent terminal belong to the program in it, never to the app. */
+export function isInTerminal(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(".th-term") !== null;
+}
+
 function onKeyDown(e: KeyboardEvent): void {
-  if (e.defaultPrevented || e.isComposing) return;
+  if (e.defaultPrevented || e.isComposing || isInTerminal(e.target)) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (isTextField(e.target)) return;
   const to = GLOBAL_KEYS.get(e.key);

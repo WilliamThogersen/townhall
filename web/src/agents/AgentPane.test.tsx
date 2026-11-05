@@ -4,22 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "../api/client";
 import type { Agent } from "../api/types";
 import { AgentPane } from "./AgentPane";
-import type { StreamState } from "./useAgentStream";
+import { useEffect } from "react";
+import type { AttachState } from "./attachSocket";
+import type { TerminalProps } from "./Terminal";
 
 const mocks = vi.hoisted(() => ({
-  stream: { snapshot: "", status: "open", error: null } as StreamState,
-  streamArgs: [] as [string, boolean][],
-}));
-
-vi.mock("./useAgentStream", () => ({
-  useAgentStream: (name: string, enabled: boolean) => {
-    mocks.streamArgs.push([name, enabled]);
-    return mocks.stream;
-  },
+  state: { status: "open", error: null } as AttachState,
+  terminalProps: [] as unknown[],
 }));
 
 vi.mock("./Terminal", () => ({
-  Terminal: ({ snapshot }: { snapshot: string }) => <pre data-testid="terminal">{snapshot}</pre>,
+  Terminal: ({ name, alive, focused, onState }: TerminalProps) => {
+    mocks.terminalProps.push({ name, alive, focused });
+    useEffect(() => onState?.(mocks.state), [onState]);
+    return <pre data-testid="terminal">{name}</pre>;
+  },
 }));
 
 const agent: Agent = {
@@ -33,8 +32,8 @@ const agent: Agent = {
 const props = () => ({ agent, onClose: vi.fn(), onStopped: vi.fn() });
 
 beforeEach(() => {
-  mocks.stream = { snapshot: "$ ls", status: "open", error: null };
-  mocks.streamArgs.length = 0;
+  mocks.state = { status: "open", error: null };
+  mocks.terminalProps.length = 0;
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -59,10 +58,11 @@ describe("AgentPane head", () => {
     expect(head().querySelectorAll(".th-sep")).toHaveLength(1);
   });
 
-  it("marks a dead agent and streams only while alive", () => {
+  it("marks a dead agent and tells the terminal not to reconnect", async () => {
     render(<AgentPane {...props()} agent={{ ...agent, alive: false }} />);
     expect(pane().querySelector(".th-status")).toHaveAttribute("data-state", "dead");
-    expect(mocks.streamArgs.at(-1)).toEqual(["u-demo", false]);
+    await screen.findByTestId("terminal");
+    expect(mocks.terminalProps.at(-1)).toMatchObject({ name: "u-demo", alive: false });
   });
 
   it("gets the amber frame when focused", () => {
@@ -79,9 +79,11 @@ describe("AgentPane head", () => {
     expect(p.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("passes the snapshot to the terminal", async () => {
-    render(<AgentPane {...props()} />);
-    expect(await screen.findByTestId("terminal")).toHaveTextContent("$ ls");
+  it("gives the terminal the agent, with no separate input row", async () => {
+    render(<AgentPane {...props()} focused />);
+    expect(await screen.findByTestId("terminal")).toHaveTextContent("u-demo");
+    expect(mocks.terminalProps.at(-1)).toEqual({ name: "u-demo", alive: true, focused: true });
+    expect(screen.queryByPlaceholderText(/type into/)).toBeNull();
   });
 });
 
@@ -92,15 +94,16 @@ describe("AgentPane stream status", () => {
     [{ status: "reconnecting", error: null }, "connecting", "reconnecting"],
     [{ status: "closed", error: "agent `u-demo` not found" }, "ended", "○ ended: session closed"],
     [{ status: "closed", error: "capture failed" }, "error", "× error: capture failed"],
-  ] as const)("renders %o as %s", (state, status, text) => {
-    mocks.stream = { snapshot: "", ...state };
+  ] as const)("renders %o as %s", async (state, status, text) => {
+    mocks.state = state;
     render(<AgentPane {...props()} />);
+    await screen.findByTestId("terminal");
     expect(streamStatus()).toHaveAttribute("data-status", status);
     expect(streamStatus()).toHaveTextContent(text);
   });
 
   it("spins while connecting", () => {
-    mocks.stream = { snapshot: "", status: "connecting", error: null };
+    mocks.state = { status: "connecting", error: null };
     render(<AgentPane {...props()} />);
     expect(streamStatus().querySelector(".th-spin")).not.toBeNull();
   });

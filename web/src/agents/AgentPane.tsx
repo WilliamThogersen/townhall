@@ -1,10 +1,9 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { Agent } from "../api/types";
 import { Loading } from "../ui/Loading";
+import type { AttachState } from "./attachSocket";
 import { PaneHead } from "./PaneHead";
-import { PanePrompt } from "./PanePrompt";
 import { paneStreamView } from "./paneStream";
-import { useAgentStream } from "./useAgentStream";
 import "./AgentPane.css";
 
 const Terminal = lazy(() => import("./Terminal").then((m) => ({ default: m.Terminal })));
@@ -16,23 +15,24 @@ export interface AgentPaneProps {
   readonly focused?: boolean;
 }
 
+const CONNECTING: AttachState = { status: "connecting", error: null };
+
 export function AgentPane({ agent, onClose, onStopped, focused = false }: AgentPaneProps) {
-  const stream = useAgentStream(agent.name, agent.alive);
+  const [attach, setAttach] = useState<AttachState>(CONNECTING);
 
   return (
     <article className="th-pane" data-active={focused} aria-label={`${agent.name} terminal`}>
       <PaneHead
         agent={agent}
-        stream={paneStreamView(stream, agent.alive)}
+        stream={paneStreamView(attach, agent.alive)}
         onClose={onClose}
         onStopped={onStopped}
       />
       <div className="th-term">
         <Suspense fallback={<Loading verb="loading terminal" />}>
-          <Terminal snapshot={stream.snapshot} />
+          <Terminal name={agent.name} alive={agent.alive} focused={focused} onState={setAttach} />
         </Suspense>
       </div>
-      <PanePrompt name={agent.name} />
     </article>
   );
 }
