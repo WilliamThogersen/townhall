@@ -40,10 +40,12 @@ pub enum AgentEvent {
     rename_all_fields = "camelCase"
 )]
 pub enum EntryBody {
-    /// Your message, with the ids of its attachments.
+    /// Your message, with the ids of its attachments and the entry it replies to.
     You {
         text: String,
         attachments: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_to: Option<u64>,
     },
     /// Townhall's reply, Markdown.
     Townhall { text: String },
@@ -113,8 +115,17 @@ mod tests {
             EntryBody::You {
                 text: "hi".into(),
                 attachments: vec!["a1".into()],
+                reply_to: None,
             },
             json!({"kind": "you", "text": "hi", "attachments": ["a1"]}),
+        );
+        round_trip(
+            EntryBody::You {
+                text: "yes".into(),
+                attachments: vec![],
+                reply_to: Some(2),
+            },
+            json!({"kind": "you", "text": "yes", "attachments": [], "replyTo": 2}),
         );
         round_trip(
             EntryBody::Townhall { text: "ok".into() },

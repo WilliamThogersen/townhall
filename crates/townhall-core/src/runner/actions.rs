@@ -124,6 +124,7 @@ pub async fn send(ctx: &Context, id: &str, message: NewMessage) -> Result<Thread
     let yours = EntryBody::You {
         text: message.text.clone(),
         attachments: message.attachments.clone(),
+        reply_to: None,
     };
     open_turn(ctx, id, guard, vec![yours], message, false).await
 }

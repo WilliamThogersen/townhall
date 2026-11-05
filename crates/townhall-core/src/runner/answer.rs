@@ -73,7 +73,9 @@ pub fn pending_ask(entries: &[ThreadEntry]) -> Option<PendingAsk> {
         _ => return None,
     };
     let asked = back.find_map(|e| match &e.body {
-        EntryBody::You { text, attachments } => Some((text.clone(), attachments.clone())),
+        EntryBody::You {
+            text, attachments, ..
+        } => Some((text.clone(), attachments.clone())),
         _ => None,
     });
     let (text, attachments) = asked.unwrap_or_default();
@@ -146,6 +148,7 @@ mod tests {
         EntryBody::You {
             text: text.into(),
             attachments: vec!["a1".into()],
+            reply_to: None,
         }
     }
 
