@@ -76,6 +76,9 @@ export function conversationStatus(conversation: Conversation): StatusWords {
 }
 
 export function endQuestion(title: string, unfinished: number): string {
-  const tasks = unfinished === 1 ? "1 task keeps running" : `${unfinished} tasks keep running`;
+  const tasks =
+    unfinished === 1
+      ? "1 task stops and its worktree is deleted"
+      : `${unfinished} tasks stop and their worktrees are deleted`;
   return `end ${title}? ${tasks}`;
 }

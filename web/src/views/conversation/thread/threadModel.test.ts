@@ -84,9 +84,9 @@ describe("conversationStatus", () => {
 });
 
 describe("endQuestion", () => {
-  it("names the conversation and the tasks that keep running", () => {
-    expect(endQuestion("login loop", 1)).toBe("end login loop? 1 task keeps running");
-    expect(endQuestion("login loop", 2)).toBe("end login loop? 2 tasks keep running");
+  it("names the conversation and the tasks that stop", () => {
+    expect(endQuestion("login loop", 1)).toBe("end login loop? 1 task stops and its worktree is deleted");
+    expect(endQuestion("login loop", 2)).toBe("end login loop? 2 tasks stop and their worktrees are deleted");
   });
 });
 

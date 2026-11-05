@@ -126,6 +126,28 @@ pub async fn stop(ws: &Workspace, name: &str) -> Result<()> {
     }
 }
 
+/// Kill only the tmux session of `name`; a worktree is left as it is. False when it was gone.
+pub async fn kill_session(ws: &Workspace, name: &str) -> Result<bool> {
+    validate_name(name)?;
+    match tmux::kill(ws.key(), name).await {
+        Ok(()) => Ok(true),
+        Err(e) if tmux_absent(&e) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// Kill the session and remove the worktree for good; the branch stays only while it holds
+/// unmerged commits. False when neither existed.
+pub async fn retire(ws: &Workspace, name: &str) -> Result<bool> {
+    let killed = kill_session(ws, name).await?;
+    let removed = match worktree::retire(ws, name).await {
+        Ok(_) => true,
+        Err(e) if git_absent(&e) => false,
+        Err(e) => return Err(e),
+    };
+    Ok(killed || removed)
+}
+
 /// Worktree already gone: the branch may still linger. True if it was deleted.
 async fn delete_orphan_branch(ws: &Workspace, name: &str) -> Result<bool> {
     let branch = format!("townhall/{name}");

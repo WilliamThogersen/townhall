@@ -62,20 +62,20 @@ describe("ConversationHeader", () => {
     expect(props.onEnd).toHaveBeenCalled();
   });
 
-  it("asks first when tasks keep running, and esc cancels", async () => {
+  it("asks first when tasks would stop, and esc cancels", async () => {
     const tasks = [aTask({ name: "a", state: "working" }), aTask({ name: "b", state: "queued" })];
     const props = renderHeader(aDetail({ conversation: titled(), tasks }));
     const end = screen.getByRole("button", { name: "end" });
     await userEvent.click(end);
-    expect(screen.getByText("end login redirect loop? 2 tasks keep running")).toBeInTheDocument();
+    expect(screen.getByText("end login redirect loop? 2 tasks stop and their worktrees are deleted")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "cancel" })).toHaveFocus();
     expect(props.onEnd).not.toHaveBeenCalled();
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByText(/keep running/)).toBeNull();
+    expect(screen.queryByText(/worktrees are deleted/)).toBeNull();
     expect(screen.getByRole("button", { name: "end" })).toHaveFocus();
     await userEvent.click(screen.getByRole("button", { name: "end" }));
     await userEvent.click(screen.getByRole("button", { name: "end" }));
     expect(props.onEnd).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/keep running/)).toBeNull();
+    expect(screen.queryByText(/worktrees are deleted/)).toBeNull();
   });
 });

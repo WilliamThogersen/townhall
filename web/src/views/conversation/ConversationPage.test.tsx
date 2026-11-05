@@ -265,7 +265,7 @@ describe("ConversationPage actions", () => {
     const end = vi.spyOn(conversationsApi, "endConversation").mockResolvedValue(aConversation({ ended: true }));
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "end" }));
-    expect(screen.getByText("end login redirect loop? 1 task keeps running")).toBeInTheDocument();
+    expect(screen.getByText("end login redirect loop? 1 task stops and its worktree is deleted")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "end" }));
     expect(end).toHaveBeenCalledWith("c1");
   });
