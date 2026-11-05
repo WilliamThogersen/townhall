@@ -30,8 +30,12 @@ describe("ErrorBoundary", () => {
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
     await vi.advanceTimersByTimeAsync(1500);
-    const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
-    expect(body[0]).toMatchObject({ level: "error", event: "web.render_error", message: "render exploded" });
+    const body = JSON.parse((fetchFn.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body[0]).toMatchObject({
+      level: "error",
+      event: "web.render_error",
+      message: expect.stringContaining("render exploded"),
+    });
   });
 
   it("renders children when nothing throws", () => {

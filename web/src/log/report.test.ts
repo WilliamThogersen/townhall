@@ -56,9 +56,9 @@ describe("report", () => {
     err.stack = "x".repeat(10_000);
     window.dispatchEvent(Object.assign(new Event("error"), { message: "bad", error: err }));
     await vi.advanceTimersByTimeAsync(1500);
-    const [entry] = sentBatch(fetchFn);
+    const entry = sentBatch(fetchFn)[0] ?? {};
     expect(entry).toMatchObject({ level: "error", event: "web.error", message: "bad" });
-    expect((entry.stack as string).length).toBeLessThanOrEqual(2000);
+    expect((entry["stack"] as string).length).toBeLessThanOrEqual(2000);
     remove();
   });
 
@@ -89,7 +89,7 @@ describe("request reporting", () => {
     );
     vi.stubGlobal("fetch", fetchFn);
     await expect(request("GET", "/tasks", guard)).rejects.toBeInstanceOf(ApiError);
-    const apiInit = fetchFn.mock.calls[0][1] as unknown as RequestInit;
+    const apiInit = (fetchFn.mock.calls[0] as unknown[])[1] as RequestInit;
     const id = (apiInit.headers as Record<string, string>)["x-request-id"];
     expect(id).toBeTruthy();
     await vi.advanceTimersByTimeAsync(1500);
