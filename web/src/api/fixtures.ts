@@ -1,5 +1,7 @@
 import type {
   AgentInfo,
+  AgentType,
+  AgentTypeSummary,
   Attachment,
   Conversation,
   ConversationDetail,
@@ -102,4 +104,23 @@ export const aStep = (over: Partial<Step> = {}): Step => ({
 
 export const someStats = (): Stats => ({
   days: [{ date: "2026-11-04", fixes: 2, features: 1, lines: 120, agents: 3 }],
+});
+
+export const anAgentTypeSummary = (over: Partial<AgentTypeSummary> = {}): AgentTypeSummary => ({
+  name: "builder",
+  description: "implements a task, tests first",
+  adapter: "claude",
+  model: "sonnet",
+  permissionMode: "acceptEdits",
+  updatedAt: "2026-01-01T00:00:00Z",
+  ...over,
+});
+
+export const anAgentType = (over: Partial<AgentType> = {}): AgentType => ({
+  ...anAgentTypeSummary(),
+  tools: [],
+  prompt: "You implement the task.",
+  command: null,
+  source: 'name = "builder"\nadapter = "claude"\n',
+  ...over,
 });

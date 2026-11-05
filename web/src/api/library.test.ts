@@ -1,0 +1,37 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mockFetch, sent } from "../test/fetchMock";
+import { anAgentType, anAgentTypeSummary } from "./fixtures";
+import { getAgentType, listAgentTypes } from "./library";
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("library api", () => {
+  it("lists agent types", async () => {
+    const fn = mockFetch(200, [anAgentTypeSummary()]);
+    expect(await listAgentTypes()).toEqual([anAgentTypeSummary()]);
+    expect(sent(fn)).toEqual({ url: "/api/library/agents", method: "GET", body: undefined });
+  });
+
+  it("reads one agent type with its TOML source", async () => {
+    const fn = mockFetch(200, anAgentType({ name: "my type", tools: ["Read"] }));
+    const type = await getAgentType("my type");
+    expect(type.tools).toEqual(["Read"]);
+    expect(type.source).toContain("builder");
+    expect(sent(fn).url).toBe("/api/library/agents/my%20type");
+  });
+
+  it("accepts null model and permission mode", async () => {
+    mockFetch(200, [anAgentTypeSummary({ model: null, permissionMode: null })]);
+    expect(await listAgentTypes()).toHaveLength(1);
+  });
+
+  it("refuses an unknown adapter", async () => {
+    mockFetch(200, [{ ...anAgentTypeSummary(), adapter: "gpt" }]);
+    await expect(listAgentTypes()).rejects.toMatchObject({ kind: "protocol" });
+  });
+
+  it("refuses a type without source", async () => {
+    mockFetch(200, { ...anAgentType(), source: undefined });
+    await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
+  });
+});
