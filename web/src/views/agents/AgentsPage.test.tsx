@@ -92,6 +92,17 @@ describe("AgentsPage", () => {
     expect(await screen.findByRole("button", { name: "copied" })).toBeInTheDocument();
   });
 
+  it("renders the copy button as a ghost button that marks the copied state", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true });
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const button = await screen.findByRole("button", { name: "copy" });
+    expect(button).toHaveClass("th-btn--ghost");
+    expect(button).not.toHaveAttribute("data-copied");
+    await userEvent.click(button);
+    expect(await screen.findByRole("button", { name: "copied" })).toHaveAttribute("data-copied", "true");
+  });
+
   it("offers no edit or delete", async () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
