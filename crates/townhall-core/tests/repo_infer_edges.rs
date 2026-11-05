@@ -95,7 +95,15 @@ async fn a_huge_message_stays_fast() {
     let got = infer(&message, &candidates).await.unwrap();
     let took = start.elapsed();
     assert!(matches!(got, Inference::Ask { .. }), "{got:?}");
-    assert!(took < Duration::from_secs(3), "took {took:?}");
+    // Inference is linear in the message: ~0.6 s in release, 2-5 s in debug,
+    // and a tiny message already costs 0.3-2 s (git calls on ten repos).
+    // The limit still catches quadratic work, which would take minutes.
+    let limit = if cfg!(debug_assertions) {
+        Duration::from_secs(15)
+    } else {
+        Duration::from_secs(3)
+    };
+    assert!(took < limit, "took {took:?}, limit {limit:?}");
 }
 
 #[tokio::test]
