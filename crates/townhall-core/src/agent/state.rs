@@ -7,8 +7,8 @@
 //!   request only ever shows there, even while the transcript reads busy: Claude writes a
 //!   message with parallel tool calls only once every call has a result), or, for a program
 //!   without a transcript, when its last line is a question. Claude's folder trust dialog
-//!   in a new worktree asks too, as [`question::TRUST_QUESTION`]; it is never answered
-//!   for you,
+//!   in a new worktree asks too, as [`question::TRUST_QUESTION`]; the watcher answers it
+//!   once for townhall's own worktrees (`watch/trust.rs`),
 //! - a live Claude whose turn ended without asking, [`IDLE_SETTLE_MS`] ago or longer, is
 //!   `ended`: interactive Claude never exits on its own, and a short pause between tool
 //!   calls must not count. Typing into it starts a new turn, which is `working` again,
@@ -27,6 +27,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::clock::unix_millis;
 
 pub use question::choices;
+pub(crate) use question::TRUST_QUESTION;
 
 use super::Agent;
 use crate::model::AgentState;
