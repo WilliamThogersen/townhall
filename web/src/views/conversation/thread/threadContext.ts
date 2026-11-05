@@ -10,6 +10,7 @@ export interface ThreadContextValue {
   readonly onOpenTask: (name: string) => void;
   readonly sendMessage: (text: string) => Promise<boolean>;
   readonly answerAgent: (agent: string, text: string) => Promise<boolean>;
+  readonly allowTool: (agent: string, tool: string) => Promise<boolean>;
   readonly answerKeys: (agent: string, keys: readonly AgentKey[]) => Promise<boolean>;
 }
 

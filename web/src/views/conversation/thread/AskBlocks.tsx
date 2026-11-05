@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type { ThreadEntry } from "../../../api/types";
 import { Button } from "../../../ui/Button";
 import { useThread } from "./threadContext";
-import { answerText, askView, type AskOption } from "./askView";
+import { answerText, askView, permissionTool, yesOption, type AskOption } from "./askView";
 import { Message } from "./ThreadLines";
 import { askChoices } from "./threadModel";
 import { choiceKeys, takesKeys } from "./trustDialog";
@@ -124,8 +124,41 @@ interface NeedsYouBlockProps {
   readonly answer?: string;
 }
 
+interface AlwaysAllowProps {
+  readonly agentType: string;
+  readonly initial: string;
+  readonly busy: boolean;
+  readonly onAllow: (tool: string) => void;
+}
+
+function AlwaysAllow({ agentType, initial, busy, onAllow }: AlwaysAllowProps) {
+  const [tool, setTool] = useState(initial);
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const pattern = tool.trim();
+    if (pattern !== "" && !busy) onAllow(pattern);
+  };
+  return (
+    <form className="th-ask-allow" onSubmit={submit}>
+      <input
+        className="th-prompt-input"
+        value={tool}
+        onChange={(e) => setTool(e.target.value)}
+        aria-label={`Pattern to always allow for ${agentType}`}
+        disabled={busy}
+      />
+      <Button size="sm" type="submit" disabled={busy || tool.trim() === ""}>
+        always allow for {agentType}
+      </Button>
+      <p className="th-ask-allow-note">
+        saved on {agentType} after this answer; applies from the next launch of {agentType}, this agent keeps the list it started with
+      </p>
+    </form>
+  );
+}
+
 export function NeedsYouBlock({ entry, open, answer: sent }: NeedsYouBlockProps) {
-  const { tasks, onOpenTask, answerAgent, answerKeys } = useThread();
+  const { tasks, onOpenTask, answerAgent, answerKeys, allowTool } = useThread();
   const { busy, run } = useBusy();
   const view = useMemo(() => askView(entry.question, entry.choices), [entry.question, entry.choices]);
   const isTask = tasks.some((task) => task.name === entry.agent);
@@ -135,12 +168,29 @@ export function NeedsYouBlock({ entry, open, answer: sent }: NeedsYouBlockProps)
     return keys === null ? answer(choice) : run(() => answerKeys(entry.agent, keys));
   };
   const hasOptions = view.options.length > 0;
+  const task = tasks.find((t) => t.name === entry.agent);
+  const suggestion = permissionTool(view.context);
+  const yes = yesOption(view.options);
+  const alwaysAllow = (tool: string) =>
+    run(async () => {
+      if (!(await allowTool(entry.agent, tool))) return false;
+      return yes === null ? true : answerAgent(entry.agent, yes);
+    });
   const choices = open && !hasOptions ? entry.choices : [];
   const picked = sent === undefined ? null : answerText(view, sent);
   return (
     <Message from="ask" at={entry.at} answered={!open}>
       <Ask who={entry.agent} open={open} question={view.prompt} context={view.context} picked={picked}>
         {open && hasOptions ? <AskOptions options={view.options} busy={busy} onPick={(n) => void pick(n)} /> : null}
+        {open && task !== undefined && suggestion !== null && yes !== null ? (
+          <AlwaysAllow
+            key={suggestion}
+            agentType={task.agent}
+            initial={suggestion}
+            busy={busy}
+            onAllow={(tool) => void alwaysAllow(tool)}
+          />
+        ) : null}
         {choices.length > 0 || isTask ? (
           <div className="th-ask-actions">
             {choices.map((choice) => (

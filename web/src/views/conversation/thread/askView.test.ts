@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerText, askView } from "./askView";
+import { answerText, askView, permissionTool, yesOption } from "./askView";
 
 const DIALOG = [
   "Bash: cd /Users/w/.townhall/worktrees/townhall/agent-library-view/web/…",
@@ -51,5 +51,37 @@ describe("answerText", () => {
   it("keeps any other answer as it was sent", () => {
     expect(answerText(view, "commit as wip")).toBe("commit as wip");
     expect(answerText(askView("ok? (y/n)", ["y", "n"]), "y")).toBe("y");
+  });
+});
+
+describe("permissionTool", () => {
+  const tool = (call: string) => permissionTool([call]);
+
+  it("generalises a command to its program and subcommand", () => {
+    expect(tool("Bash: gh pr create --title fix --body x")).toBe("Bash(gh pr *)");
+    expect(tool("Bash: git status")).toBe("Bash(git status *)");
+    expect(tool("Bash: cd /w/web/\u2026")).toBe("Bash(cd *)");
+    expect(tool("Bash: rm -rf build")).toBe("Bash(rm *)");
+    expect(tool("Bash: ls")).toBe("Bash(ls *)");
+    expect(tool("Bash: FOO=1 npm test && rm -rf x")).toBe("Bash(npm test *)");
+  });
+
+  it("names any other tool whole", () => {
+    expect(tool("Edit: src/a.ts")).toBe("Edit");
+    expect(tool("WebFetch: https://example.com")).toBe("WebFetch");
+  });
+
+  it("is null when the lines are not a tool call", () => {
+    expect(permissionTool([])).toBeNull();
+    expect(permissionTool(["Do you want to proceed?"])).toBeNull();
+    expect(permissionTool(["Bash: "])).toBeNull();
+  });
+});
+
+describe("yesOption", () => {
+  it("is the first option that says yes", () => {
+    const view = askView(DIALOG, ["1", "2", "3", "4"]);
+    expect(yesOption(view.options)).toBe("1");
+    expect(yesOption([])).toBeNull();
   });
 });
