@@ -19,7 +19,6 @@ export function pipelineStep(name: string): PipelineStep | null {
 const byName = (a: AgentTypeSummary, b: AgentTypeSummary) =>
   a.name.toLowerCase().localeCompare(b.name.toLowerCase());
 
-/** The type a task gets without naming one: builder, else the first by name. */
 export function defaultTypeName(types: readonly AgentTypeSummary[]): string | null {
   const builder = types.find((t) => t.name.toLowerCase() === FALLBACK_DEFAULT);
   if (builder) return builder.name;
