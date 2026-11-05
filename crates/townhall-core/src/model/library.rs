@@ -83,3 +83,11 @@ mod tests {
         );
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentUsage {
+    pub agent: String,
+    pub runs: u64,
+    pub tokens: u64,
+}

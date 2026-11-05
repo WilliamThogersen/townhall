@@ -86,6 +86,10 @@ pub async fn list_agents(State(state): State<AppState>) -> Result<Response, ApiE
     Ok(ok(rows))
 }
 
+pub async fn agent_usage(State(state): State<AppState>) -> Result<Response, ApiError> {
+    Ok(ok(state.ctx().store()?.agent_usage().await?))
+}
+
 /// `AgentType`: the parsed definition plus `source` and `updatedAt`. `404` when unknown.
 pub async fn get_agent(
     State(state): State<AppState>,

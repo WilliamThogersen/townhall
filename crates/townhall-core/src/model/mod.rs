@@ -19,7 +19,7 @@ pub use conversation::{
     NewMessage, NEW_CONVERSATION_TITLE,
 };
 pub use event::ServerEvent;
-pub use library::{AgentType, AgentTypeSummary, DEFAULT_AGENT_TYPE};
+pub use library::{AgentType, AgentTypeSummary, AgentUsage, DEFAULT_AGENT_TYPE};
 pub use repo::{AddRepo, Repo};
 pub use settings::{
     NotifyWhen, PermissionMode, PutSetting, RepoUnclear, SettingKey, Settings, TownhallModel,
