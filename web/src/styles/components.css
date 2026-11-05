@@ -417,6 +417,120 @@ textarea {
   color: var(--th-fg);
 }
 
+.th-usage {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.th-usage-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--th-space-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--th-fg-faint);
+  font: inherit;
+  font-size: var(--th-text-xs);
+  cursor: default;
+}
+
+.th-usage[data-stale="true"] .th-usage-btn {
+  opacity: 0.55;
+}
+
+.th-usage-icon {
+  flex: none;
+  color: var(--th-accent);
+}
+
+.th-usage-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--th-space-1);
+  min-width: 0;
+}
+
+.th-usage-track {
+  position: relative;
+  flex: 0 1 28px;
+  min-width: 8px;
+  height: 4px;
+  background: var(--th-surface-3);
+}
+
+.th-usage-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--used);
+  background: var(--th-fg-faint);
+}
+
+.th-usage-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.th-usage-meter[data-level="warn"] { color: var(--th-accent); }
+.th-usage-meter[data-level="warn"] .th-usage-fill { background: var(--th-accent); }
+.th-usage-meter[data-level="hot"] { color: var(--th-danger); }
+.th-usage-meter[data-level="hot"] .th-usage-fill { background: var(--th-danger); }
+
+.th-usage-pop {
+  position: absolute;
+  bottom: calc(100% + var(--th-space-1));
+  left: calc(var(--th-space-3) * -1);
+  z-index: var(--th-z-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: var(--th-space-3);
+  width: 240px;
+  padding: var(--th-space-3);
+  border: var(--th-border) solid var(--th-line-strong);
+  background: var(--th-surface);
+  box-shadow: var(--th-shadow-overlay);
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-sm);
+  white-space: normal;
+}
+
+.th-usage-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 var(--th-space-3);
+}
+
+.th-usage-name {
+  color: var(--th-fg);
+  font-weight: var(--th-weight-bold);
+}
+
+.th-usage-used {
+  color: var(--th-fg);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.th-usage-detail {
+  grid-column: 1 / -1;
+}
+
+.th-usage-detail[data-warn="true"] {
+  color: var(--th-accent);
+}
+
+.th-usage-foot {
+  margin: 0;
+  color: var(--th-fg-faint);
+}
+
+.th-usage-why {
+  display: block;
+}
+
 /* ---------- status glyph ---------- */
 
 .th-status {

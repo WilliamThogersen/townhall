@@ -39,6 +39,7 @@ All return parsed, readonly data. `signal` aborts the fetch.
 | `repos.ts` | `removeRepo(name)` | `DELETE /repos/{name}` | the removed `Repo` |
 | `stats.ts` | `getStats(repo?, signal?)` | `GET /stats?repo=` | `Stats` |
 | `steps.ts` | `getSteps(agent, repo?, signal?)` | `GET /agents/{agent}/steps?repo=` | `readonly Step[]` |
+| `usage.ts` | `getUsage(signal?)` | `GET /usage` | `ClaudeUsage` (`session`, `weekly`: `UsageWindow \| null`, `updatedAt`, `error`) |
 | `settings.ts` | `getSettings`, `putSetting` | settings routes | unchanged |
 
 `TaskQuery` is `{ conversation?: string; repo?: string; state?: TaskState }`; empty values are left out of the query.
@@ -83,10 +84,11 @@ Common rules:
 | `useRepos()` | `{ repos: readonly Repo[] \| null; loading; error; add(input: AddRepoInput): Promise<Repo>; remove(name): Promise<void> }` | `repos: null` | last good list, `error`; `add` / `remove` reject with `ApiError` |
 | `useStats(repo?: string)` | `{ stats: Stats \| null; loading; error }` | `null` | last good stats, `error` |
 | `useSteps(agent: string \| null, options?: { live?; repo?; intervalMs? })` | `{ steps: readonly Step[]; loading; error }` | `[]`; `null` agent is idle | last good list, `error` |
+| `useUsage()` | `{ usage: ClaudeUsage \| null; loading; error }` | `null`, `loading: true` | last good reading, `error` (the daemon's own trouble is in `usage.error`) |
 | `useConversationActions()` | `{ start(input) -> Promise<ConversationDetail>; send(id, input) -> Promise<ThreadEntry>; stop(id) -> Promise<Conversation>; end(id) -> Promise<Conversation>; patch(id, patch) -> Promise<Conversation> }` | | each rejects with `ApiError` |
 | `useConnection()` | `"connecting" \| "open" \| "closed"` | `"connecting"` | `"closed"` while waiting to reconnect |
 
-`useTasks` filters one live list of every task in the browser (`listTasks()` without a filter), so all filters share one fetch and one event stream; `repo` matches ignoring case. `useSteps` polls every `STEPS_POLL_MS` (2 s, or `intervalMs`) while `live` is true and `agent` is not `null`; steps have no event. `useStats` has no event either: it loads once per `repo` and again on resync or reconnect.
+`useTasks` filters one live list of every task in the browser (`listTasks()` without a filter), so all filters share one fetch and one event stream; `repo` matches ignoring case. `useSteps` polls every `STEPS_POLL_MS` (2 s, or `intervalMs`) while `live` is true and `agent` is not `null`; steps have no event. `useStats` has no event either: it loads once per `repo` and again on resync or reconnect. `useUsage` has no event: it asks again every `USAGE_POLL_MS` (1 minute; the daemon reuses a result under a minute old and polls Claude every 5) and on resync or reconnect.
 
 ## Live updates
 

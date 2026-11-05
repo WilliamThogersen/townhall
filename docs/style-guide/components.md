@@ -9,9 +9,18 @@ Left column, 272px, `surface`. Top to bottom:
 1. `.th-sidebar-top`: the pixel logo (18 × 14) and the wordmark `/townhall` with the `/` in amber. It links to the control center at `/townhall`, so the wordmark is its own route.
 2. `.th-nav`: four `.th-nav-item` rows with a glyph, a label and a hint. `+ new conversation` (`n`), `/ search` (`/`), `~ repos` (count), `$ control center` (agents by state). The current route gets `aria-current="page"`, `surface-2` and an amber glyph.
 3. `.th-sidebar-scroll`: `active N` and `older N` section rules (`.th-section`). The active rule holds a `by repo` toggle (`.th-section-action`, `aria-pressed`). Grouped, each repo gets a fold header (`.th-group-head`, `aria-expanded`).
-4. `.th-sidebar-foot`: your first name as written (`William`, full name in `title`), then ghost `settings`. No org, no email.
+4. `.th-sidebar-foot`: the usage meter (below), your first name as written (`William`, full name in `title`), then ghost `settings`. No org, no email.
 
 Replaces: the `App.tsx` header and `desktop/RepoSettings.tsx`.
+
+## Usage meter
+
+`.th-usage` at the start of the sidebar foot, next to `settings` (Hive's `SidebarUsage`). One button: an amber `*` and two 4px bars with their numbers, `30% 5h` and `54% wk` (`.th-usage-meter`, `.th-usage-track`, `.th-usage-fill` sized by `--used`). Faint, amber from 60% (`data-level="warn"`), red from 80% (`hot`). A window whose reset has passed reads 0% until the next reading.
+
+- Click opens `.th-usage-pop` above the foot (`role="dialog"`, `aria-expanded` on the button; Escape or a click elsewhere closes it). Per window: name and `30% used`, then `resets 15:10 (in 2h 30m)` (`Wed 08:00` on another day), then `lasts until reset`, `limit reached` or `runs out ~Fri 13:04 (in 1d 0h)`, amber when it runs out before the reset. The foot says `Updated 12:39`.
+- Stale: a failed refresh keeps the last numbers. The bars dim (`data-stale="true"`), the popover foot reads `Stale · Updated 12:39` and why (`Offline`, `Rate limited, retrying later`, `Sign in to Claude Code to refresh`).
+- Nothing to show (no token, not loaded, daemon unreachable, no windows): no meter at all, the foot is as before.
+- New. Data: `GET /api/usage` through `useUsage`.
 
 ## Conversation row
 

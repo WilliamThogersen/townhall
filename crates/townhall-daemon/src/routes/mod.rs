@@ -19,6 +19,7 @@ mod stats;
 mod steps;
 mod stream;
 mod tasks;
+mod usage;
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
@@ -101,6 +102,7 @@ pub fn router(state: AppState) -> Router {
         .route("/tasks/{name}", get(tasks::get))
         .route("/tasks/{name}/mcp", post(mcp::task_rpc))
         .route("/stats", get(stats::get))
+        .route("/usage", get(usage::get))
         .route("/search", get(search::search))
         .route("/events", get(events::socket))
         .merge(agent_routes())
