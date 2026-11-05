@@ -201,7 +201,10 @@ async fn only_the_top_folder_of_a_repo_is_a_repo() {
     assert!(refused(&env, &repo.join("src")).await.contains(NOT_TOP));
     let plain = env.dir.path().join("plain");
     std::fs::create_dir_all(&plain).unwrap();
-    assert!(env.registry.ensure(&plain).await.is_err(), "ensure never inits");
+    assert!(
+        env.registry.ensure(&plain).await.is_err(),
+        "ensure never inits"
+    );
     assert!(!plain.join(".git").exists());
     assert!(env.registry.ensure(&sub).await.is_err());
     assert_eq!(env.registry.add(&add(&repo)).await.unwrap().name, "shop");

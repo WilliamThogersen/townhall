@@ -155,3 +155,17 @@ pub fn verify_branch(path: &Path, branch: &str) -> Result<()> {
         )))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_home_folder_and_the_root_are_never_turned_into_repos() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = init_plain(dir.path(), DEFAULT_BRANCH, Some(dir.path())).unwrap_err();
+        assert!(matches!(err, Error::InvalidInput(_)), "{err:?}");
+        assert!(!dir.path().join(".git").exists());
+        assert!(init_plain(Path::new("/"), DEFAULT_BRANCH, None).is_err());
+    }
+}

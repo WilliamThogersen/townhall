@@ -161,10 +161,7 @@ mod tests {
             "https://github.com/acme/..",
         ] {
             let got = classify(bad);
-            assert!(
-                matches!(got, Err(Error::InvalidInput(_))),
-                "{bad}: {got:?}"
-            );
+            assert!(matches!(got, Err(Error::InvalidInput(_))), "{bad}: {got:?}");
         }
     }
 }
