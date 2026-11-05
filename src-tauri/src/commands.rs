@@ -6,6 +6,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::{oneshot, Mutex};
 use townhall_core::events::EventBus;
+use townhall_core::redact::redact;
 use townhall_core::store::Store;
 use townhall_core::{Error, Home};
 
@@ -51,7 +52,12 @@ pub async fn start_saved(shared: &Shared) -> Result<(), String> {
     let folder = match saved.map(|repo| validate_repo(&repo)) {
         Some(Ok(repo)) => repo,
         Some(Err(e)) => {
-            eprintln!("townhall-app: warn: saved repo is no longer usable: {e}");
+            tracing::warn!(
+                target: "townhall::app",
+                event = "repo.unusable",
+                error = %redact(&e),
+                "saved repo is no longer usable"
+            );
             no_repo_folder(&shared.home)?
         }
         None => no_repo_folder(&shared.home)?,
@@ -87,6 +93,12 @@ pub async fn apply_repo(shared: &Shared, path: &Path) -> Result<(), String> {
             return Err(e);
         }
     }
+    tracing::info!(
+        target: "townhall::app",
+        event = "repo.chosen",
+        repo = %repo.display(),
+        "repo chosen"
+    );
     let next = Settings { repo: Some(repo) };
     let store = shared
         .store
@@ -147,7 +159,12 @@ fn open_store(home: &Home) -> Result<Option<Store>, String> {
     match Store::open(home, EventBus::new()) {
         Ok(store) => Ok(Some(store)),
         Err(Error::Unavailable(msg)) => {
-            eprintln!("townhall-app: info: {msg}, using the daemon that holds it");
+            tracing::info!(
+                target: "townhall::app",
+                event = "store.held_elsewhere",
+                error = %redact(&msg),
+                "database is held by another townhall, using its daemon"
+            );
             Ok(None)
         }
         Err(e) => Err(e.to_string()),
@@ -231,6 +248,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn without_a_saved_repo_the_daemon_serves_no_repo() {
+        // Callsites are shared across tests: one first hit on a thread without a subscriber
+        // can be cached as disabled for the capturing lifecycle test in daemon.rs.
+        let (_capture, _guard) = townhall_daemon::logging::test_capture();
         let dir = tempfile::tempdir().unwrap();
         let (addr, shared) = started(dir.path(), None).await;
         assert!(get(addr, "/api/repos").await.contains(r#""data":[]"#));
@@ -242,6 +262,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_saved_repo_that_is_gone_is_skipped() {
+        // Callsites are shared across tests: one first hit on a thread without a subscriber
+        // can be cached as disabled for the capturing lifecycle test in daemon.rs.
+        let (_capture, _guard) = townhall_daemon::logging::test_capture();
         let dir = tempfile::tempdir().unwrap();
         let gone = dir.path().join("gone");
         let (addr, shared) = started(dir.path(), Some(gone)).await;
@@ -251,6 +274,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_saved_repo_is_served() {
+        // Callsites are shared across tests: one first hit on a thread without a subscriber
+        // can be cached as disabled for the capturing lifecycle test in daemon.rs.
+        let (_capture, _guard) = townhall_daemon::logging::test_capture();
         let dir = tempfile::tempdir().unwrap();
         let repo = dir.path().join("shop");
         let init = Command::new("git").arg("init").arg(&repo).output().unwrap();

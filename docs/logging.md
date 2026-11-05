@@ -138,6 +138,19 @@ Later tasks add to this table as they emit events.
 | --- | --- | --- | --- |
 | `daemon.start` | `townhall::daemon` | info | `version`, `repo`, `bind` |
 | `app.start` | `townhall::app` | info | `version` |
+| `daemon.mode` | `townhall::app` | info | `mode` (`embedded`, `external`, `stopped`) |
+| `daemon.restart` | `townhall::app` | info | `repo`, `duration_ms` |
+| `daemon.stop_timeout` | `townhall::app` | warn | `timeout_ms` |
+| `daemon.serve_failed` | `townhall::app` | error | `error` |
+| `daemon.start_failed` | `townhall::app` | error | `error` |
+| `repo.chosen` | `townhall::app` | info | `repo` |
+| `repo.unusable` | `townhall::app` | warn | `error` |
+| `store.held_elsewhere` | `townhall::app` | info | `error` |
+| `window.hide` / `window.show` | `townhall::app` | info | |
+| `window.hide_failed` / `window.show_failed` / `window.missing` | `townhall::app` | warn | `error` |
+| `path.extend_failed` | `townhall::app` | warn | `error` |
+| `app.exit` | `townhall::app` | info | |
+| `app.build_failed` | `townhall::app` | error | `error` |
 | `panic` | `townhall::panic` | error | `message`, `location`, `backtrace` (≤4 KB) |
 | `logs.pruned` | `townhall::logging` | info | `deleted` |
 | `logs.prune_failed` | `townhall::logging` | warn | `error` |
@@ -202,5 +215,3 @@ else a generated id. The response always carries it. Websocket upgrades log `ws.
 
 Agent events never carry tool inputs, questions or transcript text other than the redacted
 `agent.tool_error` start. A tool result is logged once, however often its transcript is read.
-
-Planned (see the logging plan): `daemon.mode`, `daemon.restart`.
