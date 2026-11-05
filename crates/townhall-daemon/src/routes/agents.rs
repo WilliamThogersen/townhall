@@ -4,10 +4,11 @@
 
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use townhall_core::agent;
+use townhall_core::definitions::add_tool;
 use townhall_core::model::{AgentEvent, AgentKey, EntryBody};
-use townhall_core::{fleet, Context};
+use townhall_core::{fleet, Context, Error};
 
 use crate::envelope::ok;
 use crate::error::ApiError;
@@ -117,4 +118,50 @@ pub async fn output(
 ) -> Result<Response, ApiError> {
     let at = fleet::locate(state.ctx(), &name, q.repo.as_deref()).await?;
     Ok(ok(agent::output(&at.workspace, &name).await?))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AllowTool {
+    tool: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Allowed {
+    agent_type: String,
+    tool: String,
+    added: bool,
+}
+
+pub async fn allow(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    JsonBody(req): JsonBody<AllowTool>,
+) -> Result<Response, ApiError> {
+    let store = state.ctx().store()?;
+    let task = store
+        .find_task(&name)
+        .await?
+        .ok_or_else(|| Error::missing("task", &name))?;
+    let found = store
+        .agent_type(&task.agent)
+        .await?
+        .ok_or_else(|| Error::missing("agent type", &task.agent))?;
+    let tool = req.tool.trim().to_string();
+    let edited = add_tool(&found.source, &tool).map_err(ApiError::BadRequest)?;
+    let added = edited.is_some();
+    if let Some(source) = edited {
+        store.save_agent_type(&source).await?;
+        let body = EntryBody::Agent {
+            agent: task.name,
+            event: AgentEvent::Allowed,
+            text: format!("{tool} to {}", found.def.name),
+        };
+        store.append_entry(&task.conversation_id, body).await?;
+    }
+    Ok(ok(Allowed {
+        agent_type: found.def.name,
+        tool,
+        added,
+    }))
 }
