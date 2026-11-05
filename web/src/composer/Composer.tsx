@@ -17,6 +17,7 @@ import { UploadChips } from "../attachments/UploadChips";
 import { useUploads, type Uploads } from "../attachments/useUploads";
 import { ACCEPTED_FILES } from "../attachments/validate";
 import { ComposerTools } from "./ComposerTools";
+import { readDraft, writeDraft } from "./drafts";
 import { useAutoGrow } from "./useAutoGrow";
 import { useSubmit, type SubmitHandler } from "./useSubmit";
 import { helpText, LOOKS, THINKING_PLACEHOLDER, type ComposerVariant } from "./variants";
@@ -116,9 +117,16 @@ function useComposer(props: ComposerProps) {
   const { variant = "thread", disabled = false, busy = false, conversationId = null, stageFiles = false } = props;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState("");
+  const [text, setDraftText] = useState(() => readDraft(conversationId));
+  const setText = useCallback(
+    (next: string) => {
+      writeDraft(conversationId, next);
+      setDraftText(next);
+    },
+    [conversationId],
+  );
   const uploads = useUploads(conversationId, stageFiles);
-  const clearText = useCallback(() => setText(""), []);
+  const clearText = useCallback(() => setText(""), [setText]);
   const sending = useSubmit({ text, uploads, blocked: disabled || busy, onSubmit: props.onSubmit, onSent: clearText });
   const handlers = useInputHandlers({ uploads, submit: sending.submit, setText, clearError: sending.clearError });
   useAutoGrow(inputRef, text);

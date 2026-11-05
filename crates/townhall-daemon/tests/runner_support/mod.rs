@@ -187,9 +187,14 @@ pub async fn detail(app: &Router, id: &str) -> Value {
     v["data"].clone()
 }
 
+/// How long a test waits for something that must happen. A deadline, not an attempt
+/// count: a slow `detail` call under load must not shorten it.
+const WAIT: Duration = Duration::from_secs(60);
+
 /// Waits until the conversation is `yourTurn` again and returns its detail.
 pub async fn idle(app: &Router, id: &str) -> Value {
-    for _ in 0..500 {
+    let deadline = tokio::time::Instant::now() + WAIT;
+    while tokio::time::Instant::now() < deadline {
         let d = detail(app, id).await;
         if d["conversation"]["status"] == "yourTurn" {
             return d;
@@ -201,7 +206,8 @@ pub async fn idle(app: &Router, id: &str) -> Value {
 
 /// Waits until the fake has started `n` turns.
 pub async fn turns_started(fake: &Fake, n: usize) {
-    for _ in 0..500 {
+    let deadline = tokio::time::Instant::now() + WAIT;
+    while tokio::time::Instant::now() < deadline {
         if fake.turns() >= n && fake.dir.join(format!("stdin-{n}")).exists() {
             return;
         }

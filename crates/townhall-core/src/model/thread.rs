@@ -72,6 +72,9 @@ pub enum EntryBody {
         event: AgentEvent,
         text: String,
     },
+    /// A system event for the planner, not a message from you: a task of the
+    /// conversation ended, failed or asked something. It starts a planner turn.
+    Event { text: String },
     /// Townhall's own failure, for example its session exited.
     Error { message: String },
 }
@@ -108,6 +111,12 @@ mod tests {
         round_trip(
             EntryBody::Townhall { text: "ok".into() },
             json!({"kind": "townhall", "text": "ok"}),
+        );
+        round_trip(
+            EntryBody::Event {
+                text: "task fix ended".into(),
+            },
+            json!({"kind": "event", "text": "task fix ended"}),
         );
         round_trip(
             EntryBody::Error {

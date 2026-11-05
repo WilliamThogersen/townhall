@@ -112,6 +112,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 | `tasksCreated` | `tasks: string[]` | task block |
 | `needsYou` | `agent, question, choices: string[]` | `◆ <agent> needs you`, the question verbatim, one `send <choice>` per choice (through `/agents/{name}/send`). A choice goes as `text`, except in claude's folder trust dialog (`claude asks whether to trust this worktree`), which reads keys and would take any text as `no, exit`: `yes, trust it` sends the key `up`, then `enter` (200 ms apart), and `no, exit` sends `enter`. That dialog has no free text answer |
 | `agent` | `agent, event: "sent" \| "passed" \| "failed" \| "ended", text` | `→` `✓` `×` `○` lines |
+| `event` | `text` | `◇` line: a task event townhall's own session was woken with, not a message from you (see below) |
 | `error` | `message` | townhall's own failure |
 
 - `RepoRule`: `named`, `code`, `only` (2.4's `repo_infer::Rule`, same names), `picked` (an answer to a `repoAsk`), `linked` (the row menu).
@@ -246,6 +247,8 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
 { "type": "object", "properties": { "title": { "type": "string", "minLength": 1, "maxLength": 80 } },
   "required": ["title"], "additionalProperties": false }
 ```
+
+Task events (`runner/notify.rs`): when a task of a conversation starts to need you, fails or ends, the agent watcher (`agent/watch/event.rs`) calls `runner::notify` with one line (`task <name> needs you, its agent asks: ...`, `task <name> failed: ...`, `task <name> ended (...). its agent's last message: ...`). Going back to work, `sent` and `passed` lines send nothing. Events of one conversation gather for `ContextOptions::notify_delay` (3 s) so a burst makes one turn, wait while a turn runs (also one you stopped), then are appended as `event` entries and start one planner turn whose user message is `townhall event (automatic, the user did not write this):` plus the lines. The turn uses the linked or last repo (no inference, no `repoAsk`), sets `thinking` like a message but leaves `ended` alone, and an ended conversation is not woken. The planner's reply is a normal `townhall` entry and wakes nothing: only a new task change does. Undelivered events are lost on a restart (the `agent` and `needsYou` entries stay). An `event` entry also ends a turn for `tasksCreated`: tasks the woken planner creates make a new entry.
 
 `task_status` (2.11, `mcp/status.rs`): what this conversation's tasks are doing and did. Townhall's system prompt tells the session to call it whenever it is asked what a task did, instead of guessing.
 

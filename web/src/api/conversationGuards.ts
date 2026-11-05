@@ -93,6 +93,7 @@ const BODY_PARSERS: Readonly<Record<EntryBody["kind"], BodyParser>> = {
     event: oneOf(AGENT_EVENTS)(r.event, "entry.event"),
     text: str(r.text, "entry.text"),
   }),
+  event: (r) => ({ kind: "event", text: str(r.text, "entry.text") }),
   error: (r) => ({ kind: "error", message: str(r.message, "entry.message") }),
 };
 

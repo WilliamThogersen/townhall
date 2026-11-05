@@ -4,6 +4,9 @@
 //! townhall's MCP tools from `mcp::config_json`. The session plans and creates tasks; it
 //! never writes to a repo (`args.rs`, and every other tool request is denied).
 //!
+//! Task events (`notify.rs`) wake the session on their own: they gather for a moment, wait
+//! for a running turn and then start one more turn, recorded as an `event` entry.
+//!
 //! At most one turn per conversation runs (`Turns`, held by the `Context`). `start` fixes
 //! conversations a restart left `thinking`; its handle aborts every running turn when
 //! `Background::stop` aborts it.
@@ -12,6 +15,7 @@ mod actions;
 mod answer;
 mod args;
 mod content;
+mod notify;
 mod process;
 mod prompt;
 mod repo;
@@ -28,6 +32,7 @@ pub use actions::{
 };
 pub use args::{allowed_tools, DENIED_TOOLS, ISOLATION, READ_ONLY_TOOLS};
 pub use content::user_content;
+pub use notify::{notify, Notes};
 pub use process::{EXIT_GRACE, KILL_WAIT, STOP_GRACE};
 pub use session::DEFAULT_CONTEXT_LIMIT;
 pub use turn::LOST_SESSION;

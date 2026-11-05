@@ -56,7 +56,10 @@ pub fn last_repo(entries: &[ThreadEntry]) -> Option<CurrentRepo> {
 fn from_agents(body: &EntryBody) -> bool {
     matches!(
         body,
-        EntryBody::NeedsYou { .. } | EntryBody::Agent { .. } | EntryBody::TasksCreated { .. }
+        EntryBody::NeedsYou { .. }
+            | EntryBody::Agent { .. }
+            | EntryBody::TasksCreated { .. }
+            | EntryBody::Event { .. }
     )
 }
 
