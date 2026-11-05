@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use axum::http::StatusCode;
 use serde_json::json;
 use townhall_core::agent::state::PROJECTS_ENV;
-use townhall_core::model::{AgentState, ServerEvent};
+use townhall_core::model::{AgentState, NewTask, ServerEvent, Task, TaskState};
 use townhall_core::tmux;
 use townhall_daemon::{router, start_background};
 
@@ -73,9 +73,32 @@ async fn start_background_runs_the_watcher_and_it_publishes_states() {
     let state = env.state();
     let app = router(state.clone());
     let mut rx = state.ctx().bus().subscribe();
+    let name = unique("bg");
+    // The reaper removes an agent no task owns, so the agent gets a working task first.
+    let store = state.ctx().store().unwrap();
+    let conversation = store.create_conversation().await.unwrap().id;
+    let task = NewTask {
+        name: name.clone(),
+        title: format!("do {name}"),
+        prompt: "the brief".into(),
+        repo: "alpha".into(),
+        base_branch: "main".into(),
+        after: vec![],
+        attachments: vec![],
+        agent: "builder".into(),
+    };
+    store.create_task(&conversation, task).await.unwrap();
+    store
+        .update_task(&name, |t| {
+            Ok(Task {
+                state: TaskState::Working,
+                ..t
+            })
+        })
+        .await
+        .unwrap();
     let background = start_background(&state).await;
     assert!(background.running() >= 1, "the agent watcher runs");
-    let name = unique("bg");
     let ws = env.workspace(&env.startup);
     let _session = Session(tmux::session_name(ws.key(), &name));
     common::start_shell(&ws, &name, "sleep 30").await;
