@@ -81,7 +81,7 @@ pub async fn stop(
     Ok(ok(runner::stop(state.ctx(), &id).await?))
 }
 
-/// `ended: true`; its tasks keep running.
+/// `ended: true`; its queued tasks are cancelled and the reaper removes its agents.
 pub async fn end(
     State(state): State<AppState>,
     Path(id): Path<String>,

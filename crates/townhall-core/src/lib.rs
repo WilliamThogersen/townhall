@@ -15,6 +15,7 @@ pub mod ids;
 pub mod logs;
 pub mod mcp;
 pub mod model;
+pub mod reaper;
 pub mod redact;
 pub mod repo_infer;
 pub mod repos;

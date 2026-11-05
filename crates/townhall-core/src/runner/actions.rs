@@ -11,7 +11,7 @@ use crate::model::{
 };
 use crate::redact::redact;
 use crate::store::Store;
-use crate::{ids, mcp, Context, Error, Result};
+use crate::{ids, mcp, reaper, Context, Error, Result};
 
 pub const MAX_MESSAGE_CHARS: usize = 100_000;
 pub const MAX_ATTACHMENTS: usize = 20;
@@ -238,11 +238,16 @@ pub async fn stop(ctx: &Context, id: &str) -> Result<Conversation> {
     store.conversation(id).await
 }
 
-/// Stops the turn and moves the conversation under older. Its tasks keep running.
+/// Stops the turn, moves the conversation under older and cancels its queued tasks. The
+/// reaper then removes its agents and their worktrees in the background.
 pub async fn end(ctx: &Context, id: &str) -> Result<Conversation> {
     stop(ctx, id).await?;
     let ended = |c: Conversation| Ok(Conversation { ended: true, ..c });
-    ctx.store()?.update_conversation(id, ended).await
+    let store = ctx.store()?;
+    let conversation = store.update_conversation(id, ended).await?;
+    reaper::cancel_queued(store, &store.tasks(id).await?).await?;
+    reaper::soon(ctx);
+    Ok(conversation)
 }
 
 /// `linkedRepo` (a registered repo, `null` for auto) and `title`.

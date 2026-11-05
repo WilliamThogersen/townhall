@@ -1,5 +1,7 @@
-use axum::http::{header, HeaderMap, HeaderValue, Method};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method};
 use tower_http::cors::{AllowOrigin, CorsLayer};
+
+use crate::middleware::REQUEST_ID_HEADER;
 
 /// Origins allowed to call the API from a browser context: the desktop shell
 /// (packaged and dev) and the Vite dev server. Nothing else.
@@ -25,7 +27,10 @@ pub fn cors_layer() -> CorsLayer {
             Method::PATCH,
             Method::DELETE,
         ])
-        .allow_headers([header::CONTENT_TYPE])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            HeaderName::from_static(REQUEST_ID_HEADER),
+        ])
 }
 
 /// False when a browser page from another origin sent the request. CORS does not cover

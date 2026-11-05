@@ -2,7 +2,7 @@
 //! app's in-process daemon both call `start_background`; each unit fills in its own `start`.
 
 use tokio::task::JoinHandle;
-use townhall_core::{agent, runner, scheduler};
+use townhall_core::{agent, reaper, runner, scheduler};
 
 use crate::logging;
 use crate::state::AppState;
@@ -24,13 +24,14 @@ impl Background {
     }
 }
 
-/// Registers the startup repo, then starts the conversation runner (2.2), the task
-/// scheduler (2.3) and the agent watcher (2.5).
+/// Registers the startup repo, then starts the conversation runner (2.2), the reaper, the
+/// task scheduler (2.3) and the agent watcher (2.5).
 pub async fn start_background(state: &AppState) -> Background {
     let ctx = state.ctx();
     ctx.ensure_startup_repo().await;
     let handles = [
         runner::start(ctx),
+        reaper::start(ctx),
         scheduler::start(ctx),
         agent::watch::start(ctx),
         Some(start_log_pruning(ctx.home().clone())),

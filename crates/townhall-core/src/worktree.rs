@@ -40,10 +40,7 @@ pub async fn create(ws: &Workspace, name: &str, base: &str) -> Result<Worktree> 
     Ok(wt)
 }
 
-/// Remove the worktree and delete its branch.
-pub async fn remove(ws: &Workspace, name: &str) -> Result<()> {
-    validate_name(name)?;
-    let wt = describe(ws, name);
+async fn remove_folder(ws: &Workspace, wt: &Worktree) -> Result<()> {
     let path = wt.path.to_string_lossy().into_owned();
     run(
         "git",
@@ -51,12 +48,37 @@ pub async fn remove(ws: &Workspace, name: &str) -> Result<()> {
         Some(ws.repo()),
     )
     .await?;
+    Ok(())
+}
+
+/// Remove the worktree and delete its branch.
+pub async fn remove(ws: &Workspace, name: &str) -> Result<()> {
+    validate_name(name)?;
+    let wt = describe(ws, name);
+    remove_folder(ws, &wt).await?;
     run("git", &["branch", "-D", &wt.branch], Some(ws.repo())).await?;
     tracing::info!(
-        target: "townhall::git", event = "worktree.remove", agent = %name, path = %path,
-        "worktree removed"
+        target: "townhall::git", event = "worktree.remove", agent = %name,
+        path = %wt.path.display(), "worktree removed"
     );
     Ok(())
+}
+
+/// Remove the worktree for good. Its branch is deleted only when git calls it merged
+/// (`branch -d`), so commits that exist nowhere else keep their branch. True when the
+/// branch was deleted.
+pub async fn retire(ws: &Workspace, name: &str) -> Result<bool> {
+    validate_name(name)?;
+    let wt = describe(ws, name);
+    remove_folder(ws, &wt).await?;
+    let deleted = run("git", &["branch", "-d", &wt.branch], Some(ws.repo()))
+        .await
+        .is_ok();
+    tracing::info!(
+        target: "townhall::git", event = "worktree.retire", agent = %name,
+        path = %wt.path.display(), branch_deleted = deleted, "worktree retired"
+    );
+    Ok(deleted)
 }
 
 /// List townhall-managed worktrees (rediscovered from git, so restarts lose nothing).

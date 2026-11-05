@@ -164,6 +164,33 @@ async fn cors_allows_desktop_origin_only() {
 }
 
 #[tokio::test]
+async fn cors_preflight_allows_the_request_id_header() {
+    use axum::http::{header, Method};
+    let dir = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let app = townhall_daemon::router_with_cors(state_for(dir.path(), home.path()));
+    let preflight = Request::builder()
+        .method(Method::OPTIONS)
+        .uri("/api/repos")
+        .header(header::ORIGIN, "tauri://localhost")
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+        .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "x-request-id")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(preflight).await.unwrap();
+    let allowed = res
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    assert!(
+        allowed.contains("x-request-id"),
+        "allow-headers: {allowed:?}"
+    );
+}
+
+#[tokio::test]
 async fn info_reports_home_repo_and_key() {
     let (env, app) = init_repo().await;
     let (s, v) = call(&app, "GET", "/api/info", None).await;
