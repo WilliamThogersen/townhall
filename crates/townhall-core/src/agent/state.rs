@@ -88,6 +88,23 @@ const SIGNALS: [(&str, i32); 12] = [
     ("term", 15),
 ];
 
+/// A signal as tmux prints it: a name in any case, with or without `SIG`, or a bare number
+/// (what tmux prints on Linux).
+fn signal_number(text: &str) -> Option<i32> {
+    let text = text.trim();
+    if let Ok(number) = text.parse::<i32>() {
+        return (number > 0).then_some(number);
+    }
+    let bare = match text.get(..3) {
+        Some(prefix) if prefix.eq_ignore_ascii_case("sig") => &text[3..],
+        _ => text,
+    };
+    SIGNALS
+        .iter()
+        .find(|(n, _)| bare.eq_ignore_ascii_case(n))
+        .map(|(_, number)| *number)
+}
+
 /// A dead pane's state: exit 0 ended, anything else an error. A signal is reported the
 /// way a shell does, 128 plus its number.
 fn exited(exit: &Exit) -> AgentState {
@@ -97,10 +114,7 @@ fn exited(exit: &Exit) -> AgentState {
             exit_code: Some(*code),
         },
         Exit::Signal(name) => AgentState::Error {
-            exit_code: SIGNALS
-                .iter()
-                .find(|(n, _)| name.eq_ignore_ascii_case(n))
-                .map(|(_, number)| 128 + number),
+            exit_code: signal_number(name).map(|number| 128 + number),
         },
         Exit::Unknown => AgentState::Error { exit_code: None },
     }
@@ -273,6 +287,25 @@ mod tests {
             exited(&Exit::Unknown),
             AgentState::Error { exit_code: None }
         );
+    }
+
+    #[test]
+    fn a_signal_is_read_as_a_name_in_any_case_or_a_number() {
+        for form in ["TERM", "term", "SIGTERM", "sigterm", "15"] {
+            assert_eq!(signal_number(form), Some(15), "{form}");
+            assert_eq!(
+                exited(&Exit::Signal(form.into())),
+                AgentState::Error {
+                    exit_code: Some(143)
+                },
+                "{form}"
+            );
+        }
+        assert_eq!(signal_number("9"), Some(9));
+        assert_eq!(signal_number("SIGKILL"), Some(9));
+        for form in ["", "0", "-3", "usr1", "SIG", "sig"] {
+            assert_eq!(signal_number(form), None, "{form}");
+        }
     }
 
     #[test]
