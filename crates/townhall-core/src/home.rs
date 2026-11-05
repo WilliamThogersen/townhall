@@ -10,6 +10,7 @@ const HOME_DIR: &str = ".townhall";
 /// Townhall's own agent worktrees live under `<home>/worktrees/`.
 pub const WORKTREES_DIR: &str = "worktrees";
 const LOGS_DIR: &str = "logs";
+const ARTIFACTS_DIR: &str = "artifacts";
 const CONFIG_FILE: &str = "config.json";
 const MAX_BASE_LEN: usize = 32;
 
@@ -53,6 +54,13 @@ impl Home {
     /// Phase 1's `config.json`: only read, once, by the store's import, which then renames it.
     pub fn config_file(&self) -> PathBuf {
         self.root.join(CONFIG_FILE)
+    }
+
+    pub fn artifacts_for(&self, conversation_id: &str, task: &str) -> PathBuf {
+        self.root
+            .join(ARTIFACTS_DIR)
+            .join(conversation_id)
+            .join(task)
     }
 
     pub fn worktrees_for(&self, key: &str) -> PathBuf {

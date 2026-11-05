@@ -7,6 +7,7 @@
 //! functions over `Store::call`). Every write publishes its `ServerEvent`s on the bus while
 //! it holds the connection, so events arrive in write order.
 
+mod artifacts;
 mod attachments;
 mod codec;
 mod conversations;
@@ -26,6 +27,7 @@ mod unit_2_6;
 mod unit_2_7;
 mod unit_2_8b;
 mod unit_2_8c;
+mod unit_2_9;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
