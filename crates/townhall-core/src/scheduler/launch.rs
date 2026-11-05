@@ -1,11 +1,13 @@
 //! Starting ready tasks: `queued` to `working`, one agent per task, under `agentsAtOnce`.
 
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use crate::agent::{self, Agent, LaunchOptions};
 use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
+use crate::redact::redact;
 use crate::{clock, ids, Error, Result, Workspace};
 
 use super::{agent_type, brief, plan, transition, Pass, TaskLaunch};
@@ -172,6 +174,11 @@ async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
         Step::Start => match launch(ctx, task).await {
             Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
             Err(e) => {
+                tracing::warn!(
+                    target: "townhall::task", event = "task.launch_failed", task = %task.name,
+                    repo = %task.repo, error_kind = e.kind(),
+                    error = %redact(&e.to_string()), "task launch failed"
+                );
                 fail(ctx, task, &e.to_string()).await?;
                 Ok(Done::Failed)
             }
@@ -227,6 +234,7 @@ fn read_dirs(brief: &Path, files: &[PathBuf]) -> Vec<PathBuf> {
 /// session: `claude` with the type's flags, a new session id and the order to read the
 /// brief, or a `shell` type's command.
 async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
+    let started = Instant::now();
     let launcher = agent_type::launcher(ctx, task).await?;
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
@@ -242,6 +250,11 @@ async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
     };
     let adapter = launcher.adapter.as_ref();
     agent::start(&ws, &task.name, &start_commit, adapter, &options).await?;
+    tracing::info!(
+        target: "townhall::task", event = "task.launched", task = %task.name, repo = %task.repo,
+        duration_ms = started.elapsed().as_millis() as u64,
+        worktree = %ws.worktrees_dir().join(&task.name).display(), "task launched"
+    );
     Ok(TaskLaunch {
         name: task.name.clone(),
         start_commit,

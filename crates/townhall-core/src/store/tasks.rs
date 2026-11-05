@@ -232,6 +232,15 @@ impl Store {
             Ok(task)
         })
         .await
+        .inspect(|task| {
+            // Lengths only: the prompt is never logged.
+            tracing::info!(
+                target: "townhall::task", event = "task.created", task = %task.name,
+                conversation = %task.conversation_id, repo = %task.repo,
+                agent_type = %task.agent, after = %task.after.join(","),
+                prompt_chars = task.prompt.chars().count(), "task created"
+            );
+        })
     }
 
     /// One conversation's tasks, oldest first.
@@ -262,25 +271,54 @@ impl Store {
         F: FnOnce(Task) -> Result<Task> + Send + 'static,
     {
         let (name, bus) = (name.to_string(), self.bus().clone());
-        self.call(move |conn| {
-            let tx = conn.transaction()?;
-            let current = find(&tx, &name)?.ok_or_else(|| Error::missing("task", &name))?;
-            let keep = (
-                current.name.clone(),
-                current.conversation_id.clone(),
-                current.created_at.clone(),
-            );
-            let next = Task {
-                name: keep.0,
-                conversation_id: keep.1,
-                created_at: keep.2,
-                ..change(current)?
-            };
-            write(&tx, &next)?;
-            tx.commit()?;
-            bus.publish(ServerEvent::TaskUpdated { task: next.clone() });
-            Ok(next)
-        })
-        .await
+        let moved = self
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                let current = find(&tx, &name)?.ok_or_else(|| Error::missing("task", &name))?;
+                let from = current.state;
+                let keep = (
+                    current.name.clone(),
+                    current.conversation_id.clone(),
+                    current.created_at.clone(),
+                );
+                let next = Task {
+                    name: keep.0,
+                    conversation_id: keep.1,
+                    created_at: keep.2,
+                    ..change(current)?
+                };
+                write(&tx, &next)?;
+                tx.commit()?;
+                bus.publish(ServerEvent::TaskUpdated { task: next.clone() });
+                Ok((from, next))
+            })
+            .await?;
+        // Logged here, on the caller's thread, once the write is committed.
+        log_state(moved.0, &moved.1);
+        Ok(moved.1)
+    }
+}
+
+/// `task.state` when the state changed, plus the event that names the new state.
+fn log_state(from: TaskState, task: &Task) {
+    if from == task.state {
+        return;
+    }
+    let (from_name, to_name) = (name_of(&from), name_of(&task.state));
+    tracing::info!(
+        target: "townhall::task", event = "task.state", task = %task.name,
+        conversation = %task.conversation_id, from = %from_name, to = %to_name, "task state"
+    );
+    match task.state {
+        TaskState::NeedsYou => tracing::info!(
+            target: "townhall::task", event = "task.needs_you", task = %task.name, "task needs you"
+        ),
+        TaskState::Error => tracing::warn!(
+            target: "townhall::task", event = "task.failed", task = %task.name, "task failed"
+        ),
+        TaskState::Ended => tracing::info!(
+            target: "townhall::task", event = "task.ended", task = %task.name, "task ended"
+        ),
+        _ => {}
     }
 }

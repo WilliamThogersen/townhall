@@ -168,7 +168,11 @@ impl Store {
             .filter_map(|row| match parse_row(row) {
                 Ok(agent) => Some(agent),
                 Err(e) => {
-                    eprintln!("warn: {e}");
+                    tracing::warn!(
+                        target: "townhall::store", event = "store.agent_type_unreadable",
+                        error_kind = e.kind(), error = %crate::redact::redact(&e.to_string()),
+                        "agent type row skipped"
+                    );
                     None
                 }
             })

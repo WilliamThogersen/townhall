@@ -28,7 +28,10 @@ pub fn write_atomic(path: &Path, bytes: &[u8], durable: bool) -> Result<()> {
     written.map_err(|source| {
         if let Err(e) = fs::remove_file(&tmp) {
             if e.kind() != ErrorKind::NotFound {
-                eprintln!("warn: cannot remove {}: {e}", tmp.display());
+                tracing::warn!(
+                    target: "townhall::store", event = "fs.tmp_remove_failed", path = %tmp.display(),
+                    error = %crate::redact::redact(&e.to_string()), "cannot remove temp file"
+                );
             }
         }
         Error::io(format!("write {}", path.display()), source)

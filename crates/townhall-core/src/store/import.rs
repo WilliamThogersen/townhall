@@ -55,7 +55,11 @@ pub(super) fn config_json(conn: &mut Connection, home: &Home) -> Result<bool> {
     let repo = saved_repo.and_then(|p| match importable(home, Path::new(p)) {
         Ok(repo) => Some(repo),
         Err(e) => {
-            eprintln!("warn: saved repo {p} not registered: {e}");
+            tracing::warn!(
+                target: "townhall::store", event = "store.import_repo_skipped", path = %p,
+                error_kind = e.kind(), error = %crate::redact::redact(&e.to_string()),
+                "saved repo not registered"
+            );
             None
         }
     });
