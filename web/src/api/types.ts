@@ -87,6 +87,7 @@ export interface Conversation {
 export interface NewMessageInput {
   readonly text: string;
   readonly attachments?: readonly string[];
+  readonly replyTo?: number;
 }
 
 export interface ConversationPatch {
@@ -98,7 +99,12 @@ export type RepoRule = "named" | "code" | "only" | "picked" | "linked";
 export type AgentEvent = "sent" | "passed" | "failed" | "ended" | "allowed";
 
 export type EntryBody =
-  | { readonly kind: "you"; readonly text: string; readonly attachments: readonly string[] }
+  | {
+      readonly kind: "you";
+      readonly text: string;
+      readonly attachments: readonly string[];
+      readonly replyTo?: number;
+    }
   | { readonly kind: "townhall"; readonly text: string }
   | {
       readonly kind: "repo";
