@@ -116,17 +116,34 @@
   font-size: var(--th-text-xs);
 }
 
+/* chat: your messages on the right, townhall's replies on the left in blue, events centered */
+
+.th-msg--you,
+.th-msg--townhall {
+  max-width: var(--th-bubble);
+  padding: 6px var(--th-space-3);
+}
+
 .th-msg--you {
-  padding: 6px var(--th-space-3) 6px 0;
-  background: var(--th-surface);
-  box-shadow: inset 2px 0 0 var(--th-accent);
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-self: end;
+  background: var(--th-surface-2);
+  box-shadow: inset -2px 0 0 var(--th-accent);
 }
 
 .th-msg--you .th-msg-sign {
-  color: var(--th-accent);
+  display: none;
+}
+
+.th-msg--townhall {
+  justify-self: start;
+  padding-left: 0;
+  background: var(--th-info-tint);
+  box-shadow: inset 2px 0 0 var(--th-info);
 }
 
 .th-event {
+  justify-self: center;
   color: var(--th-fg-faint);
   font-size: var(--th-text-sm);
 }

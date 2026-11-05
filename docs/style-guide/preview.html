@@ -172,7 +172,7 @@
                   <span class="th-msg-time">10:42</span>
                 </div>
                 <div class="th-event"><span class="th-msg-sign" style="color: var(--th-accent)">~</span><span>repo <b>townhall</b> · main, you named it</span><span class="th-msg-time">10:42</span></div>
-                <div class="th-msg"><span class="th-msg-sign" aria-hidden="true"></span>
+                <div class="th-msg th-msg--townhall"><span class="th-msg-sign" aria-hidden="true"></span>
                   <div class="th-msg-body">
                     <p>Your network screenshot shows it: /login answers 302 to /, and / answers 302 back, twenty times. The cause is in <code>src/auth/redirect.ts</code>: an expired session is sent to /login without clearing the cookie.</p>
                     <p>Three tasks. logout-cookie waits for fix-login, since both touch the session:</p>
@@ -185,7 +185,7 @@
                   </div>
                   <span class="th-msg-time">10:42</span>
                 </div>
-                <div class="th-msg"><span class="th-msg-sign" aria-hidden="true"></span>
+                <div class="th-msg th-msg--townhall"><span class="th-msg-sign" aria-hidden="true"></span>
                   <div class="th-msg-body">
                     <p><b>fix-login</b> checked the page after its change: /login now loads once and shows the sign-in form.</p>
                     <div class="th-msg-images" data-gallery>

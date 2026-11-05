@@ -52,13 +52,13 @@ Bottom of the window, 24px, `xs` in `fg-faint`. Left: hints for the current cont
 
 ## Thread
 
-Transcript, not chat bubbles. `.th-thread-inner` caps text at 76ch and centers in its column, like Claude desktop. The composer box centers on the same axis.
+Chat. `.th-thread-inner` caps the thread at 76ch and centers in its column; inside it your messages sit on the right and townhall's replies on the left, each at most `--th-bubble` (85%) wide. Events center between them. The composer box centers on the same axis.
 
 | Part | Class | Look |
 |------|-------|------|
-| Your message | `.th-msg.th-msg--you` | `surface` strip, 2px amber left edge, amber `›` in the gutter, time on the right |
-| Townhall's reply | `.th-msg` | On the background, empty gutter. Markdown: paragraphs, lists, `code` |
-| Event | `.th-event` | One faint `sm` line with a glyph: `~` repo picked, `✓` passed, `→` sent, `×` failed, `○` ended, spinner for thinking |
+| Your message | `.th-msg.th-msg--you` | Right-aligned `surface-2` bubble, 2px amber right edge, no gutter sign, time on the right |
+| Townhall's reply | `.th-msg.th-msg--townhall` | Left-aligned `info-tint` bubble, 2px blue left edge, empty gutter. Markdown: paragraphs, lists, `code` |
+| Event | `.th-event` | One faint centered `sm` line with a glyph: `~` repo picked, `✓` passed, `→` sent, `×` failed, `○` ended, spinner for thinking |
 | Task block | `.th-block` + `.th-agent-line` | The tasks a reply created: `3 tasks for townhall · main`, then status, bold name, kind, title, `open` |
 | Needs you | `.th-ask` | Amber tint and edge, `◆ <agent> needs you`, the agent's question quoted verbatim, direct answers (`send y`, `send n`) and `open pane` |
 

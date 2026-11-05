@@ -17,7 +17,7 @@ type YouEntry = Extract<ThreadEntry, { kind: "you" }>;
 function YouMessage({ entry }: { readonly entry: YouEntry }) {
   const { conversationId, attachments } = useThread();
   return (
-    <Message you at={entry.at}>
+    <Message from="you" at={entry.at}>
       <div className="th-msg-body">
         <PlainText text={entry.text} />
         <Thumbs conversationId={conversationId} attachmentIds={entry.attachments} attachments={attachments} />
@@ -32,7 +32,7 @@ export function ThreadEntryView({ entry, open }: ThreadEntryViewProps) {
       return <YouMessage entry={entry} />;
     case "townhall":
       return (
-        <Message at={entry.at}>
+        <Message from="townhall" at={entry.at}>
           <div className="th-msg-body">
             <Markdown text={entry.text} />
           </div>

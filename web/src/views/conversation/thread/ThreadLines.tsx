@@ -41,17 +41,25 @@ export function EventLine({ sign, kind, event, at, children }: EventLineProps) {
   );
 }
 
+/** Who wrote a chat message: you on the right, townhall's reply on the left in blue. Blocks leave it out. */
+export type MessageFrom = "you" | "townhall";
+
 export interface MessageProps {
-  readonly you?: boolean;
+  readonly from?: MessageFrom;
   readonly at: string;
   readonly children: ReactNode;
 }
 
-export function Message({ you = false, at, children }: MessageProps) {
+const MESSAGE_CLASS: Readonly<Record<MessageFrom, string>> = {
+  you: "th-msg th-msg--you",
+  townhall: "th-msg th-msg--townhall",
+};
+
+export function Message({ from, at, children }: MessageProps) {
   return (
-    <div className={you ? "th-msg th-msg--you" : "th-msg"}>
+    <div className={from === undefined ? "th-msg" : MESSAGE_CLASS[from]}>
       <span className="th-msg-sign" aria-hidden="true">
-        {you ? "›" : ""}
+        {from === "you" ? "›" : ""}
       </span>
       {children}
       <EntryTime at={at} />

@@ -111,6 +111,7 @@
   --th-sidebar: 272px;
   --th-thread-min: 420px;
   --th-measure: 76ch;
+  --th-bubble: 85%; /* widest a chat message gets inside the measure */
   --th-pane-min: 440px;
   --th-pane-min-h: 320px;
   --th-composer-max: 172px;

@@ -48,7 +48,9 @@ describe("Thread messages", () => {
     expect(you).toHaveClass("th-msg--you");
     expect(you?.querySelector(".th-msg-body")?.innerHTML).toBe("<p>fix it<br>please</p>");
     expect(you?.querySelector("time")).toHaveTextContent("10:42");
+    expect(you).not.toHaveClass("th-msg--townhall");
     expect(reply).not.toHaveClass("th-msg--you");
+    expect(reply).toHaveClass("th-msg--townhall");
     expect(reply?.querySelector("code")).toHaveTextContent("a.ts");
   });
 
