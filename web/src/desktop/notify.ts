@@ -1,4 +1,5 @@
 import { isDesktop } from "../api/base";
+import { logError } from "../log/report";
 
 /** Native notification that an agent's session died. No-op outside the desktop shell. */
 export async function notifyAgentDied(name: string): Promise<void> {
@@ -9,6 +10,6 @@ export async function notifyAgentDied(name: string): Promise<void> {
     if (!granted) granted = (await n.requestPermission()) === "granted";
     if (granted) n.sendNotification({ title: "Agent stopped", body: `${name}: session ended` });
   } catch (e) {
-    console.error("notification failed", e);
+    logError("web.notification", "notification failed", e);
   }
 }

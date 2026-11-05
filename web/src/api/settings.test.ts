@@ -72,7 +72,10 @@ describe("putSetting", () => {
     const [url, init] = fn.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/settings/agentsAtOnce");
     expect(init.method).toBe("PUT");
-    expect(init.headers).toEqual({ "content-type": "application/json" });
+    expect(init.headers).toEqual({
+      "content-type": "application/json",
+      "x-request-id": expect.any(String),
+    });
     expect(JSON.parse(init.body as string)).toEqual({ value: 12 });
   });
 

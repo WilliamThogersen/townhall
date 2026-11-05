@@ -1,4 +1,5 @@
 import { isDesktop } from "../api/base";
+import { logError } from "../log/report";
 
 async function call<T>(cmd: string): Promise<T> {
   if (!isDesktop()) throw new Error("desktop commands are only available in the app");
@@ -38,7 +39,7 @@ export function installExternalLinks(doc: Document): () => void {
     const url = externalUrl(anchor.href);
     if (!url) return;
     event.preventDefault();
-    openExternal(url).catch((e) => console.error("open link failed", e));
+    openExternal(url).catch((e) => logError("web.open_link", "open link failed", e));
   };
   doc.addEventListener("click", onClick);
   return () => doc.removeEventListener("click", onClick);
