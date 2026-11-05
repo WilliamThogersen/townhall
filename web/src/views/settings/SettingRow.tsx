@@ -19,12 +19,13 @@ export interface SettingRowProps {
   readonly help: ReactNode;
   readonly helpTone?: "danger";
   readonly details?: ReactNode;
+  readonly wide?: boolean;
   readonly children: ReactNode;
 }
 
-export function SettingRow({ label, help, helpTone, details, children }: SettingRowProps) {
+export function SettingRow({ label, help, helpTone, details, wide, children }: SettingRowProps) {
   return (
-    <div className="th-setting-row">
+    <div className="th-setting-row" data-wide={wide ? "true" : undefined}>
       <div>
         <div className="th-setting-label">{label}</div>
         <div className="th-setting-help" data-tone={helpTone}>

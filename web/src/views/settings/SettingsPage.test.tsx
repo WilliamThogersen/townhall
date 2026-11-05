@@ -23,8 +23,15 @@ function reply(status: number, data: unknown, error: string | null): Response {
 function fakeDaemon(initial: Partial<Settings> = {}) {
   let settings: Settings = { ...DEFAULT_SETTINGS, ...initial };
   let calls: readonly Call[] = [];
+  let profile = "";
   const failing = new Set<string>();
-  const answer = (method: string, url: string, body: { value?: unknown } | undefined): Response => {
+  const answer = (method: string, url: string, body: { value?: unknown; text?: string } | undefined): Response => {
+    if (url === "/api/profile") {
+      if (failing.has("profile")) return reply(503, null, HELD);
+      if (method === "PUT") profile = body?.text ?? "";
+      if (method === "DELETE") profile = "";
+      return reply(200, { text: profile }, null);
+    }
     if (method === "GET" && url === "/api/settings") {
       return failing.has("GET") ? reply(503, null, HELD) : reply(200, settings, null);
     }
@@ -39,12 +46,13 @@ function fakeDaemon(initial: Partial<Settings> = {}) {
     const method = init?.method ?? "GET";
     const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
     calls = [...calls, { method, url, body }];
-    return answer(method, url, body as { value?: unknown } | undefined);
+    return answer(method, url, body as { value?: unknown; text?: string } | undefined);
   });
   return {
     fetch,
     failing,
     settings: () => settings,
+    profile: () => profile,
     puts: () => calls.filter((call) => call.method === "PUT").map((call) => [call.url, call.body]),
   };
 }
@@ -95,7 +103,9 @@ describe("SettingsPage", () => {
     ["agents", "conversations", "appearance and notifications", "about you"].forEach((name) => {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: /save/ })).not.toBeInTheDocument();
+    const saves = screen.getAllByRole("button", { name: /save/ });
+    expect(saves).toHaveLength(1);
+    expect(saves[0]?.closest(".th-setting-row")).toHaveTextContent("profile");
   });
 
   it("renders every row", async () => {
@@ -110,7 +120,26 @@ describe("SettingsPage", () => {
       "theme",
       "notify me when",
       "learn about me",
+      "profile",
     ]);
+  });
+
+  it("shows a profile problem in the profile row, not as the settings banner", async () => {
+    daemon.failing.add("profile");
+    await renderLoaded();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(`error: profile not loaded: ${HELD}`);
+    expect(alert.closest(".th-setting-row")).toHaveAttribute("data-wide", "true");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  it("shows the profile row, editable, and its help follows the switch", async () => {
+    await renderLoaded();
+    expect(await screen.findByRole("textbox", { name: "Profile" })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("not used while learn about me is off.")).toBeVisible();
+    await userEvent.click(screen.getByRole("switch", { name: "Learn about me" }));
+    expect(await screen.findByText("townhall reads this in its own conversations.")).toBeVisible();
   });
 
   it("switches learn about me, off by default, and explains what it keeps", async () => {

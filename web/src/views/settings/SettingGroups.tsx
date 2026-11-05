@@ -5,6 +5,7 @@ import { Segmented } from "../../ui/Segmented";
 import { Stepper } from "../../ui/Stepper";
 import { Switch } from "../../ui/Switch";
 import { PermissionRow } from "./PermissionRow";
+import { ProfileSection } from "./ProfileSection";
 import { SettingGroup, SettingRow } from "./SettingRow";
 import { HELP, NOTIFY_CHOICES, REPO_UNCLEAR_CHOICES, THEME_CHOICES } from "./settingsCopy";
 
@@ -68,6 +69,7 @@ export function AboutYouGroup() {
           onChange={(learnAboutMe) => update({ learnAboutMe })}
         />
       </SettingRow>
+      <ProfileSection learnAboutMe={settings.learnAboutMe} />
     </SettingGroup>
   );
 }
