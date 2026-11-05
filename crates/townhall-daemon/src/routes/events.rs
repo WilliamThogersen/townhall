@@ -11,9 +11,11 @@ use axum::response::Response;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Receiver;
 use townhall_core::model::ServerEvent;
+use townhall_core::redact::redact;
 
 use crate::cors::origin_allowed;
 use crate::envelope::failure;
+use crate::middleware::WsSession;
 use crate::state::AppState;
 
 pub const FOREIGN_ORIGIN: &str = "origin not allowed";
@@ -33,14 +35,23 @@ pub async fn socket(
         Err(rejection) => return failure(rejection.status(), NOT_UPGRADED.into()),
     };
     let events = state.ctx().bus().subscribe();
-    ws.on_upgrade(move |socket| forward(socket, events))
+    let session = WsSession::open("/api/events", &headers, None);
+    ws.on_upgrade(move |socket| async move {
+        let _session = session;
+        forward(socket, events).await
+    })
 }
 
 fn frame(event: &ServerEvent) -> Option<Message> {
     match serde_json::to_string(event) {
         Ok(text) => Some(Message::text(text)),
         Err(e) => {
-            eprintln!("warn: cannot send an event: {e}");
+            tracing::warn!(
+                target: "townhall::http",
+                event = "ws.frame_failed",
+                error = %redact(&e.to_string()),
+                "cannot send an event"
+            );
             None
         }
     }
@@ -78,6 +89,10 @@ async fn forward(mut socket: WebSocket, mut events: Receiver<ServerEvent>) {
 async fn finish_close(mut socket: WebSocket) {
     let drain = async { while let Some(Ok(_)) = socket.recv().await {} };
     if tokio::time::timeout(CLOSE_WAIT, drain).await.is_err() {
-        eprintln!("warn: an events socket did not close in time");
+        tracing::warn!(
+            target: "townhall::http",
+            event = "ws.close_timeout",
+            "an events socket did not close in time"
+        );
     }
 }

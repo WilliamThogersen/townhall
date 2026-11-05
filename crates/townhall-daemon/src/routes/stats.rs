@@ -62,7 +62,12 @@ async fn shipped_across(repos: Vec<Repo>) -> Vec<ShippedDay> {
                 counted.push(days);
             }
             Ok((repo, Err(e))) => warn_once(&repo, &e.to_string()),
-            Err(e) => eprintln!("warn: stats for a repo stopped: {e}"),
+            Err(e) => tracing::warn!(
+                target: "townhall::http",
+                event = "stats.task_failed",
+                error = %e,
+                "stats for a repo stopped"
+            ),
         }
     }
     merge_days(counted)
@@ -83,7 +88,13 @@ fn skipped() -> std::sync::MutexGuard<'static, HashMap<String, String>> {
 
 fn warn_once(repo: &str, why: &str) {
     if first_time(&mut skipped(), repo, why) {
-        eprintln!("warn: stats skip repo `{repo}`: {why}");
+        tracing::warn!(
+            target: "townhall::http",
+            event = "stats.repo_skipped",
+            repo,
+            error = %townhall_core::redact::redact(why),
+            "stats skip repo"
+        );
     }
 }
 
