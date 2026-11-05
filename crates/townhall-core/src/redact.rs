@@ -107,7 +107,7 @@ fn mask_tokens(text: &str) -> String {
             if !matched {
                 continue;
             }
-            let body = shape.len.map_or(body, |n| n); // ASCII only, so chars == bytes
+            let body = shape.len.unwrap_or(body); // ASCII only, so chars == bytes
             if shape.keep_prefix {
                 out.push_str(&rest[..shape.prefix.len()]);
             }

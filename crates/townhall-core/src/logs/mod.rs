@@ -255,7 +255,7 @@ fn read_entries(dir: &Path, since_ms: i64, keep: impl Fn(&Entry) -> bool) -> Vec
             }
         }
     }
-    entries.sort_by(|a, b| b.ts_ms.cmp(&a.ts_ms));
+    entries.sort_by_key(|a| std::cmp::Reverse(a.ts_ms));
     entries
 }
 
