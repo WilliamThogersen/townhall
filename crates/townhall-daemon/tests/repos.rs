@@ -177,6 +177,32 @@ async fn a_link_is_cloned_and_registered() {
 }
 
 #[tokio::test]
+async fn delete_clone_removes_a_managed_clone_and_never_a_user_folder() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let src = env.repo("shop-src").await;
+    let bare = env.root.path().join("shop.git");
+    let (from, to) = (src.to_string_lossy(), bare.to_string_lossy());
+    git(env.root.path(), &["clone", "-q", "--bare", &from, &to]).await;
+    let url = format!("file://{}", bare.display());
+    let (_, v) = call(&app, "POST", "/api/repos", Some(json!({"path": url}))).await;
+    let cloned = std::path::PathBuf::from(v["data"]["path"].as_str().unwrap());
+
+    let mine = env.repo("beta").await;
+    call(&app, "POST", "/api/repos", Some(json!({"path": mine}))).await;
+    let (s, v) = call(&app, "DELETE", "/api/repos/beta?deleteClone=true", None).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("never deleted"), "{v}");
+    assert!(mine.join(".git").exists());
+    let (_, v) = call(&app, "GET", "/api/repos", None).await;
+    assert_eq!(v["data"].as_array().unwrap().len(), 3);
+
+    let (s, v) = call(&app, "DELETE", "/api/repos/shop?deleteClone=true", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert!(!cloned.exists());
+}
+
+#[tokio::test]
 async fn a_link_that_cannot_be_cloned_is_a_400_that_says_so() {
     let env = Env::new("alpha").await;
     let (_state, app) = env.start();

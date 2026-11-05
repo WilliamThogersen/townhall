@@ -5,7 +5,7 @@ use crate::agent::{self, state};
 use crate::cmd::validate_name;
 use crate::context::Context;
 use crate::home::repo_key;
-use crate::model::{AgentInfo, Repo};
+use crate::model::{AgentInfo, Repo, TaskState};
 use crate::{tmux, worktree, Error, Result, Workspace};
 
 /// Where an agent lives: its repo's name, its name as stored, and the workspace.
@@ -137,6 +137,13 @@ pub async fn locate(ctx: &Context, name: &str, repo: Option<&str>) -> Result<Loc
 
 /// Unregisters a repo. Refused for the daemon's startup repo and while agents run in it.
 pub async fn unregister(ctx: &Context, name: &str) -> Result<Repo> {
+    remove(ctx, name, false).await
+}
+
+/// Like `unregister`, and with `delete_clone` also deletes the clone townhall made in
+/// `<home>/repos`. That is refused (nothing changes) for a folder of yours, a clone with
+/// uncommitted or unpushed work, or a repo with a task that is not merged or ended.
+pub async fn remove(ctx: &Context, name: &str, delete_clone: bool) -> Result<Repo> {
     let repo = ctx.repo(name).await?;
     if ctx.ensure_startup_repo().await.as_deref() == Some(repo.name.as_str()) {
         return Err(Error::Conflict(format!(
@@ -153,5 +160,28 @@ pub async fn unregister(ctx: &Context, name: &str) -> Result<Repo> {
             if running == 1 { "it" } else { "them" }
         )));
     }
-    ctx.registry()?.remove(&repo.name).await
+    let registry = ctx.registry()?;
+    if !delete_clone {
+        return registry.remove(&repo.name).await;
+    }
+    let open = open_tasks(ctx, &repo.name).await?;
+    if open > 0 {
+        return Err(Error::Conflict(format!(
+            "repo `{}` has {open} task{} that {} not merged or ended: finish {} first",
+            repo.name,
+            if open == 1 { "" } else { "s" },
+            if open == 1 { "is" } else { "are" },
+            if open == 1 { "it" } else { "them" }
+        )));
+    }
+    registry.remove_with_clone(&repo.name).await
+}
+
+async fn open_tasks(ctx: &Context, repo: &str) -> Result<usize> {
+    let tasks = ctx.store()?.all_tasks().await?;
+    Ok(tasks
+        .iter()
+        .filter(|t| t.repo.eq_ignore_ascii_case(repo))
+        .filter(|t| !matches!(t.state, TaskState::Merged | TaskState::Ended))
+        .count())
 }
