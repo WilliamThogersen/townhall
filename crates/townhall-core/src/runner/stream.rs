@@ -41,6 +41,10 @@ pub struct TurnResult {
     pub used: Option<u64>,
     /// The model's context window, when the CLI says.
     pub limit: Option<u64>,
+    /// What the turn cost in USD, when the CLI says.
+    pub cost_usd: Option<f64>,
+    /// Names of the tools the CLI refused to run (`permission_denials`). Never their input.
+    pub denied: Vec<String>,
 }
 
 /// The events in one stdout line; none for a blank, non-JSON or unused line.
@@ -145,7 +149,20 @@ fn result(value: &Value) -> TurnResult {
         message: message_of(value),
         used: input_size(&value["usage"]),
         limit: window_of(value),
+        cost_usd: value.get("total_cost_usd").and_then(Value::as_f64),
+        denied: denied_tools(value),
     }
+}
+
+fn denied_tools(value: &Value) -> Vec<String> {
+    value
+        .get("permission_denials")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|d| d.get("tool_name").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect()
 }
 
 #[cfg(test)]
@@ -223,6 +240,8 @@ mod tests {
             message: Some("done".into()),
             used: Some(57),
             limit: Some(1_000_000),
+            cost_usd: None,
+            denied: vec![],
         };
         assert_eq!(line(ok), [StreamEvent::Result(want)]);
         let failed =
@@ -238,5 +257,19 @@ mod tests {
             panic!("a result")
         };
         assert!(r.stopped && !r.is_error && r.message.is_none() && r.limit.is_none());
+    }
+
+    #[test]
+    fn results_carry_the_cost_and_only_the_names_of_denied_tools() {
+        let result = json!({"type": "result", "subtype": "success", "total_cost_usd": 0.5,
+            "permission_denials": [
+                {"tool_name": "Bash", "tool_use_id": "a", "tool_input": {"command": "rm -rf /"}},
+                {"tool_use_id": "no name"},
+                {"tool_name": "Edit"}]});
+        let Some(StreamEvent::Result(r)) = line(result).pop() else {
+            panic!("a result")
+        };
+        assert_eq!(r.cost_usd, Some(0.5));
+        assert_eq!(r.denied, ["Bash", "Edit"]);
     }
 }

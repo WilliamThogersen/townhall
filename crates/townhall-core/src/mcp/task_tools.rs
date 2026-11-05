@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
+use crate::redact::redact;
 
 use super::checks::{self, Checked};
 use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
@@ -40,6 +41,10 @@ fn unknown_tool(name: &str) -> String {
 }
 
 impl ToolRunner for TaskTools<'_> {
+    fn conversation(&self) -> &str {
+        self.conversation_id
+    }
+
     async fn call(&self, name: &str, arguments: Value) -> Checked<Value> {
         match name {
             CREATE_TASK => as_json(&self.create_task(parse(arguments)?).await?),
@@ -105,9 +110,11 @@ impl TaskTools<'_> {
             .note_task_created(self.conversation_id, &task.name)
             .await
         {
-            eprintln!(
-                "warn: task `{}` created but not shown in its conversation: {e}",
-                task.name
+            tracing::warn!(
+                target: "townhall::mcp", event = "mcp.task_note_failed",
+                task = %task.name, conversation = self.conversation_id,
+                error = %redact(&e.to_string()),
+                "task created but not shown in its conversation"
             );
         }
         Ok(task)

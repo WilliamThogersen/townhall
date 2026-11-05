@@ -141,9 +141,25 @@ Later tasks add to this table as they emit events.
 | `logs.prune_failed` | `townhall::logging` | warn | `error` |
 | `web.error`, `web.unhandled_rejection`, `web.render_error`, `api.*` | `townhall::web` | as sent | `stack`, `route`, `request_id`, `error_kind`, `status` |
 | `web.dropped` | `townhall::web` | warn | `limit_per_minute` |
+| `mcp.tool` | `townhall::mcp` | debug when `ok`, warn otherwise | `tool`, `conversation`, `duration_ms`, `ok`, `error` (redacted, only when `ok=false`). Never the arguments or the result. |
+| `mcp.task_note_failed` | `townhall::mcp` | warn | `task`, `conversation`, `error` |
+| `mcp.status_no_transcript`, `mcp.status_no_steps`, `mcp.status_no_last_message` | `townhall::mcp` | warn | `task`, `error_kind`, `error` |
+| `turn.start` | `townhall::runner` | info | `conversation`, `prompt_chars`, `attachments`, `task_event` (the turn answers a task event, not a user message) |
+| `turn.end` | `townhall::runner` | info | `conversation`, `outcome` (`ok`, `failed` or `stopped`), `duration_ms`, `cost_usd` (when claude reports it) |
+| `turn.failed` | `townhall::runner` | warn | `conversation`, `error` (redacted; claude's last stderr line or result text) |
+| `turn.permission_denials` | `townhall::runner` | warn | `conversation`, `count`, `tools` (comma-separated names, never the tool input) |
+| `turn.give_back_failed`, `turn.not_finished`, `turn.note_failed`, `turn.not_handed_back` | `townhall::runner` | warn | `conversation`, `error_kind`, `error` |
+| `turn.stop_timeout` | `townhall::runner` | warn | `conversation` |
+| `claude.spawn` | `townhall::runner` | info, warn when `ok=false` | `conversation`, `ok`, `resume`, and `error_kind`, `error` on failure |
+| `claude.exit` | `townhall::runner` | info | `conversation`, `code` (absent when killed by a signal), `stopped`, `duration_ms` |
+| `claude.kill_failed`, `claude.wait_failed`, `claude.read_failed`, `claude.stdin_closed`, `claude.output_stayed_open` | `townhall::runner` | warn | `error` (and `group` for a process group kill) |
+| `repo.inference_failed`, `repo.answer_unreadable` | `townhall::runner` | warn | `conversation`, `error_kind`, `error` |
+| `repo.linked_gone` | `townhall::runner` | warn | `conversation`, `repo` |
+| `attachment.unreadable` | `townhall::runner` | warn | `attachment`, `path`, `error` |
+| `notify.not_delivered` | `townhall::runner` | warn | `conversation`, `error_kind`, `error` |
+| `recover.failed` | `townhall::runner` | warn | `error_kind`, `error` |
 
 Planned (see the logging plan): `http.request`, `http.error`, `ws.open`, `ws.close`,
-`mcp.tool`, `task.created`, `task.state`, `task.launched`, `task.launch_failed`,
+`task.created`, `task.state`, `task.launched`, `task.launch_failed`,
 `task.merged`, `agent.state`, `agent.gone`, `agent.tool_error`, `agent.permission_denied`,
-`turn.start`, `turn.end`, `turn.failed`, `claude.spawn`, `claude.exit`, `cmd.run`,
-`worktree.create`, `worktree.remove`, `daemon.mode`, `daemon.restart`.
+`cmd.run`, `worktree.create`, `worktree.remove`, `daemon.mode`, `daemon.restart`.

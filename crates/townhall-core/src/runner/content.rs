@@ -9,6 +9,7 @@ use base64::Engine;
 use serde_json::{json, Value};
 
 use crate::model::{Attachment, AttachmentKind};
+use crate::redact::redact;
 use crate::store::Store;
 use crate::Result;
 
@@ -64,10 +65,9 @@ async fn image_block(
         return Err(TOO_BIG);
     }
     let bytes = tokio::fs::read(path).await.map_err(|e| {
-        eprintln!(
-            "warn: cannot read attachment {} ({}): {e}",
-            a.id,
-            path.display()
+        tracing::warn!(
+            target: "townhall::runner", event = "attachment.unreadable", attachment = %a.id,
+            path = %path.display(), error = %redact(&e.to_string()), "cannot read attachment"
         );
         UNREADABLE
     })?;

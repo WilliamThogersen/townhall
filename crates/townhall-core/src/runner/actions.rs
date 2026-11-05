@@ -9,6 +9,7 @@ use crate::model::{
     Conversation, ConversationDetail, ConversationPatch, ConversationStatus, EntryBody, NewMessage,
     ThreadEntry,
 };
+use crate::redact::redact;
 use crate::store::Store;
 use crate::{ids, mcp, Context, Error, Result};
 
@@ -152,7 +153,11 @@ async fn give_back(store: &Store, id: &str, guard: super::TurnGuard) {
         })
     };
     if let Err(e) = store.update_conversation(id, idle).await {
-        eprintln!("warn: cannot hand {id} back after a failed send: {e}");
+        tracing::warn!(
+            target: "townhall::runner", event = "turn.give_back_failed", conversation = id,
+            error_kind = e.kind(), error = %redact(&e.to_string()),
+            "cannot hand the conversation back after a failed send"
+        );
     }
 }
 
@@ -186,7 +191,10 @@ pub async fn stop(ctx: &Context, id: &str) -> Result<Conversation> {
                 .await
                 .is_err()
             {
-                eprintln!("warn: the turn of {id} did not stop in time");
+                tracing::warn!(
+                    target: "townhall::runner", event = "turn.stop_timeout", conversation = id,
+                    "the turn did not stop in time"
+                );
             }
         }
         None => {

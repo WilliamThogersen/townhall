@@ -4,9 +4,12 @@
 //! notifications need nothing from townhall. A tool that fails answers a result with
 //! `isError: true` and a text the session can act on.
 
+use std::time::Instant;
+
 use serde_json::{json, Map, Value};
 
 use super::{tools, INSTRUCTIONS, PROTOCOL_VERSION, SERVER_NAME};
+use crate::redact::redact;
 
 pub const INVALID_REQUEST: i64 = -32600;
 pub const METHOD_NOT_FOUND: i64 = -32601;
@@ -14,6 +17,9 @@ pub const INVALID_PARAMS: i64 = -32602;
 
 /// Runs one `tools/call`: the tool's result, or why it failed in words the session can act on.
 pub(crate) trait ToolRunner {
+    /// The conversation whose session calls the tools, for the `mcp.tool` log line.
+    fn conversation(&self) -> &str;
+
     async fn call(&self, name: &str, arguments: Value) -> Result<Value, String>;
 }
 
@@ -67,7 +73,26 @@ async fn call_tool(id: Value, params: &Map<String, Value>, tools: &impl ToolRunn
         );
     };
     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
-    ok(id, tool_result(tools.call(name, arguments).await))
+    let started = Instant::now();
+    let outcome = tools.call(name, arguments).await;
+    log_call(name, tools.conversation(), started, &outcome);
+    ok(id, tool_result(outcome))
+}
+
+/// One `mcp.tool` line per call: never the arguments or the result, only the error text.
+fn log_call(name: &str, conversation: &str, started: Instant, outcome: &Result<Value, String>) {
+    let tool = redact(name);
+    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    match outcome {
+        Ok(_) => tracing::debug!(
+            target: "townhall::mcp", event = "mcp.tool", tool = %tool, conversation,
+            duration_ms, ok = true, "tool call"
+        ),
+        Err(why) => tracing::warn!(
+            target: "townhall::mcp", event = "mcp.tool", tool = %tool, conversation,
+            duration_ms, ok = false, error = %redact(why), "tool call failed"
+        ),
+    }
 }
 
 /// The answer to one message, `None` for a notification.
@@ -124,6 +149,10 @@ mod tests {
     struct Echo;
 
     impl ToolRunner for Echo {
+        fn conversation(&self) -> &str {
+            "c1"
+        }
+
         async fn call(&self, name: &str, arguments: Value) -> Result<Value, String> {
             match name {
                 "echo" => Ok(json!({ "got": arguments })),

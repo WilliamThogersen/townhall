@@ -3,6 +3,7 @@
 
 use super::repo::candidates_of;
 use crate::model::{EntryBody, Repo, RepoRule, ThreadEntry};
+use crate::redact::redact;
 use crate::repo_infer::{self, Inference, Rule};
 
 /// The latest `repo` entry.
@@ -118,7 +119,11 @@ pub async fn answer(text: &str, candidates: &[String], repos: &[Repo]) -> Option
             .map(|repo| Answer::One { repo, bare: false }),
         Ok(_) => None,
         Err(e) => {
-            eprintln!("warn: cannot read the answer to a repo question: {e}");
+            tracing::warn!(
+                target: "townhall::runner", event = "repo.answer_unreadable",
+                error_kind = e.kind(), error = %redact(&e.to_string()),
+                "cannot read the answer to a repo question"
+            );
             None
         }
     }
