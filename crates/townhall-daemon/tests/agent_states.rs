@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use axum::http::StatusCode;
-use serde_json::{json, Value};
+use serde_json::json;
 use townhall_core::agent::state::PROJECTS_ENV;
 use townhall_core::model::{AgentState, ServerEvent};
 use townhall_core::tmux;
@@ -40,25 +40,15 @@ impl Drop for Session {
     }
 }
 
-fn shell(name: &str, command: &str) -> Value {
-    json!({"name": name, "adapter": "shell", "command": command})
-}
-
 #[tokio::test]
 async fn get_agents_shows_the_detected_state() {
     temp_projects();
     let env = Env::new("alpha").await;
     let (_state, app) = env.start();
     let name = unique("http");
-    let _session = Session(tmux::session_name(env.workspace(&env.startup).key(), &name));
-    let (s, v) = call(
-        &app,
-        "POST",
-        "/api/agents",
-        Some(shell(&name, "sh -c 'exit 3'")),
-    )
-    .await;
-    assert_eq!(s, StatusCode::CREATED, "{v}");
+    let ws = env.workspace(&env.startup);
+    let _session = Session(tmux::session_name(ws.key(), &name));
+    common::start_shell(&ws, &name, "sh -c 'exit 3'").await;
     let deadline = Instant::now() + Duration::from_secs(8);
     let found = loop {
         let (_, v) = call(&app, "GET", "/api/agents", None).await;
@@ -86,9 +76,9 @@ async fn start_background_runs_the_watcher_and_it_publishes_states() {
     let background = start_background(&state).await;
     assert!(background.running() >= 1, "the agent watcher runs");
     let name = unique("bg");
-    let _session = Session(tmux::session_name(env.workspace(&env.startup).key(), &name));
-    let (s, v) = call(&app, "POST", "/api/agents", Some(shell(&name, "sleep 30"))).await;
-    assert_eq!(s, StatusCode::CREATED, "{v}");
+    let ws = env.workspace(&env.startup);
+    let _session = Session(tmux::session_name(ws.key(), &name));
+    common::start_shell(&ws, &name, "sleep 30").await;
     let published = tokio::time::timeout(Duration::from_secs(8), async {
         loop {
             match rx.recv().await {

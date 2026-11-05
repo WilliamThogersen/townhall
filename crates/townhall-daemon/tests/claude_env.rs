@@ -4,8 +4,7 @@
 //! them in its own environment before anything runs, so the tmux server it starts holds
 //! them too.
 
-use axum::http::StatusCode;
-use serde_json::json;
+use townhall_core::agent::{self, ClaudeCodeAdapter, LaunchOptions};
 
 mod common;
 mod runner_support;
@@ -45,15 +44,17 @@ async fn claude_starts_without_the_outer_sessions_variables() {
     }
     let env = Env::new("alpha").await;
     let fake = Fake::install(env.root.path());
-    let (_state, app) = app_with(&env, &fake);
+    let (state, app) = app_with(&env, &fake);
     let created = create(&app, "hello").await;
     idle(&app, created["conversation"]["id"].as_str().unwrap()).await;
     assert_clean(&fake.env(1).await, "townhall's session");
 
     let name = unique("env");
-    let body = json!({"name": name, "adapter": "claude"});
-    let (s, v) = call(&app, "POST", "/api/agents", Some(body)).await;
-    assert_eq!(s, StatusCode::CREATED, "{v}");
+    let adapter = ClaudeCodeAdapter::new(state.ctx().claude_bin());
+    let options = LaunchOptions::default();
+    agent::start(state.ctx().startup(), &name, "main", &adapter, &options)
+        .await
+        .unwrap();
     let agent = fake.env(2).await;
     call(&app, "DELETE", &format!("/api/agents/{name}"), None).await;
     assert!(

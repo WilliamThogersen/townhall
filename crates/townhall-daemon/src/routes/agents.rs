@@ -1,35 +1,18 @@
-//! `/api/agents`: agents across every registered repo. A name is resolved across repos;
-//! `?repo=<name>` picks one when two repos have it.
+//! `/api/agents`: agents across every registered repo. Agents come only from tasks (the
+//! scheduler starts them); these routes list, stop and talk to them. A name is resolved
+//! across repos; `?repo=<name>` picks one when two repos have it.
 
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
-use townhall_core::agent::{
-    self, state, AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter,
-};
-use townhall_core::cmd::validate_name;
-use townhall_core::model::{AgentEvent, AgentInfo, AgentKey, EntryBody};
-use townhall_core::repos::verify_branch;
-use townhall_core::{fleet, Context, Error, Workspace};
+use townhall_core::agent;
+use townhall_core::model::{AgentEvent, AgentKey, EntryBody};
+use townhall_core::{fleet, Context};
 
-use crate::envelope::{created, ok};
+use crate::envelope::ok;
 use crate::error::ApiError;
 use crate::extract::JsonBody;
 use crate::state::AppState;
-
-const DEFAULT_BASE: &str = "HEAD";
-
-/// `POST /api/agents` body. There is no permission field: the mode always comes from settings.
-#[derive(Debug, Deserialize)]
-pub struct CreateAgent {
-    name: String,
-    base: Option<String>,
-    adapter: String,
-    prompt: Option<String>,
-    command: Option<String>,
-    /// Registered repo name; the startup repo when missing.
-    repo: Option<String>,
-}
 
 /// `POST /api/agents/{name}/send` body: exactly one of `text` (typed as it is, then
 /// Enter) and `key` (pressed alone). Unknown fields are ignored, as in phase 1.
@@ -71,80 +54,8 @@ pub struct RepoQuery {
     pub repo: Option<String>,
 }
 
-fn adapter_for(kind: &str, ctx: &Context) -> Result<Box<dyn AgentAdapter>, ApiError> {
-    match kind {
-        "claude" => Ok(Box::new(ClaudeCodeAdapter::new(ctx.claude_bin()))),
-        "shell" => Ok(Box::new(ShellAdapter)),
-        other => Err(ApiError::BadRequest(format!(
-            "unknown adapter `{other}`: expected `claude` or `shell`"
-        ))),
-    }
-}
-
 pub async fn list(State(state): State<AppState>) -> Result<Response, ApiError> {
     Ok(ok(fleet::list(state.ctx()).await?))
-}
-
-/// Where a new agent goes: the named repo, else the startup repo.
-async fn target(ctx: &Context, name: &str, repo: Option<&str>) -> Result<fleet::Located, ApiError> {
-    match repo.map(str::trim).filter(|r| !r.is_empty()) {
-        Some(wanted) => {
-            let found = ctx.repo(wanted).await?;
-            Ok(fleet::Located {
-                workspace: ctx.workspace(&found)?,
-                repo: found.name,
-                name: name.to_string(),
-            })
-        }
-        None => Ok(fleet::Located {
-            repo: ctx.startup_repo_name().await,
-            name: name.to_string(),
-            workspace: ctx.startup().clone(),
-        }),
-    }
-}
-
-pub async fn create(
-    State(state): State<AppState>,
-    JsonBody(req): JsonBody<CreateAgent>,
-) -> Result<Response, ApiError> {
-    let ctx = state.ctx();
-    let adapter = adapter_for(&req.adapter, ctx)?;
-    let base = req.base.as_deref().map(str::trim).filter(|b| !b.is_empty());
-    if base.is_some_and(|b| b.starts_with('-')) {
-        return Err(ApiError::BadRequest(
-            "`base` must not start with `-`".into(),
-        ));
-    }
-    validate_name(&req.name)?;
-    if let Some(taken) = fleet::holders(ctx, &req.name).await?.first() {
-        return Err(Error::Conflict(format!(
-            "an agent named `{}` already exists in repo `{}`",
-            taken.name, taken.repo
-        ))
-        .into());
-    }
-    let at = target(ctx, &req.name, req.repo.as_deref()).await?;
-    let options = LaunchOptions {
-        prompt: req.prompt,
-        command: req.command,
-        permission_mode: ctx.settings().await?.permission_mode,
-        ..LaunchOptions::default()
-    };
-    let base = base.unwrap_or(DEFAULT_BASE);
-    check_base(&at.workspace, base).await?;
-    let started = agent::start(&at.workspace, &req.name, base, adapter.as_ref(), &options).await?;
-    let now = state::detect(&at.workspace, &started).await;
-    Ok(created(AgentInfo::new(started, &at.repo, now)))
-}
-
-/// The base must resolve to a commit before git is asked to branch from it.
-async fn check_base(ws: &Workspace, base: &str) -> Result<(), ApiError> {
-    let (repo, base) = (ws.repo().to_path_buf(), base.to_string());
-    tokio::task::spawn_blocking(move || verify_branch(&repo, &base))
-        .await
-        .map_err(|e| ApiError::BadRequest(format!("cannot check the base branch: {e}")))??;
-    Ok(())
 }
 
 pub async fn remove(
