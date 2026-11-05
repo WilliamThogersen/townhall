@@ -543,16 +543,19 @@
 
 .th-session-line {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 1ch;
   padding: var(--th-space-1) var(--th-space-4);
   font-size: var(--th-text-sm);
 }
 
+.th-session-line[data-line="ctx"] {
+  align-items: center;
+}
+
 .th-session-line > span:last-child {
   color: var(--th-fg-faint);
   font-size: var(--th-text-xs);
-  line-height: var(--th-leading-xs);
 }
 
 .th-session-files {
@@ -670,7 +673,6 @@
   gap: 6px;
   color: var(--th-fg-faint);
   font-size: var(--th-text-xs);
-  line-height: var(--th-leading-xs);
 }
 
 .th-ctx-bar {

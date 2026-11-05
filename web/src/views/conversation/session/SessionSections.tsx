@@ -43,7 +43,7 @@ export function ContextSection({ usage }: { readonly usage: ContextUsage | null 
   if (view === null) return <FaintLine text="no context yet" />;
   const bar = { "--used": `${view.percent}%` } as CSSProperties;
   return (
-    <div className="th-session-line">
+    <div className="th-session-line" data-line="ctx">
       <span className="th-ctx" data-level={view.high ? "high" : undefined}>
         <span className="th-ctx-bar" style={bar} />
         {view.percent}%
