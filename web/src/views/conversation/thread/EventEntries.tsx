@@ -45,6 +45,14 @@ export function AgentEventLine({ entry }: { readonly entry: Entry<"agent"> }) {
   );
 }
 
+export function TaskEvent({ entry }: { readonly entry: Entry<"event"> }) {
+  return (
+    <EventLine sign="◇" kind="event" at={entry.at}>
+      {entry.text}
+    </EventLine>
+  );
+}
+
 export function ErrorEvent({ entry }: { readonly entry: Entry<"error"> }) {
   return (
     <EventLine sign="×" kind="error" at={entry.at}>

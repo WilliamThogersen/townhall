@@ -14,6 +14,7 @@ you are townhall, a planner. you talk with the user, work out what they want and
 - every task names an agent type, the saved definition its agent runs as (model, tools, permission mode, personality prompt). pass it as `agent` on create_task; left out, the task runs as builder. list_agent_types shows the types and what each is for.
 - you can design new agent types with the user: ask what personality, model and tools the agent needs, write the toml (read_agent_type shows one) and save it with save_agent_type. when townhall asks the user to confirm, end your turn and wait for their answer.
 - a type's permission_mode (default, acceptEdits or plan) can only be stricter than the user's permission setting, never looser: skip all is only ever set in settings.
+- townhall tells you when a task of this conversation needs the user, failed or ended: a message starting `townhall event (automatic, the user did not write this):` with one line per event, its agent's question or last message included. it is not from the user. answer it briefly from the event in this thread (what happened, what the user should decide or do next) and do not call task_status just to confirm it. you need not be asked for status either: a task that is quiet is still working.
 - keep replies short.";
 
 const QUESTION_TOOL: &str = "AskUserQuestion";
@@ -161,6 +162,8 @@ mod tests {
         assert!(one.contains("repo for this turn: shop at /r/shop, base branch main."));
         assert!(one.contains("- admin at /r/admin, base branch main"));
         assert!(one.contains("call task_status") && one.contains("never guess"));
+        assert!(one.contains(super::super::notify::EVENT_INTRO));
+        assert!(one.contains("answer it briefly from the event"));
         for tool in ["list_agent_types", "read_agent_type", "save_agent_type"] {
             assert!(one.contains(tool), "{tool}");
         }

@@ -98,9 +98,13 @@ fn every_option_is_one_element_before_the_prompt() {
         argv,
         [
             "--model=claude-opus's".to_string(),
-            "--permission-mode=acceptEdits".into(),
-            "--append-system-prompt=--dangerously-skip-permissions\nthen $COMMIT".into(),
+            "--permission-mode=dontAsk".into(),
+            format!(
+                "--append-system-prompt=--dangerously-skip-permissions\nthen $COMMIT\n\n{}",
+                tools_notice("Read, Bash(git diff:*)")
+            ),
             format!("--session-id={ID}"),
+            "--tools=Read,Bash".into(),
             "--allowedTools=Read,Bash(git diff:*)".into(),
         ]
         .into_iter()
@@ -109,6 +113,69 @@ fn every_option_is_one_element_before_the_prompt() {
         .collect::<Vec<String>>()
     );
     assert_eq!(ClaudeCodeAdapter::args(&o).unwrap(), argv);
+}
+
+fn tools_notice(list: &str) -> String {
+    format!("these are the tools you have access to: {list}. every other tool is denied.")
+}
+
+fn with_tools(tools: &[&str], mode: PermissionMode) -> Vec<String> {
+    let o = LaunchOptions {
+        allowed_tools: tools.iter().map(|t| t.to_string()).collect(),
+        permission_mode: mode,
+        ..LaunchOptions::default()
+    };
+    ClaudeCodeAdapter::args(&o).unwrap()
+}
+
+#[test]
+fn a_tool_list_is_the_whole_set_and_everything_else_is_denied() {
+    let list = ["Read", "Grep", "Bash(gh pr *)", "Bash(git commit *)"];
+    for mode in [
+        PermissionMode::Default,
+        PermissionMode::AcceptEdits,
+        PermissionMode::Auto,
+        PermissionMode::BypassPermissions,
+    ] {
+        let argv = with_tools(&list, mode);
+        assert_eq!(argv[0], "--permission-mode=dontAsk", "{mode:?}");
+        assert!(!argv.iter().any(|a| a.contains("dangerously")), "{mode:?}");
+        assert!(argv.contains(&"--tools=Read,Grep,Bash".to_string()));
+        assert!(
+            argv.contains(&"--allowedTools=Read,Grep,Bash(gh pr *),Bash(git commit *)".to_string())
+        );
+    }
+    assert_eq!(
+        with_tools(&list, PermissionMode::Plan)[0],
+        "--permission-mode=plan"
+    );
+}
+
+#[test]
+fn the_prompt_names_the_tools_the_agent_has() {
+    let argv = with_tools(&["Read", "Bash(gh pr *)"], PermissionMode::Default);
+    assert!(argv.contains(&format!(
+        "--append-system-prompt={}",
+        tools_notice("Read, Bash(gh pr *)")
+    )));
+}
+
+#[test]
+fn mcp_tools_are_allowed_but_are_not_built_in_tools() {
+    let argv = with_tools(
+        &["Read", "mcp__townhall__task_status"],
+        PermissionMode::Default,
+    );
+    assert!(argv.contains(&"--tools=Read".to_string()), "{argv:?}");
+    assert!(argv.contains(&"--allowedTools=Read,mcp__townhall__task_status".to_string()));
+}
+
+#[test]
+fn no_tool_list_leaves_the_mode_and_tools_alone() {
+    assert_eq!(
+        with_tools(&[], PermissionMode::AcceptEdits)[..1],
+        ["--permission-mode=acceptEdits"]
+    );
 }
 
 #[test]

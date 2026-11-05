@@ -25,8 +25,14 @@ struct Attempt<'a> {
 }
 
 /// Runs the turn for `message` (already in the thread) and gives the conversation back.
-pub(super) async fn run(ctx: Context, id: String, message: NewMessage, guard: TurnGuard) {
-    let end = match drive(&ctx, &id, &message, &guard).await {
+pub(super) async fn run(
+    ctx: Context,
+    id: String,
+    message: NewMessage,
+    event: bool,
+    guard: TurnGuard,
+) {
+    let end = match drive(&ctx, &id, &message, event, &guard).await {
         Ok(end) => end,
         Err(e) => TurnEnd::failed(format!("townhall failed: {e}")),
     };
@@ -37,6 +43,7 @@ async fn drive(
     ctx: &Context,
     id: &str,
     message: &NewMessage,
+    event: bool,
     guard: &TurnGuard,
 ) -> Result<TurnEnd> {
     let conversation = ctx.store()?.conversation(id).await?;
@@ -44,11 +51,19 @@ async fn drive(
         text: &message.text,
         attachments: &message.attachments,
     };
+    let resolved = match event {
+        true => Resolved::Run {
+            note: repo::for_event(ctx, &conversation).await?,
+            text: message.text.clone(),
+            attachments: vec![],
+        },
+        false => repo::resolve(ctx, &conversation, asked).await?,
+    };
     let Resolved::Run {
         note,
         text,
         attachments,
-    } = repo::resolve(ctx, &conversation, asked).await?
+    } = resolved
     else {
         return Ok(TurnEnd::default());
     };

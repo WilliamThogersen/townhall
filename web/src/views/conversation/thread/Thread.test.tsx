@@ -41,6 +41,18 @@ const at = new Date(2026, 10, 4, 10, 42).toISOString();
 const entry = (id: number, body: EntryBody) => anEntry(id, body, at);
 
 describe("Thread messages", () => {
+  it("replaces a pasted image marker with the thumbnail", () => {
+    const shot = { id: "i1", conversationId: "c1", name: "shot.png", mime: "image/png", size: 2048, kind: "image", createdAt: at } as const;
+    const { container } = render(
+      <ThreadContext value={context({ attachments: [shot] })}>
+        <Thread entries={[entry(1, { kind: "you", text: "why red?\n[Image #1]", attachments: ["i1"] })]} ended={false} />
+      </ThreadContext>,
+    );
+    expect(container.querySelector(".th-msg-body")).not.toHaveTextContent("[Image #1]");
+    expect(container.querySelector(".th-msg-body")).toHaveTextContent("why red?");
+    expect(container.querySelector(".th-msg-images .th-thumb")).not.toBeNull();
+  });
+
   it("shows your message with its time and townhall's reply as markdown", () => {
     renderThread([entry(1, { kind: "you", text: "fix it\nplease", attachments: [] }), entry(2, { kind: "townhall", text: "on it: `a.ts`" })]);
     const log = screen.getByRole("log", { name: "Thread" });
@@ -81,6 +93,13 @@ describe("Thread messages", () => {
       "×error: claude exited10:42",
     ]);
     expect(document.querySelector(".th-event[data-event='failed']")).not.toBeNull();
+  });
+
+  it("writes a task event as a system line, not a message from you", () => {
+    renderThread([entry(1, { kind: "event", text: "task fix ended (ended)" })]);
+    const line = document.querySelector(".th-event[data-kind='event']");
+    expect(line).toHaveTextContent("◇task fix ended (ended)10:42");
+    expect(document.querySelector(".th-msg-you, [data-from='you']")).toBeNull();
   });
 
   it("shows a thinking row while townhall thinks, else the ended note", () => {

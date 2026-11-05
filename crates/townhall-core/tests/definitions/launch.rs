@@ -52,8 +52,9 @@ fn the_coder_runs_with_its_own_flags() {
         argv(&coder.launch_options(SettingsMode::Auto)),
         [
             "--model=sonnet".to_string(),
-            "--permission-mode=acceptEdits".into(),
-            format!("--append-system-prompt={prompt}"),
+            "--permission-mode=dontAsk".into(),
+            format!("--append-system-prompt={prompt}\n\nthese are the tools you have access to: Read, Edit, Write, Bash. every other tool is denied."),
+            "--tools=Read,Edit,Write,Bash".into(),
             "--allowedTools=Read,Edit,Write,Bash".into(),
         ]
     );
@@ -137,7 +138,9 @@ fn the_step_prompt_goes_last_after_the_end_of_options() {
     assert_eq!(
         argv(&options),
         [
-            "--permission-mode=acceptEdits",
+            "--permission-mode=dontAsk",
+            "--append-system-prompt=these are the tools you have access to: Read, Bash(rm -rf:*). every other tool is denied.",
+            "--tools=Read,Bash",
             "--allowedTools=Read,Bash(rm -rf:*)",
             "--",
             "go on",
@@ -234,4 +237,41 @@ fn every_word_error_is_returned() {
     let source =
         "name = \"a\"\nadapter = \"claude\"\nmodel = \"-m\"\ntools = [\"-a\", \"Read\", \"-b\"]\n";
     assert_eq!(agent_errors(source).len(), 3);
+}
+
+#[test]
+fn malformed_tool_patterns_get_clear_errors() {
+    let cases = [
+        ("Bash(git status", "has unbalanced parentheses"),
+        ("Bash)", "has unbalanced parentheses"),
+        ("Bash()", "has an empty pattern"),
+        ("(git status)", "has no tool name before the parentheses"),
+        (
+            "Bash(git status)x",
+            "has text after the closing parenthesis",
+        ),
+        (
+            "Re ad",
+            "has a space outside parentheses: give each tool its own entry",
+        ),
+        (
+            "Bash!",
+            "has a tool name with characters other than letters, digits and underscores",
+        ),
+    ];
+    for (tool, problem) in cases {
+        let source = format!("name = \"a\"\nadapter = \"claude\"\ntools = [\"{tool}\"]\n");
+        assert_eq!(
+            agent_errors(&source),
+            [format!(
+                "error: agent \"a\": tools entry \"{tool}\" {problem}"
+            )]
+        );
+    }
+}
+
+#[test]
+fn the_shipper_tool_list_is_valid() {
+    let source = "name = \"shipper\"\nadapter = \"claude\"\ntools = [\"Read\", \"Grep\", \"Glob\", \"Bash(git status:*)\", \"Bash(git diff:*)\", \"Bash(git add:*)\", \"Bash(git commit:*)\", \"Bash(git push:*)\", \"Bash(gh pr *)\"]\n";
+    assert!(agent_errors(source).is_empty());
 }

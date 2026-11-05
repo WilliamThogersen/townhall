@@ -44,6 +44,18 @@ describe("UploadChips", () => {
     expect(onRemove).toHaveBeenCalledWith("k-redirect-loop.png");
   });
 
+  it("opens a lightbox on a composer thumbnail and closes it with Escape", async () => {
+    render(<UploadChips items={[done(png)]} onRemove={vi.fn()} />);
+    const open = screen.getByRole("button", { name: "View redirect-loop.png" });
+    await userEvent.click(open);
+    const dialog = screen.getByRole("dialog", { name: "Image viewer" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog.querySelector("img")).toHaveAttribute("src", "blob:redirect-loop.png");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(open).toHaveFocus();
+  });
+
   it("shows an uploading image with its progress line and a cancel", async () => {
     const onRemove = vi.fn();
     render(<UploadChips items={[upload(png, { percent: 60 })]} onRemove={onRemove} />);
@@ -77,8 +89,8 @@ describe("UploadChips", () => {
     const onRemove = vi.fn();
     render(<UploadChips items={[done(sql)]} onRemove={onRemove} />);
     const chip = screen.getByText("sessions-schema.sql").closest(".th-file") as HTMLElement;
-    expect(chip.querySelector(".th-file-ext")).toHaveTextContent("sql");
-    expect(chip.querySelector(".th-file-size")).toHaveTextContent("4.2 KB");
+    expect(chip.querySelector(".th-file-icon")).not.toBeNull();
+    expect(chip.querySelector(".th-file-size")).toHaveTextContent("SQL · 4.2 KB");
     expect(chip).not.toHaveAttribute("data-state");
     await userEvent.click(screen.getByRole("button", { name: "Remove sessions-schema.sql" }));
     expect(onRemove).toHaveBeenCalledWith("k-sessions-schema.sql");
@@ -88,7 +100,7 @@ describe("UploadChips", () => {
     render(<UploadChips items={[upload(sql, { percent: 25 })]} onRemove={vi.fn()} />);
     const chip = screen.getByText("sessions-schema.sql").closest(".th-file") as HTMLElement;
     expect(chip).toHaveAttribute("data-state", "uploading");
-    expect(chip.querySelector(".th-file-size")).toHaveTextContent("25%");
+    expect(chip.querySelector(".th-file-size")).toHaveTextContent("SQL · 25%");
     expect(screen.getByRole("button", { name: "Cancel upload of sessions-schema.sql" })).toBeInTheDocument();
   });
 

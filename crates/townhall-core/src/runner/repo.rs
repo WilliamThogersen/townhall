@@ -174,6 +174,19 @@ impl Resolver<'_> {
     }
 }
 
+/// The repo of a turn a task event starts: the linked one, else the one the thread last
+/// settled on. No inference and no ask: nobody wrote a message to infer from.
+pub async fn for_event(ctx: &Context, conversation: &Conversation) -> Result<RepoNote> {
+    let repos = ctx.repos().await?;
+    let linked = conversation
+        .linked_repo
+        .as_deref()
+        .and_then(|name| find(&repos, name));
+    let entries = ctx.store()?.entries(&conversation.id).await?;
+    let current = last_repo(&entries).and_then(|c| find(&repos, &c.repo));
+    Ok(linked.or(current).map_or(RepoNote::Unknown, RepoNote::One))
+}
+
 /// Resolves the repo for the latest message of `conversation` (already appended).
 pub async fn resolve(
     ctx: &Context,
