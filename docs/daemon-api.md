@@ -7,12 +7,14 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 - Base: `http://127.0.0.1:7777/api` (desktop) or same-origin `/api` (browser, Vite proxy).
 - Every HTTP response is the envelope `{ "success": bool, "data": T | null, "error": string | null }` (`crates/townhall-daemon/src/envelope.rs`). `data` is shown below as the response.
 - JSON field names are camelCase. A Rust `Option` is always present on the wire, as `null` when empty. Timestamps are RFC 3339 UTC strings with milliseconds (`2026-11-04T10:42:05.000Z`, `townhall_core::clock`), so they sort as text.
-- Bodies go through `townhall_daemon::extract::JsonBody<T>`: a body that is not JSON, has the wrong content type or the wrong fields is `400` in the envelope, with the error `expected content-type application/json` or `invalid json body: <what serde said>` (for example ``invalid json body: missing field `path` at line 1 column 2``). Every phase 2 request body type refuses unknown fields (`deny_unknown_fields`); phase 1's agent bodies (`POST /api/agents`, `/send`) still ignore them.
+- Bodies go through `townhall_daemon::extract::JsonBody<T>`: a body that is not JSON, has the wrong content type or the wrong fields is `400` in the envelope, with the error `expected content-type application/json` or `invalid json body: <what serde said>` (for example ``invalid json body: missing field `path` at line 1 column 2``). Every phase 2 request body type refuses unknown fields (`deny_unknown_fields`); phase 1's `/send` body still ignores them.
 - Error codes: `400` invalid input or name, `404` not found, `409` conflict (taken name, ambiguous agent, repo in use), `413` attachment over 20 MB, `501 not implemented yet` (a route whose unit has not landed), `503` the database is held by another townhall, `500` anything else (logged).
 - Copy in `error` strings is lowercase and has no `error:` prefix; the UI adds it.
 - CORS allows only the desktop and Vite origins (`cors::ALLOWED_ORIGINS`), methods `GET POST PUT PATCH DELETE`. CORS does not cover websockets or multipart posts: `/api/events` and the upload route must call `cors::origin_allowed(&headers)` and answer `403` when it is false.
 
 ## Routes
+
+Agents come only from tasks: the scheduler starts one when a conversation's task is ready, under the task's name (see Scheduler). There is no route that creates an agent (2.13 removed phase 1's `POST /agents`, which now answers `405`); the `/agents` routes list running agents, stop them, send to them and stream their terminals.
 
 `?repo=<name>` is accepted by every `/api/agents/{name}...` route. Without it the name is looked up across every registered repo (ignoring case, as macOS folders do; an agent whose name differs only by case is `404`, never acted on); two repos with that agent is `409` (`agent `x` exists in several repos (a, b): pass ?repo=<name>`). Repo names match ignoring case.
 
@@ -23,7 +25,6 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 | POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a plain folder, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found; 409 path registered, name taken ignoring case | 2.1 |
 | DELETE | `/repos/{name}` | | the removed `Repo`. Only unregisters: folder, worktrees and branches stay | 404; 409 it has live agents (tmux sessions), or it is the daemon's startup repo | 2.1 |
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
-| POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400 bad name, ``base branch `x` not found``; 404 repo; 409 the name exists in any repo, ignoring case | phase 1, 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` or `{ key }` (2.10), exactly one | the name. `text` is typed as it is (`tmux send-keys -l`, so `Down` or `C-c` stay text), then Enter. `key` (`up`, `down`, `enter`, `escape`, `tab`) is pressed alone, without text or Enter. When the agent is a task's, adds an `agent` `sent` entry to its conversation: the text, or the key as `↑`, `↓`, `⏎`, `esc`, `tab` | 400 (neither or both, an unknown key), 404 (also a dead pane), 409 | phase 1, 2.1, 2.10 |
 | GET | `/agents/{name}/output` | | the pane text | 400, 404 (also a dead pane), 409 | phase 1, 2.1 |
@@ -47,15 +48,49 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 | POST | `/conversations/{id}/attachments` | multipart, one field `file` per request | `201 Attachment` | 400, 403 origin, 404, 413 | 2.6 |
 | GET | `/conversations/{id}/attachments` | | `Attachment[]` | 404 | 2.6 |
 | GET | `/conversations/{id}/attachments/{attachment}` | | the bytes with their `content-type` (not the envelope) | 404 | 2.6 |
-| GET | `/library/agents` | | agent definitions | | 2.8b |
-| GET, PUT, DELETE | `/library/agents/{name}` | PUT: TOML text | | | 2.8b |
-| GET | `/library/workflows` | | workflow definitions | | 2.8b |
-| GET, PUT, DELETE | `/library/workflows/{name}` | PUT: TOML text | | | 2.8b |
-| POST | `/library/import` | one `.toml` upload | | | 2.8b |
+| GET | `/library/agents` | | `AgentTypeSummary[]` by name, ignoring case | | 2.12 |
+| GET | `/library/agents/{name}` | | `AgentType` (ignoring case) | 404 | 2.12 |
+| PUT | `/library/agents/{name}` | the TOML text, `content-type: text/plain` or `application/toml` | `201 AgentType` new, `200 AgentType` replaced (ignoring case, the new spelling wins) | 400 wrong content type, not UTF-8, the error list (below), its `name` is not the path's | 2.12 |
+| DELETE | `/library/agents/{name}` | | the deleted type's name | 404; 409 it is the last type | 2.12 |
+| GET | `/library/workflows` | | workflow definitions | 501 | 2.8c |
+| GET, PUT, DELETE | `/library/workflows/{name}` | PUT: TOML text | | 501 | 2.8c |
+| POST | `/library/import` | one agent type's `.toml` as the body, like PUT | `201 AgentType` | 400 like PUT; 403 origin; 409 the name exists (replace it with PUT); 501 a workflow (a `[[step]]` table) | 2.12 |
 | POST | `/workflows/{name}/runs` | `{ repo, input }` | the run | | 2.8c |
 | GET | `/runs/{id}` | | run state | | 2.8c |
 
-Every route above is registered in `crates/townhall-daemon/src/routes/mod.rs` now. A unit replaces the `501` handlers in its own file and keeps the handler names; it adds extractors (`State`, `Path`, `Query`, `JsonBody`) to the signatures as needed. The upload route already carries `DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)` (20 MB plus framing). The definitions routes take TOML, not JSON; 2.8b documents their bodies in this file when it lands.
+Every route above is registered in `crates/townhall-daemon/src/routes/mod.rs` now. A unit replaces the `501` handlers in its own file and keeps the handler names; it adds extractors (`State`, `Path`, `Query`, `JsonBody`) to the signatures as needed. The upload route already carries `DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)` (20 MB plus framing).
+
+### Agent types (2.12, `routes/library.rs`)
+
+An agent type says how a task's agent runs: 2.8a's agent definition (`definitions::AgentDef`) saved as TOML. Every task names one. The bodies are the TOML text, not JSON, kept exactly as written (comments too). Every save and import runs `Store::check_agent_type`: at most `Store::MAX_AGENT_SOURCE` (10 000) characters, since the prompt goes on claude's command line, then 2.8a's `check_agent`. A type that fails is `400` with the error list as `data` and every error on one line, without `error: `, as `error`:
+
+```json
+{ "success": false,
+  "data": [{ "kind": "agent", "name": "x", "step": null, "field": "model", "message": "\"-p\" must not start with \"-\"", "line": null }],
+  "error": "agent \"x\": model \"-p\" must not start with \"-\"" }
+```
+
+`line` is set for TOML parse errors. Import checks the origin (`403`) because a `text/plain` post needs no CORS preflight. Deleting a type that queued tasks name is allowed: those tasks fail when they start (see Scheduler). The last type cannot be deleted, so a task always has a type to run.
+
+The seed: `0801_seed_builder` saves `builder` once, on the first open with no agent types; it is never saved again, also not after you delete it:
+
+```toml
+# the agent type tasks run as when they name none
+name = "builder"
+description = "implements a task, tests first"
+adapter = "claude"
+model = "sonnet"
+permission_mode = "acceptEdits"
+prompt = """
+You implement the task in your brief.
+- Write a failing test first, then the code that makes it pass.
+- Commit in small steps with conventional commit messages (feat:, fix:, test:, refactor:).
+- Stay inside the task: no unrelated changes, refactors or new dependencies.
+- When you are blocked or the brief is unclear, stop and ask instead of guessing.
+"""
+```
+
+No `tools`, so claude's defaults apply.
 
 ## Types
 
@@ -75,15 +110,16 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 | `repo` | `repo, baseBranch, rule, reason` | `~ repo shop · develop, it has src/search/query.ts` |
 | `repoAsk` | `question, candidates: string[], offerAll` | needs-you block from townhall: one button per candidate, plus `both` (2 candidates) or `all` when `offerAll`. A button sends its text as a normal message |
 | `tasksCreated` | `tasks: string[]` | task block |
-| `needsYou` | `agent, question, choices: string[]` | `◆ <agent> needs you`, the question verbatim, one `send <choice>` per choice (through `/agents/{name}/send`) |
+| `needsYou` | `agent, question, choices: string[]` | `◆ <agent> needs you`, the question verbatim, one `send <choice>` per choice (through `/agents/{name}/send`). A choice goes as `text`, except in claude's folder trust dialog (`claude asks whether to trust this worktree`), which reads keys and would take any text as `no, exit`: `yes, trust it` sends the key `up`, then `enter` (200 ms apart), and `no, exit` sends `enter`. That dialog has no free text answer |
 | `agent` | `agent, event: "sent" \| "passed" \| "failed" \| "ended", text` | `→` `✓` `×` `○` lines |
 | `error` | `message` | townhall's own failure |
 
 - `RepoRule`: `named`, `code`, `only` (2.4's `repo_infer::Rule`, same names), `picked` (an answer to a `repoAsk`), `linked` (the row menu).
-- `Task { name, title, prompt, repo, baseBranch, after: string[], state, conversationId, attachments: string[], createdAt, pr: { number, url: string | null, checks: "pending" | "passed" | "failed" | "none" } | null }`. `name` is the agent name and the branch `townhall/<name>` (`Task::branch()`), unique across every conversation and repo ignoring case. `TaskState`: `queued`, `working`, `needsYou`, `inCi`, `inReview`, `merged`, `ended`, `error`.
+- `Task { name, title, prompt, repo, baseBranch, after: string[], state, conversationId, attachments: string[], createdAt, pr: { number, url: string | null, checks: "pending" | "passed" | "failed" | "none" } | null, agent }`. `agent` (2.12) is the stored name of the agent type it runs as, resolved when it was created (`builder` for tasks from before 2.12). `types.ts` has it optional until a web unit reads it (`parseTask` drops it for now). `name` is the agent name and the branch `townhall/<name>` (`Task::branch()`), unique across every conversation and repo ignoring case. `TaskState`: `queued`, `working`, `needsYou`, `inCi`, `inReview`, `merged`, `ended`, `error`.
 - `Attachment { id, conversationId, name, mime, size, kind: "image" | "file", createdAt }`. `kind` is `image` for `image/*`. At most 20 MB (`MAX_ATTACHMENT_BYTES`).
 - `Step { id, tool, summary, startedAt, endedAt: string | null, result: "running" | "ok" | "error" }` and `ShippedDay { date: "YYYY-MM-DD", fixes, features, lines, agents }`: the Rust types belong to 2.7 (`steps/`, `stats/`); `types.ts` already mirrors them.
-- `CreateTaskInput`, `NewTask`, `NewMessage`, `ConversationPatch`, `AddRepo`, `PutSetting`: request bodies, see the routes and MCP.
+- `AgentType { name, description, adapter: "claude" | "shell", model, permissionMode: "default" | "acceptEdits" | "plan" | null, tools: string[], prompt, command, source, updatedAt }` (2.12): the parsed `AgentDef` plus its TOML as written. `AgentTypeSummary { name, description, adapter, model, permissionMode, updatedAt }`: a row of the list. `DefinitionError { kind: "agent" | "workflow", name, step, field, message, line }`: 2.8a's error.
+- `CreateTaskInput`, `NewTask`, `NewMessage`, `ConversationPatch`, `AddRepo`, `PutSetting`: request bodies, see the routes and MCP. `NewTask` carries the resolved `agent`.
 - `SearchHit { conversationId, title, match: "title" | "message", entryId: number | null, snippet: string | null, updatedAt }` (`townhall_core::search`, mirrored in `web/src/api/search.ts`): one per conversation whose title or one of whose `you` and `townhall` entries holds `q`, ignoring case (every letter, not only ASCII) and runs of whitespace; `%` and `_` are plain characters. A title match wins and has `entryId` and `snippet` `null`; else `entryId` is the newest matching entry and `snippet` that entry on one line, about 80 characters around the first match, cut between words where it can, with `…` where it was cut. `updatedAt` is the conversation's.
 
 ## Attachments
@@ -149,7 +185,7 @@ Unit 2.11. Townhall's session plans tasks; your hooks, CLAUDE.md, skills, slash 
 
 Auth keeps working: it comes from your login (the macOS keychain or `~/.claude/.credentials.json`, with the account in `~/.claude.json`) and from `ANTHROPIC_*` / `CLAUDE_*` variables, which pass through (see Environment). None of these flags reads or skips them. Not chosen: `--bare`, which never reads OAuth or the keychain (only `ANTHROPIC_API_KEY` or an `apiKeyHelper`), so a subscription login would stop working; `--safe-mode`, a troubleshooting mode that also disables MCP servers, which could take townhall's own with it; `--restricted`, which overlaps the flags above but also confines and gates writes in ways townhall does not need. One limit: a provider or `apiKeyHelper` set only in your `~/.claude/settings.json` (not in the environment) is no longer read by townhall's session.
 
-`permission_mode` always comes from `Context::settings()`, never from a request body or a tool call: `POST /api/agents` ignores any such field. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
+`permission_mode` always comes from `Context::settings()`, never from a request body or a tool call. A task's agent type can only narrow it (`AgentDef::launch_options`: the stricter of the two, `plan` < `default` < `acceptEdits` < `auto` < skip all), and no type can hold `bypassPermissions`. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
 
 ## Websocket: `/api/events`
 
@@ -169,7 +205,7 @@ Store writes publish on `Context::bus()` (`townhall_core::events::EventBus`, a t
 
 JSON-RPC 2.0 over plain HTTP JSON (no SSE), like Hive's `src/main/plan/mcp.ts` and `rpc.ts`: `initialize` (answers `protocolVersion` (echo the client's, else `2025-06-18`), `capabilities: { tools: {} }`, `serverInfo: { name: "townhall", version }`, `instructions: mcp::INSTRUCTIONS`), `ping`, `tools/list`, `tools/call`, batches, and notifications (no `id`) answered with `202` and no body. A tool error comes back as a result with `isError: true` and a text content, so Claude can fix the call. Results are `{ content: [{ type: "text", text: <JSON> }] }`. The body goes through `JsonBody`, so a browser cannot post it without a CORS preflight.
 
-The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`townhall`), `tools()`, `allowed_tools()` (`mcp__townhall__create_task`, `mcp__townhall__set_title`, `mcp__townhall__task_status`), `endpoint(base_url, id)` and `config_json(base_url, id)`, which 2.2 passes as `--mcp-config`:
+The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`townhall`), `tools()`, `allowed_tools()` (`mcp__townhall__create_task`, `mcp__townhall__set_title`, `mcp__townhall__task_status`, `mcp__townhall__list_agent_types`, `mcp__townhall__read_agent_type`, `mcp__townhall__save_agent_type`), `endpoint(base_url, id)` and `config_json(base_url, id)`, which 2.2 passes as `--mcp-config`:
 
 ```json
 {"mcpServers":{"townhall":{"type":"http","url":"http://127.0.0.1:7777/api/conversations/<id>/mcp"}}}
@@ -191,14 +227,16 @@ The names, schemas and config are code in `townhall_core::mcp`: `SERVER_NAME` (`
     "after": { "type": "array", "items": { "type": "string" }, "maxItems": 20,
                "description": "Names of tasks that must finish before this one starts." },
     "attachments": { "type": "array", "items": { "type": "string" }, "maxItems": 20,
-                     "description": "Attachment ids of this conversation the agent needs." }
+                     "description": "Attachment ids of this conversation the agent needs." },
+    "agent": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "minLength": 1, "maxLength": 64,
+               "description": "The agent type the task runs as (list_agent_types). Default: builder when it exists, else the first type by name." }
   },
   "required": ["name", "title", "prompt"],
   "additionalProperties": false
 }
 ```
 
-`repo` defaults to the conversation's `linkedRepo`, else the repo of its latest `repo` entry; none of those is a tool error that lists the repos. `baseBranch` defaults to the repo's. 2.3 resolves both into a `NewTask`, calls `Store::create_task`, then `Store::note_task_created`. No tool takes a permission mode.
+`repo` defaults to the conversation's `linkedRepo`, else the repo of its latest `repo` entry; none of those is a tool error that lists the repos. `baseBranch` defaults to the repo's. `agent` (2.12) matches a saved type ignoring case and is stored with the type's spelling; left out it is `builder` when that exists, else the first type by name; an unknown type is a tool error that lists the types. 2.3 resolves both into a `NewTask`, calls `Store::create_task`, then `Store::note_task_created`. No tool takes a permission mode.
 
 One `tasksCreated` entry per turn: a turn is everything after the conversation's latest `you` entry (the whole thread before the first). The turn's first task appends a `tasksCreated` entry; each later task of that turn is added to it in place (same `id` and `at`), and the entry is sent again as `entryAppended`. Calls are serialized, so tasks created at the same time still share the entry. Each refusal (`name` taken by a task, an agent or a branch `townhall/<name>`, unknown `repo`, `baseBranch`, `after` task or attachment, over a schema limit, an unknown field) is a result with `isError: true` and a text that says what to change. A notification runs nothing; an empty batch is `-32600`, an unknown method `-32601`, `tools/call` without `params.name` `-32602`.
 
@@ -216,21 +254,31 @@ One `tasksCreated` entry per turn: a turn is everything after the conversation's
   "additionalProperties": false }
 ```
 
-- Without `name`: `{ "tasks": [TaskStatus] }`, every task of this conversation, oldest first. `TaskStatus { name, title, repo, branch, state, after, entries }`, `entries` the task's last 3 (`mcp::RECENT_ENTRIES`) `agent` and `needsYou` `ThreadEntry`s, oldest first.
+- Without `name`: `{ "tasks": [TaskStatus] }`, every task of this conversation, oldest first. `TaskStatus { name, title, repo, branch, state, after, agent, entries }` (`agent`: its agent type), `entries` the task's last 3 (`mcp::RECENT_ENTRIES`) `agent` and `needsYou` `ThreadEntry`s, oldest first.
 - With `name` (ignoring case): that task's `TaskStatus` plus `steps` (2.7's `steps_for_agent` for its worktree `<home>/worktrees/<repo-key>/<name>`, the last 20, `mcp::MAX_STEPS`; `[]` without a worktree or transcript) and `lastMessage`: when the task is `ended` or `merged`, what its agent's last finished turn said (the transcript tail reader of agent states, newest transcript since the worktree was made, or any once the folder is gone), at most 2000 characters (`mcp::MAX_MESSAGE_CHARS`, the last one `…` when cut); otherwise, or without such a message, `null`.
 - A task of another conversation (``task `x` belongs to another conversation: ...``), an unknown name or a blank one, and an unknown field are tool errors that list this conversation's tasks where it helps.
 
-2.8b adds `list_agents`, `list_workflows`, `read_definition`, `save_agent` and `save_workflow` in `mcp/library.rs`; 2.8c adds `run_workflow` in `mcp/runs.rs`. `tools()` and `allowed_tools()` pick them up.
+Agent types (2.12, `mcp/library.rs` and `mcp/ask.rs`):
+
+| tool | input | result |
+|------|-------|--------|
+| `list_agent_types` | `{}` | `{ "types": [AgentTypeSummary], "default": "builder" }`, `default` the type `create_task` uses without `agent` (`null` with no types) |
+| `read_agent_type` | `{ name }` | the `AgentType`, ignoring case. Unknown: a tool error that lists the types |
+| `save_agent_type` | `{ source, confirmed? }` (`source` at most 10 000 characters) | `{ status: "saved", name, replaced }` or `{ status: "asked", name, replaces, next }`. A type that fails the checks is a tool error with one `error: agent ...` line per problem |
+
+`save_agent_type` saves at once only a NEW name while the `workWithoutAsking` setting is on. Anything else, every replace of an existing type included, is not saved: townhall appends a `townhall` entry (Markdown: `save the new agent type `x`?` or `replace the saved agent type `x` with this one?`, the TOML in a `toml` code fence longer than any backtick run in it, then `answer yes to save it, or say what to change.`), records the ask in `agent_type_asks`, and answers `asked` with `next` telling the session to end its turn and wait. Once you said yes, the session calls it again with `confirmed: true`; that saves only when this conversation's ask for that name holds exactly this `source` and a `you` entry came after the ask's entry, else it is a tool error that says why (not asked, a different TOML, no answer yet). A save closes the ask. The entry is a plain `townhall` entry because the web knows no definition block yet (3.7). Townhall's system prompt (`runner/prompt.rs`) says every task names an agent type, that it can design new types with you (personality, model, tools) and that a type's permission mode can only be stricter than the setting.
+
+Workflow tools (`list_workflows`, `save_workflow`) wait for 2.8c, which also adds `run_workflow` in `mcp/runs.rs`. `tools()` and `allowed_tools()` pick them up.
 
 ## Scheduler
 
 `scheduler::start(ctx)` runs a pass on every `taskUpdated` and every 2 s (`scheduler::TICK`); tests call `scheduler::run_once(ctx)`. A pass:
 
 - starts queued tasks oldest first, each once every `after` task is `ended` or `merged` (an `error` one holds it) and while fewer than `agentsAtOnce` tasks are `working` or `needsYou` with a live session (an interactive claude stays alive after its work, so an `ended` task frees its slot; agents that are no task's do not count).
-- Start: writes the task's brief, `# <title>`, the prompt and, with attachments, `Files attached to this task:` and one `- <path>` each, to `<home>/tasks/<name>/brief.md` (never the repo or the worktree), then `agent::start` in the task repo's workspace, name = the task name, base = the commit `baseBranch` is at, `ClaudeCodeAdapter::new(ctx.claude_bin())`, `permission_mode` from settings, a new session id, `add_dirs` = the brief's folder plus, with attachments, the conversation's `files` folder. Then `working`. A prompt of any size fits, since tmux takes the command as one argument of at most about 16 k. The agent runs:
+- Start: reads the task's agent type as saved now (2.12, `scheduler/agent_type.rs`), writes the task's brief, `# <title>`, the prompt and, with attachments, `Files attached to this task:` and one `- <path>` each, to `<home>/tasks/<name>/brief.md` (never the repo or the worktree), then `agent::start` in the task repo's workspace, name = the task name, base = the commit `baseBranch` is at, with the type's `AgentDef::launch_options(<permissionMode setting>)`: a `claude` type gets `ClaudeCodeAdapter::new(ctx.claude_bin())` with the type's `--model`, `--allowedTools` and `--append-system-prompt`, its mode only narrowing the setting, a new session id and `add_dirs` = the brief's folder plus, with attachments, the conversation's `files` folder; a `shell` type runs its `command` in the worktree (`ShellAdapter`, no session id). Then `working`. A task whose type was deleted after it was created goes to `error` with ``could not start: agent type `x` was deleted after the task was created: create the task again with one of: ...``. A prompt of any size fits, since tmux takes the command as one argument of at most about 16 k. The agent runs:
 
   ```
-  env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude --permission-mode=<mode> --session-id=<uuid> --add-dir=<home>/tasks/<name> [--add-dir=<home>/conversations/<id>/files] -- 'read your task brief at <home>/tasks/<name>/brief.md and do it. it is the full task.'
+  env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude [--model=<model>] --permission-mode=<mode> [--append-system-prompt=<prompt>] --session-id=<uuid> [--allowedTools=<tools>] --add-dir=<home>/tasks/<name> [--add-dir=<home>/conversations/<id>/files] -- 'read your task brief at <home>/tasks/<name>/brief.md and do it. it is the full task.'
   ```
 
   (`--dangerously-skip-permissions` instead of `--permission-mode` for `skip all`). The prompt's own text only ever reaches claude through the brief.
@@ -323,6 +371,8 @@ create unique index repos_name_nocase on repos (name collate nocase);
 
 `0201_task_launches` (2.3): `task_launches (name pk collate nocase references tasks (name) on delete cascade, start_commit, session_id, launched_at)`: what each task's agent started from. `start_commit` tells `merged` from a branch that never got a commit; `session_id` is the agent's `--session-id` (`null` for an agent adopted after a restart).
 
+2.8b range, agent types (2.12, `store/unit_2_8b.rs`): `0800_agents`: `agents (name pk collate nocase, description, source, updated_at)`, `source` the TOML as written. `0801_seed_builder`: saves `builder` when `agents` is empty (runs once). `0802_agent_type_asks`: `agent_type_asks (conversation_id references conversations on delete cascade, name collate nocase, source, entry_id, asked_at)`, primary key `(conversation_id, name)`: the types townhall asked you to confirm. `0803_task_agent`: `tasks.agent text not null default 'builder'`.
+
 `0501_agent_states` (2.5): `agent_states (repo, agent, state, updated_at)`, primary key `(repo, agent)`, both `collate nocase`, `state` the `AgentState` as JSON: the state the watcher last acted on, so a restarted daemon repeats neither entries nor events. Detection never reads it. `Store::{seen_agent_states, see_agent_state, forget_agent_state}` (`store/unit_2_5.rs`) read and write it.
 
 Every `conversation_id` references `conversations (id) on delete cascade`. Enum columns hold the serde names (`yourTurn`, `needsYou`, `inCi`).
@@ -341,6 +391,7 @@ Routes and units call these typed async functions; they never write SQL. A unit 
 | tasks | `create_task(conversation_id, NewTask)`, `tasks(conversation_id)`, `all_tasks()`, `find_task(name)`, `update_task(name, change)`; 2.3: `note_task_created(conversation_id, name)`, `record_launch(TaskLaunch)`, `task_launch(name)`, `task_launches()` (`scheduler::TaskLaunch`) |
 | attachments | `save_attachment(conversation_id, name, mime, bytes)`, `attachments(conversation_id)`, `attachment(conversation_id, id)` (record and file path) |
 | search | `search(SearchQuery)` (3.3, `store/search.rs`, read only): `SearchQuery::parse(q, limit)` checks the text and limit |
+| agent types | 2.12, `store/unit_2_8b.rs`: `Store::check_agent_type(source)` (the error list), `agent_types()`, `agent_type(name)`, `save_agent_type(source)` (`(AgentType, replaced)`, `InvalidInput` when it fails the checks), `delete_agent_type(name)` (`Missing`, `Conflict` for the last), `ask_agent_type`, `agent_type_ask`, `forget_agent_type_ask` |
 
 `change` closures take a copy and return the new value; they must not call the store. `update_conversation` keeps `id`, `createdAt` and `tasks` and sets `updatedAt`; `update_task` keeps `name`, `conversationId` and `createdAt`. `create_task` checks the name (`InvalidName`), that it is free ignoring case (`Conflict`), that every `after` task and attachment exists (`InvalidInput`), and dedups both lists.
 

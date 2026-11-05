@@ -1,5 +1,3 @@
-export type Adapter = "claude" | "shell";
-
 export interface Agent {
   readonly name: string;
   readonly kind: string | null;
@@ -24,15 +22,6 @@ export type AgentKey = "up" | "down" | "enter" | "escape" | "tab";
 export type SendInput =
   | { readonly text: string; readonly key?: never }
   | { readonly key: AgentKey; readonly text?: never };
-
-export interface CreateAgentInput {
-  readonly name: string;
-  readonly adapter: Adapter;
-  readonly base?: string;
-  readonly prompt?: string;
-  readonly command?: string;
-  readonly repo?: string;
-}
 
 export interface Info {
   readonly home: string;
@@ -171,6 +160,7 @@ export interface Task {
   readonly attachments: readonly string[];
   readonly createdAt: string;
   readonly pr: Pr | null;
+  readonly agent: string;
 }
 
 export interface CreateTaskInput {
@@ -181,6 +171,42 @@ export interface CreateTaskInput {
   readonly baseBranch?: string;
   readonly after?: readonly string[];
   readonly attachments?: readonly string[];
+  readonly agent?: string;
+}
+
+export type AgentAdapterKind = "claude" | "shell";
+
+export type AgentTypeMode = "default" | "acceptEdits" | "plan";
+
+export interface AgentTypeSummary {
+  readonly name: string;
+  readonly description: string;
+  readonly adapter: AgentAdapterKind;
+  readonly model: string | null;
+  readonly permissionMode: AgentTypeMode | null;
+  readonly updatedAt: string;
+}
+
+export interface AgentType {
+  readonly name: string;
+  readonly description: string;
+  readonly adapter: AgentAdapterKind;
+  readonly model: string | null;
+  readonly permissionMode: AgentTypeMode | null;
+  readonly tools: readonly string[];
+  readonly prompt: string | null;
+  readonly command: string | null;
+  readonly source: string;
+  readonly updatedAt: string;
+}
+
+export interface DefinitionError {
+  readonly kind: "agent" | "workflow";
+  readonly name: string | null;
+  readonly step: string | null;
+  readonly field: string | null;
+  readonly message: string;
+  readonly line: number | null;
 }
 
 export type AttachmentKind = "image" | "file";

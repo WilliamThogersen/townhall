@@ -17,6 +17,10 @@ use tmux_server::{private_tmux, tmux};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// The type `new_task` runs as: claude with nothing but the settings, the argv from before
+/// agent types.
+pub const PLAIN_TYPE: &str = "name = \"plain\"\nadapter = \"claude\"\n";
+
 pub fn unique(prefix: &str) -> String {
     format!(
         "{prefix}-{}-{}",
@@ -88,7 +92,9 @@ impl Sched {
         let ws = Workspace::new(Home::at(root.path().join(".townhall")), &repo).unwrap();
         let ctx = open(&ws, &claude);
         ctx.repos().await.unwrap();
-        let conversation = ctx.store().unwrap().create_conversation().await.unwrap().id;
+        let store = ctx.store().unwrap();
+        store.save_agent_type(PLAIN_TYPE).await.unwrap();
+        let conversation = store.create_conversation().await.unwrap().id;
         Self {
             root,
             repo,
@@ -126,6 +132,7 @@ impl Sched {
             base_branch: "main".into(),
             after: after.iter().map(|a| a.to_string()).collect(),
             attachments: vec![],
+            agent: "plain".into(),
         }
     }
 

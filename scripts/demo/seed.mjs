@@ -1,8 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { makeRepos } from "./repos.mjs";
-import { CONVERSATIONS, SHELL_AGENT } from "./scenes/conversations.mjs";
+import { CONVERSATIONS } from "./scenes/conversations.mjs";
 import { daemonApi, waitFor } from "./seed/api.mjs";
 import { seedConversation } from "./seed/conversations.mjs";
 import { database } from "./seed/db.mjs";
@@ -12,7 +11,6 @@ import { backdate } from "./seed/timeline.mjs";
 const DAEMON_MS = 60000;
 const AGENTS_WHILE_SEEDING = 20;
 const AGENTS_AT_ONCE = 6;
-const HERE = fileURLToPath(new URL(".", import.meta.url));
 
 function parseArgs(argv) {
   const value = (flag) => {
@@ -23,13 +21,6 @@ function parseArgs(argv) {
   const missing = ["daemon", "web", "dir"].filter((key) => !opts[key]);
   if (missing.length > 0) throw new Error(`seed needs --${missing.join(", --")}`);
   return opts;
-}
-
-const shellQuote = (text) => `'${text.replaceAll("'", "'\\''")}'`;
-
-async function startShellAgent(api) {
-  const command = `node ${shellQuote(join(HERE, SHELL_AGENT.script))}`;
-  await api.post("/agents", { name: SHELL_AGENT.name, adapter: "shell", command, repo: SHELL_AGENT.repo });
 }
 
 async function seedConversations(api, db) {
@@ -57,7 +48,6 @@ async function seed(api, opts) {
   for (const repo of repos) await api.post("/repos", { path: repo.path });
   await api.put("/settings/agentsAtOnce", { value: AGENTS_WHILE_SEEDING });
   const seeded = await seedConversations(api, db);
-  await startShellAgent(api);
   const { tasks, misses } = await driveTasks(api, db, repos);
   await finishConversations(api, db, seeded);
   await api.put("/settings/agentsAtOnce", { value: AGENTS_AT_ONCE });

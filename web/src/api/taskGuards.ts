@@ -37,6 +37,7 @@ export function parseTask(value: unknown): Task {
     attachments: strings(r.attachments, "task.attachments"),
     createdAt: str(r.createdAt, "task.createdAt"),
     pr: nullable(r.pr, "task.pr", parsePr),
+    agent: str(r.agent, "task.agent"),
   };
 }
 

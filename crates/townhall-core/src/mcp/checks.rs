@@ -65,6 +65,7 @@ pub(super) fn input(raw: CreateTaskInput) -> Checked<CreateTaskInput> {
         title,
         repo: given(raw.repo.as_deref()),
         base_branch: given(raw.base_branch.as_deref()),
+        agent: given(raw.agent.as_deref()),
         ..raw
     })
 }

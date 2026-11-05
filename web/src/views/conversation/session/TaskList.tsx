@@ -52,6 +52,7 @@ function TaskRow({ view, open, tabbable, onOpen, onFocus }: TaskRowProps) {
         <span className="th-task-state">{view.words}</span>
         <span className="th-task-sub">
           <span className="th-task-title">{task.title}</span>
+          <span className="th-tag th-tag--agent">{task.agent.toLowerCase()}</span>
           {view.prOpen && <span className="th-tag">pr open</span>}
         </span>
       </button>

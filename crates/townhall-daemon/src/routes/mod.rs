@@ -29,7 +29,7 @@ pub const UPLOAD_BODY_LIMIT: usize = MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
 
 fn agent_routes() -> Router<AppState> {
     Router::new()
-        .route("/agents", get(agents::list).post(agents::create))
+        .route("/agents", get(agents::list))
         .route("/agents/{name}", delete(agents::remove))
         .route("/agents/{name}/send", post(agents::send))
         .route("/agents/{name}/output", get(agents::output))

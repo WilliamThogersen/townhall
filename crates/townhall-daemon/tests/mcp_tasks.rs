@@ -1,4 +1,3 @@
-use axum::http::StatusCode;
 use serde_json::json;
 use townhall_core::model::{ServerEvent, TaskState};
 
@@ -153,9 +152,7 @@ async fn create_task_refuses_a_name_an_agent_or_branch_has() {
     assert!(text.contains(&branch) && text.contains("shop"), "{text}");
 
     let agent = unique("agent");
-    let body = json!({"name": agent, "adapter": "shell", "command": "sleep 60"});
-    let (s, v) = call(&m.app, "POST", "/api/agents", Some(body)).await;
-    assert_eq!(s, StatusCode::CREATED, "{v}");
+    common::start_shell(&m.env.workspace(&m.env.startup), &agent, "sleep 60").await;
     let text = m.refused("create_task", task(&agent)).await;
     call(&m.app, "DELETE", &format!("/api/agents/{agent}"), None).await;
     assert!(text.contains("an agent named"), "{text}");
@@ -168,9 +165,8 @@ async fn create_task_refuses_a_name_an_agent_has_in_another_case() {
     m.note_repo("shop").await;
     m.add_repo("web").await;
     let zed = unique("zed");
-    let body = json!({"name": zed, "adapter": "shell", "command": "sleep 60", "repo": "web"});
-    let (s, v) = call(&m.app, "POST", "/api/agents", Some(body)).await;
-    assert_eq!(s, StatusCode::CREATED, "{v}");
+    let web = m.env.root.path().join("web");
+    common::start_shell(&m.env.workspace(&web), &zed, "sleep 60").await;
     let text = m.refused("create_task", task(&zed.to_uppercase())).await;
     call(
         &m.app,

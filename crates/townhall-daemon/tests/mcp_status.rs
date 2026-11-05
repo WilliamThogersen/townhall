@@ -180,6 +180,7 @@ async fn another_conversations_task_or_an_unknown_one_is_a_tool_error() {
         base_branch: "main".into(),
         after: vec![],
         attachments: vec![],
+        agent: "builder".into(),
     };
     m.store().create_task(&other, new).await.unwrap();
 

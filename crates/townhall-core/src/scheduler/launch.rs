@@ -2,13 +2,13 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::agent::{self, Agent, ClaudeCodeAdapter, LaunchOptions};
+use crate::agent::{self, Agent, LaunchOptions};
 use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::{clock, ids, Error, Result, Workspace};
 
-use super::{brief, plan, transition, Pass, TaskLaunch};
+use super::{agent_type, brief, plan, transition, Pass, TaskLaunch};
 
 /// An `agent` `failed` entry's text stays short: a start error can quote a whole command.
 /// `Error::Command` puts the reason first and the command last, so the cut loses the
@@ -223,28 +223,29 @@ fn read_dirs(brief: &Path, files: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 /// Writes the brief, creates the worktree from the commit the base branch is at now
-/// (recorded, so `merged` can be told later) and runs `claude` in its tmux session with a
-/// new session id and the order to read the brief.
+/// (recorded, so `merged` can be told later) and runs the task's agent type in its tmux
+/// session: `claude` with the type's flags, a new session id and the order to read the
+/// brief, or a `shell` type's command.
 async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
+    let launcher = agent_type::launcher(ctx, task).await?;
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
     let start_commit = commit_of(&ws, &task.base_branch).await?;
     let files = attachment_paths(ctx, task).await?;
     let brief = brief::write(ctx.home(), task, &files).await?;
-    let session_id = ids::new_session_id();
+    let session_id = launcher.claude.then(ids::new_session_id);
     let options = LaunchOptions {
         prompt: Some(brief::order(&brief)),
-        permission_mode: ctx.settings().await?.permission_mode,
-        session_id: Some(session_id.clone()),
+        session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
-        ..LaunchOptions::default()
+        ..launcher.options
     };
-    let adapter = ClaudeCodeAdapter::new(ctx.claude_bin());
-    agent::start(&ws, &task.name, &start_commit, &adapter, &options).await?;
+    let adapter = launcher.adapter.as_ref();
+    agent::start(&ws, &task.name, &start_commit, adapter, &options).await?;
     Ok(TaskLaunch {
         name: task.name.clone(),
         start_commit,
-        session_id: Some(session_id),
+        session_id,
         launched_at: clock::now_rfc3339(),
     })
 }

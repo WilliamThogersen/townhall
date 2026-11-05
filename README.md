@@ -25,7 +25,7 @@ interface for them works; polish comes next.
 | ● | daemon | http and websocket api on `127.0.0.1:7777`: several repos, conversations, tasks, agent states, attachments, steps and shipped stats, live terminal snapshots |
 | ● | desktop | tauri app with repo picker, tray and a notification when an agent ends |
 | ◐ | interface | terminal-native redesign from [`docs/style-guide`](docs/style-guide/README.md): home with shipped stats, conversations, a sidebar with search, attachments, the control center, repos and first run. the full key map, small windows and end to end tests come next |
-| ● | conversations | talk to townhall; it finds the repo and creates tasks that agents pick up. a thread with task blocks and direct answers, a session panel and an agent's terminal in a split |
+| ● | conversations | talk to townhall; it finds the repo and creates tasks, and each task starts its own agent. a thread with task blocks and direct answers, a session panel and an agent's terminal in a split |
 | ● | control center | one timeline for every agent in every conversation: the loop strip, stats, conversations, tasks and their steps, a now line and a repo filter |
 
 `●` works · `◐` in progress · `○` planned
@@ -110,6 +110,8 @@ worktrees under the repo's own `.git`. Townhall keeps no config files.
   for example `myapp-1a2b3c4d`, so two repos with the same folder name never collide.
 - tmux sessions are named `townhall-<repo-key>-<agent>`.
 - Live agent state is never stored: agents are rediscovered from `git worktree list` and tmux.
+- Agents only come from tasks in a conversation. There is no route or form that starts
+  one directly; a running agent can still be sent to, stopped and watched.
 - The daemon serves every registered repo (`GET /api/repos`); the routes, the
   websocket messages and the tables are in [`docs/daemon-api.md`](docs/daemon-api.md).
 

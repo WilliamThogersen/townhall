@@ -1,6 +1,7 @@
-//! `create_task`, `set_title` and `task_status` (`status.rs`) for one conversation's session.
-//! None takes a permission mode: a task's agent always gets the saved setting when the
-//! scheduler starts it.
+//! `create_task`, `set_title`, `task_status` (`status.rs`) and the agent type tools
+//! (`library.rs`) for one conversation's session.
+//! None takes a permission mode: a task's agent gets the saved setting when the scheduler
+//! starts it, narrowed by its agent type.
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -10,6 +11,7 @@ use crate::context::Context;
 use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
 
 use super::checks::{self, Checked};
+use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 use super::rpc::ToolRunner;
 use super::{status, tools, CREATE_TASK, MAX_TITLE_LEN, SET_TITLE, TASK_STATUS};
 
@@ -44,6 +46,11 @@ impl ToolRunner for TaskTools<'_> {
             TASK_STATUS => {
                 status::task_status(self.ctx, self.conversation_id, parse(arguments)?).await
             }
+            LIST_AGENT_TYPES => library::list(self.ctx, parse(arguments)?).await,
+            READ_AGENT_TYPE => library::read(self.ctx, parse(arguments)?).await,
+            SAVE_AGENT_TYPE => {
+                library::save(self.ctx, self.conversation_id, parse(arguments)?).await
+            }
             other => Err(unknown_tool(other)),
         }
     }
@@ -75,6 +82,7 @@ impl TaskTools<'_> {
             .map_err(|e| e.to_string())?;
         let repo = checks::repo(self.ctx, &conversation, input.repo.as_deref()).await?;
         let base_branch = checks::base_branch(&repo, input.base_branch.as_deref()).await?;
+        let agent = library::resolve(self.ctx, input.agent.as_deref()).await?;
         checks::name_is_free(self.ctx, &repo, &input.name).await?;
         let new = NewTask {
             name: input.name,
@@ -84,6 +92,7 @@ impl TaskTools<'_> {
             base_branch,
             after: input.after,
             attachments: input.attachments,
+            agent,
         };
         let task = store
             .create_task(self.conversation_id, new)

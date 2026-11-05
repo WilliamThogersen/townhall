@@ -2,7 +2,6 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
   AddRepoInput,
   ConversationPatch,
-  CreateAgentInput,
   CreateTaskInput,
   NewMessageInput,
 } from "../api/types";
@@ -42,7 +41,6 @@ describe("skip all", () => {
   });
 
   it("cannot ride along in any other request body", () => {
-    expectTypeOf<Carries<CreateAgentInput>>().toEqualTypeOf<false>();
     expectTypeOf<Carries<AddRepoInput>>().toEqualTypeOf<false>();
     expectTypeOf<Carries<NewMessageInput>>().toEqualTypeOf<false>();
     expectTypeOf<Carries<ConversationPatch>>().toEqualTypeOf<false>();

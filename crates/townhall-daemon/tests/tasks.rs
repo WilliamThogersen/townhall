@@ -15,6 +15,7 @@ fn new_task(name: &str, repo: &str) -> NewTask {
         base_branch: "main".into(),
         after: vec![],
         attachments: vec![],
+        agent: "builder".into(),
     }
 }
 

@@ -10,7 +10,7 @@ use crate::model::{NewTask, Pr, ServerEvent, Task, TaskState};
 use crate::{clock, Error, Result};
 
 const COLUMNS: &str = "name, conversation_id, title, prompt, repo, base_branch, after, state, \
-                       attachments, pr_number, pr_url, pr_checks, created_at";
+                       attachments, pr_number, pr_url, pr_checks, created_at, agent";
 
 type Row = (
     [String; 8],
@@ -18,7 +18,7 @@ type Row = (
     Option<u64>,
     Option<String>,
     Option<String>,
-    String,
+    [String; 2],
 );
 
 fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
@@ -38,7 +38,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
         r.get(9)?,
         r.get(10)?,
         r.get(11)?,
-        text(12)?,
+        [text(12)?, text(13)?],
     ))
 }
 
@@ -49,7 +49,7 @@ fn build(row: Row) -> Result<Task> {
         number,
         url,
         checks,
-        created_at,
+        [created_at, agent],
     ) = row;
     let pr = match (number, checks) {
         (Some(number), Some(checks)) => Some(Pr {
@@ -71,6 +71,7 @@ fn build(row: Row) -> Result<Task> {
         base_branch,
         created_at,
         pr,
+        agent,
     })
 }
 
@@ -147,7 +148,7 @@ fn check_new(tx: &Transaction<'_>, conversation_id: &str, new: &NewTask) -> Resu
 fn insert(tx: &Transaction<'_>, t: &Task) -> Result<()> {
     tx.execute(
         "insert into tasks (name, conversation_id, title, prompt, repo, base_branch, after, state,
-         attachments, created_at) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+         attachments, created_at, agent) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             t.name,
             t.conversation_id,
@@ -158,7 +159,8 @@ fn insert(tx: &Transaction<'_>, t: &Task) -> Result<()> {
             to_json(&t.after)?,
             name_of(&t.state),
             to_json(&t.attachments)?,
-            t.created_at
+            t.created_at,
+            t.agent
         ],
     )?;
     Ok(())
@@ -171,8 +173,8 @@ fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
     };
     tx.execute(
         "update tasks set title = ?2, prompt = ?3, repo = ?4, base_branch = ?5, after = ?6,
-         state = ?7, attachments = ?8, pr_number = ?9, pr_url = ?10, pr_checks = ?11
-         where name = ?1",
+         state = ?7, attachments = ?8, pr_number = ?9, pr_url = ?10, pr_checks = ?11,
+         agent = ?12 where name = ?1",
         params![
             t.name,
             t.title,
@@ -184,7 +186,8 @@ fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
             to_json(&t.attachments)?,
             number,
             url,
-            checks
+            checks,
+            t.agent
         ],
     )?;
     Ok(())
@@ -203,6 +206,7 @@ fn queued(conversation_id: &str, new: NewTask) -> Task {
         conversation_id: conversation_id.to_string(),
         created_at: clock::now_rfc3339(),
         pr: None,
+        agent: new.agent,
     }
 }
 

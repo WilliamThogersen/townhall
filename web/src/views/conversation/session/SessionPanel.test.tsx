@@ -129,7 +129,7 @@ describe("SessionPanel tasks", () => {
     expect(needs.querySelector(".th-task-title")).toHaveTextContent("clear the session before redirecting");
     expect(guard).toHaveAttribute("data-state", "error");
     expect(guard.querySelector(".th-task-state")).toHaveTextContent("checks failed");
-    expect(guard.querySelector(".th-tag")).toHaveTextContent("pr open");
+    expect(guard.querySelector(".th-tag:not(.th-tag--agent)")).toHaveTextContent("pr open");
     expect(within(guard).getByRole("link", { name: "#41" })).toHaveAttribute("href", "https://git.test/41");
     expect(working).not.toHaveAttribute("data-state");
     expect(working.querySelector(".th-status")).toHaveAttribute("data-state", "working");
@@ -137,7 +137,8 @@ describe("SessionPanel tasks", () => {
     expect(queued.querySelector(".th-task-state")).toHaveTextContent("after fix-login");
     expect(queued.querySelector(".th-status")).toHaveAttribute("data-state", "queued");
     expect(merged).toHaveAttribute("data-state", "merged");
-    expect(merged.querySelector(".th-tag")).toBeNull();
+    expect(merged.querySelector(".th-tag:not(.th-tag--agent)")).toBeNull();
+    expect(merged.querySelector(".th-tag--agent")).toHaveTextContent("builder");
     expect(within(merged).getByRole("link", { name: "#38" })).toBeInTheDocument();
   });
 

@@ -69,6 +69,7 @@ mod tests {
             attachments: vec![],
             created_at: "2026-11-04T10:42:05.000Z".into(),
             pr: None,
+            agent: "builder".into(),
         }
     }
 

@@ -11,6 +11,7 @@ use http_body_util::BodyExt;
 use serde_json::Value;
 use tempfile::TempDir;
 use tower::ServiceExt;
+use townhall_core::agent::{self, Agent, LaunchOptions, ShellAdapter};
 use townhall_core::{ContextOptions, Home, Workspace};
 use townhall_daemon::{router, AppState};
 
@@ -107,6 +108,18 @@ impl Env {
         self.home.ensure().unwrap();
         std::fs::write(self.home.config_file(), value.to_string()).unwrap();
     }
+}
+
+/// A `shell` agent that is no task's, running `command` in a worktree of `ws` off `main`.
+/// Over HTTP agents only come from tasks, so tests start one through the core.
+pub async fn start_shell(ws: &Workspace, name: &str, command: &str) -> Agent {
+    let options = LaunchOptions {
+        command: Some(command.into()),
+        ..LaunchOptions::default()
+    };
+    agent::start(ws, name, "main", &ShellAdapter, &options)
+        .await
+        .unwrap()
 }
 
 pub async fn send(app: &Router, req: Request<Body>) -> (StatusCode, Value) {

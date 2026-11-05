@@ -11,6 +11,8 @@ describe("task guards", () => {
 
   it("refuses broken tasks and prs", () => {
     expect(() => parseTask({ ...aTask(), after: [3] })).toThrow("task.after[0]");
+    expect(() => parseTask({ ...aTask(), agent: undefined })).toThrow("task.agent");
+    expect(parseTask(aTask({ agent: "reviewer" })).agent).toBe("reviewer");
     expect(() => parsePr({ number: 1, url: null, checks: "green" })).toThrow("task.pr.checks");
     expect(() => parsePr({ number: Number.NaN, url: null, checks: "none" })).toThrow("task.pr.number");
   });

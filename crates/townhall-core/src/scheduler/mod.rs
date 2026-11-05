@@ -3,7 +3,8 @@
 //!
 //! - A queued task starts once every `after` task finished (`ended` or `merged`) and fewer
 //!   than `agentsAtOnce` tasks are `working` or `needsYou` with a live session. Queued tasks
-//!   start oldest first. The agent reads its whole prompt from its brief (`brief.rs`).
+//!   start oldest first. The agent reads its whole prompt from its brief (`brief.rs`) and
+//!   runs as the task's agent type (`agent_type.rs`), whose mode only narrows the setting.
 //! - A start that fails sets `error` with an `agent` `failed` entry: the only `error` it
 //!   sets. The agent watcher (2.5) owns `needsYou`, `error` and `ended`.
 //! - An `ended` task whose branch has commits of its own and is merged into its base
@@ -13,6 +14,7 @@
 //!
 //! It runs a pass on every `taskUpdated` and on a slow tick (`TICK`).
 
+mod agent_type;
 mod brief;
 mod launch;
 mod merged;
