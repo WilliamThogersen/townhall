@@ -1,6 +1,6 @@
-import { fail, listOf, nullable, oneOf, record, str, strings, type Guard } from "./guardKit";
+import { fail, listOf, nullable, num, oneOf, record, str, strings, type Guard } from "./guardKit";
 import { request } from "./request";
-import type { AgentAdapterKind, AgentType, AgentTypeMode, AgentTypeSummary } from "./types";
+import type { AgentAdapterKind, AgentType, AgentTypeMode, AgentTypeSummary, AgentUsage } from "./types";
 
 const adapter = oneOf<AgentAdapterKind>(["claude", "shell"]);
 const mode = oneOf<AgentTypeMode>(["default", "acceptEdits", "plan"]);
@@ -34,3 +34,15 @@ export const listAgentTypes = (signal?: AbortSignal): Promise<readonly AgentType
 
 export const getAgentType = (name: string, signal?: AbortSignal): Promise<AgentType> =>
   request("GET", `/library/agents/${encodeURIComponent(name)}`, parseType, undefined, signal);
+
+const parseUsage: Guard<AgentUsage> = (value) => {
+  const r = record(value, "agent usage");
+  return {
+    agent: str(r.agent, "agentUsage.agent"),
+    runs: num(r.runs, "agentUsage.runs"),
+    tokens: num(r.tokens, "agentUsage.tokens"),
+  };
+};
+
+export const listAgentUsage = (signal?: AbortSignal): Promise<readonly AgentUsage[]> =>
+  request("GET", "/library/agents/usage", listOf(parseUsage, "agent usage"), undefined, signal);

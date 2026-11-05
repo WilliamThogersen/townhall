@@ -187,3 +187,32 @@ async fn import_takes_one_new_agent_toml() {
     let (s, _) = call(&app, "GET", "/api/library/agents/sneaky", None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn usage_sums_runs_and_tokens_per_agent_type() {
+    let env = Env::new("alpha").await;
+    let (state, app) = env.start();
+    let store = state.ctx().store().unwrap();
+    let c = store.create_conversation().await.unwrap().id;
+    for name in ["one", "two"] {
+        let task = townhall_core::model::NewTask {
+            name: name.into(),
+            title: format!("do {name}"),
+            prompt: "the brief".into(),
+            repo: "alpha".into(),
+            base_branch: "main".into(),
+            after: vec![],
+            attachments: vec![],
+            agent: "builder".into(),
+        };
+        store.create_task(&c, task).await.unwrap();
+    }
+    store.set_task_tokens("one", 1200).await.unwrap();
+    store.set_task_tokens("two", 300).await.unwrap();
+    let (s, v) = call(&app, "GET", "/api/library/agents/usage", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(
+        v["data"],
+        json!([{"agent": "builder", "runs": 2, "tokens": 1500}])
+    );
+}

@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::migrate::Migration;
 use super::Store;
 use crate::definitions::{check_agent, AgentDef, DefKind, DefinitionError, Parsed};
-use crate::model::AgentType;
+use crate::model::{AgentType, AgentUsage};
 use crate::{clock, Error, Result};
 
 pub const MIGRATIONS: &[Migration] = &[
@@ -35,6 +35,11 @@ pub const MIGRATIONS: &[Migration] = &[
         id: 803,
         name: "0803_task_agent",
         sql: include_str!("migrations/0803_task_agent.sql"),
+    },
+    Migration {
+        id: 804,
+        name: "0804_task_tokens",
+        sql: include_str!("migrations/0804_task_tokens.sql"),
     },
 ];
 
@@ -193,6 +198,43 @@ impl Store {
     pub async fn delete_agent_type(&self, name: &str) -> Result<String> {
         let name = name.to_string();
         self.call(move |conn| delete(conn, &name)).await
+    }
+}
+
+impl Store {
+    pub async fn set_task_tokens(&self, task: &str, tokens: u64) -> Result<()> {
+        let (name, tokens) = (task.to_string(), i64::try_from(tokens).unwrap_or(i64::MAX));
+        self.call(move |conn| {
+            let changed = conn.execute(
+                "update tasks set tokens = ?2 where name = ?1",
+                params![name, tokens],
+            )?;
+            match changed {
+                0 => Err(Error::missing("task", &name)),
+                _ => Ok(()),
+            }
+        })
+        .await
+    }
+
+    pub async fn agent_usage(&self) -> Result<Vec<AgentUsage>> {
+        self.call(|conn| {
+            let mut stmt = conn.prepare(
+                "select agent, count(*), sum(tokens) from tasks
+                 group by agent order by agent collate nocase",
+            )?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(AgentUsage {
+                        agent: r.get(0)?,
+                        runs: r.get(1)?,
+                        tokens: r.get(2)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
     }
 }
 
