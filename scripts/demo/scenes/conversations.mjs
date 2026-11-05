@@ -84,6 +84,4 @@ export const TASK_GOALS = {
   "coupon-rounding": { state: "merged", merge: true, pr: { number: 33, checks: "passed" } },
 };
 
-export const SHELL_AGENT = { name: "dev-server", repo: "shop", script: "shell-agent.mjs" };
-
 export const PR_URL_BASE = "https://github.com/example";

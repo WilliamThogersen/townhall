@@ -7,12 +7,14 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 - Base: `http://127.0.0.1:7777/api` (desktop) or same-origin `/api` (browser, Vite proxy).
 - Every HTTP response is the envelope `{ "success": bool, "data": T | null, "error": string | null }` (`crates/townhall-daemon/src/envelope.rs`). `data` is shown below as the response.
 - JSON field names are camelCase. A Rust `Option` is always present on the wire, as `null` when empty. Timestamps are RFC 3339 UTC strings with milliseconds (`2026-11-04T10:42:05.000Z`, `townhall_core::clock`), so they sort as text.
-- Bodies go through `townhall_daemon::extract::JsonBody<T>`: a body that is not JSON, has the wrong content type or the wrong fields is `400` in the envelope, with the error `expected content-type application/json` or `invalid json body: <what serde said>` (for example ``invalid json body: missing field `path` at line 1 column 2``). Every phase 2 request body type refuses unknown fields (`deny_unknown_fields`); phase 1's agent bodies (`POST /api/agents`, `/send`) still ignore them.
+- Bodies go through `townhall_daemon::extract::JsonBody<T>`: a body that is not JSON, has the wrong content type or the wrong fields is `400` in the envelope, with the error `expected content-type application/json` or `invalid json body: <what serde said>` (for example ``invalid json body: missing field `path` at line 1 column 2``). Every phase 2 request body type refuses unknown fields (`deny_unknown_fields`); phase 1's `/send` body still ignores them.
 - Error codes: `400` invalid input or name, `404` not found, `409` conflict (taken name, ambiguous agent, repo in use), `413` attachment over 20 MB, `501 not implemented yet` (a route whose unit has not landed), `503` the database is held by another townhall, `500` anything else (logged).
 - Copy in `error` strings is lowercase and has no `error:` prefix; the UI adds it.
 - CORS allows only the desktop and Vite origins (`cors::ALLOWED_ORIGINS`), methods `GET POST PUT PATCH DELETE`. CORS does not cover websockets or multipart posts: `/api/events` and the upload route must call `cors::origin_allowed(&headers)` and answer `403` when it is false.
 
 ## Routes
+
+Agents come only from tasks: the scheduler starts one when a conversation's task is ready, under the task's name (see Scheduler). There is no route that creates an agent (2.13 removed phase 1's `POST /agents`, which now answers `405`); the `/agents` routes list running agents, stop them, send to them and stream their terminals.
 
 `?repo=<name>` is accepted by every `/api/agents/{name}...` route. Without it the name is looked up across every registered repo (ignoring case, as macOS folders do; an agent whose name differs only by case is `404`, never acted on); two repos with that agent is `409` (`agent `x` exists in several repos (a, b): pass ?repo=<name>`). Repo names match ignoring case.
 
@@ -23,7 +25,6 @@ The contract every phase 2 unit builds on. Rust types live in `crates/townhall-c
 | POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a plain folder, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found; 409 path registered, name taken ignoring case | 2.1 |
 | DELETE | `/repos/{name}` | | the removed `Repo`. Only unregisters: folder, worktrees and branches stay | 404; 409 it has live agents (tmux sessions), or it is the daemon's startup repo | 2.1 |
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
-| POST | `/agents` | `{ name, adapter: "claude"\|"shell", base?, prompt?, command?, repo? }` (`repo` defaults to the startup repo, `base` to `HEAD`) | `201 AgentInfo` | 400 bad name, ``base branch `x` not found``; 404 repo; 409 the name exists in any repo, ignoring case | phase 1, 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` or `{ key }` (2.10), exactly one | the name. `text` is typed as it is (`tmux send-keys -l`, so `Down` or `C-c` stay text), then Enter. `key` (`up`, `down`, `enter`, `escape`, `tab`) is pressed alone, without text or Enter. When the agent is a task's, adds an `agent` `sent` entry to its conversation: the text, or the key as `↑`, `↓`, `⏎`, `esc`, `tab` | 400 (neither or both, an unknown key), 404 (also a dead pane), 409 | phase 1, 2.1, 2.10 |
 | GET | `/agents/{name}/output` | | the pane text | 400, 404 (also a dead pane), 409 | phase 1, 2.1 |
@@ -109,7 +110,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 | `repo` | `repo, baseBranch, rule, reason` | `~ repo shop · develop, it has src/search/query.ts` |
 | `repoAsk` | `question, candidates: string[], offerAll` | needs-you block from townhall: one button per candidate, plus `both` (2 candidates) or `all` when `offerAll`. A button sends its text as a normal message |
 | `tasksCreated` | `tasks: string[]` | task block |
-| `needsYou` | `agent, question, choices: string[]` | `◆ <agent> needs you`, the question verbatim, one `send <choice>` per choice (through `/agents/{name}/send`) |
+| `needsYou` | `agent, question, choices: string[]` | `◆ <agent> needs you`, the question verbatim, one `send <choice>` per choice (through `/agents/{name}/send`). A choice goes as `text`, except in claude's folder trust dialog (`claude asks whether to trust this worktree`), which reads keys and would take any text as `no, exit`: `yes, trust it` sends the key `up`, then `enter` (200 ms apart), and `no, exit` sends `enter`. That dialog has no free text answer |
 | `agent` | `agent, event: "sent" \| "passed" \| "failed" \| "ended", text` | `→` `✓` `×` `○` lines |
 | `error` | `message` | townhall's own failure |
 
@@ -184,7 +185,7 @@ Unit 2.11. Townhall's session plans tasks; your hooks, CLAUDE.md, skills, slash 
 
 Auth keeps working: it comes from your login (the macOS keychain or `~/.claude/.credentials.json`, with the account in `~/.claude.json`) and from `ANTHROPIC_*` / `CLAUDE_*` variables, which pass through (see Environment). None of these flags reads or skips them. Not chosen: `--bare`, which never reads OAuth or the keychain (only `ANTHROPIC_API_KEY` or an `apiKeyHelper`), so a subscription login would stop working; `--safe-mode`, a troubleshooting mode that also disables MCP servers, which could take townhall's own with it; `--restricted`, which overlaps the flags above but also confines and gates writes in ways townhall does not need. One limit: a provider or `apiKeyHelper` set only in your `~/.claude/settings.json` (not in the environment) is no longer read by townhall's session.
 
-`permission_mode` always comes from `Context::settings()`, never from a request body or a tool call: `POST /api/agents` ignores any such field. A task's agent type can only narrow it (`AgentDef::launch_options`: the stricter of the two, `plan` < `default` < `acceptEdits` < `auto` < skip all), and no type can hold `bypassPermissions`. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
+`permission_mode` always comes from `Context::settings()`, never from a request body or a tool call. A task's agent type can only narrow it (`AgentDef::launch_options`: the stricter of the two, `plan` < `default` < `acceptEdits` < `auto` < skip all), and no type can hold `bypassPermissions`. The binary is `Context::claude_bin()` (`TOWNHALL_CLAUDE_BIN`, default `claude`); tests point it at a fake script.
 
 ## Websocket: `/api/events`
 

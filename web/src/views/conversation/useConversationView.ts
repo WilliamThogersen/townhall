@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { sendText } from "../../api/client";
 import { toMessage } from "../../api/errors";
-import type { ConversationDetail, Task } from "../../api/types";
+import type { AgentKey, ConversationDetail, Task } from "../../api/types";
 import { useConversationActions } from "../../data";
 import { navigate, PATHS, useRoute } from "../../router";
 import { useSettings } from "../../settings/useSettings";
 import type { ThreadContextValue } from "./thread/threadContext";
+import { pressKeys } from "./thread/trustDialog";
 import { useNarrow } from "./useNarrow";
 
 export interface PaneRoute {
@@ -78,6 +79,7 @@ export interface Commands {
   readonly end: () => Promise<void>;
   readonly sendMessage: (text: string) => Promise<boolean>;
   readonly answerAgent: (agent: string, text: string) => Promise<boolean>;
+  readonly answerKeys: (agent: string, keys: readonly AgentKey[]) => Promise<boolean>;
   readonly submit: (text: string, attachmentIds: readonly string[]) => Promise<unknown>;
 }
 
@@ -101,6 +103,7 @@ export function useCommands(id: string): Commands {
       end: async () => void (await attempt(() => actions.end(id))),
       sendMessage: (text: string) => attempt(() => actions.send(id, { text })),
       answerAgent: (agent: string, text: string) => attempt(() => sendText(agent, text)),
+      answerKeys: (agent: string, keys: readonly AgentKey[]) => attempt(() => pressKeys(agent, keys)),
       submit: (text: string, attachmentIds: readonly string[]) =>
         actions.send(id, attachmentIds.length > 0 ? { text, attachments: attachmentIds } : { text }),
     };
@@ -110,7 +113,7 @@ export function useCommands(id: string): Commands {
 
 export function useThreadValue(detail: ConversationDetail, pane: PaneRoute, commands: Commands): ThreadContextValue {
   const { tasks, attachments, conversation } = detail;
-  const { sendMessage, answerAgent } = commands;
+  const { sendMessage, answerAgent, answerKeys } = commands;
   return useMemo(
     () => ({
       conversationId: conversation.id,
@@ -121,7 +124,8 @@ export function useThreadValue(detail: ConversationDetail, pane: PaneRoute, comm
       onOpenTask: pane.open,
       sendMessage,
       answerAgent,
+      answerKeys,
     }),
-    [conversation.id, tasks, attachments, conversation.status, pane.task, pane.open, sendMessage, answerAgent],
+    [conversation.id, tasks, attachments, conversation.status, pane.task, pane.open, sendMessage, answerAgent, answerKeys],
   );
 }

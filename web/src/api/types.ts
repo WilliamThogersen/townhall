@@ -1,5 +1,3 @@
-export type Adapter = "claude" | "shell";
-
 export interface Agent {
   readonly name: string;
   readonly kind: string | null;
@@ -24,15 +22,6 @@ export type AgentKey = "up" | "down" | "enter" | "escape" | "tab";
 export type SendInput =
   | { readonly text: string; readonly key?: never }
   | { readonly key: AgentKey; readonly text?: never };
-
-export interface CreateAgentInput {
-  readonly name: string;
-  readonly adapter: Adapter;
-  readonly base?: string;
-  readonly prompt?: string;
-  readonly command?: string;
-  readonly repo?: string;
-}
 
 export interface Info {
   readonly home: string;

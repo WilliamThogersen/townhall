@@ -4,6 +4,7 @@ import { Button } from "../../../ui/Button";
 import { useThread } from "./threadContext";
 import { Message } from "./ThreadLines";
 import { askChoices } from "./threadModel";
+import { choiceKeys, takesKeys } from "./trustDialog";
 
 type NeedsYouEntry = Extract<ThreadEntry, { kind: "needsYou" }>;
 type RepoAskEntry = Extract<ThreadEntry, { kind: "repoAsk" }>;
@@ -76,10 +77,14 @@ function AnswerForm({ agent, busy, onAnswer }: AnswerFormProps) {
 }
 
 export function NeedsYouBlock({ entry, open }: { readonly entry: NeedsYouEntry; readonly open: boolean }) {
-  const { tasks, onOpenTask, answerAgent } = useThread();
+  const { tasks, onOpenTask, answerAgent, answerKeys } = useThread();
   const { busy, run } = useBusy();
   const isTask = tasks.some((task) => task.name === entry.agent);
   const answer = (text: string) => run(() => answerAgent(entry.agent, text));
+  const pick = (choice: string) => {
+    const keys = choiceKeys(entry.question, choice);
+    return keys === null ? answer(choice) : run(() => answerKeys(entry.agent, keys));
+  };
   const choices = open ? entry.choices : [];
   return (
     <Message at={entry.at}>
@@ -87,7 +92,7 @@ export function NeedsYouBlock({ entry, open }: { readonly entry: NeedsYouEntry; 
         {choices.length > 0 || isTask ? (
           <div className="th-ask-actions">
             {choices.map((choice) => (
-              <Button key={choice} size="sm" disabled={busy} onClick={() => void answer(choice)}>
+              <Button key={choice} size="sm" disabled={busy} onClick={() => void pick(choice)}>
                 send {choice}
               </Button>
             ))}
@@ -98,7 +103,7 @@ export function NeedsYouBlock({ entry, open }: { readonly entry: NeedsYouEntry; 
             ) : null}
           </div>
         ) : null}
-        {open ? <AnswerForm agent={entry.agent} busy={busy} onAnswer={answer} /> : null}
+        {open && !takesKeys(entry.question) ? <AnswerForm agent={entry.agent} busy={busy} onAnswer={answer} /> : null}
       </Ask>
     </Message>
   );

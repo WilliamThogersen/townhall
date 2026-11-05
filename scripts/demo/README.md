@@ -49,7 +49,7 @@ Tasks, one per state:
 | redirect-guard | error | exited 1, pr #41 with failed checks |
 | e2e-smoke | error | exited 1 |
 
-Agents: every started task has a live tmux pane (failed ones are dead panes) and a Claude transcript, so `GET /api/agents/<name>/steps` returns steps. `dev-server` (shop) is a `shell` agent that prints a dev server log every few seconds.
+Agents: every started task has a live tmux pane (failed ones are dead panes) and a Claude transcript, so `GET /api/agents/<name>/steps` returns steps. Every agent comes from a task: there is no other way to start one.
 
 ## How it works
 

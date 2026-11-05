@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Attachment, Task } from "../../../api/types";
+import type { AgentKey, Attachment, Task } from "../../../api/types";
 
 export interface ThreadContextValue {
   readonly conversationId: string;
@@ -10,6 +10,7 @@ export interface ThreadContextValue {
   readonly onOpenTask: (name: string) => void;
   readonly sendMessage: (text: string) => Promise<boolean>;
   readonly answerAgent: (agent: string, text: string) => Promise<boolean>;
+  readonly answerKeys: (agent: string, keys: readonly AgentKey[]) => Promise<boolean>;
 }
 
 export const ThreadContext = createContext<ThreadContextValue | null>(null);
