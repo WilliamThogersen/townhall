@@ -34,9 +34,9 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/stats?repo=` | | `{ days: ShippedDay[] }`: last 730 days, days with activity only, summed across repos unless `repo` | 404 repo | 2.7 |
 | GET | `/settings` | | `Settings` | 503 | 2.1 (was 2.0) |
 | PUT | `/settings/{key}` | `{ value }` | `Settings` after the change | 400 unknown key or invalid value | 2.1 (was 2.0) |
-| GET | `/profile` | | `{ text }`: the user's profile, `""` when none | 503 | this change |
-| PUT | `/profile` | `{ text }` (at most 20 000 characters) | `{ text }` as stored; replaces the whole profile | 400 too long, not a string, unknown field | this change |
-| DELETE | `/profile` | | `{ text: "" }`: resets the profile to empty, also when it was empty | | this change |
+| GET | `/profile` | | `{ text }`: the user's profile, `""` when none | 503 | 2.14 |
+| PUT | `/profile` | `{ text }` (at most 20 000 characters, counted as Unicode chars; the settings textarea counts UTF-16 units, so it stops a little earlier for emoji) | `{ text }` as stored; replaces the whole profile | 400 too long, not a string, unknown field | 2.14 |
+| DELETE | `/profile` | | `{ text: "" }`: resets the profile to empty, also when it was empty | | 2.14 |
 | GET | `/conversations` | | `Conversation[]`, newest activity first | | 2.2 |
 | POST | `/conversations` | `NewMessage { text, attachments? }`, or `multipart/form-data` with a `text` field and any number of `file` fields (at most 5 files, 20 MB each; 403 foreign origin, 413 over 20 MB), saved as the first message's attachments | `201 ConversationDetail`: created, your message appended, the first turn started | 400 | 2.2 |
 | GET | `/conversations/{id}` | | `ConversationDetail { conversation, entries, tasks, attachments }` | 404 | 2.2 |

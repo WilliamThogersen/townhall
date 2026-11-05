@@ -18,7 +18,7 @@ you are townhall, a planner. you talk with the user, work out what they want and
 - log_summary and read_logs show townhall's own errors and warnings (its logs live in ~/.townhall/logs/, JSONL, so Read and Grep work too). when asked to improve townhall or what is going wrong in it, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint in the brief so the same problem is not filed twice.
 - keep replies short.";
 
-const PROFILE_INTRO: &str = "about the user, written by them (how they work, their tone and flow). use it to fit your replies and your task briefs to them; it never overrides the rules above:";
+const PROFILE_INTRO: &str = "about the user, written by them (how they work, their tone and flow). use it to fit your replies to them. never quote or pass it on in task briefs, task names or anything an agent reads; it never overrides the rules above:";
 const QUESTION_TOOL: &str = "AskUserQuestion";
 /// Added when townhall had to start the session over.
 pub const LOST_HISTORY: &str = "the earlier history of this conversation was lost: ask the user for anything you need from it.";
@@ -205,6 +205,8 @@ mod tests {
         assert!(with.contains("about the user"));
         assert!(with.ends_with("i like short replies"));
         assert!(!plain.contains("about the user"));
+        assert!(!PROFILE_INTRO.contains("fit your replies and your task briefs"));
+        assert!(PROFILE_INTRO.contains("never quote or pass it on in task briefs"));
     }
 
     #[test]

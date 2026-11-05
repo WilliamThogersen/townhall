@@ -3,7 +3,7 @@ import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { DRAG_REGION } from "../../ui/dragRegion";
-import { AboutYouGroup, AgentsGroup,AppearanceGroup, ConversationsGroup } from "./SettingGroups";
+import { AboutYouGroup, AgentsGroup, AppearanceGroup, ConversationsGroup } from "./SettingGroups";
 import "./cap.css";
 
 export const SETTINGS_HINTS: readonly KeyHint[] = [
