@@ -13,13 +13,15 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 
+use townhall_core::runner::StartFile;
+
 use super::events::FOREIGN_ORIGIN;
 use crate::cors::origin_allowed;
 use crate::envelope::{created, failure, ok};
 use crate::error::ApiError;
 use crate::state::AppState;
 
-const NOT_MULTIPART: &str = "send the file as multipart/form-data";
+pub const NOT_MULTIPART: &str = "send the file as multipart/form-data";
 
 /// `Attachment[]` in upload order.
 pub async fn list(
@@ -57,4 +59,21 @@ pub async fn download(
 ) -> Result<Response, ApiError> {
     let (record, path) = state.ctx().store()?.attachment(&id, &attachment).await?;
     serve::file(&record, &path).await
+}
+
+pub async fn start_files(body: Multipart) -> Result<(String, Vec<StartFile>), ApiError> {
+    let (text, uploads) = form::read_start(body).await?;
+    let files = uploads
+        .into_iter()
+        .map(|file| {
+            let mime = mime::detect(&file.bytes, file.content_type.as_deref(), &file.name);
+            let name = naming::file_name(&file.name, mime::image_extensions(&mime));
+            StartFile {
+                name,
+                mime,
+                bytes: file.bytes,
+            }
+        })
+        .collect();
+    Ok((text, files))
 }

@@ -29,6 +29,8 @@ use crate::state::AppState;
 /// One attachment per upload request, plus room for the multipart framing.
 pub const UPLOAD_BODY_LIMIT: usize = MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
 
+pub const START_BODY_LIMIT: usize = 5 * MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
+
 fn agent_routes() -> Router<AppState> {
     Router::new()
         .route("/agents", get(agents::list))
@@ -44,11 +46,11 @@ fn conversation_routes() -> Router<AppState> {
     let upload = get(attachments::list)
         .post(attachments::upload)
         .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT));
+    let start = get(conversations::list)
+        .post(conversations::create)
+        .layer(DefaultBodyLimit::max(START_BODY_LIMIT));
     Router::new()
-        .route(
-            "/conversations",
-            get(conversations::list).post(conversations::create),
-        )
+        .route("/conversations", start)
         .route(
             "/conversations/{id}",
             get(conversations::detail).patch(conversations::patch),

@@ -22,7 +22,10 @@ mod turns;
 
 use tokio::task::JoinHandle;
 
-pub use actions::{create, end, patch, send, stop, MAX_ATTACHMENTS, MAX_MESSAGE_CHARS};
+pub use actions::{
+    create, create_with_files, end, patch, send, stop, StartFile, MAX_ATTACHMENTS,
+    MAX_MESSAGE_CHARS,
+};
 pub use args::{allowed_tools, DENIED_TOOLS, ISOLATION, READ_ONLY_TOOLS};
 pub use content::user_content;
 pub use process::{EXIT_GRACE, KILL_WAIT, STOP_GRACE};

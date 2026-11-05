@@ -10,6 +10,8 @@ use super::naming;
 use crate::error::ApiError;
 
 const FIELD: &str = "file";
+const TEXT: &str = "text";
+const START_FIELDS: &str = "send a `text` field and any number of `file` fields";
 const ONE_FILE: &str = "send one file in a field named `file`";
 const BROKEN: &str = "the upload is not valid multipart form data";
 const TOO_LARGE: &str = "the upload is over 20 MB";
@@ -67,7 +69,23 @@ pub async fn read(mut form: Multipart) -> Result<Upload, ApiError> {
         }
         found = Some(read_field(field).await?);
     }
-    let upload = found.ok_or_else(|| ApiError::BadRequest(ONE_FILE.into()))?;
+    non_empty(found.ok_or_else(|| ApiError::BadRequest(ONE_FILE.into()))?)
+}
+
+pub async fn read_start(mut form: Multipart) -> Result<(String, Vec<Upload>), ApiError> {
+    let mut text = String::new();
+    let mut files = Vec::new();
+    while let Some(field) = form.next_field().await.map_err(broken)? {
+        match field.name() {
+            Some(FIELD) => files.push(non_empty(read_field(field).await?)?),
+            Some(TEXT) => text = field.text().await.map_err(broken)?,
+            _ => return Err(ApiError::BadRequest(START_FIELDS.into())),
+        }
+    }
+    Ok((text, files))
+}
+
+fn non_empty(upload: Upload) -> Result<Upload, ApiError> {
     if upload.bytes.is_empty() {
         let shown = naming::file_name(&upload.name, None);
         return Err(ApiError::BadRequest(format!("{shown} is empty")));

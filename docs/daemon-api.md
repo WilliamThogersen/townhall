@@ -34,7 +34,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/settings` | | `Settings` | 503 | 2.1 (was 2.0) |
 | PUT | `/settings/{key}` | `{ value }` | `Settings` after the change | 400 unknown key or invalid value | 2.1 (was 2.0) |
 | GET | `/conversations` | | `Conversation[]`, newest activity first | | 2.2 |
-| POST | `/conversations` | `NewMessage { text, attachments? }` | `201 ConversationDetail`: created, your message appended, the first turn started | 400 | 2.2 |
+| POST | `/conversations` | `NewMessage { text, attachments? }`, or `multipart/form-data` with a `text` field and any number of `file` fields (at most 5 files, 20 MB each; 403 foreign origin, 413 over 20 MB), saved as the first message's attachments | `201 ConversationDetail`: created, your message appended, the first turn started | 400 | 2.2 |
 | GET | `/conversations/{id}` | | `ConversationDetail { conversation, entries, tasks, attachments }` | 404 | 2.2 |
 | PATCH | `/conversations/{id}` | `ConversationPatch { linkedRepo?, title? }` (`linkedRepo: null` is auto) | `Conversation` | 400, 404 unknown repo | 2.2 |
 | POST | `/conversations/{id}/messages` | `NewMessage` | `ThreadEntry` (yours). Clears `ended`, starts a turn | 400, 404, 409 a turn is running | 2.2 |
