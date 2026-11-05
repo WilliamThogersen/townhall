@@ -11,7 +11,9 @@ use std::path::PathBuf;
 
 pub use adapter::{shell_quote, AgentAdapter, LaunchOptions, ShellAdapter};
 pub(crate) use claude::{add_dir, plain};
-pub use claude::{ClaudeCodeAdapter, DEFAULT_CLAUDE_BIN, OUTER_SESSION_ENV};
+pub use claude::{
+    ClaudeCodeAdapter, AGENT_ISOLATION, DEFAULT_CLAUDE_BIN, ISOLATED_SETTINGS, OUTER_SESSION_ENV,
+};
 
 use crate::cmd::{run, validate_name};
 use crate::model::AgentKey;

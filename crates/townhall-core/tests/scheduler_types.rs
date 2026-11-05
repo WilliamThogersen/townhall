@@ -35,7 +35,9 @@ async fn a_builder_task_runs_claude_with_the_types_flags() {
     let brief = s.brief(&name);
     let dir = format!("--add-dir={}", brief.parent().unwrap().display());
     let end = lines.iter().position(|l| *l == "--").unwrap();
-    assert_eq!(lines[end - 1], dir);
+    let isolation = end - townhall_core::agent::AGENT_ISOLATION.len();
+    assert_eq!(lines[isolation..end], townhall_core::agent::AGENT_ISOLATION);
+    assert_eq!(lines[isolation - 1], dir);
     assert!(lines[end + 1].contains(&brief.display().to_string()));
     assert!(!args.contains("--allowedTools"));
 }
