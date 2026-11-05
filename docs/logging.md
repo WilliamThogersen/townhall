@@ -78,9 +78,20 @@ Later tasks add to this table as they emit events.
 | `panic` | `townhall::panic` | error | `message`, `location`, `backtrace` (≤4 KB) |
 | `logs.pruned` | `townhall::logging` | info | `deleted` |
 | `logs.prune_failed` | `townhall::logging` | warn | `error` |
+| `http.request` | `townhall::http` | debug 2xx, info 4xx, error 5xx | `method`, `route` (template, `unmatched` for a 404 with no route), `status`, `duration_ms`, `request_id`, and `conversation`/`agent`/`task` when the path has them |
+| `http.error` | `townhall::http` | error | `status`, `error_kind`, `error`; every 5xx `ApiError` |
+| `ws.open` | `townhall::http` | info | `route`, `agent`, `request_id` (`/api/events`, attach) |
+| `ws.close` | `townhall::http` | info | `route`, `agent`, `request_id`, `duration_ms` (session length) |
+| `ws.frame_failed`, `ws.close_timeout` | `townhall::http` | warn | `error` |
+| `attach.open_failed`, `attach.resize_failed` | `townhall::http` | warn | `error` |
+| `stats.repo_skipped`, `stats.task_failed` | `townhall::http` | warn | `repo`, `error` |
+| `agent.send_not_noted` | `townhall::http` | warn | `agent`, `error_kind`, `error` |
 
-Planned (see the logging plan): `http.request`, `http.error`, `ws.open`, `ws.close`,
-`mcp.tool`, `task.created`, `task.state`, `task.launched`, `task.launch_failed`,
+`request_id` is the `x-request-id` request header when it is 1 to 64 printable ASCII chars,
+else a generated id. The response always carries it. Websocket upgrades log `ws.*` instead of
+`http.request`.
+
+Planned (see the logging plan): `mcp.tool`, `task.created`, `task.state`, `task.launched`, `task.launch_failed`,
 `task.merged`, `agent.state`, `agent.gone`, `agent.tool_error`, `agent.permission_denied`,
 `turn.start`, `turn.end`, `turn.failed`, `claude.spawn`, `claude.exit`, `cmd.run`,
 `worktree.create`, `worktree.remove`, `daemon.mode`, `daemon.restart`, `web.error`,

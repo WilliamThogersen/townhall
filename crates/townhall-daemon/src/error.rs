@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use townhall_core::redact::redact;
 use townhall_core::Error;
 
 use crate::envelope::failure;
@@ -39,8 +40,15 @@ impl IntoResponse for ApiError {
             Self::NotImplemented => failure(StatusCode::NOT_IMPLEMENTED, NOT_IMPLEMENTED.into()),
             Self::Core(e) => {
                 let status = status_for(&e);
-                if status == StatusCode::INTERNAL_SERVER_ERROR {
-                    eprintln!("internal error: {e}");
+                if status.is_server_error() {
+                    tracing::error!(
+                        target: "townhall::http",
+                        event = "http.error",
+                        status = status.as_u16(),
+                        error_kind = e.kind(),
+                        error = %redact(&e.to_string()),
+                        "internal error"
+                    );
                 }
                 failure(status, e.to_string())
             }

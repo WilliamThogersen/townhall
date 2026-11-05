@@ -107,7 +107,14 @@ async fn note_sent(ctx: &Context, name: &str, text: &str) {
         }
     };
     if let Err(e) = noted.await {
-        eprintln!("warn: sent to `{name}` but not noted in its conversation: {e}");
+        tracing::warn!(
+            target: "townhall::http",
+            event = "agent.send_not_noted",
+            agent = name,
+            error_kind = e.kind(),
+            error = %townhall_core::redact::redact(&e.to_string()),
+            "sent but not noted in its conversation"
+        );
     }
 }
 
