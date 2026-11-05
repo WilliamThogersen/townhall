@@ -94,6 +94,13 @@ const BODY_PARSERS: Readonly<Record<EntryBody["kind"], BodyParser>> = {
     text: str(r.text, "entry.text"),
   }),
   event: (r) => ({ kind: "event", text: str(r.text, "entry.text") }),
+  handoff: (r) => ({
+    kind: "handoff",
+    task: str(r.task, "entry.task"),
+    from: str(r.from, "entry.from"),
+    to: str(r.to, "entry.to"),
+    reason: str(r.reason, "entry.reason"),
+  }),
   error: (r) => ({ kind: "error", message: str(r.message, "entry.message") }),
 };
 

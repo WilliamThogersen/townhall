@@ -26,3 +26,21 @@ pub async fn rpc(
         None => StatusCode::ACCEPTED.into_response(),
     })
 }
+
+/// `POST /api/tasks/{name}/mcp`: the same for a task's agent, which only gets `hand_back`.
+pub async fn task_rpc(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    JsonBody(body): JsonBody<Value>,
+) -> Result<Response, ApiError> {
+    let ctx = state.ctx();
+    let task = ctx
+        .store()?
+        .find_task(&name)
+        .await?
+        .ok_or_else(|| townhall_core::Error::missing("task", &name))?;
+    Ok(match mcp::handle_task(ctx, &task.name, body).await {
+        Some(answer) => Json(answer).into_response(),
+        None => StatusCode::ACCEPTED.into_response(),
+    })
+}

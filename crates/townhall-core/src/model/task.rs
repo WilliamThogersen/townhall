@@ -64,6 +64,22 @@ impl Task {
     }
 }
 
+/// The most times one task can be handed back, so two types cannot bounce it forever.
+pub const MAX_HANDOFFS: usize = 5;
+
+/// One time an agent handed its task back to another agent type, in the same worktree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Handoff {
+    pub task: String,
+    pub from: String,
+    pub to: String,
+    pub reason: String,
+    /// What the handing agent did, as it told or as its commits show.
+    pub summary: String,
+    pub at: String,
+}
+
 /// A task to store, with its repo and base branch already resolved (2.3 resolves them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewTask {
