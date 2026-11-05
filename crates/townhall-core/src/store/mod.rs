@@ -10,6 +10,7 @@
 mod attachments;
 mod codec;
 mod conversations;
+mod handoffs;
 mod import;
 mod lock;
 pub mod migrate;

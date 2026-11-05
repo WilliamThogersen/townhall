@@ -42,6 +42,21 @@ describe("conversations api", () => {
     });
   });
 
+  it("starts a conversation with files as multipart form data", async () => {
+    const fn = mockFetch(201, detail);
+    const shot = new File(["x"], "shot.png", { type: "image/png" });
+    expect(await startConversation({ text: "match this" }, [shot])).toEqual(detail);
+    const [url, init] = fn.mock.calls[0] ?? [];
+    expect(url).toBe("/api/conversations");
+    expect(init?.method).toBe("POST");
+    // No content-type: fetch sets the multipart boundary itself. The request id is the only header.
+    expect(init?.headers).toEqual({ "x-request-id": expect.any(String) });
+    const form = init?.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    expect(form.get("text")).toBe("match this");
+    expect(form.getAll("file")).toEqual([shot]);
+  });
+
   it("sends a message and returns your entry", async () => {
     const fn = mockFetch(201, aYouEntry(3, "and the logout"));
     expect(await sendMessage("c1", { text: "and the logout" })).toEqual(aYouEntry(3, "and the logout"));

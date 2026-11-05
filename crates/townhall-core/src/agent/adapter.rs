@@ -22,6 +22,11 @@ pub struct LaunchOptions {
     /// `claude --add-dir`: absolute folders outside the worktree claude may read without
     /// asking (a task's brief, its conversation's attachments).
     pub add_dirs: Vec<PathBuf>,
+    /// `claude --mcp-config`: the JSON of the one MCP server the agent gets.
+    pub mcp_config: Option<String>,
+    /// The MCP tools of that server (`mcp__<server>__<tool>`), allowed without asking and
+    /// kept apart from `allowed_tools`: they never turn a type with no tool list into one.
+    pub mcp_tools: Vec<String>,
 }
 
 /// Knows how to turn launch options into the shell command run inside tmux.

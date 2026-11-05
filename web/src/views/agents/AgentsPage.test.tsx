@@ -86,6 +86,24 @@ describe("AgentsPage", () => {
     expect(await screen.findByText("claude defaults")).toBeInTheDocument();
   });
 
+  it("shows where a type may hand its task back to", async () => {
+    vi.mocked(library.getAgentType).mockImplementation((name) =>
+      Promise.resolve(
+        anAgentType({
+          name,
+          canHandBackTo: name === "planner" ? ["builder"] : name === "builder" ? [] : null,
+        }),
+      ),
+    );
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    expect(await screen.findByText("builder", { selector: "dd" })).toBeInTheDocument();
+    await userEvent.click(await rowOf("builder"));
+    expect(await screen.findByText("nobody", { selector: "dd" })).toBeInTheDocument();
+    await userEvent.click(await rowOf("dev-server"));
+    expect(await screen.findByText("any type", { selector: "dd" })).toBeInTheDocument();
+  });
+
   it("copies the TOML", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });

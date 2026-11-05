@@ -173,8 +173,11 @@ fn mcp_tools_are_allowed_but_are_not_built_in_tools() {
 #[test]
 fn no_tool_list_leaves_the_mode_and_tools_alone() {
     assert_eq!(
-        with_tools(&[], PermissionMode::AcceptEdits)[..1],
+        with_tools(&[], PermissionMode::AcceptEdits),
         ["--permission-mode=acceptEdits"]
+            .into_iter()
+            .chain(AGENT_ISOLATION)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -341,4 +344,58 @@ fn agents_start_without_the_users_claude_setup() {
         !argv.iter().any(|a| a.starts_with("--mcp-config")),
         "agents get no MCP server: {argv:?}"
     );
+}
+
+const HAND_BACK: &str = "mcp__townhall__hand_back";
+const MCP: &str = r#"{"mcpServers":{"townhall":{"type":"http","url":"http://x/api/tasks/t/mcp"}}}"#;
+
+fn with_mcp(tools: &[&str]) -> Vec<String> {
+    let o = LaunchOptions {
+        allowed_tools: tools.iter().map(|t| t.to_string()).collect(),
+        mcp_config: Some(MCP.into()),
+        mcp_tools: vec![HAND_BACK.into()],
+        ..LaunchOptions::default()
+    };
+    ClaudeCodeAdapter::args(&o).unwrap()
+}
+
+#[test]
+fn an_mcp_server_comes_after_the_isolation_flags_with_its_tool_allowed() {
+    let argv = with_mcp(&[]);
+    let want: Vec<String> = ["--permission-mode=acceptEdits"]
+        .into_iter()
+        .map(String::from)
+        .chain(["--allowedTools=mcp__townhall__hand_back".to_string()])
+        .chain(AGENT_ISOLATION.map(String::from))
+        .chain([format!("--mcp-config={MCP}")])
+        .collect();
+    assert_eq!(argv, want);
+}
+
+#[test]
+fn an_mcp_tool_joins_the_tool_list_without_adding_a_built_in() {
+    let argv = with_mcp(&["Read", "Grep"]);
+    assert!(argv.contains(&"--tools=Read,Grep".to_string()), "{argv:?}");
+    assert!(
+        argv.contains(&format!("--allowedTools=Read,Grep,{HAND_BACK}")),
+        "{argv:?}"
+    );
+    let notice = tools_notice(&format!("Read, Grep, {HAND_BACK}"));
+    assert!(argv.iter().any(|a| a.ends_with(&notice)), "{argv:?}");
+}
+
+#[test]
+fn an_mcp_config_is_a_checked_value() {
+    for bad in ["--x", "{\u{7}}"] {
+        let o = LaunchOptions {
+            mcp_config: Some(bad.into()),
+            ..LaunchOptions::default()
+        };
+        assert!(ClaudeCodeAdapter::args(&o).is_err(), "{bad}");
+    }
+    let comma = LaunchOptions {
+        mcp_tools: vec!["a,b".into()],
+        ..LaunchOptions::default()
+    };
+    assert!(ClaudeCodeAdapter::args(&comma).is_err());
 }

@@ -74,6 +74,14 @@ export function TaskEvent({ entry }: { readonly entry: Entry<"event"> }) {
   );
 }
 
+export function HandoffEvent({ entry }: { readonly entry: Entry<"handoff"> }) {
+  return (
+    <EventLine sign="↩" kind="handoff" at={entry.at}>
+      <b>{entry.task}</b>: {entry.from} handed back to <b>{entry.to}</b>, {entry.reason}
+    </EventLine>
+  );
+}
+
 export function ErrorEvent({ entry }: { readonly entry: Entry<"error"> }) {
   return (
     <EventLine sign="×" kind="error" at={entry.at}>

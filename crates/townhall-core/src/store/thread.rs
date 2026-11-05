@@ -13,7 +13,7 @@ use crate::{clock, Error, Result};
 const YOU: &str = "you";
 const TOWNHALL: &str = "townhall";
 
-fn next_id(tx: &Transaction<'_>, conversation_id: &str, at: &str) -> Result<u64> {
+pub(super) fn next_id(tx: &Transaction<'_>, conversation_id: &str, at: &str) -> Result<u64> {
     let changed = tx.execute(
         "update conversations set last_entry_id = last_entry_id + 1, updated_at = ?2 where id = ?1",
         params![conversation_id, at],
@@ -42,7 +42,11 @@ fn check_attachments(tx: &Transaction<'_>, conversation_id: &str, ids: &[String]
     Ok(())
 }
 
-fn insert(tx: &Transaction<'_>, conversation_id: &str, entry: &ThreadEntry) -> Result<()> {
+pub(super) fn insert(
+    tx: &Transaction<'_>,
+    conversation_id: &str,
+    entry: &ThreadEntry,
+) -> Result<()> {
     let message = |author: &str, text: &str, attachments: &[String]| -> Result<()> {
         tx.execute(
             "insert into messages (conversation_id, id, author, text, attachments, at)

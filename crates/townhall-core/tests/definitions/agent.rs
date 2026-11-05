@@ -207,6 +207,7 @@ fn launch_fields_drop_empty_text() {
         tools: Vec::new(),
         prompt: Some(String::new()),
         command: Some("cargo test".into()),
+        can_hand_back_to: None,
     };
     let fields = def.launch_fields();
     assert_eq!(fields.model, None);
@@ -221,4 +222,41 @@ fn check_agent_parses_and_validates() {
     assert_eq!(parse_failure.len(), 1);
     let rule_failure = check_agent("name = \"a b\"\nadapter = \"shell\"\n").unwrap_err();
     assert_eq!(rule_failure.len(), 2);
+}
+
+#[test]
+fn can_hand_back_to_defaults_to_any_type() {
+    let def = parse_agent(MINIMAL).unwrap().def;
+    assert_eq!(def.can_hand_back_to, None);
+    let all = ["coder".to_string(), "shipper".to_string()];
+    assert_eq!(def.hand_back_targets("shipper", &all), ["coder"]);
+}
+
+#[test]
+fn can_hand_back_to_limits_the_targets() {
+    let source = format!("{MINIMAL}can_hand_back_to = [\"coder\", \"Tester\"]\n");
+    let def = check_agent(&source).unwrap().def;
+    assert_eq!(
+        def.can_hand_back_to.as_deref(),
+        Some(&["coder".to_string(), "Tester".to_string()][..])
+    );
+    let all = [
+        "coder".to_string(),
+        "tester".to_string(),
+        "shipper".to_string(),
+    ];
+    assert_eq!(def.hand_back_targets("a", &all), ["coder", "tester"]);
+    let none = check_agent(&format!("{MINIMAL}can_hand_back_to = []\n"))
+        .unwrap()
+        .def;
+    assert!(none.hand_back_targets("a", &all).is_empty());
+}
+
+#[test]
+fn can_hand_back_to_must_hold_valid_unique_names() {
+    for bad in ["[\"a b\"]", "[\"\"]", "[\"coder\", \"CODER\"]"] {
+        let errors = agent_errors(&format!("{MINIMAL}can_hand_back_to = {bad}\n"));
+        assert_eq!(errors.len(), 1, "{bad}: {errors:?}");
+        assert!(errors[0].contains("can_hand_back_to"), "{errors:?}");
+    }
 }

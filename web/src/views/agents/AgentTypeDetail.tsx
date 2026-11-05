@@ -38,6 +38,11 @@ function Field({ label, value }: { readonly label: string; readonly value: strin
   );
 }
 
+function handBackTo(allowed: readonly string[] | null): string {
+  if (allowed === null) return "any type";
+  return allowed.length > 0 ? allowed.join(", ") : "nobody";
+}
+
 export function AgentTypeDetail({ name, usage }: { readonly name: string; readonly usage: Usage | null }) {
   const { data, error, loading } = useAgentType(name);
   if (error !== null && data === null) return <Banner level="error">{error}</Banner>;
@@ -68,6 +73,7 @@ export function AgentTypeDetail({ name, usage }: { readonly name: string; readon
             <Field label="tokens" value={compactNumber(usage.tokens)} />
           </>
         )}
+        <Field label="hands back to" value={handBackTo(data.canHandBackTo)} />
       </dl>
       <pre className="th-agent-source" tabIndex={0}>
         {data.source}

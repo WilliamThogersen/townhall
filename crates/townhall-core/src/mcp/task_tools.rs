@@ -12,10 +12,13 @@ use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
 use crate::redact::redact;
 
 use super::checks::{self, Checked};
+use super::hand_back::{self, HAND_BACK};
 use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 use super::logs::{self as log_tools, LOG_SUMMARY, READ_LOGS};
 use super::rpc::ToolRunner;
-use super::{status, tools, CREATE_TASK, MAX_TITLE_LEN, SET_TITLE, TASK_STATUS};
+use super::{
+    status, tools, ToolDef, CREATE_TASK, INSTRUCTIONS, MAX_TITLE_LEN, SET_TITLE, TASK_STATUS,
+};
 
 /// The tools of the conversation `conversation_id`.
 pub(crate) struct TaskTools<'a> {
@@ -43,6 +46,14 @@ fn unknown_tool(name: &str) -> String {
 impl ToolRunner for TaskTools<'_> {
     fn conversation(&self) -> &str {
         self.conversation_id
+    }
+
+    fn tools(&self) -> Vec<ToolDef> {
+        tools()
+    }
+
+    fn instructions(&self) -> &'static str {
+        INSTRUCTIONS
     }
 
     async fn call(&self, name: &str, arguments: Value) -> Checked<Value> {
@@ -136,5 +147,33 @@ impl TaskTools<'_> {
             })
             .await
             .map_err(|e| e.to_string())
+    }
+}
+
+/// The tools of the agent of the task `task`.
+pub(crate) struct HandBackTools<'a> {
+    pub ctx: &'a Context,
+    pub task: &'a str,
+}
+
+impl ToolRunner for HandBackTools<'_> {
+    /// A task agent has no conversation of its own: its calls are logged under the task id.
+    fn conversation(&self) -> &str {
+        self.task
+    }
+
+    fn tools(&self) -> Vec<ToolDef> {
+        hand_back::tools()
+    }
+
+    fn instructions(&self) -> &'static str {
+        hand_back::INSTRUCTIONS
+    }
+
+    async fn call(&self, name: &str, arguments: Value) -> Checked<Value> {
+        match name {
+            HAND_BACK => hand_back::hand_back(self.ctx, self.task, parse(arguments)?).await,
+            other => Err(format!("unknown tool `{other}`: use hand_back")),
+        }
     }
 }

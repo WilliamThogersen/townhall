@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::fsutil::write_atomic;
-use crate::model::Task;
+use crate::model::{Handoff, Task};
 use crate::{Error, Home, Result};
 
 use super::plan;
@@ -27,10 +27,16 @@ pub fn order(brief: &Path) -> String {
     )
 }
 
-/// Writes (or rewrites) the task's brief with its attachments' paths; returns its path.
-pub async fn write(home: &Home, task: &Task, files: &[PathBuf]) -> Result<PathBuf> {
+/// Writes (or rewrites) the task's brief with its hand backs and attachments' paths; returns
+/// its path.
+pub async fn write(
+    home: &Home,
+    task: &Task,
+    files: &[PathBuf],
+    handoffs: &[Handoff],
+) -> Result<PathBuf> {
     let path = brief_file(home, &task.name);
-    let text = plan::brief_text(&task.title, &task.prompt, files);
+    let text = plan::brief_text(&task.title, &task.prompt, files, handoffs);
     let (home, target) = (home.clone(), path.clone());
     tokio::task::spawn_blocking(move || {
         if let Some(dir) = target.parent() {

@@ -163,7 +163,7 @@ describe("useConversationActions", () => {
     await actions.stop("c1");
     expect((await actions.end("c1")).ended).toBe(true);
     await actions.patch("c1", { title: "login" });
-    expect(start).toHaveBeenCalledWith({ text: "fix login" });
+    expect(start).toHaveBeenCalledWith({ text: "fix login" }, []);
     expect(send).toHaveBeenCalledWith("c1", { text: "hi" });
     expect(stop).toHaveBeenCalledWith("c1");
     expect(end).toHaveBeenCalledWith("c1");

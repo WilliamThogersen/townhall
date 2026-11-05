@@ -80,6 +80,40 @@ pub async fn create(ctx: &Context, message: NewMessage) -> Result<ConversationDe
     store.detail(&conversation.id).await
 }
 
+#[derive(Debug)]
+pub struct StartFile {
+    pub name: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+
+pub async fn create_with_files(
+    ctx: &Context,
+    text: String,
+    files: Vec<StartFile>,
+) -> Result<ConversationDetail> {
+    let blank = NewMessage {
+        text,
+        attachments: vec!["0".repeat(12); files.len()],
+    };
+    check_message(&blank)?;
+    let store = ctx.store()?;
+    let conversation = store.create_conversation().await?;
+    let mut ids = Vec::with_capacity(files.len());
+    for file in files {
+        let saved = store
+            .save_attachment(&conversation.id, &file.name, &file.mime, file.bytes)
+            .await?;
+        ids.push(saved.id);
+    }
+    let message = NewMessage {
+        text: blank.text,
+        attachments: ids,
+    };
+    send(ctx, &conversation.id, message).await?;
+    store.detail(&conversation.id).await
+}
+
 /// Appends your message and starts a turn. `Conflict` while one runs.
 pub async fn send(ctx: &Context, id: &str, message: NewMessage) -> Result<ThreadEntry> {
     check_message(&message)?;

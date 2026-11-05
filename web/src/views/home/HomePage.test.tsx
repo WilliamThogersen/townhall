@@ -9,6 +9,7 @@ import * as statsApi from "../../api/stats";
 import type { Repo } from "../../api/types";
 import { TestDataProvider } from "../../data/testing";
 import { renderWithHints, shownHints } from "../../test/renderWithHints";
+import { stubObjectUrls, type FakeObjectUrls } from "../../attachments/testObjectUrls";
 import { HomePage } from "./HomePage";
 
 const HERO_PLACEHOLDER = "what should we work on? name a repo, or describe the code";
@@ -40,6 +41,103 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.restoreAllMocks());
+
+function pastedImage(name = "Screenshot 2026-11-05 at 10.06.48.png"): File {
+  return new File(["x"], name, { type: "image/png" });
+}
+
+function paste(input: HTMLElement, file: File) {
+  return fireEvent.paste(input, { clipboardData: { files: [file], items: [], types: ["Files"] } });
+}
+
+describe("HomePage attachments", () => {
+  let urls: FakeObjectUrls;
+  beforeEach(() => {
+    urls = stubObjectUrls();
+  });
+  afterEach(() => urls.restore());
+
+  it("shows a pasted image as a thumbnail and leaves the input empty", async () => {
+    renderHome();
+    const input = await composer();
+    const file = pastedImage();
+    expect(paste(input, file)).toBe(false);
+    expect(input).toHaveValue("");
+    const group = await screen.findByRole("group", { name: "Attachments" });
+    expect(group.querySelector("img")).toHaveAttribute("src", `blob:${file.name}`);
+    expect(screen.getByRole("button", { name: "start" })).toBeEnabled();
+  });
+
+  it("removes a thumbnail with its remove button", async () => {
+    renderHome();
+    const input = await composer();
+    const file = pastedImage();
+    paste(input, file);
+    fireEvent.click(await screen.findByRole("button", { name: `Remove ${file.name}` }));
+    expect(screen.queryByRole("group", { name: "Attachments" })).toBeNull();
+    expect(screen.getByRole("button", { name: "start" })).toBeDisabled();
+  });
+
+  it("opens the lightbox from a thumbnail", async () => {
+    renderHome();
+    const input = await composer();
+    const file = pastedImage();
+    paste(input, file);
+    fireEvent.click(await screen.findByRole("button", { name: `View ${file.name}` }));
+    expect(await screen.findByRole("button", { name: "close esc" })).toBeInTheDocument();
+  });
+
+  it("shows a pasted file as a card", async () => {
+    renderHome();
+    const input = await composer();
+    paste(input, new File(["notes"], "notes.txt", { type: "text/plain" }));
+    const group = await screen.findByRole("group", { name: "Attachments" });
+    expect(group.querySelector(".th-file")).toHaveTextContent("notes.txt");
+  });
+
+  it("starts the conversation with the text and the files, then opens it", async () => {
+    const detail = aDetail({ conversation: aConversation({ id: "c43" }) });
+    const start = vi.spyOn(conversationsApi, "startConversation").mockResolvedValue(detail);
+    renderHome();
+    const input = await composer();
+    const file = pastedImage();
+    paste(input, file);
+    fireEvent.change(input, { target: { value: "match this" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(window.location.pathname).toBe("/c/c43"));
+    expect(start).toHaveBeenCalledWith({ text: "match this" }, [file]);
+  });
+
+  it("starts with only a file", async () => {
+    const detail = aDetail({ conversation: aConversation({ id: "c44" }) });
+    const start = vi.spyOn(conversationsApi, "startConversation").mockResolvedValue(detail);
+    renderHome();
+    const input = await composer();
+    const file = pastedImage();
+    paste(input, file);
+    fireEvent.click(await screen.findByRole("button", { name: "start" }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith({ text: "" }, [file]));
+  });
+
+  it("keeps the files when starting fails", async () => {
+    vi.spyOn(conversationsApi, "startConversation").mockRejectedValue(new ApiError("network", "cannot reach the daemon"));
+    renderHome();
+    const input = await composer();
+    paste(input, pastedImage());
+    fireEvent.click(await screen.findByRole("button", { name: "start" }));
+    expect(await screen.findByText("error: cannot reach the daemon")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Attachments" })).toBeInTheDocument();
+  });
+
+  it("takes files dropped on the page", async () => {
+    const { container } = renderHome();
+    await composer();
+    const file = pastedImage("dropped.png");
+    fireEvent.drop(container.querySelector(".th-home")!, { dataTransfer: { files: [file], types: ["Files"] } });
+    const group = await screen.findByRole("group", { name: "Attachments" });
+    expect(group.querySelector("img")).toHaveAttribute("src", "blob:dropped.png");
+  });
+});
 
 describe("HomePage", () => {
   it("greets by first name with the pixel logo", async () => {
@@ -88,7 +186,7 @@ describe("HomePage", () => {
     expect(start).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(window.location.pathname).toBe("/c/c42"));
-    expect(start).toHaveBeenCalledWith({ text: "fix the login loop" });
+    expect(start).toHaveBeenCalledWith({ text: "fix the login loop" }, []);
   });
 
   it("keeps the text and shows the error when starting fails", async () => {

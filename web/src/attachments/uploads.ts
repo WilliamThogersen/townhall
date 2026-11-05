@@ -43,6 +43,16 @@ export function newUpload(
   };
 }
 
+export function stagedUpload(
+  key: string,
+  file: File,
+  previewUrl: string | null,
+  rejection: string | null,
+): PendingUpload {
+  const upload = newUpload(key, file, previewUrl, rejection);
+  return rejection === null ? { ...upload, status: "done", percent: 100 } : upload;
+}
+
 type Change = (upload: PendingUpload) => PendingUpload | null;
 
 function changeOne(
@@ -102,6 +112,9 @@ export const isUploading = (uploads: readonly PendingUpload[]): boolean =>
 
 export const doneAttachmentIds = (uploads: readonly PendingUpload[]): readonly string[] =>
   uploads.flatMap((upload) => (upload.status === "done" && upload.attachment ? [upload.attachment.id] : []));
+
+export const stagedFiles = (uploads: readonly PendingUpload[]): readonly File[] =>
+  uploads.flatMap((upload) => (upload.status === "done" && upload.attachment === null ? [upload.file] : []));
 
 export function latestError(uploads: readonly PendingUpload[]): string | null {
   const failed = uploads.filter((upload) => upload.status === "failed");

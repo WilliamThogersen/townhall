@@ -47,7 +47,7 @@ describe("Composer hero", () => {
     const onSubmit = vi.fn(() => pending.promise);
     render(<Composer variant="hero" onSubmit={onSubmit} />);
     await user.type(input(), "  fix the login loop  {Enter}");
-    expect(onSubmit).toHaveBeenCalledWith("fix the login loop", []);
+    expect(onSubmit).toHaveBeenCalledWith("fix the login loop", [], []);
     expect(screen.getByRole("button", { name: "starting…" })).toBeDisabled();
     expect(input()).toHaveValue("  fix the login loop  ");
     expect(input()).toHaveAttribute("readonly");
@@ -62,7 +62,7 @@ describe("Composer hero", () => {
     render(<Composer variant="hero" onSubmit={onSubmit} />);
     await user.type(input(), "find slow queries");
     await user.click(screen.getByRole("button", { name: "start" }));
-    expect(onSubmit).toHaveBeenCalledWith("find slow queries", []);
+    expect(onSubmit).toHaveBeenCalledWith("find slow queries", [], []);
   });
 
   it("adds a line on shift enter", async () => {

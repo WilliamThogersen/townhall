@@ -76,6 +76,13 @@ pub enum EntryBody {
     /// A system event for the planner, not a message from you: a task of the
     /// conversation ended, failed or asked something. It starts a planner turn.
     Event { text: String },
+    /// An agent handed its task back to another agent type, with why.
+    Handoff {
+        task: String,
+        from: String,
+        to: String,
+        reason: String,
+    },
     /// Townhall's own failure, for example its session exited.
     Error { message: String },
 }
@@ -171,6 +178,15 @@ mod tests {
                 text: "y".into(),
             },
             json!({"kind": "agent", "agent": "fix-login", "event": "sent", "text": "y"}),
+        );
+        round_trip(
+            EntryBody::Handoff {
+                task: "fix-login".into(),
+                from: "shipper".into(),
+                to: "coder".into(),
+                reason: "ci fails".into(),
+            },
+            json!({"kind": "handoff", "task": "fix-login", "from": "shipper", "to": "coder", "reason": "ci fails"}),
         );
     }
 }
