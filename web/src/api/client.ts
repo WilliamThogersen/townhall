@@ -1,7 +1,7 @@
 import { wsApiBase, type PageLocation } from "./base";
 import { parseAgentInfos, parseInfo, parseString } from "./guards";
 import { request } from "./request";
-import type { AgentInfo, Info } from "./types";
+import type { AgentInfo, AgentKey, Info } from "./types";
 
 const enc = encodeURIComponent;
 
@@ -16,6 +16,9 @@ export const stopAgent = (name: string): Promise<string> =>
 
 export const sendText = (name: string, text: string): Promise<string> =>
   request("POST", `/agents/${enc(name)}/send`, parseString, { text });
+
+export const sendKey = (name: string, key: AgentKey): Promise<string> =>
+  request("POST", `/agents/${enc(name)}/send`, parseString, { key });
 
 export const getOutput = (name: string): Promise<string> =>
   request("GET", `/agents/${enc(name)}/output`, parseString);

@@ -24,6 +24,7 @@ All return parsed, readonly data. `signal` aborts the fetch.
 | `client.ts` | `listAgents(signal?)` | `GET /agents` | `readonly AgentInfo[]` (with `repo` and `state`) |
 | `client.ts` | `getInfo(signal?)` | `GET /info` | `Info`, `userName` always present (`string` or `null`) |
 | `client.ts` | `stopAgent`, `sendText`, `getOutput`, `streamUrl` | phase 1 routes | unchanged. no `createAgent`: agents only come from tasks (2.13) |
+| `client.ts` | `sendKey(name, key: AgentKey)` | `POST /agents/{name}/send` with `{ key }` | the name. the needs-you block uses it for claude's folder trust dialog (`thread/trustDialog.ts`) |
 | `conversations.ts` | `listConversations(signal?)` | `GET /conversations` | `readonly Conversation[]`, newest activity first |
 | `conversations.ts` | `getConversation(id, signal?)` | `GET /conversations/{id}` | `ConversationDetail` |
 | `conversations.ts` | `startConversation(input: NewMessageInput)` | `POST /conversations` | `ConversationDetail` |

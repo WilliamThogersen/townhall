@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getInfo, listAgents, sendText, streamUrl } from "./client";
+import { getInfo, listAgents, sendKey, sendText, streamUrl } from "./client";
 import { ApiError } from "./errors";
 
 const agent = { name: "a", kind: "shell", branch: "townhall/a", worktree: "/w/a", alive: true };
@@ -66,6 +66,15 @@ describe("api client", () => {
     expect(url).toBe("/api/agents/a%20b/send");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ text: "y" });
+  });
+
+  it("presses one key with a key body and no text", async () => {
+    const fn = mockFetch(200, { success: true, data: "a b", error: null });
+    expect(await sendKey("a b", "up")).toBe("a b");
+    const [url, init] = fn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/agents/a%20b/send");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ key: "up" });
   });
 
   it("builds ws urls from the page location", () => {
