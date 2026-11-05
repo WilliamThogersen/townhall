@@ -6,6 +6,7 @@ describe("matchRoute", () => {
     ["/", "home"],
     ["/townhall", "control"],
     ["/repos", "repos"],
+    ["/agents", "agents"],
     ["/settings", "settings"],
     ["/search", "search"],
     ["/c/abc", "conversation"],

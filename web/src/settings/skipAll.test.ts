@@ -28,9 +28,14 @@ describe("skip all", () => {
   });
 
   it("is chosen only on the settings screen", () => {
+    // the agent library only shows a type's own mode, read-only
     expect(filesWith(/\bpermissionMode\b/)).toEqual([
+      "/src/api/fixtures.ts",
+      "/src/api/library.ts",
       "/src/api/types.ts",
       "/src/settings/settings.ts",
+      "/src/views/agents/AgentTypeDetail.tsx",
+      "/src/views/agents/AgentTypeRow.tsx",
       "/src/views/settings/PermissionRow.tsx",
     ]);
     expect(filesWith(/\bbypassPermissions\b/)).toEqual([
