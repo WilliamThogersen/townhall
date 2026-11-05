@@ -27,6 +27,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` or `{ key }` (2.10), exactly one | the name. `text` is typed as it is (`tmux send-keys -l`, so `Down` or `C-c` stay text), then Enter. `key` (`up`, `down`, `enter`, `escape`, `tab`) is pressed alone, without text or Enter. When the agent is a task's, adds an `agent` `sent` entry to its conversation: the text, or the key as `↑`, `↓`, `⏎`, `esc`, `tab` | 400 (neither or both, an unknown key), 404 (also a dead pane), 409 | phase 1, 2.1, 2.10 |
+| POST | `/agents/{name}/allow` | `{ tool }` | adds `tool` (trimmed, checked like a `tools` entry) to the `tools` list of the agent type of the task named `name`, keeping the rest of its TOML as written, and adds an `agent` `allowed` entry to the conversation. `{ agentType, tool, added }`: `added` is false, with no entry, when the type lists it already. Only the web ask calls it, after the user picks `always allow for <type>`. It applies from the next launch of the type: a running agent keeps the list it started with | 400 (an invalid tool), 404 (no such task or type) | this change |
 | GET | `/agents/{name}/output` | | the pane text | 400, 404 (also a dead pane), 409 | phase 1, 2.1 |
 | GET (ws) | `/agents/{name}/stream` | | text frames with the pane, `error: ...` then close when it ends | 400, 404, 409 before the upgrade | phase 1, 2.1 |
 | GET | `/agents/{name}/steps` | | `Step[]` | 404 | 2.7 |
@@ -111,7 +112,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 | `repoAsk` | `question, candidates: string[], offerAll` | needs-you block from townhall: one button per candidate, plus `both` (2 candidates) or `all` when `offerAll`. A button sends its text as a normal message |
 | `tasksCreated` | `tasks: string[]` | task block |
 | `needsYou` | `agent, question, choices: string[]` | `◆ <agent> needs you`, the question verbatim, one `send <choice>` per choice (through `/agents/{name}/send`). A choice goes as `text`, except in claude's folder trust dialog (`claude asks whether to trust this worktree`), which reads keys and would take any text as `no, exit`: `yes, trust it` sends the key `up`, then `enter` (200 ms apart), and `no, exit` sends `enter`. That dialog has no free text answer |
-| `agent` | `agent, event: "sent" \| "passed" \| "failed" \| "ended", text` | `→` `✓` `×` `○` lines |
+| `agent` | `agent, event: "sent" \| "passed" \| "failed" \| "ended" \| "allowed", text` | `→` `✓` `×` `○` `+` lines. `allowed` has the text `<tool> to <agent type>` |
 | `error` | `message` | townhall's own failure |
 
 - `RepoRule`: `named`, `code`, `only` (2.4's `repo_infer::Rule`, same names), `picked` (an answer to a `repoAsk`), `linked` (the row menu).
