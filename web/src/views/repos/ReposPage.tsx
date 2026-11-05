@@ -3,7 +3,7 @@ import { toMessage } from "../../api/errors";
 import type { Repo } from "../../api/types";
 import { useAgentInfos, useConversations, useRepos, useTasks } from "../../data";
 import { NO_REPOS_TEXT } from "../../repos/copy";
-import { userHomeOf } from "../../repos/repoPath";
+import { clonesDirOf, userHomeOf } from "../../repos/repoPath";
 import { summarizeRepos, type RepoSummary } from "../../repos/repoSummary";
 import { useAddRepo, type AddRepoFlow } from "../../repos/useAddRepo";
 import { useInfo } from "../../repos/useInfo";
@@ -17,6 +17,8 @@ import { RepoRow } from "./RepoRow";
 import { useRepoKeys } from "./useRepoKeys";
 import "../settings/cap.css";
 
+type RemoveRepo = (name: string, deleteClone?: boolean) => Promise<void>;
+
 interface Problem {
   readonly message: string;
   readonly dismiss: (() => void) | null;
@@ -28,9 +30,10 @@ function useSummaries(repos: readonly Repo[] | null): readonly RepoSummary[] | n
   const { agents } = useAgentInfos();
   const { info } = useInfo();
   const home = info ? userHomeOf(info.home) : null;
+  const clonesDir = info ? clonesDirOf(info.home) : null;
   return useMemo(
-    () => (repos === null ? null : summarizeRepos(repos, { home, conversations, tasks, agents })),
-    [repos, home, conversations, tasks, agents],
+    () => (repos === null ? null : summarizeRepos(repos, { home, clonesDir, conversations, tasks, agents })),
+    [repos, home, clonesDir, conversations, tasks, agents],
   );
 }
 
@@ -73,7 +76,7 @@ interface BodyProps {
   readonly summaries: readonly RepoSummary[] | null;
   readonly loading: boolean;
   readonly flow: AddRepoFlow;
-  readonly onRemove: (name: string) => Promise<void>;
+  readonly onRemove: RemoveRepo;
 }
 
 function ReposBody({ summaries, loading, flow, onRemove }: BodyProps) {
@@ -98,13 +101,13 @@ function ReposBody({ summaries, loading, flow, onRemove }: BodyProps) {
   );
 }
 
-function useRemove(remove: (name: string) => Promise<void>) {
+function useRemove(remove: RemoveRepo) {
   const [error, setError] = useState<string | null>(null);
-  const run = useCallback(
-    async (name: string) => {
+  const run = useCallback<RemoveRepo>(
+    async (name, deleteClone) => {
       setError(null);
       try {
-        await remove(name);
+        await remove(name, deleteClone);
       } catch (e) {
         setError(toMessage(e));
       }

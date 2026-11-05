@@ -19,7 +19,15 @@ pub fn check_deletable(home: &Home, repo: &Repo) -> Result<()> {
     }
     let unpushed = run_blocking(
         "git",
-        &["log", "--branches", "--not", "--remotes", "--oneline", "-n", "1"],
+        &[
+            "log",
+            "--branches",
+            "--not",
+            "--remotes",
+            "--oneline",
+            "-n",
+            "1",
+        ],
         Some(&repo.path),
     )?;
     if !unpushed.is_empty() {
@@ -27,8 +35,17 @@ pub fn check_deletable(home: &Home, repo: &Repo) -> Result<()> {
             "repo `{name}` has commits that are not pushed anywhere: push or merge them first"
         )));
     }
-    let worktrees = run_blocking("git", &["worktree", "list", "--porcelain"], Some(&repo.path))?;
-    if worktrees.lines().filter(|l| l.starts_with("worktree ")).count() > 1 {
+    let worktrees = run_blocking(
+        "git",
+        &["worktree", "list", "--porcelain"],
+        Some(&repo.path),
+    )?;
+    if worktrees
+        .lines()
+        .filter(|l| l.starts_with("worktree "))
+        .count()
+        > 1
+    {
         return Err(Error::Conflict(format!(
             "repo `{name}` still has worktrees: remove them first"
         )));
@@ -37,8 +54,14 @@ pub fn check_deletable(home: &Home, repo: &Repo) -> Result<()> {
 }
 
 fn check_managed(home: &Home, path: &Path) -> Result<()> {
-    let root = home.repos_dir()?.canonicalize().map_err(|e| Error::io("repos folder", e))?;
-    let inside = path.canonicalize().ok().filter(|p| p.parent() == Some(root.as_path()));
+    let root = home
+        .repos_dir()?
+        .canonicalize()
+        .map_err(|e| Error::io("repos folder", e))?;
+    let inside = path
+        .canonicalize()
+        .ok()
+        .filter(|p| p.parent() == Some(root.as_path()));
     match inside {
         Some(_) => Ok(()),
         None => Err(Error::InvalidInput(format!(

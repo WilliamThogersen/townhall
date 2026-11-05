@@ -192,7 +192,10 @@ async fn delete_clone_removes_a_managed_clone_and_never_a_user_folder() {
     call(&app, "POST", "/api/repos", Some(json!({"path": mine}))).await;
     let (s, v) = call(&app, "DELETE", "/api/repos/beta?deleteClone=true", None).await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
-    assert!(v["error"].as_str().unwrap().contains("never deleted"), "{v}");
+    assert!(
+        v["error"].as_str().unwrap().contains("never deleted"),
+        "{v}"
+    );
     assert!(mine.join(".git").exists());
     let (_, v) = call(&app, "GET", "/api/repos", None).await;
     assert_eq!(v["data"].as_array().unwrap().len(), 3);

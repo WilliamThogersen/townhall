@@ -161,7 +161,10 @@ async fn a_clean_managed_clone_can_be_deleted_with_its_registration() {
 async fn a_user_folder_is_never_deleted() {
     let env = env();
     let mine = init_named(&env.dir.path().join("mine"), "shop", "main").await;
-    env.registry.add(&add(&mine.to_string_lossy())).await.unwrap();
+    env.registry
+        .add(&add(&mine.to_string_lossy()))
+        .await
+        .unwrap();
     let err = env.registry.remove_with_clone("shop").await.unwrap_err();
     let Error::InvalidInput(msg) = &err else {
         panic!("{err:?}")
@@ -183,7 +186,15 @@ async fn a_clone_with_changes_or_unpushed_commits_is_refused_and_kept() {
     git(&repo.path, &["add", "-A"]).await;
     git(
         &repo.path,
-        &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "wip"],
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "wip",
+        ],
     )
     .await;
     let err = env.registry.remove_with_clone("shop").await.unwrap_err();
