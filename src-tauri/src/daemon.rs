@@ -1,12 +1,13 @@
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, Mutex};
+use townhall_core::redact::redact;
 use townhall_core::store::Store;
 use townhall_core::{ContextOptions, Home, Workspace};
 use townhall_daemon::{router_with_cors, serve, start_background, AppState, Background};
@@ -82,9 +83,18 @@ impl Controller {
                 self.addr
             ));
         }
+        let began = Instant::now();
         stop_locked(&mut slot).await;
         wait_released(self.addr).await;
-        start_locked(&mut slot, self, repo).await
+        let mode = start_locked(&mut slot, self, repo).await?;
+        tracing::info!(
+            target: "townhall::app",
+            event = "daemon.restart",
+            repo = %repo.display(),
+            duration_ms = began.elapsed().as_millis() as u64,
+            "daemon restarted"
+        );
+        Ok(mode)
     }
 
     pub async fn stop(&self) {
@@ -111,6 +121,7 @@ async fn start_locked(slot: &mut Slot, c: &Controller, repo: &Path) -> Result<Mo
         Ok(l) => l,
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
             slot.mode = Mode::External;
+            log_mode(Mode::External);
             return Ok(Mode::External);
         }
         Err(e) => return Err(format!("cannot bind {addr}: {e}")),
@@ -129,7 +140,12 @@ async fn start_locked(slot: &mut Slot, c: &Controller, repo: &Path) -> Result<Mo
             let _ = rx.await;
         };
         if let Err(e) = serve(listener, app, shutdown).await {
-            eprintln!("townhall-app: {e}");
+            tracing::error!(
+                target: "townhall::app",
+                event = "daemon.serve_failed",
+                error = %redact(&e.to_string()),
+                "daemon server stopped with an error"
+            );
         }
     });
     slot.running = Some(Running {
@@ -138,6 +154,7 @@ async fn start_locked(slot: &mut Slot, c: &Controller, repo: &Path) -> Result<Mo
         background,
     });
     slot.mode = Mode::Embedded;
+    log_mode(Mode::Embedded);
     Ok(Mode::Embedded)
 }
 
@@ -153,12 +170,27 @@ async fn stop_locked(slot: &mut Slot) {
         let _ = shutdown.send(());
         // Open websockets can hold a graceful shutdown forever, so cap the wait.
         if tokio::time::timeout(STOP_GRACE, &mut handle).await.is_err() {
-            eprintln!("townhall-app: daemon shutdown timed out, aborting server task");
+            tracing::warn!(
+                target: "townhall::app",
+                event = "daemon.stop_timeout",
+                timeout_ms = STOP_GRACE.as_millis() as u64,
+                "daemon shutdown timed out, aborting server task"
+            );
             handle.abort();
             let _ = handle.await;
         }
     }
     slot.mode = Mode::Stopped;
+    log_mode(Mode::Stopped);
+}
+
+fn log_mode(mode: Mode) {
+    let mode = match mode {
+        Mode::Embedded => "embedded",
+        Mode::External => "external",
+        Mode::Stopped => "stopped",
+    };
+    tracing::info!(target: "townhall::app", event = "daemon.mode", mode, "daemon mode is {mode}");
 }
 
 #[cfg(test)]
@@ -201,6 +233,7 @@ mod tests {
     // so the adopt scenario runs last and never feeds its port to the lifecycle scenario.
     #[tokio::test(flavor = "multi_thread")]
     async fn lifecycle_then_adopt_existing() {
+        let (capture, _guard) = townhall_daemon::logging::test_capture();
         let dir = tempfile::tempdir().unwrap();
         let home = Home::at(dir.path().join(".townhall"));
         let store = Store::open(&home, EventBus::new()).unwrap();
@@ -214,5 +247,26 @@ mod tests {
         assert_eq!(c.start(dir.path()).await.unwrap(), Mode::External);
         let err = c.restart(dir.path()).await.unwrap_err();
         assert!(err.contains("already running"), "{err}");
+
+        let modes: Vec<String> = capture
+            .events("daemon.mode")
+            .iter()
+            .map(|l| l["mode"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            modes.first().map(String::as_str),
+            Some("embedded"),
+            "{modes:?}"
+        );
+        assert_eq!(
+            modes.last().map(String::as_str),
+            Some("external"),
+            "{modes:?}"
+        );
+        assert!(modes.contains(&"stopped".to_string()), "{modes:?}");
+        let restarts = capture.events("daemon.restart");
+        assert!(!restarts.is_empty());
+        assert!(restarts[0]["duration_ms"].is_number());
+        assert!(restarts[0]["repo"].is_string());
     }
 }

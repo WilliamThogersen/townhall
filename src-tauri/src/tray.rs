@@ -1,20 +1,31 @@
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
+use townhall_core::redact::redact;
 
 const SHOW_ID: &str = "show";
 const QUIT_ID: &str = "quit";
 
 pub fn show_main(app: &AppHandle) {
     let Some(win) = app.get_webview_window("main") else {
-        eprintln!("townhall-app: main window missing");
+        tracing::warn!(
+            target: "townhall::app",
+            event = "window.missing",
+            "main window missing"
+        );
         return;
     };
     for result in [win.show(), win.unminimize(), win.set_focus()] {
         if let Err(e) = result {
-            eprintln!("townhall-app: cannot show window: {e}");
+            tracing::warn!(
+                target: "townhall::app",
+                event = "window.show_failed",
+                error = %redact(&e.to_string()),
+                "cannot show window"
+            );
         }
     }
+    tracing::info!(target: "townhall::app", event = "window.show", "window shown");
 }
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
