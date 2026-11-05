@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { useAgentTypes } from "../../data";
+import { useAgentTypes, useAgentUsage } from "../../data";
 import { Banner } from "../../ui/Banner";
 import { DRAG_REGION } from "../../ui/dragRegion";
 import { EmptyState } from "../../ui/EmptyState";
 import { Loading } from "../../ui/Loading";
 import { AgentTypeDetail } from "./AgentTypeDetail";
 import { AgentTypeRow } from "./AgentTypeRow";
-import { defaultTypeName } from "./agentTypes";
+import { defaultTypeName, usageOf } from "./agentTypes";
 import "../settings/cap.css";
 import "./agents.css";
 
 export function AgentsPage() {
   const { data, loading, error } = useAgentTypes();
+  const usage = useAgentUsage().data;
   const [selected, setSelected] = useState<string | null>(null);
   const defaultName = data === null ? null : defaultTypeName(data);
   return (
@@ -39,6 +40,7 @@ export function AgentsPage() {
                   type={type}
                   isDefault={type.name === defaultName}
                   selected={type.name === selected}
+                  usage={usageOf(usage, type.name)}
                   onSelect={setSelected}
                 />
               ))}
@@ -46,7 +48,7 @@ export function AgentsPage() {
             {selected === null ? (
               <EmptyState title="pick an agent type to see its TOML" />
             ) : (
-              <AgentTypeDetail key={selected} name={selected} />
+              <AgentTypeDetail key={selected} name={selected} usage={usageOf(usage, selected)} />
             )}
           </div>
         ) : null}
