@@ -396,9 +396,13 @@ textarea {
   white-space: nowrap;
 }
 
-/* left column: whatever sits before the meter (empty in production) */
+/* left column: whatever sits before the meter (empty in production). It may shrink below its
+   content so it truncates first; settings and the meter keep their content width. */
 .th-sidebar-foot > * {
   grid-column: 1;
+}
+
+.th-sidebar-foot > :not(.th-btn, .th-usage) {
   min-width: 0;
 }
 
@@ -412,7 +416,8 @@ textarea {
   color: var(--th-fg);
 }
 
-/* middle column: on the foot's axis while both sides fit, shifts instead of overlapping when not */
+/* middle column: on the foot's axis while both sides fit; when not, the left column shrinks first
+   and the meter shifts off-center, never over settings */
 .th-sidebar-foot > .th-usage {
   grid-column: 2;
   display: flex;
