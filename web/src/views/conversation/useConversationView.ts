@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { sendText } from "../../api/client";
+import { allowTool, sendText } from "../../api/client";
 import { toMessage } from "../../api/errors";
 import type { AgentKey, ConversationDetail, Task } from "../../api/types";
 import { useConversationActions } from "../../data";
@@ -80,6 +80,7 @@ export interface Commands {
   readonly sendMessage: (text: string) => Promise<boolean>;
   readonly answerAgent: (agent: string, text: string) => Promise<boolean>;
   readonly answerKeys: (agent: string, keys: readonly AgentKey[]) => Promise<boolean>;
+  readonly allowTool: (agent: string, tool: string) => Promise<boolean>;
   readonly submit: (text: string, attachmentIds: readonly string[]) => Promise<unknown>;
 }
 
@@ -104,6 +105,7 @@ export function useCommands(id: string): Commands {
       sendMessage: (text: string) => attempt(() => actions.send(id, { text })),
       answerAgent: (agent: string, text: string) => attempt(() => sendText(agent, text)),
       answerKeys: (agent: string, keys: readonly AgentKey[]) => attempt(() => pressKeys(agent, keys)),
+      allowTool: (agent: string, tool: string) => attempt(() => allowTool(agent, tool)),
       submit: (text: string, attachmentIds: readonly string[]) =>
         actions.send(id, attachmentIds.length > 0 ? { text, attachments: attachmentIds } : { text }),
     };
@@ -113,7 +115,7 @@ export function useCommands(id: string): Commands {
 
 export function useThreadValue(detail: ConversationDetail, pane: PaneRoute, commands: Commands): ThreadContextValue {
   const { tasks, attachments, conversation } = detail;
-  const { sendMessage, answerAgent, answerKeys } = commands;
+  const { sendMessage, answerAgent, answerKeys, allowTool } = commands;
   return useMemo(
     () => ({
       conversationId: conversation.id,
@@ -125,7 +127,8 @@ export function useThreadValue(detail: ConversationDetail, pane: PaneRoute, comm
       sendMessage,
       answerAgent,
       answerKeys,
+      allowTool,
     }),
-    [conversation.id, tasks, attachments, conversation.status, pane.task, pane.open, sendMessage, answerAgent, answerKeys],
+    [conversation.id, tasks, attachments, conversation.status, pane.task, pane.open, sendMessage, answerAgent, answerKeys, allowTool],
   );
 }

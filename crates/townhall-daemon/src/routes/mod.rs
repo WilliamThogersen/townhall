@@ -34,6 +34,7 @@ fn agent_routes() -> Router<AppState> {
         .route("/agents", get(agents::list))
         .route("/agents/{name}", delete(agents::remove))
         .route("/agents/{name}/send", post(agents::send))
+        .route("/agents/{name}/allow", post(agents::allow))
         .route("/agents/{name}/output", get(agents::output))
         .route("/agents/{name}/stream", get(stream::stream))
         .route("/agents/{name}/attach", get(attach::attach))

@@ -40,6 +40,7 @@ function Harness({ entries }: { readonly entries: readonly ThreadEntry[] }) {
     sendMessage: commands.sendMessage,
     answerAgent: commands.answerAgent,
     answerKeys: commands.answerKeys,
+    allowTool: vi.fn(async () => true),
   };
   return (
     <ThreadContext value={value}>

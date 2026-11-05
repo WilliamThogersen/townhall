@@ -17,6 +17,7 @@ function context(over: Partial<ThreadContextValue> = {}): ThreadContextValue {
     sendMessage: vi.fn(async () => true),
     answerAgent: vi.fn(async () => true),
     answerKeys: vi.fn(async () => true),
+    allowTool: vi.fn(async () => true),
     ...over,
   };
 }
@@ -193,7 +194,7 @@ describe("Thread needs-you block", () => {
     expect(within(group).getByText("fix-login asked")).toBeInTheDocument();
     expect(within(group).getByText("y")).toHaveClass("th-ask-picked");
     expect(within(group).queryByRole("button", { name: "send y" })).toBeNull();
-    expect(within(group).queryByRole("textbox")).toBeNull();
+    expect(within(group).queryByRole("textbox", { name: "Answer for fix-login" })).toBeNull();
     expect(within(group).getByRole("button", { name: "open terminal" })).toBeInTheDocument();
     expect(screen.queryByText(/sent to/)).toBeNull();
   });
@@ -230,9 +231,47 @@ describe("Thread permission dialog", () => {
       "3Yes, and switch to auto modeauto mode handles these prompts for you",
       "4No",
     ]);
-    expect(within(group).queryByRole("textbox")).toBeNull();
+    expect(within(group).queryByRole("textbox", { name: "Answer for fix-login" })).toBeNull();
     await userEvent.click(within(group).getByRole("button", { name: /^3 Yes, and switch to auto mode/ }));
     expect(value.answerAgent).toHaveBeenCalledWith("fix-login", "3");
+  });
+
+  it("offers to always allow the tool for the agent type, with the pattern to edit", async () => {
+    const { value } = renderThread([dialog], { tasks });
+    const group = screen.getByRole("group", { name: "fix-login needs you" });
+    const pattern = within(group).getByRole("textbox", { name: "Pattern to always allow for builder" });
+    expect(pattern).toHaveValue("Bash(cd *)");
+    expect(within(group).getByText(/applies from the next launch of builder/)).toBeInTheDocument();
+    await userEvent.clear(pattern);
+    await userEvent.type(pattern, "Bash(cd /w/*)");
+    await userEvent.click(within(group).getByRole("button", { name: "always allow for builder" }));
+    expect(value.allowTool).toHaveBeenCalledWith("fix-login", "Bash(cd /w/*)");
+    expect(value.answerAgent).toHaveBeenCalledWith("fix-login", "1");
+  });
+
+  it("answers allow once without saving anything", async () => {
+    const { value } = renderThread([dialog], { tasks });
+    await userEvent.click(screen.getByRole("button", { name: /^1 Yes$/ }));
+    expect(value.answerAgent).toHaveBeenCalledWith("fix-login", "1");
+    expect(value.allowTool).not.toHaveBeenCalled();
+  });
+
+  it("does not answer when saving the tool failed", async () => {
+    const { value } = renderThread([dialog], { tasks, allowTool: vi.fn(async () => false) });
+    await userEvent.click(screen.getByRole("button", { name: "always allow for builder" }));
+    expect(value.answerAgent).not.toHaveBeenCalled();
+  });
+
+  it("offers nothing to save for a question that is not a tool call", () => {
+    const plain = entry(7, { kind: "needsYou", agent: "fix-login", question: "Pick one?\n1. a\n2. b", choices: ["1", "2"] });
+    renderThread([plain], { tasks });
+    expect(screen.queryByRole("button", { name: /always allow/ })).toBeNull();
+  });
+
+  it("says in the thread that a tool was added to the type", () => {
+    const added = entry(8, { kind: "agent", agent: "fix-login", event: "allowed", text: "Bash(gh pr *) to builder" });
+    renderThread([added], { tasks });
+    expect(screen.getByText(/allowed/)).toHaveTextContent("fix-login allowed Bash(gh pr *) for agent type builder");
   });
 
   it("names the picked option once answered", () => {

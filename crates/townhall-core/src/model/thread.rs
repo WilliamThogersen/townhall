@@ -30,6 +30,7 @@ pub enum AgentEvent {
     Passed,
     Failed,
     Ended,
+    Allowed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

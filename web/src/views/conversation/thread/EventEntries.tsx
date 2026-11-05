@@ -10,6 +10,7 @@ const AGENT_SIGN: Readonly<Record<AgentEvent, string>> = {
   passed: "✓",
   failed: "×",
   ended: "○",
+  allowed: "+",
 };
 
 export function RepoEvent({ entry }: { readonly entry: Entry<"repo"> }) {
@@ -20,8 +21,28 @@ export function RepoEvent({ entry }: { readonly entry: Entry<"repo"> }) {
   );
 }
 
+const ALLOWED_TO = " to ";
+
+function allowedText(entry: Entry<"agent">) {
+  const cut = entry.text.lastIndexOf(ALLOWED_TO);
+  const tool = cut === -1 ? entry.text : entry.text.slice(0, cut);
+  const type = cut === -1 ? "" : entry.text.slice(cut + ALLOWED_TO.length);
+  return (
+    <>
+      <b>{entry.agent}</b> allowed <code>{tool}</code>
+      {type === "" ? null : (
+        <>
+          {" "}
+          for agent type <b>{type}</b>
+        </>
+      )}
+    </>
+  );
+}
+
 function agentText(entry: Entry<"agent">) {
   const text = entry.text.trim();
+  if (entry.event === "allowed") return allowedText(entry);
   if (entry.event === "sent") {
     return (
       <>

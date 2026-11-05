@@ -28,7 +28,7 @@ import type {
 
 const STATUSES = ["thinking", "yourTurn"] as const satisfies readonly ConversationStatus[];
 const REPO_RULES = ["named", "code", "only", "picked", "linked"] as const satisfies readonly RepoRule[];
-const AGENT_EVENTS = ["sent", "passed", "failed", "ended"] as const satisfies readonly AgentEvent[];
+const AGENT_EVENTS = ["sent", "passed", "failed", "ended", "allowed"] as const satisfies readonly AgentEvent[];
 const ATTACHMENT_KINDS = ["image", "file"] as const satisfies readonly AttachmentKind[];
 
 export function parseContextUsage(value: unknown): ContextUsage {
