@@ -4,7 +4,7 @@ use serde_json::json;
 use townhall_daemon::start_background;
 
 mod common;
-use common::{call, send, Env};
+use common::{call, git, send, Env};
 
 #[tokio::test]
 async fn the_startup_repo_is_listed_and_registered() {
@@ -124,10 +124,7 @@ async fn case_only_and_path_conflicts_are_409_blank_names_400() {
 async fn bad_bodies_are_400_in_the_envelope() {
     let env = Env::new("alpha").await;
     let (_state, app) = env.start();
-    let plain = env.root.path().join("plain");
-    std::fs::create_dir_all(&plain).unwrap();
     for body in [
-        json!({"path": plain}),
         json!({"path": "relative/x"}),
         json!({"path": "/definitely/not/here"}),
         json!({"path": env.startup, "base_branch": "main"}),
@@ -143,6 +140,61 @@ async fn bad_bodies_are_400_in_the_envelope() {
         .unwrap();
     let (s, v) = send(&app, text).await;
     assert_eq!((s, &v["success"]), (StatusCode::BAD_REQUEST, &json!(false)));
+}
+
+#[tokio::test]
+async fn a_plain_folder_is_initialised_and_registered() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let plain = env.root.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    std::fs::write(plain.join("readme.txt"), "hi").unwrap();
+    let (s, v) = call(&app, "POST", "/api/repos", Some(json!({"path": plain}))).await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+    assert_eq!(v["data"]["name"], "plain");
+    assert_eq!(v["data"]["baseBranch"], "main");
+    let files = git(&plain, &["ls-tree", "-r", "--name-only", "main"]).await;
+    assert_eq!(files, "readme.txt");
+}
+
+#[tokio::test]
+async fn a_link_is_cloned_and_registered() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let src = env.repo("shop-src").await;
+    let bare = env.root.path().join("shop.git");
+    let (from, to) = (src.to_string_lossy(), bare.to_string_lossy());
+    git(env.root.path(), &["clone", "-q", "--bare", &from, &to]).await;
+    let url = format!("file://{}", bare.display());
+    let (s, v) = call(&app, "POST", "/api/repos", Some(json!({"path": url}))).await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+    assert_eq!(v["data"]["name"], "shop");
+    assert_eq!(v["data"]["baseBranch"], "main");
+    let cloned = env.home.root().join("repos/shop").canonicalize().unwrap();
+    assert_eq!(v["data"]["path"], json!(cloned));
+    let (s, v) = call(&app, "POST", "/api/repos", Some(json!({"path": url}))).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+}
+
+#[tokio::test]
+async fn a_link_that_cannot_be_cloned_is_a_400_that_says_so() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let url = format!("file://{}/nope.git", env.root.path().display());
+    let (s, v) = call(&app, "POST", "/api/repos", Some(json!({"path": url}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let msg = v["error"].as_str().unwrap();
+    assert!(msg.contains("could not clone"), "{msg}");
+    assert!(msg.contains("repository not found"), "{msg}");
+    let (s, v) = call(
+        &app,
+        "POST",
+        "/api/repos",
+        Some(json!({"path": "https://github.com/acme"})),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("is not a git url"));
 }
 
 #[tokio::test]
