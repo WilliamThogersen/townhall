@@ -1,6 +1,7 @@
 import type {
   AddRepoInput,
   AgentInfo,
+  ClaudeUsage,
   Conversation,
   ConversationDetail,
   ConversationPatch,
@@ -49,6 +50,10 @@ export interface ReposState extends Loadable {
 
 export interface StatsState extends Loadable {
   readonly stats: Stats | null;
+}
+
+export interface UsageState extends Loadable {
+  readonly usage: ClaudeUsage | null;
 }
 
 export interface StepsOptions {
