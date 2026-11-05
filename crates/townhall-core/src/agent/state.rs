@@ -127,7 +127,7 @@ fn waiting(question: String) -> AgentState {
 
 async fn live(projects: Option<&Path>, ws: &Workspace, agent: &Agent, pane: &Pane) -> AgentState {
     let turn = match projects {
-        Some(dir) => current_turn(dir, &agent.worktree, pane.created).await,
+        Some(dir) => current_turn(dir, &agent.worktree, &agent.name, pane.created).await,
         None => None,
     };
     let asked = |q: Option<String>| q.map_or(AgentState::Working, waiting);
@@ -201,9 +201,11 @@ async fn screen_text(ws: &Workspace, agent: &Agent, pane: &Pane) -> Option<Strin
 
 /// The turn in the newest transcript for `worktree` written since `since` (unix seconds,
 /// the session's start), so an earlier session's transcript is never read as this one's.
-async fn current_turn(projects: &Path, worktree: &Path, since: u64) -> Option<Turn> {
+async fn current_turn(projects: &Path, worktree: &Path, agent: &str, since: u64) -> Option<Turn> {
     let (projects, worktree) = (projects.to_path_buf(), worktree.to_path_buf());
-    let read = tokio::task::spawn_blocking(move || read_turn(&projects, &worktree, since)).await;
+    let agent = agent.to_string();
+    let read =
+        tokio::task::spawn_blocking(move || read_turn(&projects, &worktree, &agent, since)).await;
     match read {
         Ok(Ok(turn)) => turn,
         Ok(Err(e)) => {
@@ -217,7 +219,12 @@ async fn current_turn(projects: &Path, worktree: &Path, since: u64) -> Option<Tu
     }
 }
 
-fn read_turn(projects: &Path, worktree: &Path, since: u64) -> crate::Result<Option<Turn>> {
+fn read_turn(
+    projects: &Path,
+    worktree: &Path,
+    agent: &str,
+    since: u64,
+) -> crate::Result<Option<Turn>> {
     let Some(path) = steps::latest_transcript(projects, worktree)? else {
         return Ok(None);
     };
@@ -234,7 +241,7 @@ fn read_turn(projects: &Path, worktree: &Path, since: u64) -> crate::Result<Opti
     if let Some(turn) = memo::turn(&path, stamp) {
         return Ok(turn);
     }
-    let turn = transcript::read(&path)
+    let turn = transcript::read_as(&path, agent)
         .map_err(io)?
         .map(|t| ended_at(t, modified));
     memo::keep_turn(&path, stamp, turn.clone());
@@ -289,7 +296,8 @@ static LAST_WARNING: Mutex<Option<String>> = Mutex::new(None);
 fn warn_once(message: &str) {
     let mut last = LAST_WARNING.lock().unwrap_or_else(|p| p.into_inner());
     if last.as_deref() != Some(message) {
-        eprintln!("warn: {message}");
+        tracing::warn!(target: "townhall::agent", event = "agent.state_warning",
+            error = %crate::redact::redact(message), "agent state detection");
         *last = Some(message.to_string());
     }
 }

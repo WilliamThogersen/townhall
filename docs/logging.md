@@ -189,10 +189,18 @@ Later tasks add to this table as they emit events.
 | `store.setting_ignored` | `townhall::store` | warn | `key`, `error` |
 | `store.attachment_cleanup_failed` | `townhall::store` | warn | `path`, `error` |
 | `store.agent_type_unreadable` | `townhall::store` | warn | `error_kind`, `error` |
+| `agent.state` | `townhall::agent` | info | `agent`, `repo`, `from` (`none` when new), `to` (`working`, `waiting`, `error`, `ended`) |
+| `agent.gone` | `townhall::agent` | info | `agent`, `repo`, `from` (the last state seen) |
+| `agent.tool_error` | `townhall::agent` | info | `agent`, `tool`, `error` (redacted, first 200 chars of the tool result) |
+| `agent.permission_denied` | `townhall::agent` | info | `agent`, `tool` (name only) |
+| `agent.watcher_warning` | `townhall::agent` | warn | `error` (deduped: not repeated while unchanged) |
+| `agent.state_warning` | `townhall::agent` | warn | `error` (deduped: not repeated while unchanged) |
 
 `request_id` is the `x-request-id` request header when it is 1 to 64 printable ASCII chars,
 else a generated id. The response always carries it. Websocket upgrades log `ws.*` instead of
 `http.request`.
 
-Planned (see the logging plan): `agent.state`, `agent.gone`, `agent.tool_error`,
-`agent.permission_denied`, `daemon.mode`, `daemon.restart`.
+Agent events never carry tool inputs, questions or transcript text other than the redacted
+`agent.tool_error` start. A tool result is logged once, however often its transcript is read.
+
+Planned (see the logging plan): `daemon.mode`, `daemon.restart`.
