@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::Mutex;
 
 use serde_json::Value;
 
@@ -246,14 +247,109 @@ fn window_at(file: &mut File, start: u64) -> std::io::Result<String> {
         .unwrap_or_default())
 }
 
+/// Longest start of a tool's error text a log line carries, in chars.
+const ERROR_CHARS: usize = 200;
+/// How many tool results are remembered as logged; the oldest half goes when it is full.
+const LOGGED_CAP: usize = 4096;
+
+static LOGGED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// True the first time `id` is seen, so a window read again does not log a result twice.
+fn first_time(id: &str) -> bool {
+    let mut logged = LOGGED.lock().unwrap_or_else(|p| p.into_inner());
+    if logged.iter().any(|seen| seen == id) {
+        return false;
+    }
+    if logged.len() >= LOGGED_CAP {
+        logged.drain(..LOGGED_CAP / 2);
+    }
+    logged.push(id.to_string());
+    true
+}
+
+/// The text of a tool result: a string, or the text blocks of a list.
+fn result_text(block: &Value) -> String {
+    match block.get("content") {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|i| text(i, "text"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// Claude's wording when a tool call is refused by the permission rules or by the user.
+fn denial(error: &str) -> bool {
+    error.starts_with("Permission to use")
+        || error.contains("has been denied")
+        || error.contains("doesn't want to proceed with this tool use")
+}
+
+/// Logs each tool result in `window` that failed: `agent.permission_denied` (tool name
+/// only) for a refused call, else `agent.tool_error` (tool name and the redacted start of the
+/// error). Tool inputs and the rest of the transcript are never logged.
+fn report(window: &str, agent: &str) {
+    let values: Vec<Value> = window
+        .lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
+    let mut tools = std::collections::HashMap::new();
+    for v in &values {
+        for b in blocks(v) {
+            if let (Some(id), Some("tool_use")) = (text(b, "id"), text(b, "type")) {
+                tools.insert(id, text(b, "name").unwrap_or_default());
+            }
+        }
+    }
+    for v in &values {
+        for b in blocks(v) {
+            let failed = b.get("is_error").and_then(Value::as_bool) == Some(true);
+            let Some(id) = text(b, "tool_use_id").filter(|_| failed) else {
+                continue;
+            };
+            if text(b, "type") != Some("tool_result") || !first_time(id) {
+                continue;
+            }
+            let tool = tools.get(id).copied().unwrap_or("unknown");
+            let error = result_text(b);
+            if denial(&error) {
+                tracing::info!(target: "townhall::agent", event = "agent.permission_denied",
+                    agent = %agent, tool = %tool, "tool call denied");
+            } else {
+                let error = crate::redact::redact(&error)
+                    .chars()
+                    .take(ERROR_CHARS)
+                    .collect::<String>();
+                tracing::info!(target: "townhall::agent", event = "agent.tool_error",
+                    agent = %agent, tool = %tool, error = %error, "tool call failed");
+            }
+        }
+    }
+}
+
 /// Reads the transcript's tail until the turn can be told. `None` when nothing in it does.
 pub(crate) fn read(path: &Path) -> std::io::Result<Option<Turn>> {
+    read_with(path, None)
+}
+
+/// Like [`read`], and logs the failed tool results it passes for `agent`.
+pub(crate) fn read_as(path: &Path, agent: &str) -> std::io::Result<Option<Turn>> {
+    read_with(path, Some(agent))
+}
+
+fn read_with(path: &Path, agent: Option<&str>) -> std::io::Result<Option<Turn>> {
     let mut file = File::open(path)?;
     let len = file.metadata()?.len();
     let mut size = FIRST_WINDOW;
     loop {
         let start = len.saturating_sub(size);
-        if let Some(turn) = parse(&window_at(&mut file, start)?) {
+        let window = window_at(&mut file, start)?;
+        if let Some(turn) = parse(&window) {
+            if let Some(agent) = agent {
+                report(&window, agent);
+            }
             return Ok(Some(turn));
         }
         if start == 0 || size >= MAX_WINDOW {

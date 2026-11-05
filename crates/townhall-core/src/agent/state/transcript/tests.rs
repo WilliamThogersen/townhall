@@ -197,7 +197,10 @@ mod capture {
     impl Events {
         pub fn named(&self, event: &str) -> Vec<Value> {
             let all = self.0.lock().unwrap();
-            all.iter().filter(|e| e["event"] == event).cloned().collect()
+            all.iter()
+                .filter(|e| e["event"] == event)
+                .cloned()
+                .collect()
         }
 
         pub fn all(&self) -> Vec<Value> {
@@ -228,7 +231,9 @@ mod capture {
         fn event(&self, event: &Event<'_>) {
             let mut fields = Fields(Map::new());
             event.record(&mut fields);
-            fields.0.insert("target".into(), event.metadata().target().into());
+            fields
+                .0
+                .insert("target".into(), event.metadata().target().into());
             self.0.lock().unwrap().push(Value::Object(fields.0));
         }
         fn enter(&self, _: &Id) {}
@@ -253,8 +258,14 @@ fn failing_call(id: &str, is_error: bool, error: &str) -> Vec<String> {
             Some("tool_use"),
             tool(id, "Bash", json!({"command": SECRET_INPUT})),
         ),
-        user(json!([{"type": "tool_result", "tool_use_id": id, "is_error": is_error, "content": error}])),
-        assistant("m2", Some("end_turn"), json!([{"type": "text", "text": "done"}])),
+        user(
+            json!([{"type": "tool_result", "tool_use_id": id, "is_error": is_error, "content": error}]),
+        ),
+        assistant(
+            "m2",
+            Some("end_turn"),
+            json!([{"type": "text", "text": "done"}]),
+        ),
     ]
 }
 

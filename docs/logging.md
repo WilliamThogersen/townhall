@@ -78,10 +78,18 @@ Later tasks add to this table as they emit events.
 | `panic` | `townhall::panic` | error | `message`, `location`, `backtrace` (≤4 KB) |
 | `logs.pruned` | `townhall::logging` | info | `deleted` |
 | `logs.prune_failed` | `townhall::logging` | warn | `error` |
+| `agent.state` | `townhall::agent` | info | `agent`, `repo`, `from` (`none` when new), `to` (`working`, `waiting`, `error`, `ended`) |
+| `agent.gone` | `townhall::agent` | info | `agent`, `repo`, `from` (the last state seen) |
+| `agent.tool_error` | `townhall::agent` | info | `agent`, `tool`, `error` (redacted, first 200 chars of the tool result) |
+| `agent.permission_denied` | `townhall::agent` | info | `agent`, `tool` (name only) |
+| `agent.watcher_warning` | `townhall::agent` | warn | `error` (deduped: not repeated while unchanged) |
+| `agent.state_warning` | `townhall::agent` | warn | `error` (deduped: not repeated while unchanged) |
+
+Agent events never carry tool inputs, questions or transcript text other than the redacted
+`agent.tool_error` start. A tool result is logged once, however often its transcript is read.
 
 Planned (see the logging plan): `http.request`, `http.error`, `ws.open`, `ws.close`,
 `mcp.tool`, `task.created`, `task.state`, `task.launched`, `task.launch_failed`,
-`task.merged`, `agent.state`, `agent.gone`, `agent.tool_error`, `agent.permission_denied`,
-`turn.start`, `turn.end`, `turn.failed`, `claude.spawn`, `claude.exit`, `cmd.run`,
+`task.merged`, `turn.start`, `turn.end`, `turn.failed`, `claude.spawn`, `claude.exit`, `cmd.run`,
 `worktree.create`, `worktree.remove`, `daemon.mode`, `daemon.restart`, `web.error`,
 `web.unhandled_rejection`, `web.render_error`.
