@@ -3,7 +3,8 @@
 //! The daemon's `AppState` wraps it; core units (runner, scheduler, watcher) take it directly.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
+use std::time::Duration;
 
 use tokio::sync::OnceCell;
 
@@ -11,11 +12,13 @@ use crate::agent::DEFAULT_CLAUDE_BIN;
 use crate::events::EventBus;
 use crate::model::{Repo, Settings};
 use crate::repos::{names, RepoRegistry};
-use crate::runner::Turns;
+use crate::runner::{Notes, Turns};
 use crate::store::Store;
 use crate::{Error, Home, Result, Workspace};
 
 pub const DEFAULT_BASE_URL: &str = "http://127.0.0.1:7777";
+/// The default for `ContextOptions::notify_delay`.
+pub const DEFAULT_NOTIFY_DELAY: Duration = Duration::from_secs(3);
 pub const CLAUDE_BIN_ENV: &str = "TOWNHALL_CLAUDE_BIN";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +27,8 @@ pub struct ContextOptions {
     pub base_url: String,
     /// The `claude` program; tests point `TOWNHALL_CLAUDE_BIN` at a fake.
     pub claude_bin: String,
+    /// How long task events gather before they wake the planner (`runner::notify`).
+    pub notify_delay: Duration,
 }
 
 fn claude_bin_from_env() -> String {
@@ -38,6 +43,7 @@ impl Default for ContextOptions {
         Self {
             base_url: DEFAULT_BASE_URL.to_string(),
             claude_bin: claude_bin_from_env(),
+            notify_delay: DEFAULT_NOTIFY_DELAY,
         }
     }
 }
@@ -60,6 +66,7 @@ struct Inner {
     options: ContextOptions,
     startup_name: OnceCell<Option<String>>,
     turns: Turns,
+    notes: Notes,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +74,26 @@ pub struct Context {
     inner: Arc<Inner>,
 }
 
+/// A `Context` that does not keep the daemon's store open: background work that sleeps
+/// holds one, so a restart can reopen the store while it waits.
+#[derive(Debug, Clone)]
+pub struct WeakContext {
+    inner: Weak<Inner>,
+}
+
+impl WeakContext {
+    pub fn upgrade(&self) -> Option<Context> {
+        self.inner.upgrade().map(|inner| Context { inner })
+    }
+}
+
 impl Context {
+    pub fn downgrade(&self) -> WeakContext {
+        WeakContext {
+            inner: Arc::downgrade(&self.inner),
+        }
+    }
+
     /// Opens the store in the startup repo's home. If that fails (another townhall holds
     /// it), the context still serves what needs no store and reports the error on each use.
     pub fn new(startup: Workspace, options: ContextOptions) -> Self {
@@ -102,6 +128,7 @@ impl Context {
             options,
             startup_name: OnceCell::new(),
             turns: Turns::default(),
+            notes: Notes::default(),
         };
         Self {
             inner: Arc::new(inner),
@@ -144,6 +171,15 @@ impl Context {
     /// The turns of townhall's own session running now (unit 2.2's runner).
     pub fn turns(&self) -> &Turns {
         &self.inner.turns
+    }
+
+    /// The task events waiting to wake each conversation's planner.
+    pub fn notes(&self) -> &Notes {
+        &self.inner.notes
+    }
+
+    pub fn notify_delay(&self) -> Duration {
+        self.inner.options.notify_delay
     }
 
     pub async fn settings(&self) -> Result<Settings> {

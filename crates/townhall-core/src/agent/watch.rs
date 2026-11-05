@@ -6,6 +6,7 @@
 //! Claude's folder trust dialog in townhall's own worktrees is answered once per session
 //! (`trust.rs`).
 
+mod event;
 mod sync;
 mod trust;
 
@@ -19,7 +20,7 @@ use tokio::time::MissedTickBehavior;
 use crate::context::Context;
 use crate::home::{repo_key, WORKTREES_DIR};
 use crate::model::{AgentInfo, AgentState, ServerEvent, Task};
-use crate::{fleet, tmux, Error, Result, Workspace};
+use crate::{fleet, runner, tmux, Error, Result, Workspace};
 use sync::Change;
 
 pub const INTERVAL: Duration = Duration::from_millis(1500);
@@ -256,12 +257,18 @@ impl Watcher {
             }
         }
         if let Some(entry) = change.entry {
-            if let Err(e) = store.append_entry(&task.conversation_id, entry).await {
+            if let Err(e) = store
+                .append_entry(&task.conversation_id, entry.clone())
+                .await
+            {
                 self.warn(&format!(
                     "cannot note `{}` in its conversation: {e}",
                     task.name
                 ));
                 return false;
+            }
+            if let Some(text) = event::for_entry(&self.ctx, task, &entry).await {
+                runner::notify(&self.ctx, &task.conversation_id, text);
             }
         }
         true
