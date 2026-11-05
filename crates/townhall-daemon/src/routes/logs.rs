@@ -93,7 +93,9 @@ struct Bucket {
 pub enum Take {
     Allowed,
     /// Dropped; the first drop of a window also says how many were dropped (always 1 here).
-    Dropped { first: bool },
+    Dropped {
+        first: bool,
+    },
 }
 
 impl Limiter {
@@ -154,10 +156,16 @@ async fn client(Extension(limiter): Extension<Arc<Limiter>>, body: Bytes) -> Res
     let mut levels = Vec::with_capacity(reports.len());
     for r in &reports {
         let Some(level) = parse_level(&r.level) else {
-            return failure(StatusCode::BAD_REQUEST, format!("unknown level: {}", r.level));
+            return failure(
+                StatusCode::BAD_REQUEST,
+                format!("unknown level: {}", r.level),
+            );
         };
         if !valid_event(&r.event) {
-            return failure(StatusCode::BAD_REQUEST, "event must be web.* or api.*".into());
+            return failure(
+                StatusCode::BAD_REQUEST,
+                "event must be web.* or api.*".into(),
+            );
         }
         levels.push(level);
     }
