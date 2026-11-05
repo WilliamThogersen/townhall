@@ -7,7 +7,10 @@ pub mod source;
 
 use std::path::{Path, PathBuf};
 
-pub use git::{check_top_folder, detect_base_branch, verify_branch};
+pub use git::{
+    check_top_folder, detect_base_branch, init_plain, is_plain_folder, verify_branch,
+    DEFAULT_BRANCH,
+};
 
 use crate::home::WORKTREES_DIR;
 use crate::model::{AddRepo, Repo};
@@ -67,6 +70,22 @@ pub fn inspect(home: &Home, path: &Path, name: String, base_branch: Option<&str>
     })
 }
 
+/// `git init` for a plain folder, once nothing else about the request is known to be wrong
+/// (the name is free), so a refused request leaves the folder as it was.
+fn init_folder(known: &[Repo], path: &Path, name: &str, base: Option<&str>) -> Result<()> {
+    if names::taken(name, known) {
+        return Err(Error::Conflict(format!(
+            "a repo named `{name}` already exists"
+        )));
+    }
+    let branch = base
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+        .unwrap_or(DEFAULT_BRANCH);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    init_plain(path, branch, home.as_deref())
+}
+
 /// A name someone typed: trimmed, never blank, `[A-Za-z0-9._-]`. Missing means the folder name.
 pub fn chosen_name(given: Option<&str>, path: &Path) -> Result<String> {
     match given.map(str::trim) {
@@ -115,8 +134,15 @@ impl RepoRegistry {
     pub async fn add(&self, req: &AddRepo) -> Result<Repo> {
         let path = resolve_path(&req.path)?;
         let name = chosen_name(req.name.as_deref(), &path)?;
+        let known = self.list().await?;
         let (base, home) = (req.base_branch.clone(), self.store.home().clone());
-        let repo = blocking(move || inspect(&home, &path, name, base.as_deref())).await?;
+        let repo = blocking(move || {
+            if is_plain_folder(&path)? {
+                init_folder(&known, &path, &name, base.as_deref())?;
+            }
+            inspect(&home, &path, name, base.as_deref())
+        })
+        .await?;
         self.store.add_repo(repo).await
     }
 
