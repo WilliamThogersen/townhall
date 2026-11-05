@@ -15,15 +15,10 @@ mod common;
 use common::{call, unique, Env};
 
 const STUBS: &[(&str, &str)] = &[
-    ("GET", "/api/library/agents"),
-    ("GET", "/api/library/agents/coder"),
-    ("PUT", "/api/library/agents/coder"),
-    ("DELETE", "/api/library/agents/coder"),
     ("GET", "/api/library/workflows"),
     ("GET", "/api/library/workflows/ship"),
     ("PUT", "/api/library/workflows/ship"),
     ("DELETE", "/api/library/workflows/ship"),
-    ("POST", "/api/library/import"),
     ("POST", "/api/workflows/ship/runs"),
     ("GET", "/api/runs/r1"),
 ];
