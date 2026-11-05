@@ -65,7 +65,7 @@ export function AddRepoForm({ busy, error, focusToken, layout = "row", onSubmit,
   };
   return (
     <form className="th-repo-add" data-layout={layout} aria-label="add repository" onSubmit={submit} onKeyDown={onKeyDown}>
-      <Field label="path" className="th-repo-field--path" value={draft.path} placeholder="~/Developer/shop" inputRef={pathRef} onChange={set("path")} />
+      <Field label="path" className="th-repo-field--path" value={draft.path} placeholder="~/Developer/shop or a github/gitlab link" inputRef={pathRef} onChange={set("path")} />
       <Field label="name" value={draft.name} placeholder="folder name" onChange={set("name")} />
       <Field label="base branch" value={draft.baseBranch} placeholder="auto" onChange={set("baseBranch")} />
       <div className="th-repo-add-actions">

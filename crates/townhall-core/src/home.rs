@@ -9,6 +9,8 @@ const HOME_ENV: &str = "TOWNHALL_HOME";
 const HOME_DIR: &str = ".townhall";
 /// Townhall's own agent worktrees live under `<home>/worktrees/`.
 pub const WORKTREES_DIR: &str = "worktrees";
+/// Repos townhall cloned from a url live under `<home>/repos/`.
+pub const REPOS_DIR: &str = "repos";
 const LOGS_DIR: &str = "logs";
 const CONFIG_FILE: &str = "config.json";
 const MAX_BASE_LEN: usize = 32;
@@ -57,6 +59,13 @@ impl Home {
 
     pub fn worktrees_for(&self, key: &str) -> PathBuf {
         self.root.join(WORKTREES_DIR).join(key)
+    }
+
+    /// `<home>/repos`, created (0700) when missing: where `git clone` puts added remotes.
+    pub fn repos_dir(&self) -> Result<PathBuf> {
+        let dir = self.root.join(REPOS_DIR);
+        self.create_dir(&dir)?;
+        Ok(dir)
     }
 
     /// `<home>/logs`, created (0700) when missing: the JSONL files `townhall-daemon`'s

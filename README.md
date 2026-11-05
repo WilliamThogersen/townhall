@@ -71,7 +71,10 @@ Output lands under `target/`. How it behaves:
 
 - **First launch** with no repo opens home on `add your first repository`. `add repository…`
   there and on the repos page opens a native folder picker; the folder must be the top
-  folder of a git repo and is added through `POST /api/repos`, so the daemon keeps running.
+  folder of a git repo, or a plain folder (townhall runs `git init` and commits what is in
+  it), and is added through `POST /api/repos`, so the daemon keeps running. In a browser the
+  same field also takes a GitHub or GitLab link, which townhall clones into
+  `~/.townhall/repos/`.
   A repo chosen by an older version (saved in `~/.townhall/townhall.db`, or imported from an
   old `settings.json` or `config.json`) stays the daemon's startup repo.
 - **Port 7777 taken** (a daemon running separately): the app uses that daemon, and
