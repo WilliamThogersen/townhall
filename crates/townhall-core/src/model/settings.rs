@@ -83,10 +83,11 @@ pub enum SettingKey {
     SessionPanelOpen,
     NotifyWhen,
     TownhallModel,
+    LearnAboutMe,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 7] = [
+    pub const ALL: [SettingKey; 8] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
@@ -94,6 +95,7 @@ impl SettingKey {
         Self::SessionPanelOpen,
         Self::NotifyWhen,
         Self::TownhallModel,
+        Self::LearnAboutMe,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -105,6 +107,7 @@ impl SettingKey {
             Self::SessionPanelOpen => "sessionPanelOpen",
             Self::NotifyWhen => "notifyWhen",
             Self::TownhallModel => "townhallModel",
+            Self::LearnAboutMe => "learnAboutMe",
         }
     }
 
@@ -123,7 +126,7 @@ impl SettingKey {
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
             Self::TownhallModel => parses::<TownhallModel>(value),
-            Self::WorkWithoutAsking | Self::SessionPanelOpen => value.is_boolean(),
+            Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::LearnAboutMe => value.is_boolean(),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
             }),
@@ -152,6 +155,7 @@ pub struct Settings {
     pub session_panel_open: bool,
     pub notify_when: NotifyWhen,
     pub townhall_model: TownhallModel,
+    pub learn_about_me: bool,
 }
 
 impl Default for Settings {
@@ -164,6 +168,7 @@ impl Default for Settings {
             session_panel_open: true,
             notify_when: NotifyWhen::NeedsYou,
             townhall_model: TownhallModel::Sonnet,
+            learn_about_me: false,
         }
     }
 }
@@ -187,6 +192,7 @@ impl Settings {
             session_panel_open: field(raw, SettingKey::SessionPanelOpen, d.session_panel_open),
             notify_when: field(raw, SettingKey::NotifyWhen, d.notify_when),
             townhall_model: field(raw, SettingKey::TownhallModel, d.townhall_model),
+            learn_about_me: field(raw, SettingKey::LearnAboutMe, d.learn_about_me),
         }
     }
 
@@ -225,7 +231,8 @@ mod tests {
                 "repoUnclear": "ask",
                 "sessionPanelOpen": true,
                 "notifyWhen": "needsYou",
-                "townhallModel": "sonnet"
+                "townhallModel": "sonnet",
+                "learnAboutMe": false
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -289,6 +296,22 @@ mod tests {
             SettingKey::parse("townhallModel").unwrap(),
             SettingKey::TownhallModel
         );
+    }
+
+    #[test]
+    fn learn_about_me_is_off_unless_stored_as_a_boolean() {
+        let old: Settings = serde_json::from_value(json!({"permissionMode": "plan"})).unwrap();
+        assert!(!old.learn_about_me, "a settings file from before the field");
+        let on: Settings = serde_json::from_value(json!({"learnAboutMe": true})).unwrap();
+        assert!(on.learn_about_me);
+        let bad: Settings = serde_json::from_value(json!({"learnAboutMe": "yes"})).unwrap();
+        assert!(!bad.learn_about_me);
+        assert_eq!(
+            SettingKey::parse("learnAboutMe").unwrap(),
+            SettingKey::LearnAboutMe
+        );
+        assert!(SettingKey::LearnAboutMe.check(&json!(true)).is_ok());
+        assert!(SettingKey::LearnAboutMe.check(&json!(1)).is_err());
     }
 
     #[test]
