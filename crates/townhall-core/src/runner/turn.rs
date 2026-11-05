@@ -7,6 +7,7 @@ use std::time::Instant;
 use super::args::{self, TurnArgs};
 use super::content::user_content;
 use super::prompt::{self, RepoNote};
+use super::quote::{self, with_quote};
 use super::repo::{self, Message, Resolved};
 use super::session::{talk, TurnEnd};
 use super::turns::TurnGuard;
@@ -95,6 +96,13 @@ async fn drive(
     } = resolved
     else {
         return Ok(TurnEnd::default());
+    };
+    let text = match message.reply_to {
+        Some(reply_to) => {
+            let store = ctx.store()?;
+            with_quote(&quote::of_entry(store, id, reply_to).await?, &text)
+        }
+        None => text,
     };
     let attempt = Attempt {
         note: &note,
