@@ -25,7 +25,10 @@ pub use settings::{
     NotifyWhen, PermissionMode, PutSetting, RepoUnclear, SettingKey, Settings, TownhallModel,
     AGENTS_AT_ONCE_DEFAULT, AGENTS_AT_ONCE_MAX, AGENTS_AT_ONCE_MIN,
 };
-pub use task::{Checks, CreateTaskInput, NewTask, Pr, Task, TaskState, TASK_BRANCH_PREFIX};
+pub use task::{
+    Checks, CreateTaskInput, Handoff, NewTask, Pr, Task, TaskState, MAX_HANDOFFS,
+    TASK_BRANCH_PREFIX,
+};
 pub use thread::{AgentEvent, EntryBody, RepoRule, ThreadEntry};
 
 /// For `Option<Option<T>>` patch fields: a missing key is `None`, an explicit `null` is `Some(None)`.

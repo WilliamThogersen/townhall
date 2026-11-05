@@ -15,11 +15,18 @@ use crate::model::{EntryBody, ServerEvent, ThreadEntry};
 use crate::scheduler::TaskLaunch;
 use crate::Result;
 
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    id: 201,
-    name: "0201_task_launches",
-    sql: include_str!("migrations/0201_task_launches.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        id: 201,
+        name: "0201_task_launches",
+        sql: include_str!("migrations/0201_task_launches.sql"),
+    },
+    Migration {
+        id: 202,
+        name: "0202_task_handoffs",
+        sql: include_str!("migrations/0202_task_handoffs.sql"),
+    },
+];
 
 const TASKS_CREATED: &str = "tasksCreated";
 
