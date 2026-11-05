@@ -111,3 +111,52 @@ async fn delete_needs_a_known_type_and_keeps_the_last_one() {
     assert!(matches!(kept, Error::Conflict(_)), "{kept:?}");
     assert!(env.store.agent_type(last).await.unwrap().is_some());
 }
+
+#[tokio::test]
+async fn the_first_open_seeds_builder() {
+    let env = store_env();
+    let all = env.store.agent_types().await.unwrap();
+    let names: Vec<&str> = all.iter().map(|t| t.def.name.as_str()).collect();
+    assert_eq!(names, ["builder"]);
+    let builder = &all[0];
+    assert_eq!(builder.def.description, "implements a task, tests first");
+    assert_eq!(builder.def.adapter, AdapterKind::Claude);
+    assert_eq!(builder.def.model.as_deref(), Some("sonnet"));
+    assert_eq!(
+        builder.def.permission_mode,
+        Some(PermissionMode::AcceptEdits)
+    );
+    assert!(builder.def.tools.is_empty() && builder.def.command.is_none());
+    let prompt = builder.def.prompt.as_deref().unwrap().to_lowercase();
+    for rule in [
+        "test first",
+        "commit",
+        "conventional",
+        "stay inside the task",
+        "ask",
+    ] {
+        assert!(prompt.contains(rule), "{rule}: {prompt}");
+    }
+    assert!(Store::check_agent_type(&builder.source).is_ok());
+    assert!(builder.source.starts_with('#'));
+    assert!(!builder.source.contains('\u{2014}') && !builder.source.contains('\u{2013}'));
+}
+
+#[tokio::test]
+async fn a_deleted_builder_never_comes_back() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let home = townhall_core::Home::at(dir.path().join(".townhall"));
+    let open = || Store::open(&home, townhall_core::events::EventBus::new()).unwrap();
+    let store = open();
+    store.save_agent_type(CODER).await.unwrap();
+    assert_eq!(store.delete_agent_type("builder").await.unwrap(), "builder");
+    drop(store);
+    let names: Vec<String> = open()
+        .agent_types()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|t| t.def.name)
+        .collect();
+    assert_eq!(names, ["coder"]);
+}

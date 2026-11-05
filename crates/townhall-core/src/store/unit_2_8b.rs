@@ -1,6 +1,8 @@
 //! Unit 2.8b library (agent types, 2.12): the `agents` table, one row per saved agent type
 //! with its TOML as written. Every save runs 2.8a's `check_agent` first, every read parses
-//! the TOML again. Migrations 0800 to 0849, files `migrations/08xx_<name>.sql`.
+//! the TOML again. `0801_seed_builder` saves the type `builder` once, on the first open
+//! with no agent types; it is never saved again after you delete it.
+//! Migrations 0800 to 0849, files `migrations/08xx_<name>.sql`.
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -10,11 +12,18 @@ use crate::definitions::{check_agent, AgentDef, DefKind, DefinitionError, Parsed
 use crate::model::AgentType;
 use crate::{clock, Error, Result};
 
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    id: 800,
-    name: "0800_agents",
-    sql: include_str!("migrations/0800_agents.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        id: 800,
+        name: "0800_agents",
+        sql: include_str!("migrations/0800_agents.sql"),
+    },
+    Migration {
+        id: 801,
+        name: "0801_seed_builder",
+        sql: include_str!("migrations/0801_seed_builder.sql"),
+    },
+];
 
 /// A stored row: name, source, updated_at.
 type Row = (String, String, String);
