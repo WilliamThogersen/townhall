@@ -10,7 +10,6 @@ async function readJson(res: Response): Promise<unknown> {
   }
 }
 
-/** One JSON call: unwraps the {success, data, error} envelope and validates data. */
 export async function request<T>(
   method: string,
   path: string,
@@ -23,8 +22,8 @@ export async function request<T>(
     res = await fetch(`${httpBase()}${path}`, {
       method,
       signal,
-      headers: body === undefined ? undefined : { "content-type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined || body instanceof FormData ? undefined : { "content-type": "application/json" },
+      body: body instanceof FormData || body === undefined ? body : JSON.stringify(body),
     });
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;

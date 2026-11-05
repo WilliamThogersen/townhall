@@ -41,6 +41,7 @@ export interface ComposerProps {
   readonly onStop?: () => void;
   readonly tools?: ReactNode;
   readonly conversationId?: string | null;
+  readonly stageFiles?: boolean;
   readonly autoFocus?: boolean;
   readonly focusKey?: unknown;
   readonly ref?: Ref<ComposerHandle>;
@@ -112,11 +113,11 @@ function useInputHandlers({ uploads, submit, setText, clearError }: InputActions
 }
 
 function useComposer(props: ComposerProps) {
-  const { variant = "thread", disabled = false, busy = false, conversationId = null } = props;
+  const { variant = "thread", disabled = false, busy = false, conversationId = null, stageFiles = false } = props;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
-  const uploads = useUploads(conversationId);
+  const uploads = useUploads(conversationId, stageFiles);
   const clearText = useCallback(() => setText(""), []);
   const sending = useSubmit({ text, uploads, blocked: disabled || busy, onSubmit: props.onSubmit, onSent: clearText });
   const handlers = useInputHandlers({ uploads, submit: sending.submit, setText, clearError: sending.clearError });

@@ -20,7 +20,8 @@ import { Composer, type ComposerHandle } from "../composer";
 |------|---------|--------------|
 | `onSubmit(text, attachmentIds)` | required | Returns a promise. `text` is trimmed. Text and attachments clear when it resolves; on reject they stay and the tools row shows `error: <message>` in red |
 | `variant` | `thread` | `hero`: 3 rows, `th-composer--hero`, primary `start`, help `⏎ start · ⇧⏎ new line`. `thread`: 2 rows, default `send` |
-| `conversationId` | none | Turns attachments on: `+ attach`, paste, chips above the input, `addFiles`. Uploads need a conversation, so home has none |
+| `conversationId` | none | Turns attachments on: `+ attach`, paste, chips above the input, `addFiles`. Uploads need a conversation, so home has none and uses `stageFiles` instead |
+| `stageFiles` | `false` | Without a conversation, keeps pasted, dropped and picked files in memory and shows them as chips. `onSubmit(text, attachmentIds, files)` gets them as `files`; home sends them as multipart to `POST /conversations` |
 | `tools` | none | Nodes before the help text, such as the `N repos known` link (`th-repos-known`) |
 | `busy` | `false` | Townhall is thinking: input disabled, placeholder `townhall is thinking…`, the button becomes `stop` when `onStop` is given (else a disabled send) |
 | `onStop` | none | Called by `stop` while `busy` |

@@ -28,8 +28,8 @@ export function createConversationActions({ update, apply }: StoreAccess): Conve
     return conversation;
   };
   return {
-    start: async (input) => {
-      const detail = await startConversation(input);
+    start: async (input, files = []) => {
+      const detail = await startConversation(input, files);
       update((state) => applyStarted(state, detail));
       return detail;
     },

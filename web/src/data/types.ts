@@ -62,7 +62,7 @@ export interface StepsState extends Loadable {
 }
 
 export interface ConversationActions {
-  readonly start: (input: NewMessageInput) => Promise<ConversationDetail>;
+  readonly start: (input: NewMessageInput, files?: readonly File[]) => Promise<ConversationDetail>;
   readonly send: (id: string, input: NewMessageInput) => Promise<ThreadEntry>;
   readonly stop: (id: string) => Promise<Conversation>;
   readonly end: (id: string) => Promise<Conversation>;

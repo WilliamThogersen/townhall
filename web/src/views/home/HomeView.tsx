@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { Repo } from "../../api/types";
+import { DropZone, useFileDrop } from "../../attachments";
 import { Composer, type ComposerHandle } from "../../composer";
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 import { Greeting } from "./Greeting";
@@ -28,14 +29,17 @@ export function HomeView({ repos, clock }: HomeViewProps) {
   const composer = useRef<ComposerHandle>(null);
   useFocusOnNewKey(composer);
   const start = useStartConversation();
+  const drop = useFileDrop((files) => composer.current?.addFiles(files));
   return (
-    <div className="th-home">
+    <div className="th-home" {...drop.dropProps}>
+      {drop.dragging ? <DropZone /> : null}
       <div className="th-home-inner">
         <Greeting now={now} />
         <Composer
           variant="hero"
           ref={composer}
           autoFocus
+          stageFiles
           onSubmit={start}
           tools={repos && repos.length > 0 ? <ReposKnown repos={repos} /> : null}
         />
