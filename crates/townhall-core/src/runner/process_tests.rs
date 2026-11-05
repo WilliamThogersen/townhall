@@ -51,11 +51,16 @@ fn claude_goes_without_exactly_the_outer_sessions_variables() {
 /// A script that starts `sleep 31` holding its stdout, says `ready`, then ignores stdin.
 fn with_kid(dir: &Path, own_group: bool) -> (Proc, PathBuf) {
     let kid = dir.join("kid");
-    let monitor = if own_group { "set -m; " } else { "" };
-    let script = format!(
-        "{monitor}sleep 31 & echo $! > '{}'; echo ready; while read l; do :; done",
-        kid.display()
-    );
+    let file = kid.display();
+    let start = if own_group {
+        format!(
+            "perl -e 'setpgrp(0,0); open F,\">\",shift; print F $$; close F; exec @ARGV' '{file}' sleep 31 & \
+             while [ ! -s '{file}' ]; do sleep 0.05; done"
+        )
+    } else {
+        format!("sleep 31 & echo $! > '{file}'")
+    };
+    let script = format!("{start}; echo ready; while read l; do :; done");
     (sh(&script), kid)
 }
 
