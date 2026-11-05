@@ -90,7 +90,9 @@ static CACHE: Mutex<Option<Snapshot>> = Mutex::new(None);
 
 fn no_server(e: &Error) -> bool {
     matches!(e, Error::Command { stderr, .. }
-        if stderr.contains("no server running") || stderr.contains("error connecting to"))
+        if stderr.contains("no server running")
+            || stderr.contains("error connecting to")
+            || stderr.contains("server exited unexpectedly"))
 }
 
 fn store(panes: Arc<Vec<Pane>>) {
@@ -133,6 +135,18 @@ pub(super) fn invalidate() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_server_that_exited_while_listing_counts_as_no_server() {
+        let gone = |stderr: &str| Error::Command {
+            command: "tmux list-panes".into(),
+            code: Some(1),
+            stderr: stderr.into(),
+        };
+        assert!(no_server(&gone("server exited unexpectedly")));
+        assert!(no_server(&gone("no server running on /tmp/x")));
+        assert!(!no_server(&gone("unknown option")));
+    }
 
     #[test]
     fn reads_live_exited_and_signalled_panes() {

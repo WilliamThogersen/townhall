@@ -27,12 +27,13 @@ pub struct Agent {
     pub alive: bool,
 }
 
-const TMUX_ABSENT: [&str; 5] = [
+const TMUX_ABSENT: [&str; 6] = [
     "can't find session",
     "can't find pane",
     "no server running",
     "no current target",
     "error connecting to",
+    "server exited unexpectedly",
 ];
 
 fn tmux_absent(e: &Error) -> bool {
