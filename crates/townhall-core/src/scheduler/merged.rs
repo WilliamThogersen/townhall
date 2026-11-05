@@ -4,6 +4,7 @@
 //! delete.
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::cmd::run;
 use crate::context::Context;
@@ -15,13 +16,26 @@ use super::{transition, TaskLaunch};
 
 const BRANCH_REFS: &str = "refs/heads/";
 
+/// The commit `base` names, or `None` once it is gone (a stacked task's base branch is often
+/// deleted after its merge). `--ignore-missing` keeps that a clean exit instead of a failed
+/// command logged on every tick.
+async fn base_commit(path: &Path, base: &str) -> Result<Option<String>> {
+    let args = ["rev-list", "--ignore-missing", "--max-count=1", base, "--"];
+    let commit = run("git", &args, Some(path)).await?;
+    Ok(Some(commit).filter(|c| !c.is_empty()))
+}
+
 /// The tip of every `townhall/*` branch of `repo` that is merged into `base`, by task name.
+/// Empty when `base` no longer exists.
 async fn merged_tips(ctx: &Context, repo: &str, base: &str) -> Result<HashMap<String, String>> {
     if base.trim().is_empty() || base.starts_with('-') {
         return Err(Error::InvalidInput(format!("invalid base branch `{base}`")));
     }
     let repo = ctx.repo(repo).await?;
-    let merged = format!("--merged={base}");
+    let Some(commit) = base_commit(&repo.path, base).await? else {
+        return Ok(HashMap::new());
+    };
+    let merged = format!("--merged={commit}");
     let pattern = format!("{BRANCH_REFS}{TASK_BRANCH_PREFIX}");
     let args = [
         "for-each-ref",

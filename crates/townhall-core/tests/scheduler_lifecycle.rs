@@ -148,3 +148,28 @@ async fn a_base_that_cannot_be_read_is_warned_not_merged() {
     let warned = pass.warnings.iter().any(|w| w.contains("-oops"));
     assert!(warned, "{:?}", pass.warnings);
 }
+
+#[tokio::test]
+async fn a_base_branch_deleted_after_its_merge_is_skipped_without_a_warning() {
+    let s = Sched::new().await;
+    let ended = unique("stacked");
+    s.create(&ended, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    commit(&s.worktree(&ended), "the work").await;
+    s.end(&ended).await;
+    let gone = format!("townhall/{}", unique("gone"));
+    git(&s.repo, &["branch", &gone, "main"]).await;
+    let base = gone.clone();
+    let change = move |t: Task| {
+        Ok(Task {
+            base_branch: base.clone(),
+            ..t
+        })
+    };
+    s.store().update_task(&ended, change).await.unwrap();
+    git(&s.repo, &["branch", "-D", &gone]).await;
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert!(pass.merged.is_empty());
+    assert!(pass.warnings.is_empty(), "{:?}", pass.warnings);
+    assert_eq!(s.state(&ended).await, TaskState::Ended);
+}
