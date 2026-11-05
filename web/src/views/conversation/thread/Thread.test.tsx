@@ -83,6 +83,14 @@ describe("Thread messages", () => {
     expect(document.querySelector(".th-event[data-event='failed']")).not.toBeNull();
   });
 
+  it("writes a handoff with who handed to whom and why", () => {
+    renderThread([
+      entry(1, { kind: "handoff", task: "fix-login", from: "shipper", to: "coder", reason: "ci fails on lint" }),
+    ]);
+    const line = document.querySelector(".th-event[data-kind='handoff']");
+    expect(line).toHaveTextContent("↩fix-login: shipper handed back to coder, ci fails on lint10:42");
+  });
+
   it("shows a thinking row while townhall thinks, else the ended note", () => {
     renderThread([aYouEntry(1, "hi")], { thinking: true }, true);
     expect(screen.getByRole("status")).toHaveTextContent("thinking");

@@ -126,6 +126,13 @@ export type EntryBody =
       readonly event: AgentEvent;
       readonly text: string;
     }
+  | {
+      readonly kind: "handoff";
+      readonly task: string;
+      readonly from: string;
+      readonly to: string;
+      readonly reason: string;
+    }
   | { readonly kind: "error"; readonly message: string };
 
 export type ThreadEntry = { readonly id: number; readonly at: string } & EntryBody;
@@ -196,6 +203,7 @@ export interface AgentType {
   readonly tools: readonly string[];
   readonly prompt: string | null;
   readonly command: string | null;
+  readonly canHandBackTo: readonly string[] | null;
   readonly source: string;
   readonly updatedAt: string;
 }

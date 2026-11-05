@@ -25,6 +25,7 @@ const parseType: Guard<AgentType> = (value) => {
     tools: strings(r.tools, "agentType.tools"),
     prompt: nullable(r.prompt, "agentType.prompt", str),
     command: nullable(r.command, "agentType.command", str),
+    canHandBackTo: nullable(r.canHandBackTo, "agentType.canHandBackTo", strings),
     source: r.source,
   };
 };

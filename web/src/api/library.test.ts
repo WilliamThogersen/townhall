@@ -20,6 +20,15 @@ describe("library api", () => {
     expect(sent(fn).url).toBe("/api/library/agents/my%20type");
   });
 
+  it("reads which types an agent type may hand back to", async () => {
+    mockFetch(200, anAgentType({ canHandBackTo: ["coder"] }));
+    expect((await getAgentType("builder")).canHandBackTo).toEqual(["coder"]);
+    mockFetch(200, anAgentType({ canHandBackTo: null }));
+    expect((await getAgentType("builder")).canHandBackTo).toBeNull();
+    mockFetch(200, { ...anAgentType(), canHandBackTo: "coder" });
+    await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
+  });
+
   it("accepts null model and permission mode", async () => {
     mockFetch(200, [anAgentTypeSummary({ model: null, permissionMode: null })]);
     expect(await listAgentTypes()).toHaveLength(1);

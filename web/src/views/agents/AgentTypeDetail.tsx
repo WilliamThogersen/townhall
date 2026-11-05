@@ -36,6 +36,11 @@ function Field({ label, value }: { readonly label: string; readonly value: strin
   );
 }
 
+function handBackTo(allowed: readonly string[] | null): string {
+  if (allowed === null) return "any type";
+  return allowed.length > 0 ? allowed.join(", ") : "nobody";
+}
+
 export function AgentTypeDetail({ name }: { readonly name: string }) {
   const { data, error, loading } = useAgentType(name);
   if (error !== null && data === null) return <Banner level="error">{error}</Banner>;
@@ -60,6 +65,7 @@ export function AgentTypeDetail({ name }: { readonly name: string }) {
         <Field label="model" value={data.model ?? "default"} />
         <Field label="permission mode" value={data.permissionMode ?? "default"} />
         <Field label="tools" value={data.tools.length > 0 ? data.tools.join(", ") : "claude defaults"} />
+        <Field label="hands back to" value={handBackTo(data.canHandBackTo)} />
       </dl>
       <pre className="th-agent-source" tabIndex={0}>
         {data.source}
