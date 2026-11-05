@@ -67,7 +67,7 @@ export function SpanRow({ row, tabStop, onOpen, onToggle, onActive }: SpanRowPro
       aria-label={rowLabel(row)}
       tabIndex={tabStop ? 0 : -1}
       onFocus={() => onActive(row.key)}
-      onClick={() => onOpen(row)}
+      onClick={() => (row.kind === "task" ? onToggle(row.key) : onOpen(row))}
     >
       <div className="th-span-label">
         <Toggle row={row} onToggle={onToggle} />
