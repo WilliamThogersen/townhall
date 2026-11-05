@@ -79,7 +79,7 @@ describe("Composer thread", () => {
     await act(async () => lastXhr().succeed(attachmentFor("a1", "shot.png")));
     expect(send()).toBeEnabled();
     await user.click(send());
-    expect(onSubmit).toHaveBeenCalledWith("here is the screenshot", ["a1"]);
+    expect(onSubmit).toHaveBeenCalledWith("here is the screenshot", ["a1"], []);
     expect(container.querySelector(".th-composer-attachments")).toBeNull();
   });
 
@@ -91,7 +91,7 @@ describe("Composer thread", () => {
     await act(async () => lastXhr().succeed(attachmentFor("a1", "shot.png")));
     await user.click(input());
     await user.keyboard("{Enter}");
-    expect(onSubmit).toHaveBeenCalledWith("", ["a1"]);
+    expect(onSubmit).toHaveBeenCalledWith("", ["a1"], []);
   });
 
   it("keeps the attachments when sending fails", async () => {

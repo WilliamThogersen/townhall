@@ -6,6 +6,8 @@ import {
   isUploading,
   latestError,
   newUpload,
+  stagedFiles,
+  stagedUpload,
   uploadsReducer,
   type PendingUpload,
   type UploadAction,
@@ -17,6 +19,7 @@ export interface Uploads {
   readonly enabled: boolean;
   readonly uploading: boolean;
   readonly attachmentIds: readonly string[];
+  readonly stagedFiles: readonly File[];
   readonly error: string | null;
   readonly canRetry: boolean;
   readonly add: (files: Iterable<File> | ArrayLike<File>) => void;
@@ -119,20 +122,22 @@ function useStarter(dispatch: Dispatch, controllers: Controllers): Start {
   );
 }
 
-function useAdd(id: string | null, dispatch: Dispatch, start: Start): Uploads["add"] {
+function useAdd(id: string | null, stage: boolean, dispatch: Dispatch, start: Start): Uploads["add"] {
   const counter = useRef(0);
   return useCallback(
     (files) => {
-      if (id === null) return;
+      if (id === null && !stage) return;
+      const make = id === null ? stagedUpload : newUpload;
       const uploads = Array.from(files, (file) => {
         counter.current += 1;
-        return newUpload(`upload-${counter.current}`, file, previewOf(file), rejectReason(file));
+        return make(`upload-${counter.current}`, file, previewOf(file), rejectReason(file));
       });
       if (uploads.length === 0) return;
       dispatch({ type: "added", uploads });
+      if (id === null) return;
       uploads.filter((upload) => upload.status === "uploading").forEach((upload) => start(upload.key, upload.file, id));
     },
-    [id, dispatch, start],
+    [id, stage, dispatch, start],
   );
 }
 
@@ -174,22 +179,24 @@ function useRemoval(dispatch: Dispatch, controllers: Controllers): Pick<Uploads,
   return { remove, clear };
 }
 
-export function useUploads(conversationId: string | null | undefined): Uploads {
+export function useUploads(conversationId: string | null | undefined, stage = false): Uploads {
   const [items, dispatch] = useReducer(uploadsReducer, NO_UPLOADS);
   const [controllers] = useState(createControllers);
   const id = conversationId ?? null;
   usePreviewCleanup(items);
   const start = useStarter(dispatch, controllers);
-  const add = useAdd(id, dispatch, start);
+  const add = useAdd(id, stage, dispatch, start);
   const { retry, retryFailed } = useRetry(id, items, dispatch, start);
   const { remove, clear } = useRemoval(dispatch, controllers);
   useEffect(() => clear, [id, clear]);
   const attachmentIds = useMemo(() => doneAttachmentIds(items), [items]);
+  const files = useMemo(() => stagedFiles(items), [items]);
   return {
     items,
-    enabled: id !== null,
+    enabled: id !== null || stage,
     uploading: isUploading(items),
     attachmentIds,
+    stagedFiles: files,
     error: latestError(items),
     canRetry: items.some(isRetryableFailure),
     add,

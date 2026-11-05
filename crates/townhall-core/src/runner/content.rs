@@ -24,10 +24,11 @@ const NOT_AN_IMAGE: &str = "not shown: not a png, jpeg, gif or webp image";
 const UNREADABLE: &str = "not shown: its file cannot be read";
 
 /// How one attachment reaches the session.
-enum Shown {
+enum Shown<'a> {
     /// The n-th image block, from 1.
     Image(usize),
-    File,
+    /// A file the session reads from its stored path.
+    File(&'a Path),
     /// An image that went in as a note only, and why.
     Listed(&'static str),
 }
@@ -80,11 +81,11 @@ async fn image_block(
     Ok(json!({ "type": "image", "source": source }))
 }
 
-fn note_line(a: &Attachment, shown: &Shown) -> String {
+fn note_line(a: &Attachment, shown: &Shown<'_>) -> String {
     let what = format!("- {} ({}, {}", a.id, a.name, a.mime);
     match shown {
         Shown::Image(n) => format!("{what}, image {n} above)"),
-        Shown::File => format!("{what})"),
+        Shown::File(path) => format!("{what}, file at {})", path.display()),
         Shown::Listed(why) => format!("{what}, {why})"),
     }
 }
@@ -117,7 +118,7 @@ pub async fn user_content(
         }
         let (a, path) = store.attachment(conversation_id, id).await?;
         let shown = match a.kind {
-            AttachmentKind::File => Shown::File,
+            AttachmentKind::File => Shown::File(&path),
             AttachmentKind::Image => match image_block(&a, &path, blocks.len()).await {
                 Ok(block) => {
                     blocks.push(block);
@@ -212,15 +213,20 @@ mod tests {
         assert_eq!(blocks.len(), 3, "{blocks:?}");
         assert_eq!(blocks[0], image("image/png", PNG));
         assert_eq!(blocks[1], image("image/webp", WEBP));
+        let doc_path = f.store.attachment(&f.id, &doc.id).await.unwrap().1;
         let want = format!(
-            "look\n\n{HEADING}\n- {} (shot.png, image/png, image 1 above)\n- {} (notes.txt, text/plain)\n- {} (pic.webp, image/webp, image 2 above)",
-            png.id, doc.id, webp.id
+            "look\n\n{HEADING}\n- {} (shot.png, image/png, image 1 above)\n- {} (notes.txt, text/plain, file at {})\n- {} (pic.webp, image/webp, image 2 above)",
+            png.id, doc.id, doc_path.display(), webp.id
         );
         assert_eq!(text_of(&blocks), want);
         let only = f.content(" ", std::slice::from_ref(&doc.id)).await;
         assert_eq!(
             text_of(&only),
-            format!("{HEADING}\n- {} (notes.txt, text/plain)", doc.id)
+            format!(
+                "{HEADING}\n- {} (notes.txt, text/plain, file at {})",
+                doc.id,
+                doc_path.display()
+            )
         );
     }
 

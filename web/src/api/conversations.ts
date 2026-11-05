@@ -21,8 +21,19 @@ export const listConversations = (signal?: AbortSignal): Promise<readonly Conver
 export const getConversation = (id: string, signal?: AbortSignal): Promise<ConversationDetail> =>
   request("GET", path(id), parseConversationDetail, undefined, signal);
 
-export const startConversation = (input: NewMessageInput): Promise<ConversationDetail> =>
-  request("POST", "/conversations", parseConversationDetail, input);
+function withFiles(input: NewMessageInput, files: readonly File[]): NewMessageInput | FormData {
+  if (files.length === 0) return input;
+  const form = new FormData();
+  form.append("text", input.text);
+  files.forEach((file) => form.append("file", file, file.name));
+  return form;
+}
+
+export const startConversation = (
+  input: NewMessageInput,
+  files: readonly File[] = [],
+): Promise<ConversationDetail> =>
+  request("POST", "/conversations", parseConversationDetail, withFiles(input, files));
 
 export const sendMessage = (id: string, input: NewMessageInput): Promise<ThreadEntry> =>
   request("POST", path(id, "/messages"), parseThreadEntry, input);

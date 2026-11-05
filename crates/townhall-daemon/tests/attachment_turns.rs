@@ -32,13 +32,23 @@ async fn images_go_to_the_session_as_image_blocks_and_files_in_the_note() {
     assert_eq!(line["type"], "user");
     assert_eq!(line["message"]["role"], "user");
     let image = |media_type: &str, data: &str| json!({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}});
+    let stored = env
+        .home
+        .root()
+        .join("conversations")
+        .join(&id)
+        .join("files")
+        .join(ids[1].as_str().unwrap())
+        .join("notes.txt");
+    assert_eq!(std::fs::read(&stored).unwrap(), b"steps");
     let note = format!(
         "match these\n\nattachments of this message (pass their ids to create_task):\n\
          - {} (shot.png, image/png, image 1 above)\n\
-         - {} (notes.txt, text/plain)\n\
+         - {} (notes.txt, text/plain, file at {})\n\
          - {} (clip.gif, image/gif, image 2 above)",
         ids[0].as_str().unwrap(),
         ids[1].as_str().unwrap(),
+        stored.display(),
         ids[2].as_str().unwrap()
     );
     assert_eq!(

@@ -35,7 +35,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/settings` | | `Settings` | 503 | 2.1 (was 2.0) |
 | PUT | `/settings/{key}` | `{ value }` | `Settings` after the change | 400 unknown key or invalid value | 2.1 (was 2.0) |
 | GET | `/conversations` | | `Conversation[]`, newest activity first | | 2.2 |
-| POST | `/conversations` | `NewMessage { text, attachments? }` | `201 ConversationDetail`: created, your message appended, the first turn started | 400 | 2.2 |
+| POST | `/conversations` | `NewMessage { text, attachments? }`, or `multipart/form-data` with a `text` field and any number of `file` fields (at most 5 files, 20 MB each; 403 foreign origin, 413 over 20 MB), saved as the first message's attachments | `201 ConversationDetail`: created, your message appended, the first turn started | 400 | 2.2 |
 | GET | `/conversations/{id}` | | `ConversationDetail { conversation, entries, tasks, attachments }` | 404 | 2.2 |
 | PATCH | `/conversations/{id}` | `ConversationPatch { linkedRepo?, title? }` (`linkedRepo: null` is auto) | `Conversation` | 400, 404 unknown repo | 2.2 |
 | POST | `/conversations/{id}/messages` | `NewMessage` | `ThreadEntry` (yours). Clears `ended`, starts a turn | 400, 404, 409 a turn is running | 2.2 |
@@ -134,7 +134,7 @@ Unit 2.6, `routes/attachments/` and `runner/content.rs`.
 - `mime`: png, jpeg, gif and webp come from the file's first bytes; anything else from the part's content type, then the extension. An image type the bytes do not back up (an svg, text sent as `image/png`) is never kept, so `kind: "image"` is always a real png, jpeg, gif or webp.
 - `name`: the last path part without control or invisible (bidi) characters and without edge dots or spaces, at most 120 bytes with a 1 to 10 letter extension kept, `file` when nothing is left. An image gets the extension of its type (`shot` becomes `shot.png`), so an agent's Read tool shows it as an image.
 - Download: the bytes with `content-type`, `content-length`, `content-disposition` (`inline` for those images, `attachment` for the rest, an ASCII `filename` plus `filename*`), `x-content-type-options: nosniff` and `content-security-policy: sandbox`. Only a regular file directly in its attachment folder is served; a symlink or a missing file is `404`.
-- Townhall's session: up to 10 images per message, each at most 5 MB of base64, go in as `{"type":"image","source":{"type":"base64","media_type":...,"data":...}}` blocks before the text block. The text ends with `attachments of this message (pass their ids to create_task):` and one line per attachment, `- <id> (<name>, <mime>)`, with `image n above` or the reason an image was only listed.
+- Townhall's session: up to 10 images per message, each at most 5 MB of base64, go in as `{"type":"image","source":{"type":"base64","media_type":...,"data":...}}` blocks before the text block. The text ends with `attachments of this message (pass their ids to create_task):` and one line per attachment, `- <id> (<name>, <mime>, ...)`, ending in `image n above` for a sent image, `file at <path>` (the stored file, which the session can read) for any other file, or the reason an image was only listed.
 - Tasks: `Store::attachment` gives the path of the bytes, absolute whenever the home is, for 2.3 to append to an agent's prompt.
 
 ## Settings keys
