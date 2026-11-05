@@ -25,6 +25,7 @@ pub mod stats;
 pub mod steps;
 pub mod store;
 pub mod tmux;
+pub mod usage;
 pub mod worktree;
 
 pub use context::{Context, ContextOptions};
