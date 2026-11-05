@@ -11,6 +11,7 @@ describe("public surface", () => {
       "UploadChips",
       "formatSize",
       "lightboxImages",
+      "stripAttachmentMarkers",
       "useFileDrop",
       "useUploads",
     ]);
