@@ -96,6 +96,7 @@ pub fn router(state: AppState) -> Router {
         .route("/settings/{key}", put(settings::put))
         .route("/tasks", get(tasks::list))
         .route("/tasks/{name}", get(tasks::get))
+        .route("/tasks/{name}/mcp", post(mcp::task_rpc))
         .route("/stats", get(stats::get))
         .route("/search", get(search::search))
         .route("/events", get(events::socket))

@@ -6,7 +6,7 @@
 
 use serde_json::{json, Map, Value};
 
-use super::{tools, INSTRUCTIONS, PROTOCOL_VERSION, SERVER_NAME};
+use super::{ToolDef, PROTOCOL_VERSION, SERVER_NAME};
 
 pub const INVALID_REQUEST: i64 = -32600;
 pub const METHOD_NOT_FOUND: i64 = -32601;
@@ -14,6 +14,8 @@ pub const INVALID_PARAMS: i64 = -32602;
 
 /// Runs one `tools/call`: the tool's result, or why it failed in words the session can act on.
 pub(crate) trait ToolRunner {
+    fn tools(&self) -> Vec<ToolDef>;
+    fn instructions(&self) -> &'static str;
     async fn call(&self, name: &str, arguments: Value) -> Result<Value, String>;
 }
 
@@ -33,7 +35,7 @@ fn tool_result(outcome: Result<Value, String>) -> Value {
     }
 }
 
-fn initialize(params: &Map<String, Value>) -> Value {
+fn initialize(params: &Map<String, Value>, instructions: &str) -> Value {
     let version = params
         .get("protocolVersion")
         .and_then(Value::as_str)
@@ -42,12 +44,12 @@ fn initialize(params: &Map<String, Value>) -> Value {
         "protocolVersion": version,
         "capabilities": { "tools": {} },
         "serverInfo": { "name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
-        "instructions": INSTRUCTIONS
+        "instructions": instructions
     })
 }
 
-fn tool_list() -> Value {
-    let listed: Vec<Value> = tools()
+fn tool_list(tools: Vec<ToolDef>) -> Value {
+    let listed: Vec<Value> = tools
         .into_iter()
         .map(|t| json!({ "name": t.name, "description": t.description, "inputSchema": t.input_schema }))
         .collect();
@@ -90,9 +92,9 @@ async fn one(message: Value, tools: &impl ToolRunner) -> Option<Value> {
         Some(_) => return Some(fail(id, INVALID_PARAMS, "params must be an object")),
     };
     Some(match method {
-        "initialize" => ok(id, initialize(&params)),
+        "initialize" => ok(id, initialize(&params, tools.instructions())),
         "ping" => ok(id, json!({})),
-        "tools/list" => ok(id, tool_list()),
+        "tools/list" => ok(id, tool_list(tools.tools())),
         "tools/call" => call_tool(id, &params, tools).await,
         other => fail(id, METHOD_NOT_FOUND, &format!("method not found: {other}")),
     })
@@ -124,6 +126,14 @@ mod tests {
     struct Echo;
 
     impl ToolRunner for Echo {
+        fn tools(&self) -> Vec<ToolDef> {
+            crate::mcp::tools()
+        }
+
+        fn instructions(&self) -> &'static str {
+            ""
+        }
+
         async fn call(&self, name: &str, arguments: Value) -> Result<Value, String> {
             match name {
                 "echo" => Ok(json!({ "got": arguments })),

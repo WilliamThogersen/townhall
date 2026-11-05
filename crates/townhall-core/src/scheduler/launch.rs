@@ -27,6 +27,8 @@ struct Fleet {
 enum Step {
     Adopt,
     Start,
+    /// A task handed back to another agent type: its worktree is kept, a new agent runs in it.
+    Resume,
     Wait,
     Skip(String),
     /// Another agent holds the name (another repo, or another case): its repo and name.
@@ -79,7 +81,7 @@ async fn survey(ctx: &Context) -> Result<Fleet> {
     Ok(fleet)
 }
 
-fn decide(fleet: &Fleet, task: &Task, free: usize) -> Step {
+fn decide(fleet: &Fleet, task: &Task, free: usize, handed_back: bool) -> Step {
     let same_repo = |repo: &str| repo.eq_ignore_ascii_case(&task.repo);
     if let Some((_, why)) = fleet.unlisted.iter().find(|(r, _)| same_repo(r)) {
         return Step::Skip(format!(
@@ -88,7 +90,11 @@ fn decide(fleet: &Fleet, task: &Task, free: usize) -> Step {
         ));
     }
     if fleet.agent_of(task).is_some() {
-        return Step::Adopt;
+        return match (handed_back, free) {
+            (false, _) => Step::Adopt,
+            (true, 0) => Step::Wait,
+            (true, _) => Step::Resume,
+        };
     }
     match fleet.clash(task) {
         Some((repo, name)) => Step::Clash(repo, name),
@@ -109,7 +115,8 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     let mut free = plan::free_slots(limit, fleet.active(tasks));
     let mut pass = Pass::default();
     for task in ready {
-        let done = act(ctx, task, decide(&fleet, task, free)).await?;
+        let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
+        let done = act(ctx, task, decide(&fleet, task, free, handed_back)).await?;
         let alive = fleet.agent_of(task).is_some_and(|a| a.alive);
         if matches!(done, Done::Started(_)) || (matches!(done, Done::Adopted(_)) && alive) {
             free = free.saturating_sub(1);
@@ -169,6 +176,13 @@ async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
             fail(ctx, task, &why).await?;
             Ok(Done::Failed)
         }
+        Step::Resume => match resume(ctx, task).await {
+            Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
+            Err(e) => {
+                fail(ctx, task, &e.to_string()).await?;
+                Ok(Done::Failed)
+            }
+        },
         Step::Start => match launch(ctx, task).await {
             Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
             Err(e) => {
@@ -232,7 +246,8 @@ async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
     let ws = ctx.workspace(&repo)?;
     let start_commit = commit_of(&ws, &task.base_branch).await?;
     let files = attachment_paths(ctx, task).await?;
-    let brief = brief::write(ctx.home(), task, &files).await?;
+    let handoffs = ctx.store()?.handoffs(&task.name).await?;
+    let brief = brief::write(ctx.home(), task, &files, &handoffs).await?;
     let session_id = launcher.claude.then(ids::new_session_id);
     let options = LaunchOptions {
         prompt: Some(brief::order(&brief)),
@@ -242,6 +257,37 @@ async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
     };
     let adapter = launcher.adapter.as_ref();
     agent::start(&ws, &task.name, &start_commit, adapter, &options).await?;
+    Ok(TaskLaunch {
+        name: task.name.clone(),
+        start_commit,
+        session_id,
+        launched_at: clock::now_rfc3339(),
+    })
+}
+
+/// A handed-back task: its brief now holds the hand backs, and the agent type it was handed
+/// to runs in the worktree it already has, replacing the session that handed it back. The
+/// commit its merge is told from stays the one it first started from.
+async fn resume(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
+    let launcher = agent_type::launcher(ctx, task).await?;
+    let repo = ctx.repo(&task.repo).await?;
+    let ws = ctx.workspace(&repo)?;
+    let store = ctx.store()?;
+    let start_commit = match store.task_launch(&task.name).await? {
+        Some(first) => first.start_commit,
+        None => record_fork_point(ctx, task).await?,
+    };
+    let files = attachment_paths(ctx, task).await?;
+    let handoffs = store.handoffs(&task.name).await?;
+    let brief = brief::write(ctx.home(), task, &files, &handoffs).await?;
+    let session_id = launcher.claude.then(ids::new_session_id);
+    let options = LaunchOptions {
+        prompt: Some(brief::order(&brief)),
+        session_id: session_id.clone(),
+        add_dirs: read_dirs(&brief, &files),
+        ..launcher.options
+    };
+    agent::restart(&ws, &task.name, launcher.adapter.as_ref(), &options).await?;
     Ok(TaskLaunch {
         name: task.name.clone(),
         start_commit,
@@ -276,12 +322,12 @@ async fn adopt(ctx: &Context, task: &Task) -> Result<Vec<String>> {
         return Ok(vec![]);
     }
     Ok(match record_fork_point(ctx, task).await {
-        Ok(()) => vec![],
+        Ok(_) => vec![],
         Err(e) => vec![format!("`{}` adopted, merges unknown: {e}", task.name)],
     })
 }
 
-async fn record_fork_point(ctx: &Context, task: &Task) -> Result<()> {
+async fn record_fork_point(ctx: &Context, task: &Task) -> Result<String> {
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
     let base = commit_of(&ws, &task.base_branch).await?;
@@ -289,11 +335,12 @@ async fn record_fork_point(ctx: &Context, task: &Task) -> Result<()> {
     let start_commit = run("git", &args, Some(ws.repo())).await?;
     let launch = TaskLaunch {
         name: task.name.clone(),
-        start_commit,
+        start_commit: start_commit.clone(),
         session_id: None,
         launched_at: clock::now_rfc3339(),
     };
-    ctx.store()?.record_launch(launch).await
+    ctx.store()?.record_launch(launch).await?;
+    Ok(start_commit)
 }
 
 /// The one `error` the scheduler sets: the agent could not start. Adds `× <name>` with why.

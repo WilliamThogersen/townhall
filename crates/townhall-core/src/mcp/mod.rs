@@ -8,6 +8,7 @@
 
 mod ask;
 mod checks;
+mod hand_back;
 mod library;
 mod rpc;
 mod runs;
@@ -18,6 +19,7 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 
+pub use hand_back::HAND_BACK;
 pub use library::{LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
 pub use status::{MAX_MESSAGE_CHARS, MAX_STEPS, RECENT_ENTRIES};
@@ -30,6 +32,12 @@ pub async fn handle(ctx: &Context, conversation_id: &str, body: Value) -> Option
         conversation_id,
     };
     rpc::answer(body, &tools).await
+}
+
+/// Answers one JSON-RPC message or batch for the task `task` (which the route checked
+/// exists): the task agent's tools, only `hand_back`.
+pub async fn handle_task(ctx: &Context, task: &str, body: Value) -> Option<Value> {
+    rpc::answer(body, &task_tools::HandBackTools { ctx, task }).await
 }
 
 pub const SERVER_NAME: &str = "townhall";
@@ -69,6 +77,29 @@ pub fn config_json(base_url: &str, conversation_id: &str) -> String {
         }
     })
     .to_string()
+}
+
+/// The URL of one task's MCP endpoint on this daemon.
+pub fn task_endpoint(base_url: &str, task: &str) -> String {
+    format!("{}/api/tasks/{task}/mcp", base_url.trim_end_matches('/'))
+}
+
+/// The `--mcp-config` JSON for the agent of `task`.
+pub fn task_config_json(base_url: &str, task: &str) -> String {
+    json!({
+        "mcpServers": {
+            SERVER_NAME: { "type": "http", "url": task_endpoint(base_url, task) }
+        }
+    })
+    .to_string()
+}
+
+/// The tool a task's agent may use without asking.
+pub fn task_allowed_tools() -> Vec<String> {
+    hand_back::tools()
+        .iter()
+        .map(|t| format!("mcp__{SERVER_NAME}__{}", t.name))
+        .collect()
 }
 
 /// `--allowedTools` for townhall's session: only its own tools.

@@ -3,7 +3,7 @@
 //! `env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT
 //! -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
 //! [--append-system-prompt=P] [--session-id=ID] [--tools=B1,B2 --allowedTools=T1,T2] [--add-dir=D ...]
-//! --setting-sources= --settings=S --strict-mcp-config [-- PROMPT]`
+//! --setting-sources= --settings=S --strict-mcp-config [--mcp-config=JSON] [-- PROMPT]`
 //!
 //! Every option is one argv element (`--name=value`) and every element is shell-quoted, so
 //! no value can split or start a flag. The prompt is the only positional, after `--`.
@@ -158,6 +158,41 @@ fn tool_entries(options: &LaunchOptions) -> Result<Vec<&str>> {
     Ok(names)
 }
 
+fn mcp_entries(options: &LaunchOptions) -> Result<Vec<&str>> {
+    options
+        .mcp_tools
+        .iter()
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .map(|tool| {
+            plain("mcp tool", tool)?;
+            match tool.contains(',') {
+                true => Err(Error::InvalidInput(format!(
+                    "mcp tool {tool:?} must not hold a comma"
+                ))),
+                false => Ok(tool),
+            }
+        })
+        .collect()
+}
+
+/// A type with no tool list keeps every built-in tool, so its MCP tools are only allowed.
+fn only_mcp_tools(listed: &[&str], mcp: &[&str]) -> Vec<String> {
+    match listed.is_empty() && !mcp.is_empty() {
+        true => vec![format!("--allowedTools={}", mcp.join(","))],
+        false => vec![],
+    }
+}
+
+fn mcp_config(options: &LaunchOptions) -> Result<Vec<String>> {
+    match options.mcp_config.as_deref().filter(|c| !c.is_empty()) {
+        Some(config) => {
+            plain("mcp config", config).map(|()| vec![format!("--mcp-config={config}")])
+        }
+        None => Ok(vec![]),
+    }
+}
+
 /// `--tools=` the built-in tools the entries name (`Bash(git diff:*)` is `Bash`; MCP tools
 /// are no built-in), so no other built-in exists, then `--allowedTools=` the entries.
 fn tools(entries: &[&str]) -> Vec<String> {
@@ -213,14 +248,21 @@ impl ClaudeCodeAdapter {
     /// The argv after the program, unquoted: for callers that spawn claude without a shell.
     pub fn args(options: &LaunchOptions) -> Result<Vec<String>> {
         let entries = tool_entries(options)?;
+        let mcp = mcp_entries(options)?;
+        let listed: Vec<&str> = match entries.is_empty() {
+            true => vec![],
+            false => entries.iter().chain(&mcp).copied().collect(),
+        };
         Ok([
             model(options)?,
-            permission(options, &entries),
-            system_prompt(options, &entries),
+            permission(options, &listed),
+            system_prompt(options, &listed),
             session(options)?,
-            tools(&entries),
+            tools(&listed),
+            only_mcp_tools(&listed, &mcp),
             add_dirs(options)?,
             AGENT_ISOLATION.map(String::from).to_vec(),
+            mcp_config(options)?,
             prompt(options),
         ]
         .concat())

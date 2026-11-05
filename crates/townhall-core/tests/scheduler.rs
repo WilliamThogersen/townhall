@@ -50,16 +50,25 @@ async fn the_agent_reads_its_brief_with_the_settings_permission_mode() {
     assert!(brief.is_absolute() && brief.starts_with(s.ws.home().root()));
     assert!(!brief.starts_with(&s.repo) && !brief.starts_with(s.worktree(&name)));
     assert_eq!(lines[0], "--permission-mode=acceptEdits");
-    let id = lines[1].strip_prefix("--session-id=").unwrap();
+    assert!(
+        lines[1].starts_with("--append-system-prompt=you can hand back to: builder."),
+        "{args}"
+    );
+    let id = lines[2].strip_prefix("--session-id=").unwrap();
     assert!(is_session_id(id), "{args}");
     let dir = format!("--add-dir={}", brief.parent().unwrap().display());
     let order = brief_order(&brief);
+    let mcp = format!(
+        "--mcp-config={}",
+        townhall_core::mcp::task_config_json(s.ctx().base_url(), &name)
+    );
     let rest: Vec<&str> = [dir.as_str()]
         .into_iter()
         .chain(townhall_core::agent::AGENT_ISOLATION)
-        .chain(["--", order.as_str()])
+        .chain([mcp.as_str(), "--", order.as_str()])
         .collect();
-    assert_eq!(lines[2..], rest);
+    assert_eq!(lines[3], "--allowedTools=mcp__townhall__hand_back");
+    assert_eq!(lines[4..], rest);
     let text = std::fs::read_to_string(&brief).unwrap();
     assert_eq!(text, format!("# do {name}\n\nthe brief for {name}\n"));
     let launch = s.store().task_launch(&name).await.unwrap().unwrap();
@@ -99,7 +108,7 @@ async fn attachments_are_listed_in_the_brief_and_readable() {
         format!("--add-dir={}", brief.parent().unwrap().display()),
         format!("--add-dir={}", files_dir.display()),
     ];
-    assert_eq!(lines[2..4], dirs);
+    assert_eq!(lines[4..6], dirs);
     let text = std::fs::read_to_string(&brief).unwrap();
     let listed = format!("\n\nFiles attached to this task:\n- {}\n", path.display());
     assert!(text.ends_with(&listed), "{text}");

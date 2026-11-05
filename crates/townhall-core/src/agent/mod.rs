@@ -81,6 +81,30 @@ pub async fn start(
     Ok(from_worktree(wt, Some(adapter.kind().to_string()), true))
 }
 
+/// Run `adapter` again in the existing worktree of `name`: the old session, if any, is
+/// killed first. The worktree and its branch are kept, with everything committed in them.
+pub async fn restart(
+    ws: &Workspace,
+    name: &str,
+    adapter: &dyn AgentAdapter,
+    options: &LaunchOptions,
+) -> Result<Agent> {
+    validate_name(name)?;
+    let command = adapter.launch_command(options)?;
+    let wt = worktree::list(ws)
+        .await?
+        .into_iter()
+        .find(|w| w.name == name)
+        .ok_or_else(|| Error::NotFound(name.to_string()))?;
+    match tmux::kill(ws.key(), name).await {
+        Ok(()) => {}
+        Err(e) if tmux_absent(&e) => {}
+        Err(e) => return Err(e),
+    }
+    tmux::spawn(ws.key(), name, &wt.path, &command, adapter.kind()).await?;
+    Ok(from_worktree(wt, Some(adapter.kind().to_string()), true))
+}
+
 /// Kill the session and remove worktree and branch. Either may already be gone,
 /// but if both are, the agent does not exist and `NotFound` is returned.
 pub async fn stop(ws: &Workspace, name: &str) -> Result<()> {
