@@ -92,6 +92,13 @@ describe("claude's folder trust dialog", () => {
     expect(sends()[0]).toMatchObject({ url: SEND_URL, body: { text: "y" } });
   });
 
+  it("has no free text answer, since any text would pick no, exit", () => {
+    mockFetch();
+    const group = renderAsk(TRUST_QUESTION, trust);
+    expect(within(group).queryByRole("textbox")).toBeNull();
+    expect(within(group).getByRole("button", { name: "send yes, trust it" })).toBeInTheDocument();
+  });
+
   it("maps only the trust dialog's own choices to keys", () => {
     expect(choiceKeys(TRUST_QUESTION, "yes, trust it")).toEqual(["up", "enter"]);
     expect(choiceKeys(TRUST_QUESTION, "no, exit")).toEqual(["enter"]);

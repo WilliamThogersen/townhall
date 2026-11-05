@@ -4,7 +4,7 @@ import { Button } from "../../../ui/Button";
 import { useThread } from "./threadContext";
 import { Message } from "./ThreadLines";
 import { askChoices } from "./threadModel";
-import { choiceKeys } from "./trustDialog";
+import { choiceKeys, takesKeys } from "./trustDialog";
 
 type NeedsYouEntry = Extract<ThreadEntry, { kind: "needsYou" }>;
 type RepoAskEntry = Extract<ThreadEntry, { kind: "repoAsk" }>;
@@ -103,7 +103,7 @@ export function NeedsYouBlock({ entry, open }: { readonly entry: NeedsYouEntry; 
             ) : null}
           </div>
         ) : null}
-        {open ? <AnswerForm agent={entry.agent} busy={busy} onAnswer={answer} /> : null}
+        {open && !takesKeys(entry.question) ? <AnswerForm agent={entry.agent} busy={busy} onAnswer={answer} /> : null}
       </Ask>
     </Message>
   );

@@ -9,8 +9,10 @@ const TRUST_KEYS: ReadonlyMap<string, readonly AgentKey[]> = new Map<string, rea
   ["no, exit", ["enter"]],
 ]);
 
+export const takesKeys = (question: string): boolean => question === TRUST_QUESTION;
+
 export function choiceKeys(question: string, choice: string): readonly AgentKey[] | null {
-  if (question !== TRUST_QUESTION) return null;
+  if (!takesKeys(question)) return null;
   return TRUST_KEYS.get(choice) ?? null;
 }
 
