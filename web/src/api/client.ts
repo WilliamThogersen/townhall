@@ -1,7 +1,7 @@
 import { wsApiBase, type PageLocation } from "./base";
-import { parseAgent, parseAgentInfos, parseInfo, parseString } from "./guards";
+import { parseAgentInfos, parseInfo, parseString } from "./guards";
 import { request } from "./request";
-import type { Agent, AgentInfo, CreateAgentInput, Info } from "./types";
+import type { AgentInfo, Info } from "./types";
 
 const enc = encodeURIComponent;
 
@@ -10,9 +10,6 @@ export const listAgents = (signal?: AbortSignal): Promise<readonly AgentInfo[]> 
 
 export const getInfo = (signal?: AbortSignal): Promise<Info> =>
   request("GET", "/info", parseInfo, undefined, signal);
-
-export const createAgent = (input: CreateAgentInput): Promise<Agent> =>
-  request("POST", "/agents", parseAgent, input);
 
 export const stopAgent = (name: string): Promise<string> =>
   request("DELETE", `/agents/${enc(name)}`, parseString);

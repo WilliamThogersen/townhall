@@ -18,6 +18,14 @@ describe("legacy control center", () => {
     expect(legacy).toEqual([]);
   });
 
+  it("has no new-agent form and no client call that creates an agent", () => {
+    const forms = Object.keys(sources).filter((path) => /CreateAgentForm|NewAgentForm/.test(path));
+    const creates = Object.entries(sources)
+      .filter(([, text]) => /request\(\s*"POST",\s*["'`]\/agents["'`]/.test(text))
+      .map(([path]) => path);
+    expect([...forms, ...creates]).toEqual([]);
+  });
+
   it("leaves no legacy class names behind", () => {
     const offenders = Object.entries(sources)
       .filter(([, text]) => LEGACY_CLASS.test(text))

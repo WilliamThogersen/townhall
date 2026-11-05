@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAgent, getInfo, listAgents, sendText, streamUrl } from "./client";
+import { getInfo, listAgents, sendText, streamUrl } from "./client";
 import { ApiError } from "./errors";
 
 const agent = { name: "a", kind: "shell", branch: "townhall/a", worktree: "/w/a", alive: true };
@@ -60,12 +60,12 @@ describe("api client", () => {
   });
 
   it("POSTs JSON bodies", async () => {
-    const fn = mockFetch(201, { success: true, data: agent, error: null });
-    await createAgent({ name: "a", adapter: "shell", command: "cat" });
+    const fn = mockFetch(200, { success: true, data: "a", error: null });
+    await sendText("a b", "y");
     const [url, init] = fn.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/agents");
+    expect(url).toBe("/api/agents/a%20b/send");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ name: "a", adapter: "shell", command: "cat" });
+    expect(JSON.parse(init.body as string)).toEqual({ text: "y" });
   });
 
   it("builds ws urls from the page location", () => {
