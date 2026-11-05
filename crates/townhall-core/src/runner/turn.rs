@@ -2,6 +2,7 @@
 //! then hand the turn back. A resume of a session claude lost starts a fresh one, once.
 
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use super::args::{self, TurnArgs};
 use super::content::user_content;
@@ -10,6 +11,7 @@ use super::repo::{self, Message, Resolved};
 use super::session::{talk, TurnEnd};
 use super::turns::TurnGuard;
 use crate::model::{Conversation, ConversationStatus, EntryBody, NewMessage, Repo};
+use crate::redact::redact;
 use crate::{ids, mcp, Context, Result};
 
 pub const LOST_SESSION: &str = "claude no longer has this conversation's history, so townhall started a fresh session: earlier context is gone";
@@ -32,11 +34,38 @@ pub(super) async fn run(
     event: bool,
     guard: TurnGuard,
 ) {
+    let started = Instant::now();
+    // Lengths only: the message is the user's words.
+    tracing::info!(
+        target: "townhall::runner", event = "turn.start", conversation = %id,
+        prompt_chars = message.text.chars().count(), attachments = message.attachments.len(),
+        task_event = event, "turn started"
+    );
     let end = match drive(&ctx, &id, &message, event, &guard).await {
         Ok(end) => end,
         Err(e) => TurnEnd::failed(format!("townhall failed: {e}")),
     };
+    log_end(&id, started, &end);
     finish(&ctx, &id, guard, end).await;
+}
+
+fn log_end(id: &str, started: Instant, end: &TurnEnd) {
+    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let outcome = match (&end.error, end.stopped) {
+        (Some(_), _) => "failed",
+        (None, true) => "stopped",
+        (None, false) => "ok",
+    };
+    if let Some(error) = &end.error {
+        tracing::warn!(
+            target: "townhall::runner", event = "turn.failed", conversation = id,
+            error = %redact(error), "turn failed"
+        );
+    }
+    tracing::info!(
+        target: "townhall::runner", event = "turn.end", conversation = id, outcome,
+        duration_ms, cost_usd = end.cost_usd, "turn ended"
+    );
 }
 
 async fn drive(
@@ -184,11 +213,11 @@ async fn plan(
 async fn finish(ctx: &Context, id: &str, guard: TurnGuard, end: TurnEnd) {
     let store = match ctx.store() {
         Ok(store) => store,
-        Err(e) => return eprintln!("warn: turn of {id} not finished: {e}"),
+        Err(e) => return warn_turn("turn.not_finished", id, &e, "turn not finished"),
     };
     if let Some(message) = end.error {
         if let Err(e) = store.append_entry(id, EntryBody::Error { message }).await {
-            eprintln!("warn: cannot note the failed turn of {id}: {e}");
+            warn_turn("turn.note_failed", id, &e, "cannot note the failed turn");
         }
     }
     let context = end.context;
@@ -203,6 +232,13 @@ async fn finish(ctx: &Context, id: &str, guard: TurnGuard, end: TurnEnd) {
         })
         .await;
     if let Err(e) = done {
-        eprintln!("warn: turn of {id} not handed back: {e}");
+        warn_turn("turn.not_handed_back", id, &e, "turn not handed back");
     }
+}
+
+fn warn_turn(event: &str, id: &str, e: &crate::Error, message: &str) {
+    tracing::warn!(
+        target: "townhall::runner", event, conversation = id,
+        error_kind = e.kind(), error = %redact(&e.to_string()), "{message}"
+    );
 }

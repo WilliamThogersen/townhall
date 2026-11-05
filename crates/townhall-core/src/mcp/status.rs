@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use crate::agent::state;
 use crate::context::Context;
 use crate::model::{EntryBody, Task, TaskState, ThreadEntry};
+use crate::redact::redact;
 use crate::steps::{self, Step};
 
 use super::checks::Checked;
@@ -134,7 +135,11 @@ async fn detail(ctx: &Context, task: &Task, entries: &[ThreadEntry]) -> TaskDeta
     let found = match transcripts_of(ctx, task).await {
         Ok(found) => Some(found),
         Err(e) => {
-            eprintln!("warn: task_status: no transcript for `{}`: {e}", task.name);
+            tracing::warn!(
+                target: "townhall::mcp", event = "mcp.status_no_transcript",
+                task = %task.name, error_kind = e.kind(), error = %redact(&e.to_string()),
+                "task_status: no transcript"
+            );
             None
         }
     };
@@ -166,7 +171,11 @@ async fn last_steps(projects: &Path, worktree: &Path, task: &Task) -> Vec<Step> 
             all.into_iter().skip(skip).collect()
         }
         Err(e) => {
-            eprintln!("warn: task_status: no steps for `{}`: {e}", task.name);
+            tracing::warn!(
+                target: "townhall::mcp", event = "mcp.status_no_steps",
+                task = %task.name, error_kind = e.kind(), error = %redact(&e.to_string()),
+                "task_status: no steps"
+            );
             vec![]
         }
     }
@@ -179,9 +188,10 @@ async fn last_message(projects: &Path, worktree: &Path, task: &Task) -> Option<S
     match state::last_message(projects, worktree).await {
         Ok(said) => said.map(|s| capped(&s)),
         Err(e) => {
-            eprintln!(
-                "warn: task_status: no last message for `{}`: {e}",
-                task.name
+            tracing::warn!(
+                target: "townhall::mcp", event = "mcp.status_no_last_message",
+                task = %task.name, error_kind = e.kind(), error = %redact(&e.to_string()),
+                "task_status: no last message"
             );
             None
         }

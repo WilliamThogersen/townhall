@@ -10,6 +10,7 @@ mod ask;
 mod checks;
 mod hand_back;
 mod library;
+mod logs;
 mod rpc;
 mod runs;
 mod status;
@@ -51,7 +52,7 @@ pub const MAX_TITLE_LEN: u64 = 80;
 pub const MAX_PROMPT_LEN: u64 = 50_000;
 pub const MAX_LIST_LEN: u64 = 20;
 
-pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to an agent of a saved agent type in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did; list_agent_types, read_agent_type and save_agent_type show and save the agent types tasks run as.";
+pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to an agent of a saved agent type in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did; list_agent_types, read_agent_type and save_agent_type show and save the agent types tasks run as; log_summary and read_logs show townhall's own errors and warnings from its logs in ~/.townhall/logs/: when asked to improve townhall, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint.";
 
 /// One tool as `tools/list` returns it.
 #[derive(Debug, Clone, PartialEq)]
@@ -168,7 +169,7 @@ fn set_title_schema() -> Value {
 
 /// Every tool townhall's session gets, in `tools/list` order.
 pub fn tools() -> Vec<ToolDef> {
-    [task_tools(), library::tools(), runs::tools()].concat()
+    [task_tools(), library::tools(), runs::tools(), logs::tools()].concat()
 }
 
 fn task_tools() -> Vec<ToolDef> {
@@ -210,7 +211,9 @@ mod tests {
                 "mcp__townhall__task_status",
                 "mcp__townhall__list_agent_types",
                 "mcp__townhall__read_agent_type",
-                "mcp__townhall__save_agent_type"
+                "mcp__townhall__save_agent_type",
+                "mcp__townhall__read_logs",
+                "mcp__townhall__log_summary"
             ]
         );
     }
@@ -218,7 +221,7 @@ mod tests {
     #[test]
     fn schemas_match_the_input_types() {
         let tools = tools();
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 8);
         let create = &tools[0].input_schema;
         let props: Vec<&String> = create["properties"].as_object().unwrap().keys().collect();
         assert_eq!(
@@ -249,6 +252,12 @@ mod tests {
         assert_eq!(tools[5].name, "save_agent_type");
         assert_eq!(save["required"], json!(["source"]));
         assert_eq!(tools[4].input_schema["required"], json!(["name"]));
+        assert_eq!(tools[6].name, "read_logs");
+        assert_eq!(tools[7].name, "log_summary");
+        assert!(tools[6].input_schema.get("required").is_none());
+        assert_eq!(tools[6].input_schema["properties"]["limit"]["maximum"], 200);
+        assert_eq!(tools[7].input_schema["properties"]["top"]["maximum"], 50);
+        assert!(INSTRUCTIONS.contains("log_summary") && INSTRUCTIONS.contains("~/.townhall/logs"));
         assert!(tools
             .iter()
             .all(|t| t.input_schema["additionalProperties"] == false));

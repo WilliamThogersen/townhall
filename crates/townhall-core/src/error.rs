@@ -69,6 +69,25 @@ impl Error {
         }
     }
 
+    /// A stable machine name for the log field `error_kind`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Spawn { .. } => "spawn",
+            Self::Command { .. } => "command",
+            Self::Io { .. } => "io",
+            Self::InvalidName(_) => "invalid_name",
+            Self::InvalidInput(_) => "invalid_input",
+            Self::NotFound(_) => "not_found",
+            Self::Missing { .. } => "missing",
+            Self::Conflict(_) => "conflict",
+            Self::TooLarge(_) => "too_large",
+            Self::Database(_) => "database",
+            Self::Unavailable(_) => "unavailable",
+            Self::Corrupt { .. } => "corrupt",
+            Self::RollbackFailed { .. } => "rollback_failed",
+        }
+    }
+
     pub fn io(context: impl Into<String>, source: std::io::Error) -> Self {
         Self::Io {
             context: context.into(),
@@ -90,6 +109,56 @@ mod tests {
             stderr: stderr.into(),
         }
         .to_string()
+    }
+
+    #[test]
+    fn every_variant_has_its_own_kind() {
+        let io = || std::io::Error::other("x");
+        let all = [
+            (
+                Error::Spawn {
+                    program: "p".into(),
+                    source: io(),
+                },
+                "spawn",
+            ),
+            (
+                Error::Command {
+                    command: "c".into(),
+                    code: Some(1),
+                    stderr: String::new(),
+                },
+                "command",
+            ),
+            (Error::io("ctx", io()), "io"),
+            (Error::InvalidName("n".into()), "invalid_name"),
+            (Error::InvalidInput("i".into()), "invalid_input"),
+            (Error::NotFound("a".into()), "not_found"),
+            (Error::missing("task", "t"), "missing"),
+            (Error::Conflict("c".into()), "conflict"),
+            (Error::TooLarge("t".into()), "too_large"),
+            (Error::Database("d".into()), "database"),
+            (Error::Unavailable("u".into()), "unavailable"),
+            (
+                Error::Corrupt {
+                    path: "p".into(),
+                    message: "m".into(),
+                },
+                "corrupt",
+            ),
+            (
+                Error::RollbackFailed {
+                    cause: "a".into(),
+                    cleanup: "b".into(),
+                },
+                "rollback_failed",
+            ),
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for (error, kind) in all {
+            assert_eq!(error.kind(), kind);
+            assert!(seen.insert(kind), "duplicate kind {kind}");
+        }
     }
 
     #[test]

@@ -39,6 +39,7 @@ pub use turn::LOST_SESSION;
 pub use turns::{TurnGuard, Turns, BUSY};
 
 use crate::model::{ConversationStatus, EntryBody};
+use crate::redact::redact;
 use crate::{Context, Result};
 
 pub const RESTARTED: &str = "townhall restarted before this reply finished. send it again";
@@ -50,7 +51,11 @@ pub fn start(ctx: &Context) -> Option<JoinHandle<()>> {
     Some(tokio::spawn(async move {
         let _turns = turns::AbortOnDrop(ctx.turns().clone());
         if let Err(e) = recover(&ctx).await {
-            eprintln!("warn: conversations left thinking were not fixed: {e}");
+            tracing::warn!(
+                target: "townhall::runner", event = "recover.failed",
+                error_kind = e.kind(), error = %redact(&e.to_string()),
+                "conversations left thinking were not fixed"
+            );
         }
         std::future::pending::<()>().await
     }))

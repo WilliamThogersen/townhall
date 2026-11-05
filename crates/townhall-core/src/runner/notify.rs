@@ -15,6 +15,7 @@ use std::time::Duration;
 use super::actions::open_turn;
 use crate::context::WeakContext;
 use crate::model::{EntryBody, NewMessage};
+use crate::redact::redact;
 use crate::{Context, Result};
 
 /// What the planner reads before the events, so it knows nobody typed them.
@@ -70,7 +71,11 @@ async fn flush(weak: WeakContext, delay: Duration, id: String) {
     };
     let texts = ctx.notes().take(&id);
     if let Err(e) = deliver(&ctx, &id, texts, guard).await {
-        eprintln!("warn: task events for {id} not delivered: {e}");
+        tracing::warn!(
+            target: "townhall::runner", event = "notify.not_delivered", conversation = %id,
+            error_kind = e.kind(), error = %redact(&e.to_string()),
+            "task events not delivered"
+        );
     }
 }
 

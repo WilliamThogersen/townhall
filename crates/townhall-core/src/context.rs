@@ -197,9 +197,10 @@ impl Context {
             match registered {
                 Ok(repo) => Some(repo.name),
                 Err(e) => {
-                    eprintln!(
-                        "warn: startup repo {} not registered: {e}",
-                        self.inner.startup.repo().display()
+                    tracing::warn!(
+                        target: "townhall::store", event = "repo.startup_not_registered",
+                        path = %self.inner.startup.repo().display(), error_kind = e.kind(),
+                        error = %crate::redact::redact(&e.to_string()), "startup repo not registered"
                     );
                     None
                 }

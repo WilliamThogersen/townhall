@@ -1,5 +1,6 @@
 import { toMessage } from "../api/errors";
 import { getSettings, putSetting } from "../api/settings";
+import { logWarn } from "../log/report";
 import { forgetStoredSetting, importBrowserSettings, type PutSetting } from "./browserImport";
 import {
   clampAgentsAtOnce,
@@ -106,7 +107,7 @@ function storageOf(deps: SettingsStoreDeps): Storage | null {
   try {
     return deps.storage();
   } catch (error) {
-    console.warn("warn: browser storage is not available", error);
+    logWarn("web.storage_unavailable", "warn: browser storage is not available", error);
     return null;
   }
 }

@@ -16,6 +16,7 @@ use tokio::time::{sleep_until, timeout_at, Instant};
 
 use super::prompt::interrupt_line;
 use crate::agent::OUTER_SESSION_ENV;
+use crate::redact::redact;
 use crate::{Error, Result};
 
 /// An interrupted CLI writes its result within a second; this long after a stop it is killed.
@@ -82,7 +83,10 @@ fn kill_group(group: u32) {
     if unsafe { libc::killpg(pgid, libc::SIGKILL) } != 0 {
         let e = std::io::Error::last_os_error();
         if e.raw_os_error() != Some(libc::ESRCH) {
-            eprintln!("warn: cannot kill claude's process group {group}: {e}");
+            tracing::warn!(
+                target: "townhall::runner", event = "claude.kill_failed", group,
+                error = %redact(&e.to_string()), "cannot kill claude's process group"
+            );
         }
     }
 }
@@ -147,7 +151,10 @@ impl Proc {
             stdin.flush().await
         };
         if let Err(e) = written.await {
-            eprintln!("warn: claude's stdin closed early: {e}");
+            tracing::warn!(
+                target: "townhall::runner", event = "claude.stdin_closed",
+                error = %redact(&e.to_string()), "claude's stdin closed early"
+            );
             self.stdin = None;
         }
     }
@@ -181,7 +188,10 @@ impl Proc {
             kill_group(group);
         }
         if let Err(e) = self.child.start_kill() {
-            eprintln!("warn: cannot kill claude: {e}");
+            tracing::warn!(
+                target: "townhall::runner", event = "claude.kill_failed",
+                error = %redact(&e.to_string()), "cannot kill claude"
+            );
         }
     }
 
@@ -191,7 +201,10 @@ impl Proc {
         let code = match status {
             Ok(status) => status.code(),
             Err(e) => {
-                eprintln!("warn: cannot wait for claude: {e}");
+                tracing::warn!(
+                    target: "townhall::runner", event = "claude.wait_failed",
+                    error = %redact(&e.to_string()), "cannot wait for claude"
+                );
                 None
             }
         };
@@ -211,7 +224,10 @@ impl Proc {
                 Some(text)
             }
             Err(e) => {
-                eprintln!("warn: cannot read claude's output: {e}");
+                tracing::warn!(
+                    target: "townhall::runner", event = "claude.read_failed",
+                    error = %redact(&e.to_string()), "cannot read claude's output"
+                );
                 None
             }
         }
@@ -233,7 +249,10 @@ impl Proc {
                 status = self.child.wait(), if self.reaped.is_none() => self.exited(status),
                 _ = sleep_until(kill_at.unwrap_or(far)), if kill_at.is_some() => self.kill(),
                 _ = sleep_until(give_up_at.unwrap_or(far)), if give_up_at.is_some() => {
-                    eprintln!("warn: claude's output stayed open after it ended");
+                    tracing::warn!(
+                        target: "townhall::runner", event = "claude.output_stayed_open",
+                        "claude's output stayed open after it ended"
+                    );
                     return None;
                 }
             }

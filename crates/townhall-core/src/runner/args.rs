@@ -127,7 +127,7 @@ mod tests {
                 "--strict-mcp-config",
                 "--mcp-config={}",
                 "--tools=Read,Grep,Glob",
-                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,Read,Grep,Glob",
+                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__read_logs,mcp__townhall__log_summary,Read,Grep,Glob",
                 "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
                 "--setting-sources=",
                 "--settings={\"disableAllHooks\":true,\"autoMemoryEnabled\":false}",

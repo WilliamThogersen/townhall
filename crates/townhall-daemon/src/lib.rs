@@ -7,6 +7,8 @@ pub mod cors;
 pub mod envelope;
 pub mod error;
 pub mod extract;
+pub mod logging;
+pub mod middleware;
 pub mod routes;
 pub mod serve;
 pub mod state;
@@ -18,5 +20,7 @@ pub use state::AppState;
 
 /// The API router wrapped with the desktop/dev CORS policy.
 pub fn router_with_cors(state: AppState) -> axum::Router {
-    router(state).layer(cors::cors_layer())
+    router(state)
+        .layer(axum::middleware::from_fn(middleware::log_requests))
+        .layer(cors::cors_layer())
 }

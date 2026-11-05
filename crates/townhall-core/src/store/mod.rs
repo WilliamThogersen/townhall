@@ -82,7 +82,10 @@ impl Store {
         configure(&conn)?;
         migrate::apply(&mut conn, &migrate::all())?;
         if let Err(e) = import::config_json(&mut conn, home) {
-            eprintln!("warn: config.json was not imported: {e}");
+            tracing::warn!(
+                target: "townhall::store", event = "store.config_import_failed", error_kind = e.kind(),
+                error = %crate::redact::redact(&e.to_string()), "config.json was not imported"
+            );
         }
         let inner = Inner {
             conn: Mutex::new(conn),

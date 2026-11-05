@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal as XTerm, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { logError, logWarn } from "../log/report";
 import { connectAttach, type AttachConnection, type AttachState } from "./attachSocket";
 import { readTerminalFont, useTerminalTheme } from "./terminalTheme";
 
@@ -25,7 +26,7 @@ async function whenFontReady(fontFamily: string): Promise<void> {
   try {
     await document.fonts.load(`${FONT_SIZE}px ${fontFamily}`);
   } catch (e) {
-    console.warn("terminal font not loaded", e);
+    logWarn("web.terminal_font", "terminal font not loaded", e);
   }
 }
 
@@ -59,7 +60,7 @@ function mountTerminal(
     try {
       fit.fit();
     } catch (e) {
-      console.error("terminal fit failed", e);
+      logError("web.terminal_fit", "terminal fit failed", e);
       return;
     }
     onResize(term.cols, term.rows);

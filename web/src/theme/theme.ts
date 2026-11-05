@@ -1,3 +1,5 @@
+import { logWarn } from "../log/report";
+
 export type ThemeChoice = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
 
@@ -29,7 +31,7 @@ export function readThemeChoice(): ThemeChoice {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
     return isThemeChoice(stored) ? stored : DEFAULT_CHOICE;
   } catch (error) {
-    console.warn("theme choice not read, using dark", error);
+    logWarn("web.theme_read", "theme choice not read, using dark", error);
     return DEFAULT_CHOICE;
   }
 }
@@ -68,7 +70,7 @@ function storeThemeChoice(choice: ThemeChoice): void {
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, choice);
   } catch (error) {
-    console.warn("theme choice not saved, applying it for this session", error);
+    logWarn("web.theme_save", "theme choice not saved, applying it for this session", error);
   }
 }
 

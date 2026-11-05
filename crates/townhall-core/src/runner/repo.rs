@@ -5,6 +5,7 @@
 use super::answer::{answer, last_repo, pending_ask, Answer, CurrentRepo, PendingAsk};
 use super::prompt::RepoNote;
 use crate::model::{Conversation, EntryBody, Repo, RepoRule, RepoUnclear};
+use crate::redact::redact;
 use crate::repo_infer::{self, Candidate, Inference, Rule};
 use crate::store::Store;
 use crate::{Context, Result};
@@ -167,7 +168,11 @@ impl Resolver<'_> {
             Ok(Inference::Ask { candidates, reason }) => self.unclear(candidates, reason).await,
             Ok(Inference::NoRepos) => Ok(self.run(RepoNote::Unknown, false)),
             Err(e) => {
-                eprintln!("warn: repo inference failed: {e}");
+                tracing::warn!(
+                    target: "townhall::runner", event = "repo.inference_failed",
+                    conversation = self.id, error_kind = e.kind(),
+                    error = %redact(&e.to_string()), "repo inference failed"
+                );
                 Ok(self.run(RepoNote::Unknown, false))
             }
         }
@@ -210,7 +215,10 @@ pub async fn resolve(
             r.note(&repo, RepoRule::Linked, LINKED).await?;
             return Ok(r.run(RepoNote::One(repo), false));
         }
-        Some((name, None)) => eprintln!("warn: linked repo `{name}` is gone, inferring instead"),
+        Some((name, None)) => tracing::warn!(
+            target: "townhall::runner", event = "repo.linked_gone",
+            conversation = %conversation.id, repo = name, "linked repo is gone, inferring instead"
+        ),
         None => {}
     }
     if let Some(p) = &r.pending {

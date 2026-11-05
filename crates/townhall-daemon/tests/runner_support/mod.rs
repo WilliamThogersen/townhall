@@ -7,7 +7,8 @@
 //! `sleep 31` holding its stdout (`ESCAPE` in its own process group) and ignores the
 //! interrupt, `STALE` cannot find the session on `--resume`, `ALWAYS` never can,
 //! `MENTION` succeeds with a reply (and a stderr line) that quotes that error, and
-//! `ERRAFTER` ends with an error result quoting it after `init`.
+//! `ERRAFTER` ends with an error result quoting it after `init`, and `DENIAL` succeeds with
+//! two `permission_denials` in its result. Every success result reports a cost of 0.0123.
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -78,7 +79,11 @@ case "$first" in
 esac
 echo '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"on"}}}'
 echo '{"type":"assistant","message":{"model":"claude-test","role":"assistant","content":[{"type":"text","text":"'"$say"'"}],"usage":{"input_tokens":1200,"cache_creation_input_tokens":300,"cache_read_input_tokens":500,"output_tokens":20}}}'
-echo '{"type":"result","subtype":"success","is_error":false,"result":"'"$say"'","usage":{"input_tokens":5000,"output_tokens":40},"modelUsage":{"claude-test":{"contextWindow":200000}}}'
+denials='[]'
+case "$first" in
+  *DENIAL*) denials='[{"tool_name":"Bash","tool_use_id":"t1","tool_input":{"command":"rm -rf /"}},{"tool_name":"Edit","tool_use_id":"t2","tool_input":{"file_path":"/x"}}]' ;;
+esac
+echo '{"type":"result","subtype":"success","is_error":false,"result":"'"$say"'","total_cost_usd":0.0123,"permission_denials":'"$denials"',"usage":{"input_tokens":5000,"output_tokens":40},"modelUsage":{"claude-test":{"contextWindow":200000}}}'
 cat >> "$dir/stdin-$n"
 "#;
 

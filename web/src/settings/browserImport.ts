@@ -1,4 +1,5 @@
 import { toMessage } from "../api/errors";
+import { logWarn } from "../log/report";
 import { isFields, isSettingValue, SETTING_KEYS, type SettingKey, type Settings } from "./settings";
 
 export const BROWSER_SETTINGS_KEY = "th-settings";
@@ -30,7 +31,7 @@ interface Failure {
 const NOTHING: ImportOutcome = Object.freeze({ sent: 0, failed: 0, message: null });
 
 function warn(what: string, error: unknown): void {
-  console.warn(`warn: ${what}`, error);
+  logWarn("web.settings_import", `warn: ${what}`, error);
 }
 
 function parseJson(raw: string): unknown {

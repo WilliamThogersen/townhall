@@ -49,7 +49,7 @@ describe("conversations api", () => {
     const [url, init] = fn.mock.calls[0] ?? [];
     expect(url).toBe("/api/conversations");
     expect(init?.method).toBe("POST");
-    expect(init?.headers).toBeUndefined();
+    expect(init?.headers).toEqual({ "x-request-id": expect.any(String) });
     const form = init?.body as FormData;
     expect(form).toBeInstanceOf(FormData);
     expect(form.get("text")).toBe("match this");

@@ -3,6 +3,7 @@
 //! result gives the context meter and, for a failure, the error entry's copy.
 
 use std::path::Path;
+use std::time::Instant;
 
 use tokio::sync::watch;
 
@@ -11,6 +12,7 @@ use super::process::{Exit, Proc};
 use super::prompt;
 use super::stream::{parse_line, StreamEvent, TurnResult};
 use crate::model::{ContextUsage, Conversation, EntryBody};
+use crate::redact::redact;
 use crate::{Context, Result};
 
 /// The context window when the CLI does not say (older CLIs).
@@ -25,6 +27,9 @@ pub(super) struct TurnEnd {
     pub context: Option<ContextUsage>,
     /// claude could not find the session it was asked to resume.
     pub lost: bool,
+    /// The user stopped the turn.
+    pub stopped: bool,
+    pub cost_usd: Option<f64>,
 }
 
 impl TurnEnd {
@@ -114,6 +119,8 @@ impl Session<'_> {
             error: failure(self.result.as_ref(), &exit),
             context,
             lost: lost_session(self.result.as_ref(), &exit, self.saw_init),
+            stopped: exit.stopped,
+            cost_usd: self.result.as_ref().and_then(|r| r.cost_usd),
         }
     }
 }
@@ -160,10 +167,22 @@ pub(super) async fn talk(
     user_line: &str,
     mut stop: watch::Receiver<bool>,
 ) -> Result<TurnEnd> {
+    let started = Instant::now();
     let mut proc = match Proc::spawn(ctx.claude_bin(), argv, cwd) {
         Ok(proc) => proc,
-        Err(e) => return Ok(TurnEnd::failed(format!("cannot run claude: {e}"))),
+        Err(e) => {
+            tracing::warn!(
+                target: "townhall::runner", event = "claude.spawn", ok = false,
+                conversation = %conversation.id, error_kind = e.kind(),
+                error = %redact(&e.to_string()), "cannot spawn claude"
+            );
+            return Ok(TurnEnd::failed(format!("cannot run claude: {e}")));
+        }
     };
+    tracing::info!(
+        target: "townhall::runner", event = "claude.spawn", ok = true,
+        conversation = %conversation.id, resume = conversation.session_started, "spawned claude"
+    );
     proc.write(user_line).await;
     let mut session = Session {
         ctx,
@@ -180,7 +199,29 @@ pub(super) async fn talk(
         }
     }
     let exit = proc.finish().await;
+    log_exit(&conversation.id, started, &exit);
+    log_denials(&conversation.id, session.result.as_ref());
     Ok(session.end(exit))
+}
+
+fn log_exit(conversation: &str, started: Instant, exit: &Exit) {
+    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    // `code` is absent when claude was killed by a signal.
+    tracing::info!(
+        target: "townhall::runner", event = "claude.exit", conversation,
+        code = exit.code, stopped = exit.stopped, duration_ms, "claude exited"
+    );
+}
+
+/// Tool names only: the denied tools' input can hold file contents or commands.
+fn log_denials(conversation: &str, result: Option<&TurnResult>) {
+    let Some(result) = result.filter(|r| !r.denied.is_empty()) else {
+        return;
+    };
+    tracing::warn!(
+        target: "townhall::runner", event = "turn.permission_denials", conversation,
+        count = result.denied.len(), tools = %result.denied.join(","), "tools were denied"
+    );
 }
 
 #[cfg(test)]

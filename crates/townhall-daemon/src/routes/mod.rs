@@ -9,6 +9,7 @@ mod conversations;
 mod events;
 mod info;
 mod library;
+mod logs;
 mod mcp;
 mod repos;
 mod runs;
@@ -104,6 +105,7 @@ pub fn router(state: AppState) -> Router {
         .route("/events", get(events::socket))
         .merge(agent_routes())
         .merge(conversation_routes())
-        .merge(library_routes());
+        .merge(library_routes())
+        .merge(logs::routes());
     Router::new().nest("/api", api).with_state(state)
 }

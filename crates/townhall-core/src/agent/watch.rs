@@ -78,6 +78,16 @@ pub struct Watcher {
     last_warning: Option<String>,
 }
 
+/// The state's name for a log line; never its question.
+fn state_name(state: &AgentState) -> &'static str {
+    match state {
+        AgentState::Working => "working",
+        AgentState::Waiting { .. } => "waiting",
+        AgentState::Error { .. } => "error",
+        AgentState::Ended => "ended",
+    }
+}
+
 fn terminal(state: &AgentState) -> bool {
     matches!(state, AgentState::Error { .. } | AgentState::Ended)
 }
@@ -171,6 +181,10 @@ impl Watcher {
         }
         self.settling.remove(&key);
         if changed {
+            tracing::info!(target: "townhall::agent", event = "agent.state",
+                agent = %info.name, repo = %info.repo,
+                from = before.as_ref().map_or("none", state_name), to = state_name(&info.state),
+                "agent state changed");
             if let Some(task) = task {
                 self.record_tokens(info, task).await;
             }
@@ -363,6 +377,9 @@ impl Watcher {
     }
 
     async fn forget(&mut self, key: &Key, seen: &Seen) {
+        tracing::info!(target: "townhall::agent", event = "agent.gone",
+            agent = %seen.agent, repo = %seen.repo, from = state_name(&seen.state),
+            "agent is gone");
         self.seen.remove(key);
         self.missing.remove(key);
         self.settling.remove(key);
@@ -379,7 +396,8 @@ impl Watcher {
     /// Logs `message` unless it was the last one, so a failing poll does not flood the log.
     fn warn(&mut self, message: &str) {
         if self.last_warning.as_deref() != Some(message) {
-            eprintln!("warn: agent watcher: {message}");
+            tracing::warn!(target: "townhall::agent", event = "agent.watcher_warning",
+                error = %crate::redact::redact(message), "agent watcher");
             self.last_warning = Some(message.to_string());
         }
     }

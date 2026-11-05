@@ -9,6 +9,7 @@ const HOME_ENV: &str = "TOWNHALL_HOME";
 const HOME_DIR: &str = ".townhall";
 /// Townhall's own agent worktrees live under `<home>/worktrees/`.
 pub const WORKTREES_DIR: &str = "worktrees";
+const LOGS_DIR: &str = "logs";
 const CONFIG_FILE: &str = "config.json";
 const MAX_BASE_LEN: usize = 32;
 
@@ -56,6 +57,14 @@ impl Home {
 
     pub fn worktrees_for(&self, key: &str) -> PathBuf {
         self.root.join(WORKTREES_DIR).join(key)
+    }
+
+    /// `<home>/logs`, created (0700) when missing: the JSONL files `townhall-daemon`'s
+    /// `logging` writes.
+    pub fn logs_dir(&self) -> Result<PathBuf> {
+        let dir = self.root.join(LOGS_DIR);
+        self.create_dir(&dir)?;
+        Ok(dir)
     }
 
     /// Creates `dir` and missing parents; new directories are 0700 on unix.
@@ -170,6 +179,19 @@ mod tests {
         assert!(repo_key(Path::new("/")).starts_with("repo-"));
         let long = format!("/x/{}", "a".repeat(100));
         assert_eq!(repo_key(Path::new(&long)).len(), MAX_BASE_LEN + 9);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn logs_dir_is_created_private_under_the_home() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let home = Home::at(tmp.path().join("h"));
+        let logs = home.logs_dir().unwrap();
+        assert_eq!(logs, tmp.path().join("h/logs"));
+        let mode = std::fs::metadata(&logs).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+        assert_eq!(home.logs_dir().unwrap(), logs, "idempotent");
     }
 
     #[cfg(unix)]

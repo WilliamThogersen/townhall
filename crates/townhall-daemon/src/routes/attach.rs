@@ -13,6 +13,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::mpsc;
+use townhall_core::redact::redact;
 use townhall_core::{agent, fleet};
 
 use super::agents::RepoQuery;
@@ -21,6 +22,7 @@ use super::events::{FOREIGN_ORIGIN, NOT_UPGRADED};
 use crate::cors::origin_allowed;
 use crate::envelope::failure;
 use crate::error::ApiError;
+use crate::middleware::WsSession;
 use crate::state::AppState;
 
 const START_SIZE: PtySize = PtySize {
@@ -51,7 +53,11 @@ pub async fn attach(
     };
     let at = fleet::locate(state.ctx(), &name, q.repo.as_deref()).await?;
     let args = agent::attach_args(&at.workspace, &name).await?;
-    Ok(ws.on_upgrade(move |socket| run(socket, args)))
+    let session = WsSession::open("/api/agents/{name}/attach", &headers, Some(&name));
+    Ok(ws.on_upgrade(move |socket| async move {
+        let _session = session;
+        run(socket, args).await
+    }))
 }
 
 /// An attach client running in a PTY.
@@ -116,7 +122,12 @@ impl Pty {
             pixel_height: 0,
         };
         if let Err(e) = self.master.resize(size) {
-            eprintln!("warn: cannot resize the terminal: {e}");
+            tracing::warn!(
+                target: "townhall::http",
+                event = "attach.resize_failed",
+                error = %redact(&e.to_string()),
+                "cannot resize the terminal"
+            );
         }
     }
 
@@ -141,7 +152,12 @@ async fn run(mut socket: WebSocket, args: Vec<String>) {
     let mut pty = match open(&args) {
         Ok(pty) => pty,
         Err(reason) => {
-            eprintln!("warn: {reason}");
+            tracing::warn!(
+                target: "townhall::http",
+                event = "attach.open_failed",
+                error = %redact(&reason),
+                "cannot open the terminal"
+            );
             let _ = socket
                 .send(close(CLOSE_ERROR, "cannot open the terminal"))
                 .await;
