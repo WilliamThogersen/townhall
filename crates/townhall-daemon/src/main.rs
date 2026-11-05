@@ -3,6 +3,7 @@ use std::process::ExitCode;
 use clap::Parser;
 use townhall_core::{ContextOptions, Home, Workspace};
 use townhall_daemon::config::Config;
+use townhall_daemon::logging::{self, LogConfig};
 use townhall_daemon::{router_with_cors, serve, start_background, AppState};
 
 #[tokio::main]
@@ -18,6 +19,12 @@ async fn main() -> ExitCode {
 
 async fn run(config: Config) -> Result<(), String> {
     let home = Home::from_env().map_err(|e| format!("townhall home: {e}"))?;
+    let logs = home.logs_dir().map_err(|e| e.to_string())?;
+    let _log_guard = logging::init(LogConfig {
+        dir: logs,
+        prefix: "daemon".into(),
+        stderr_level: tracing::Level::WARN,
+    });
     let workspace = Workspace::new(home, &config.repo).map_err(|e| e.to_string())?;
     let (repo, root) = (
         workspace.repo().display().to_string(),
@@ -31,6 +38,14 @@ async fn run(config: Config) -> Result<(), String> {
     eprintln!(
         "townhall-daemon: repo {repo} (home {root}) listening on {}",
         config.bind
+    );
+    tracing::info!(
+        target: "townhall::daemon",
+        event = "daemon.start",
+        version = env!("CARGO_PKG_VERSION"),
+        repo = %repo,
+        bind = %config.bind,
+        "daemon started"
     );
     let background = start_background(&state).await;
     let served = serve(listener, router_with_cors(state), stop_signal()).await;
