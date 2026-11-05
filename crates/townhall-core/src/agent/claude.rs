@@ -2,7 +2,7 @@
 //!
 //! `env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT
 //! -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
-//! [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2] [--add-dir=D ...]
+//! [--append-system-prompt=P] [--session-id=ID] [--tools=B1,B2 --allowedTools=T1,T2] [--add-dir=D ...]
 //! [-- PROMPT]`
 //!
 //! Every option is one argv element (`--name=value`) and every element is shell-quoted, so
@@ -74,22 +74,36 @@ fn model(options: &LaunchOptions) -> Result<Vec<String>> {
     }
 }
 
-/// `--permission-mode=<mode>`, or `--dangerously-skip-permissions` for `skip all`.
-fn permission(mode: PermissionMode) -> Vec<String> {
+/// `--permission-mode=<mode>`, or `--dangerously-skip-permissions` for `skip all`. An agent
+/// with a tool list runs in `dontAsk` (`plan` stays): whatever the list does not allow is
+/// denied, never asked about, and skip all cannot lift the list.
+fn permission(options: &LaunchOptions, tools: &[&str]) -> Vec<String> {
+    let mode = options.permission_mode;
+    if !tools.is_empty() && mode != PermissionMode::Plan {
+        return vec!["--permission-mode=dontAsk".into()];
+    }
     match mode.cli_value() {
         Some(value) => vec![format!("--permission-mode={value}")],
         None => vec!["--dangerously-skip-permissions".into()],
     }
 }
 
-fn system_prompt(options: &LaunchOptions) -> Vec<String> {
-    match options
+fn system_prompt(options: &LaunchOptions, tools: &[&str]) -> Vec<String> {
+    let own = options
         .system_prompt
         .as_deref()
-        .filter(|p| !p.trim().is_empty())
-    {
-        Some(p) => vec![format!("--append-system-prompt={p}")],
-        None => vec![],
+        .filter(|p| !p.trim().is_empty());
+    let notice = (!tools.is_empty()).then(|| {
+        format!(
+            "these are the tools you have access to: {}. every other tool is denied.",
+            tools.join(", ")
+        )
+    });
+    match (own, notice) {
+        (Some(p), Some(n)) => vec![format!("--append-system-prompt={p}\n\n{n}")],
+        (Some(p), None) => vec![format!("--append-system-prompt={p}")],
+        (None, Some(n)) => vec![format!("--append-system-prompt={n}")],
+        (None, None) => vec![],
     }
 }
 
@@ -108,8 +122,8 @@ fn session(options: &LaunchOptions) -> Result<Vec<String>> {
     }
 }
 
-/// One `--allowedTools=A,B` element: claude splits it on commas, so no entry may hold one.
-fn tools(options: &LaunchOptions) -> Result<Vec<String>> {
+/// The checked tool entries: claude splits `--allowedTools` on commas, so none may hold one.
+fn tool_entries(options: &LaunchOptions) -> Result<Vec<&str>> {
     let mut names = vec![];
     for tool in options
         .allowed_tools
@@ -125,10 +139,26 @@ fn tools(options: &LaunchOptions) -> Result<Vec<String>> {
         }
         names.push(tool);
     }
-    Ok(match names.is_empty() {
-        true => vec![],
-        false => vec![format!("--allowedTools={}", names.join(","))],
-    })
+    Ok(names)
+}
+
+/// `--tools=` the built-in tools the entries name (`Bash(git diff:*)` is `Bash`; MCP tools
+/// are no built-in), so no other built-in exists, then `--allowedTools=` the entries.
+fn tools(entries: &[&str]) -> Vec<String> {
+    if entries.is_empty() {
+        return vec![];
+    }
+    let mut built_in: Vec<&str> = vec![];
+    for entry in entries {
+        let name = entry.split('(').next().unwrap_or(entry);
+        if !name.starts_with("mcp__") && !built_in.contains(&name) {
+            built_in.push(name);
+        }
+    }
+    vec![
+        format!("--tools={}", built_in.join(",")),
+        format!("--allowedTools={}", entries.join(",")),
+    ]
 }
 
 /// `--add-dir=<folder>`: absolute, UTF-8, never option-like.
@@ -166,12 +196,13 @@ impl ClaudeCodeAdapter {
 
     /// The argv after the program, unquoted: for callers that spawn claude without a shell.
     pub fn args(options: &LaunchOptions) -> Result<Vec<String>> {
+        let entries = tool_entries(options)?;
         Ok([
             model(options)?,
-            permission(options.permission_mode),
-            system_prompt(options),
+            permission(options, &entries),
+            system_prompt(options, &entries),
             session(options)?,
-            tools(options)?,
+            tools(&entries),
             add_dirs(options)?,
             prompt(options),
         ]
