@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "./api/client";
 import * as conversationsApi from "./api/conversations";
 import * as events from "./api/events";
-import { aConversation, aDetail, aRepo, someStats } from "./api/fixtures";
+import { aConversation, aDetail, aRepo, aUsage, someStats } from "./api/fixtures";
 import * as reposApi from "./api/repos";
 import * as searchApi from "./api/search";
 import * as statsApi from "./api/stats";
 import * as tasksApi from "./api/tasks";
+import * as usageApi from "./api/usage";
 import { App } from "./App";
 import { navigate } from "./router";
 import { DEFAULT_SETTINGS } from "./settings/settings";
@@ -24,6 +25,7 @@ beforeEach(() => {
   vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([]);
   vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
   vi.spyOn(searchApi, "searchConversations").mockResolvedValue([]);
+  vi.spyOn(usageApi, "getUsage").mockResolvedValue(aUsage());
 });
 
 afterEach(() => {

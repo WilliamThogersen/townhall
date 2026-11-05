@@ -5,6 +5,7 @@ import { useRepos } from "../data";
 import { Link, PATHS, useRoute } from "../router";
 import { SearchNavItem } from "../sidebar/SearchNavItem";
 import { SidebarConversations } from "../sidebar/SidebarConversations";
+import { UsageMeter } from "../usage/UsageMeter";
 import { useSidebarSearch, type SidebarSearch } from "../sidebar/useSidebarSearch";
 import { DRAG_REGION } from "../ui/dragRegion";
 import { GlyphCounts } from "../ui/StatusGlyph";
@@ -67,6 +68,7 @@ export function Sidebar({ foot }: { readonly foot?: ReactNode }) {
       <Nav search={search} />
       <SidebarConversations query={search.query} />
       <div className="th-sidebar-foot">
+        <UsageMeter />
         {foot}
         <Link className="th-btn th-btn--ghost th-btn--sm" to={PATHS.settings} aria-current={currentPage(name === "settings")}>
           settings
