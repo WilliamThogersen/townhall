@@ -317,10 +317,14 @@ pub fn read_logs(dir: &Path, now_ms: i64, args: &ReadArgs) -> Result<ReadOutput,
                 .as_deref()
                 .is_none_or(|c| matches_component(&e.target, c))
             && args.event.as_deref().is_none_or(|ev| e.event == ev)
-            && args.task.as_deref().is_none_or(|t| e.field("task") == Some(t))
+            && args
+                .task
+                .as_deref()
+                .is_none_or(|t| e.field("task") == Some(t))
             && grep.as_deref().is_none_or(|g| {
                 e.message.to_lowercase().contains(g)
-                    || e.field("error").is_some_and(|x| x.to_lowercase().contains(g))
+                    || e.field("error")
+                        .is_some_and(|x| x.to_lowercase().contains(g))
             })
     });
 

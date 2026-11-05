@@ -46,7 +46,9 @@ async fn initialize_echoes_the_version_and_lists_the_tools() {
             "task_status",
             "list_agent_types",
             "read_agent_type",
-            "save_agent_type"
+            "save_agent_type",
+            "read_logs",
+            "log_summary"
         ]
     );
     for t in tools {

@@ -31,23 +31,65 @@ fn fixture() -> TempDir {
         dir.path(),
         "daemon.2026-11-05.jsonl",
         &[
-            line("2026-11-05T09:00:00.000000Z", "ERROR", "townhall::task", "task.launch_failed", "launch failed", json!({"task": "alpha", "error_kind": "command"})),
+            line(
+                "2026-11-05T09:00:00.000000Z",
+                "ERROR",
+                "townhall::task",
+                "task.launch_failed",
+                "launch failed",
+                json!({"task": "alpha", "error_kind": "command"}),
+            ),
             "this is not json".into(),
-            line("2026-11-05T10:00:00.000000Z", "WARN", "townhall::git", "cmd.run", "git worktree add failed", json!({"task": "beta"})),
-            line("2026-11-05T10:30:00.000000Z", "INFO", "townhall::http", "http.request", "GET /api/tasks", json!({"status": 200})),
+            line(
+                "2026-11-05T10:00:00.000000Z",
+                "WARN",
+                "townhall::git",
+                "cmd.run",
+                "git worktree add failed",
+                json!({"task": "beta"}),
+            ),
+            line(
+                "2026-11-05T10:30:00.000000Z",
+                "INFO",
+                "townhall::http",
+                "http.request",
+                "GET /api/tasks",
+                json!({"status": 200}),
+            ),
             "{\"no\": \"timestamp\"}".into(),
-            line("2026-11-05T11:00:00.000000Z", "DEBUG", "townhall::http", "http.request", "debug noise", json!({})),
+            line(
+                "2026-11-05T11:00:00.000000Z",
+                "DEBUG",
+                "townhall::http",
+                "http.request",
+                "debug noise",
+                json!({}),
+            ),
         ],
     );
     write(
         dir.path(),
         "app.2026-11-05.jsonl",
-        &[line("2026-11-05T10:15:00.000000Z", "ERROR", "townhall::web", "web.error", "Boom in render", json!({"route": "/tasks"}))],
+        &[line(
+            "2026-11-05T10:15:00.000000Z",
+            "ERROR",
+            "townhall::web",
+            "web.error",
+            "Boom in render",
+            json!({"route": "/tasks"}),
+        )],
     );
     write(
         dir.path(),
         "daemon.2026-11-01.jsonl",
-        &[line("2026-11-01T10:00:00.000000Z", "ERROR", "townhall::task", "task.launch_failed", "old failure", json!({"task": "ancient"}))],
+        &[line(
+            "2026-11-01T10:00:00.000000Z",
+            "ERROR",
+            "townhall::task",
+            "task.launch_failed",
+            "old failure",
+            json!({"task": "ancient"}),
+        )],
     );
     std::fs::write(dir.path().join("notes.txt"), "ignored").unwrap();
     dir
@@ -59,7 +101,12 @@ fn read(dir: &Path, args: Value) -> Value {
 }
 
 fn lines(v: &Value) -> Vec<String> {
-    v["lines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap().to_string()).collect()
+    v["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l.as_str().unwrap().to_string())
+        .collect()
 }
 
 #[test]
@@ -68,11 +115,26 @@ fn defaults_are_warn_and_up_newest_first_with_source() {
     let out = read(dir.path(), json!({}));
     let l = lines(&out);
     assert_eq!(l.len(), 3, "{l:?}");
-    assert!(l[0].contains("10:15:00") && l[0].contains("web.error") && l[0].contains("app"), "{}", l[0]);
-    assert!(l[1].contains("10:00:00") && l[1].contains("cmd.run") && l[1].contains("daemon"), "{}", l[1]);
-    assert!(l[2].contains("09:00:00") && l[2].contains("task=alpha"), "{}", l[2]);
+    assert!(
+        l[0].contains("10:15:00") && l[0].contains("web.error") && l[0].contains("app"),
+        "{}",
+        l[0]
+    );
+    assert!(
+        l[1].contains("10:00:00") && l[1].contains("cmd.run") && l[1].contains("daemon"),
+        "{}",
+        l[1]
+    );
+    assert!(
+        l[2].contains("09:00:00") && l[2].contains("task=alpha"),
+        "{}",
+        l[2]
+    );
     assert_eq!(out["truncated"], false);
-    assert!(!l.iter().any(|x| x.contains("old failure")), "older than 24h");
+    assert!(
+        !l.iter().any(|x| x.contains("old failure")),
+        "older than 24h"
+    );
 }
 
 #[test]
@@ -88,7 +150,11 @@ fn component_event_task_and_grep_filter() {
     let dir = fixture();
     let by = |args: Value| lines(&read(dir.path(), args));
     assert_eq!(by(json!({"component": "townhall::git"})).len(), 1);
-    assert_eq!(by(json!({"component": "git"})).len(), 1, "short component names work");
+    assert_eq!(
+        by(json!({"component": "git"})).len(),
+        1,
+        "short component names work"
+    );
     assert_eq!(by(json!({"component": "townhall::"})).len(), 3, "prefix");
     assert_eq!(by(json!({"event": "task.launch_failed"})).len(), 1);
     assert_eq!(by(json!({"task": "beta"})).len(), 1);
@@ -114,8 +180,14 @@ fn since_values() {
     assert_eq!(parse_since("24h", NOW).unwrap(), NOW - 86_400_000);
     assert_eq!(parse_since("7d", NOW).unwrap(), NOW - 7 * 86_400_000);
     assert_eq!(parse_since("30m", NOW).unwrap(), NOW - 1_800_000);
-    assert_eq!(parse_since("2026-11-05T10:00:00Z", NOW).unwrap(), NOW - 7_200_000);
-    assert_eq!(parse_since("2026-11-05T12:00:00.500Z", NOW).unwrap(), NOW + 500);
+    assert_eq!(
+        parse_since("2026-11-05T10:00:00Z", NOW).unwrap(),
+        NOW - 7_200_000
+    );
+    assert_eq!(
+        parse_since("2026-11-05T12:00:00.500Z", NOW).unwrap(),
+        NOW + 500
+    );
     assert_eq!(parse_since("2026-11-05T14:00:00+02:00", NOW).unwrap(), NOW);
     assert!(parse_since("yesterday", NOW).is_err());
     assert!(parse_since("", NOW).is_err());
@@ -141,7 +213,16 @@ fn since_stops_at_rfc3339_boundary() {
 fn limit_defaults_and_is_clamped() {
     let dir = TempDir::new().unwrap();
     let many: Vec<String> = (0..300)
-        .map(|i| line(&format!("2026-11-05T10:{:02}:{:02}.000000Z", i / 60, i % 60), "ERROR", "townhall::x", "x.y", &format!("m{i}"), json!({})))
+        .map(|i| {
+            line(
+                &format!("2026-11-05T10:{:02}:{:02}.000000Z", i / 60, i % 60),
+                "ERROR",
+                "townhall::x",
+                "x.y",
+                &format!("m{i}"),
+                json!({}),
+            )
+        })
         .collect();
     write(dir.path(), "daemon.2026-11-05.jsonl", &many);
     assert_eq!(lines(&read(dir.path(), json!({}))).len(), 50);
@@ -166,7 +247,14 @@ fn each_line_is_cut_to_300_chars() {
     write(
         dir.path(),
         "daemon.2026-11-05.jsonl",
-        &[line("2026-11-05T10:00:00.000000Z", "ERROR", "townhall::x", "x.y", &long, json!({"task": "t"}))],
+        &[line(
+            "2026-11-05T10:00:00.000000Z",
+            "ERROR",
+            "townhall::x",
+            "x.y",
+            &long,
+            json!({"task": "t"}),
+        )],
     );
     let l = lines(&read(dir.path(), json!({})));
     assert_eq!(l.len(), 1);
@@ -178,27 +266,65 @@ fn output_is_capped_at_16kb_with_truncated_flag() {
     let dir = TempDir::new().unwrap();
     let msg = "x".repeat(400);
     let many: Vec<String> = (0..200)
-        .map(|i| line(&format!("2026-11-05T10:{:02}:{:02}.000000Z", i / 60, i % 60), "ERROR", "townhall::x", "x.y", &msg, json!({})))
+        .map(|i| {
+            line(
+                &format!("2026-11-05T10:{:02}:{:02}.000000Z", i / 60, i % 60),
+                "ERROR",
+                "townhall::x",
+                "x.y",
+                &msg,
+                json!({}),
+            )
+        })
         .collect();
     write(dir.path(), "daemon.2026-11-05.jsonl", &many);
     let out = read(dir.path(), json!({"limit": 200}));
     assert_eq!(out["truncated"], true);
-    assert!(out.to_string().len() <= MAX_OUTPUT_BYTES, "{}", out.to_string().len());
+    assert!(
+        out.to_string().len() <= MAX_OUTPUT_BYTES,
+        "{}",
+        out.to_string().len()
+    );
     assert!(lines(&out).len() < 200);
     assert!(lines(&out).len() > 10);
 }
 
 #[test]
 fn fingerprint_groups_same_message_with_different_numbers_and_names() {
-    let a = fingerprint("townhall::task", "task.failed", "task foo-1 failed after 312ms", &[]);
-    let b = fingerprint("townhall::task", "task.failed", "task bar-9 failed after 18ms", &[]);
+    let a = fingerprint(
+        "townhall::task",
+        "task.failed",
+        "task foo-1 failed after 312ms",
+        &[],
+    );
+    let b = fingerprint(
+        "townhall::task",
+        "task.failed",
+        "task bar-9 failed after 18ms",
+        &[],
+    );
     assert_eq!(a, b);
     assert_eq!(a.len(), 16);
-    let c = fingerprint("townhall::task", "task.failed", "task foo-1 exploded after 312ms", &[]);
+    let c = fingerprint(
+        "townhall::task",
+        "task.failed",
+        "task foo-1 exploded after 312ms",
+        &[],
+    );
     assert_ne!(a, c);
-    let d = fingerprint("townhall::git", "task.failed", "task foo-1 failed after 312ms", &[]);
+    let d = fingerprint(
+        "townhall::git",
+        "task.failed",
+        "task foo-1 failed after 312ms",
+        &[],
+    );
     assert_ne!(a, d, "target is part of it");
-    let e = fingerprint("townhall::task", "task.other", "task foo-1 failed after 312ms", &[]);
+    let e = fingerprint(
+        "townhall::task",
+        "task.other",
+        "task foo-1 failed after 312ms",
+        &[],
+    );
     assert_ne!(a, e, "event is part of it");
 }
 
@@ -213,7 +339,10 @@ fn fingerprint_normalizes_uuids_hex_paths_quotes_and_ids() {
         f("conversation 3f2b8c1e-1111-4222-8333-abcdefabcdef gone"),
         f("conversation 00000000-1111-4222-8333-123456789abc gone")
     );
-    assert_eq!(f("commit deadbeef12 not found"), f("commit 0badc0de99 not found"));
+    assert_eq!(
+        f("commit deadbeef12 not found"),
+        f("commit 0badc0de99 not found")
+    );
     assert_eq!(f("no repo named 'shop'"), f("no repo named 'blog'"));
     assert_eq!(f("no repo named \"shop\""), f("no repo named \"blog\""));
     assert_eq!(f("can't find thing"), f("can't find thing"));
@@ -233,17 +362,59 @@ fn summary(dir: &Path, args: Value) -> Value {
 
 fn summary_fixture() -> TempDir {
     let dir = TempDir::new().unwrap();
-    let t = |ts: &str, task: &str, msg: &str| line(ts, "ERROR", "townhall::task", "task.failed", msg, json!({"task": task}));
+    let t = |ts: &str, task: &str, msg: &str| {
+        line(
+            ts,
+            "ERROR",
+            "townhall::task",
+            "task.failed",
+            msg,
+            json!({"task": task}),
+        )
+    };
     write(
         dir.path(),
         "daemon.2026-11-05.jsonl",
         &[
-            t("2026-11-05T08:00:00.000000Z", "foo-1", "task foo-1 failed after 312ms"),
-            t("2026-11-05T09:00:00.000000Z", "bar-9", "task bar-9 failed after 18ms"),
-            t("2026-11-05T10:00:00.000000Z", "baz-2", "task baz-2 failed after 7ms"),
-            line("2026-11-05T10:30:00.000000Z", "WARN", "townhall::git", "cmd.run", "git failed token=abc123secret", json!({})),
-            line("2026-11-05T11:00:00.000000Z", "ERROR", "townhall::panic", "panic", "index out of bounds", json!({"location": "src/a.rs:1:2"})),
-            line("2026-11-05T11:30:00.000000Z", "INFO", "townhall::http", "http.request", "ignored below level", json!({})),
+            t(
+                "2026-11-05T08:00:00.000000Z",
+                "foo-1",
+                "task foo-1 failed after 312ms",
+            ),
+            t(
+                "2026-11-05T09:00:00.000000Z",
+                "bar-9",
+                "task bar-9 failed after 18ms",
+            ),
+            t(
+                "2026-11-05T10:00:00.000000Z",
+                "baz-2",
+                "task baz-2 failed after 7ms",
+            ),
+            line(
+                "2026-11-05T10:30:00.000000Z",
+                "WARN",
+                "townhall::git",
+                "cmd.run",
+                "git failed token=abc123secret",
+                json!({}),
+            ),
+            line(
+                "2026-11-05T11:00:00.000000Z",
+                "ERROR",
+                "townhall::panic",
+                "panic",
+                "index out of bounds",
+                json!({"location": "src/a.rs:1:2"}),
+            ),
+            line(
+                "2026-11-05T11:30:00.000000Z",
+                "INFO",
+                "townhall::http",
+                "http.request",
+                "ignored below level",
+                json!({}),
+            ),
         ],
     );
     dir
@@ -276,10 +447,21 @@ fn summary_groups_recurring_failures() {
     assert_eq!(top["first_seen"], "2026-11-05T08:00:00.000000Z");
     assert_eq!(top["last_seen"], "2026-11-05T10:00:00.000000Z");
     assert_eq!(top["tasks"], json!(["baz-2", "bar-9", "foo-1"]));
-    assert_eq!(top["fingerprint"], fingerprint("townhall::task", "task.failed", "task foo-1 failed after 312ms", &[]));
+    assert_eq!(
+        top["fingerprint"],
+        fingerprint(
+            "townhall::task",
+            "task.failed",
+            "task foo-1 failed after 312ms",
+            &[]
+        )
+    );
     assert_eq!(top["target"], "townhall::task");
     assert_eq!(top["event"], "task.failed");
-    let git = groups.iter().find(|g| g["target"] == "townhall::git").unwrap();
+    let git = groups
+        .iter()
+        .find(|g| g["target"] == "townhall::git")
+        .unwrap();
     let sample = git["sample"].as_str().unwrap();
     assert!(!sample.contains("abc123secret"), "{sample}");
 }
@@ -288,8 +470,26 @@ fn summary_groups_recurring_failures() {
 fn summary_top_limits_groups_and_tasks_are_capped_at_five() {
     let dir = TempDir::new().unwrap();
     let many: Vec<String> = (0..8)
-        .map(|i| line(&format!("2026-11-05T10:00:0{i}.000000Z"), "ERROR", "townhall::task", "task.failed", "same", json!({"task": format!("t{i}")})))
-        .chain((0..3).map(|i| line(&format!("2026-11-05T11:00:0{i}.000000Z"), "WARN", "townhall::git", "cmd.run", &format!("distinct kind {}", ["a", "b", "c"][i]), json!({}))))
+        .map(|i| {
+            line(
+                &format!("2026-11-05T10:00:0{i}.000000Z"),
+                "ERROR",
+                "townhall::task",
+                "task.failed",
+                "same",
+                json!({"task": format!("t{i}")}),
+            )
+        })
+        .chain((0..3).map(|i| {
+            line(
+                &format!("2026-11-05T11:00:0{i}.000000Z"),
+                "WARN",
+                "townhall::git",
+                "cmd.run",
+                &format!("distinct kind {}", ["a", "b", "c"][i]),
+                json!({}),
+            )
+        }))
         .collect();
     write(dir.path(), "daemon.2026-11-05.jsonl", &many);
     let s = summary(dir.path(), json!({"top": 2}));
@@ -309,10 +509,23 @@ fn summary_respects_since_and_level_and_the_size_cap() {
 
     let big = TempDir::new().unwrap();
     let many: Vec<String> = (0..60)
-        .map(|i| line("2026-11-05T10:00:00.000000Z", "ERROR", &format!("townhall::c{i}"), &format!("e{i}"), &"w".repeat(400), json!({})))
+        .map(|i| {
+            line(
+                "2026-11-05T10:00:00.000000Z",
+                "ERROR",
+                &format!("townhall::c{i}"),
+                &format!("e{i}"),
+                &"w".repeat(400),
+                json!({}),
+            )
+        })
         .collect();
     write(big.path(), "daemon.2026-11-05.jsonl", &many);
     let s = summary(big.path(), json!({"top": 50}));
-    assert!(s.to_string().len() <= MAX_OUTPUT_BYTES, "{}", s.to_string().len());
+    assert!(
+        s.to_string().len() <= MAX_OUTPUT_BYTES,
+        "{}",
+        s.to_string().len()
+    );
     assert_eq!(s["truncated"], true);
 }

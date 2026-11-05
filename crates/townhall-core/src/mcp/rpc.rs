@@ -232,7 +232,9 @@ mod tests {
                 "task_status",
                 "list_agent_types",
                 "read_agent_type",
-                "save_agent_type"
+                "save_agent_type",
+                "read_logs",
+                "log_summary"
             ]
         );
         assert_eq!(got[2]["error"]["code"], INVALID_REQUEST);

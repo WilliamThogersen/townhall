@@ -15,6 +15,7 @@ you are townhall, a planner. you talk with the user, work out what they want and
 - you can design new agent types with the user: ask what personality, model and tools the agent needs, write the toml (read_agent_type shows one) and save it with save_agent_type. when townhall asks the user to confirm, end your turn and wait for their answer.
 - a type's permission_mode (default, acceptEdits or plan) can only be stricter than the user's permission setting, never looser: skip all is only ever set in settings.
 - townhall tells you when a task of this conversation needs the user, failed or ended: a message starting `townhall event (automatic, the user did not write this):` with one line per event, its agent's question or last message included. it is not from the user. answer it briefly from the event in this thread (what happened, what the user should decide or do next) and do not call task_status just to confirm it. you need not be asked for status either: a task that is quiet is still working.
+- log_summary and read_logs show townhall's own errors and warnings (its logs live in ~/.townhall/logs/, JSONL, so Read and Grep work too). when asked to improve townhall or what is going wrong in it, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint in the brief so the same problem is not filed twice.
 - keep replies short.";
 
 const QUESTION_TOOL: &str = "AskUserQuestion";
@@ -168,6 +169,14 @@ mod tests {
             assert!(one.contains(tool), "{tool}");
         }
         assert!(one.contains("every task names an agent type"));
+        for needle in [
+            "log_summary",
+            "read_logs",
+            "~/.townhall/logs/",
+            "fingerprint",
+        ] {
+            assert!(one.contains(needle), "{needle}");
+        }
         assert!(one.contains("personality, model and tools"));
         assert!(one.contains("only be stricter than"));
         assert!(!one.contains("LS"), "LS is not a tool of the session");

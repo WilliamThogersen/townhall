@@ -1,20 +1,24 @@
 //! Frontend log reports: `POST /api/logs/client` (task T4 of the logging plan, docs/logging.md).
-//! A later task adds the `GET` handlers to this file.
+//! `GET /api/logs` and `GET /api/logs/summary` (task T7) mirror the planner's `read_logs` and
+//! `log_summary` tools over the same core functions.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use axum::body::Bytes;
-use axum::extract::DefaultBodyLimit;
+use axum::extract::rejection::QueryRejection;
+use axum::extract::{DefaultBodyLimit, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use serde::Deserialize;
 use serde_json::json;
+use townhall_core::clock::unix_millis;
+use townhall_core::logs::{self, ReadArgs, SummaryArgs};
 use townhall_core::redact::redact;
 
-use crate::envelope::{failure, Envelope};
+use crate::envelope::{failure, ok, Envelope};
 use crate::state::AppState;
 
 /// Request bodies above this are refused with `413`.
@@ -140,9 +144,56 @@ impl Default for Limiter {
 /// The routes of this file. The limiter lives in the router, so each daemon has its own.
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/logs", get(read))
+        .route("/logs/summary", get(summary))
         .route("/logs/client", post(client))
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .layer(Extension(Arc::new(Limiter::new())))
+}
+
+fn now_ms() -> i64 {
+    unix_millis(std::time::SystemTime::now())
+}
+
+/// `GET /api/logs?level&component&event&task&grep&since&limit`: the lines `read_logs` returns.
+/// `400` for a bad `since` or `level`.
+async fn read(
+    State(state): State<AppState>,
+    query: Result<Query<ReadArgs>, QueryRejection>,
+) -> Response {
+    let Query(args) = match query {
+        Ok(q) => q,
+        Err(e) => return failure(StatusCode::BAD_REQUEST, e.body_text()),
+    };
+    let dir = match state.workspace().home().logs_dir() {
+        Ok(dir) => dir,
+        Err(e) => return failure(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    match tokio::task::spawn_blocking(move || logs::read_logs(&dir, now_ms(), &args)).await {
+        Ok(Ok(out)) => ok(out),
+        Ok(Err(why)) => failure(StatusCode::BAD_REQUEST, why),
+        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+/// `GET /api/logs/summary?since&level&top`: the digest `log_summary` returns.
+async fn summary(
+    State(state): State<AppState>,
+    query: Result<Query<SummaryArgs>, QueryRejection>,
+) -> Response {
+    let Query(args) = match query {
+        Ok(q) => q,
+        Err(e) => return failure(StatusCode::BAD_REQUEST, e.body_text()),
+    };
+    let dir = match state.workspace().home().logs_dir() {
+        Ok(dir) => dir,
+        Err(e) => return failure(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    match tokio::task::spawn_blocking(move || logs::log_summary(&dir, now_ms(), &args)).await {
+        Ok(Ok(out)) => ok(out),
+        Ok(Err(why)) => failure(StatusCode::BAD_REQUEST, why),
+        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
 }
 
 /// `202` once the reports are logged or dropped by the rate limit; `400` for bad JSON, an

@@ -72,6 +72,50 @@ re-emits them with target `townhall::web`.
 - Every string field goes through `redact` (masked, cut to 500 chars).
 - Response: `202` with `{success, data: {accepted, dropped}}`.
 
+## Reading the logs back
+
+`townhall_core::logs` reads `<home>/logs/*.jsonl` (`app.*` and `daemon.*` files only), newest
+first. It stops at `since`, skips lines that are not valid log JSON, and adds `source`
+(`app` or `daemon`, from the file name). It is pure and synchronous: async callers use
+`spawn_blocking`. The caps live in the core functions: a `read_logs` line is cut to 300 chars
+and every result stays under 16 KB of JSON (`truncated: true` when something was left out).
+
+`since` is a duration (`90s`, `30m`, `24h`, `7d`, `2w`) or an RFC 3339 time; default `24h`.
+`level` is a minimum; default `warn`.
+
+### Planner tools (`mcp/logs.rs`)
+
+- `read_logs` `{level?, component?, event?, task?, grep?, since?, limit?}`. `component` is a
+  target prefix (`git` and `townhall::git` both work), `grep` a case-insensitive substring of
+  the message or `error`, `limit` defaults to 50 (max 200). Returns
+  `{lines, count, truncated}`; a line is `ts level target event message {source=.. task=..}`
+  with the id fields that are set.
+- `log_summary` `{since?, level?, top?}` (`top` defaults to 20, max 50). Returns `total`,
+  `by_level`, `by_component`, every `panics` entry and the top recurring `groups`, each with
+  `fingerprint`, `count`, `target`, `event`, `first_seen`, `last_seen`, up to 5 `tasks` and one
+  redacted `sample`. When the result is over 16 KB the least frequent groups go first.
+
+The system prompt tells the planner to start from `log_summary` when asked to improve
+townhall, to create tasks for recurring groups and to cite the fingerprint in the brief. The
+logs are plain files in `~/.townhall/logs/`, so Read and Grep work as well.
+
+### Fingerprint
+
+A group is `target` + `event` + the normalized message, hashed with FNV-1a 64 and shown as 16
+hex chars. The hash is fixed so a fingerprint in a task brief keeps its meaning. Normalizing
+replaces, in this order: the values of the entry's `task`, `agent`, `conversation`, `repo` and
+`request_id` fields and names with a numeric suffix (`foo-1`) with `<name>`; quoted text
+(`'x'`, `"x"`, `` `x` ``) with `<q>`; paths starting with `/`, `./`, `../` or `~/` with
+`<path>`; uuids with `<uuid>`; hex (`0x1f`, or 7+ hex digits including a digit) with `<hex>`;
+other digit runs with `<n>`. So `task foo-1 failed after 312ms` and
+`task bar-9 failed after 18ms` share a fingerprint.
+
+### HTTP mirror
+
+`GET /api/logs` (same query as `read_logs`) and `GET /api/logs/summary` (same as
+`log_summary`) in `routes/logs.rs`, with the usual `{success, data, error}` envelope. A bad
+`since`, `level` or an unknown query parameter gives `400`.
+
 ## Tests
 
 `logging::test_capture()` returns an in-memory capture and a guard for this thread:
