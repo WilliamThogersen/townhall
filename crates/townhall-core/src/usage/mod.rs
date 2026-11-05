@@ -3,6 +3,8 @@
 
 mod parse;
 mod rate;
+mod service;
+mod system;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +12,11 @@ pub use parse::{parse_usage, token_from_json, usage_error};
 pub use rate::{
     push_reading, recent_rate, session_rate, weekly_rate, window_average_rate, Reading,
 };
+pub use service::{
+    BoxFuture, Clock, HttpReply, UsageService, UsageSource, BACKOFF_AFTER_429, CACHED_ERROR,
+    POLL_EVERY, REUSE_FOR,
+};
+pub use system::SystemSource;
 
 /// One rate-limit window (the five hour session or the week).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

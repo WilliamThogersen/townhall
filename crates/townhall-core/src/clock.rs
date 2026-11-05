@@ -137,10 +137,16 @@ mod tests {
     fn parses_offsets_and_long_fractions() {
         let utc = Some(1_793_887_800_123);
         assert_eq!(parse_rfc3339("2026-11-05T14:10:00.123456+00:00"), utc);
-        assert_eq!(parse_rfc3339("2026-11-05T14:10:00.12Z"), Some(1_793_887_800_120));
+        assert_eq!(
+            parse_rfc3339("2026-11-05T14:10:00.12Z"),
+            Some(1_793_887_800_120)
+        );
         assert_eq!(parse_rfc3339("2026-11-05T15:10:00.123+01:00"), utc);
         assert_eq!(parse_rfc3339("2026-11-05T09:40:00.123-04:30"), utc);
-        assert_eq!(parse_rfc3339("2026-11-05T14:10:00Z"), Some(1_793_887_800_000));
+        assert_eq!(
+            parse_rfc3339("2026-11-05T14:10:00Z"),
+            Some(1_793_887_800_000)
+        );
     }
 
     #[test]

@@ -104,7 +104,10 @@ mod tests {
     #[test]
     fn recent_readings_beat_the_average() {
         let w = window(30.0, Some(2 * HOUR));
-        let history = [reading(30 * MIN, 20.0, 2 * HOUR), reading(0, 30.0, 2 * HOUR)];
+        let history = [
+            reading(30 * MIN, 20.0, 2 * HOUR),
+            reading(0, 30.0, 2 * HOUR),
+        ];
         assert_eq!(recent_rate(&history, NOW), Some(20.0));
         assert_eq!(session_rate(&w, &history, NOW), Some(20.0));
     }
