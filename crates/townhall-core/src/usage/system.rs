@@ -4,20 +4,36 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use super::{token_from_json, BoxFuture, HttpReply, UsageSource};
+use super::{token_from_json, BoxFuture, HttpReply, UsageService, UsageSource};
+use crate::clock::unix_millis;
 use crate::redact::redact;
+use crate::Home;
 
+const CACHE_FILE: &str = "usage.json";
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 const KEYCHAIN_TIMEOUT: Duration = Duration::from_secs(3);
 const REQUEST_SECS: u64 = 10;
 const WAIT_FOR_CURL: Duration = Duration::from_secs(REQUEST_SECS + 5);
+
+impl UsageService {
+    /// The Keychain or credentials file, the real clock and `<home>/usage.json` as the cache.
+    pub fn system(home: &Home) -> Self {
+        let clock = Arc::new(|| unix_millis(SystemTime::now()));
+        Self::new(
+            SystemSource::from_env(),
+            clock,
+            Some(home.root().join(CACHE_FILE)),
+        )
+    }
+}
 
 pub struct SystemSource {
     user: Option<String>,

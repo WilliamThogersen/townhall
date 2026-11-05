@@ -77,6 +77,12 @@ pub struct UsageService {
     polling: AtomicBool,
 }
 
+impl std::fmt::Debug for UsageService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UsageService").finish_non_exhaustive()
+    }
+}
+
 impl UsageService {
     /// `cache` keeps the last good reading across restarts; it is shown, marked stale
     /// (`CACHED_ERROR`), until a fetch succeeds.

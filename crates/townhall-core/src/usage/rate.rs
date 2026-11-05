@@ -43,7 +43,7 @@ pub fn push_reading(history: &[Reading], reading: Reading) -> Vec<Reading> {
 pub fn recent_rate(history: &[Reading], now: i64) -> Option<f64> {
     let mut recent = history.iter().filter(|r| now - r.at <= RECENT_RATE_MS);
     let first = recent.next()?;
-    let last = recent.last()?;
+    let last = recent.next_back()?;
     let span = last.at - first.at;
     (span >= MIN_RATE_SPAN_MS)
         .then(|| (last.used_percent - first.used_percent) / (span as f64 / HOUR_MS as f64))
