@@ -231,6 +231,12 @@
   line-height: 1;
 }
 
+.th-tag--agent {
+  border-color: transparent;
+  padding: 0 2px;
+  opacity: 0.7;
+}
+
 .th-tag--waiting {
   border-color: var(--th-accent);
   color: var(--th-accent);

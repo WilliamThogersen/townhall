@@ -160,7 +160,7 @@ export interface Task {
   readonly attachments: readonly string[];
   readonly createdAt: string;
   readonly pr: Pr | null;
-  readonly agent?: string;
+  readonly agent: string;
 }
 
 export interface CreateTaskInput {
