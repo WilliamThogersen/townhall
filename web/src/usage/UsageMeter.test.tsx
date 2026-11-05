@@ -162,6 +162,25 @@ describe("UsageMeter popover", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("closes on Escape when the focus is outside the meter", async () => {
+    renderMeter(reading());
+    fireEvent.click(await button());
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("stops listening for Escape once closed", async () => {
+    renderMeter(reading());
+    const trigger = await button();
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+    const event = new KeyboardEvent("keydown", { key: "Escape", cancelable: true, bubbles: true });
+    document.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("closes on a click elsewhere, and on a second click on the bars", async () => {
     renderMeter(reading());
     const trigger = await button();

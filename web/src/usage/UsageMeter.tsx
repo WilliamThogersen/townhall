@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { ClaudeUsage, UsageWindow } from "../api/types";
 import { useUsage } from "../data";
 import { useNow } from "../sidebar/useNow";
@@ -27,6 +27,23 @@ function useOutsideMouseDown(ref: RefObject<HTMLElement | null>, active: boolean
     document.addEventListener("mousedown", onMouseDown, true);
     return () => document.removeEventListener("mousedown", onMouseDown, true);
   }, [ref, active]);
+}
+
+function useEscape(active: boolean, onEscape: () => void) {
+  const latest = useRef(onEscape);
+  useEffect(() => {
+    latest.current = onEscape;
+  });
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      latest.current();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [active]);
 }
 
 function Meter({ name, window, now }: { readonly name: string; readonly window: UsageWindow; readonly now: number }) {
@@ -81,19 +98,15 @@ export function UsageMeter() {
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   useOutsideMouseDown(root, open, () => setOpen(false));
+  useEscape(open, () => {
+    setOpen(false);
+    trigger.current?.focus();
+  });
 
   if (usage === null || (usage.session === null && usage.weekly === null)) return null;
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!open || event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    setOpen(false);
-    trigger.current?.focus();
-  };
-
   return (
-    <div ref={root} className="th-usage" data-stale={isStale(usage) ? "true" : undefined} onKeyDown={onKeyDown}>
+    <div ref={root} className="th-usage" data-stale={isStale(usage) ? "true" : undefined}>
       <button
         ref={trigger}
         type="button"
