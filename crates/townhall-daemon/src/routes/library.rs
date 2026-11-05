@@ -86,7 +86,6 @@ pub async fn list_agents(State(state): State<AppState>) -> Result<Response, ApiE
     Ok(ok(rows))
 }
 
-/// `AgentUsage[]`: runs and tokens per agent type that has tasks, by name.
 pub async fn agent_usage(State(state): State<AppState>) -> Result<Response, ApiError> {
     Ok(ok(state.ctx().store()?.agent_usage().await?))
 }
