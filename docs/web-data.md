@@ -40,6 +40,7 @@ All return parsed, readonly data. `signal` aborts the fetch.
 | `stats.ts` | `getStats(repo?, signal?)` | `GET /stats?repo=` | `Stats` |
 | `steps.ts` | `getSteps(agent, repo?, signal?)` | `GET /agents/{agent}/steps?repo=` | `readonly Step[]` |
 | `settings.ts` | `getSettings`, `putSetting` | settings routes | unchanged |
+| `profile.ts` | `getProfile(signal?)`, `putProfile(text)`, `deleteProfile()` | `GET/PUT/DELETE /profile` | `Profile { text }` |
 
 `TaskQuery` is `{ conversation?: string; repo?: string; state?: TaskState }`; empty values are left out of the query.
 

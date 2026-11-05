@@ -64,6 +64,14 @@ export interface PutSettingInput<K extends SettingKey = SettingKey> {
   readonly value: Settings[K];
 }
 
+export interface Profile {
+  readonly text: string;
+}
+
+export interface PutProfileInput {
+  readonly text: string;
+}
+
 export type ConversationStatus = "thinking" | "yourTurn";
 
 export interface ContextUsage {
