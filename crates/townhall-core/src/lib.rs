@@ -14,6 +14,7 @@ pub mod home;
 pub mod ids;
 pub mod mcp;
 pub mod model;
+pub mod redact;
 pub mod repo_infer;
 pub mod repos;
 pub mod runner;
