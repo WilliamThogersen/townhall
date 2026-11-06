@@ -3,9 +3,6 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use std::collections::HashSet;
-use std::sync::Mutex;
-
 use crate::agent::{self, Agent, LaunchOptions};
 use crate::cmd::run;
 use crate::context::Context;
@@ -26,24 +23,6 @@ const MAX_FAILED_TEXT: usize = 300;
 struct Fleet {
     agents: Vec<(String, Agent)>,
     unlisted: Vec<(String, String)>,
-}
-
-/// The conversations whose planner was told the disk is too full to start their tasks, so
-/// the slow tick does not tell it again until a start was possible in between.
-static DISK_TOLD: Mutex<Vec<String>> = Mutex::new(Vec::new());
-
-fn told_before(conversation: &str) -> bool {
-    let mut told = DISK_TOLD.lock().unwrap_or_else(|p| p.into_inner());
-    let known = told.iter().any(|c| c == conversation);
-    if !known {
-        told.push(conversation.to_string());
-    }
-    known
-}
-
-fn forget_told(conversations: &HashSet<&str>) {
-    let mut told = DISK_TOLD.lock().unwrap_or_else(|p| p.into_inner());
-    told.retain(|c| !conversations.contains(c.as_str()));
 }
 
 /// What to do with one ready task.
@@ -130,18 +109,18 @@ fn decide(fleet: &Fleet, task: &Task, free: usize, handed_back: bool) -> Step {
 /// agent already exists (a start cut short by a restart) instead of starting a second one.
 pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     let ready = plan::ready(tasks);
-    if ready.is_empty() {
-        return Ok(Pass::default());
-    }
     let settings = ctx.settings().await?;
-    let limit = settings.agents_at_once;
-    let fleet = survey(ctx).await?;
-    let mut free = plan::free_slots(limit, fleet.active(tasks));
     let mut pass = Pass::default();
     let low = low_disk(ctx, settings.min_free_disk_gb, &mut pass);
     if low.is_none() {
-        forget_told(&ready.iter().map(|t| t.conversation_id.as_str()).collect());
+        ctx.clear_disk_told();
     }
+    if ready.is_empty() {
+        return Ok(Pass::default());
+    }
+    let limit = settings.agents_at_once;
+    let fleet = survey(ctx).await?;
+    let mut free = plan::free_slots(limit, fleet.active(tasks));
     for task in ready {
         let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
         let step = decide(&fleet, task, free, handed_back);
@@ -183,7 +162,7 @@ fn wait_for_space(ctx: &Context, task: &Task, bytes: u64, floor_gb: u32, pass: &
         "{said} (needs {floor_gb} GB): `{}` waits in the queue",
         task.name
     );
-    if !told_before(&task.conversation_id) {
+    if ctx.tell_disk_low(&task.conversation_id) {
         runner::notify(ctx, &task.conversation_id, why.clone());
     }
     pass.warnings.push(why);

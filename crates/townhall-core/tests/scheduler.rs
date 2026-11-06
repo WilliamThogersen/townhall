@@ -326,6 +326,27 @@ async fn a_task_waits_queued_while_the_disk_is_below_the_floor() {
 }
 
 #[tokio::test]
+async fn a_later_low_disk_episode_tells_the_planner_again() {
+    let s = Sched::new().await;
+    set_floor(&s, 100_000).await;
+    let first = unique("cancelled");
+    s.create(&first, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(s.ctx().notes().waiting(&s.conversation).len(), 1);
+
+    s.set_state(&first, TaskState::Ended).await;
+    set_floor(&s, 0).await;
+    run_once(s.ctx()).await.unwrap();
+
+    set_floor(&s, 100_000).await;
+    let second = unique("later");
+    s.create(&second, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    let waiting = s.ctx().notes().waiting(&s.conversation);
+    assert!(waiting.iter().any(|w| w.contains(&second)), "{waiting:?}");
+}
+
+#[tokio::test]
 async fn a_start_that_runs_out_of_space_says_the_disk_is_full() {
     let s = Sched::new().await;
     let name = unique("enospc");
