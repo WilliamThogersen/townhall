@@ -304,8 +304,8 @@ async fn a_task_waits_queued_while_the_disk_is_below_the_floor() {
     assert!(s.agents().await.is_empty());
     assert!(!s.worktree(&name).exists());
     let said = pass.warnings.join("; ");
-    assert!(said.contains("disk almost full: "), "{said}");
-    assert!(said.contains(" GB free"), "{said}");
+    assert!(said.starts_with("disk almost full (needs "), "{said}");
+    assert!(!said.contains(" GB free"), "{said}");
 
     let waiting = s.ctx().notes().waiting(&s.conversation);
     assert_eq!(waiting.len(), 1, "{waiting:?}");

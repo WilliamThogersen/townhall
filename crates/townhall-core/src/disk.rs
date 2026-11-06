@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::{Error, Result};
 
 const GB: u64 = 1_000_000_000;
+const RECOVERY_MARGIN_GB: u64 = 1;
 const NO_SPACE_TEXT: &str = "No space left on device";
 
 /// The os's own text for ENOSPC, as git's stderr quotes it, without Rust's ` (os error N)`.
@@ -21,16 +22,19 @@ fn says_no_space(stderr: &str) -> bool {
     stderr.contains(NO_SPACE_TEXT) || stderr.contains(&errno_text())
 }
 
+fn nearest_existing(path: &Path) -> Result<&Path> {
+    path.ancestors()
+        .find(|p| p.exists())
+        .ok_or_else(|| Error::InvalidInput(format!("no folder of {} exists", path.display())))
+}
+
 /// Bytes a normal user can still write on the volume of `path`, or of its nearest folder
 /// that exists (the home is created on first use).
 #[cfg(unix)]
 #[allow(clippy::unnecessary_cast)]
 pub fn free_bytes(path: &Path) -> Result<u64> {
     use std::os::unix::ffi::OsStrExt;
-    let folder = path
-        .ancestors()
-        .find(|p| p.exists())
-        .ok_or_else(|| Error::InvalidInput(format!("no folder of {} exists", path.display())))?;
+    let folder = nearest_existing(path)?;
     let c_path = std::ffi::CString::new(folder.as_os_str().as_bytes())
         .map_err(|_| Error::InvalidInput(format!("path {} holds a NUL", folder.display())))?;
     let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
@@ -58,6 +62,10 @@ pub fn free_bytes(path: &Path) -> Result<u64> {
 /// `floor_gb` of `0` turns the check off.
 pub fn below_floor(free: u64, floor_gb: u32) -> bool {
     free < u64::from(floor_gb) * GB
+}
+
+pub fn recovered(free: u64, floor_gb: u32) -> bool {
+    free >= (u64::from(floor_gb) + RECOVERY_MARGIN_GB) * GB
 }
 
 /// What the planner and the UI read when the disk is nearly full.
@@ -91,13 +99,24 @@ mod tests {
     #[test]
     fn free_space_is_read_from_the_nearest_existing_folder() {
         let tmp = tempfile::tempdir().unwrap();
-        let free = free_bytes(tmp.path()).unwrap();
-        assert!(free > 0);
         let missing = tmp.path().join("not/yet/there");
-        assert_eq!(
+        assert_eq!(nearest_existing(&missing).unwrap(), tmp.path());
+        assert_eq!(nearest_existing(tmp.path()).unwrap(), tmp.path());
+        let nested = tmp.path().join("a");
+        std::fs::create_dir(&nested).unwrap();
+        assert_eq!(nearest_existing(&nested.join("b/c")).unwrap(), nested);
+    }
+
+    #[test]
+    fn a_missing_folder_reads_the_free_space_of_its_volume() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("not/yet/there");
+        let (a, b) = (
             free_bytes(&missing).unwrap(),
-            free_bytes(tmp.path()).unwrap()
+            free_bytes(tmp.path()).unwrap(),
         );
+        assert!(a > 0 && b > 0);
+        assert!(a.abs_diff(b) < 10 * GB, "{a} and {b} are not one volume");
     }
 
     #[test]
