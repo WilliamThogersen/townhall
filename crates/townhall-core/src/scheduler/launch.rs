@@ -143,7 +143,7 @@ fn low_disk(ctx: &Context, floor_gb: u32, pass: &mut Pass) -> Option<u64> {
         ctx.clear_disk_told();
         return None;
     }
-    match disk::free_bytes(ctx.home().root()) {
+    match ctx.free_bytes() {
         Ok(bytes) => judge(ctx, bytes, floor_gb),
         Err(e) => {
             pass.warnings
