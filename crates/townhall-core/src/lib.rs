@@ -13,6 +13,7 @@ pub mod files;
 pub mod fleet;
 pub mod fsutil;
 pub mod home;
+pub mod insights;
 pub mod ids;
 pub mod logs;
 pub mod mcp;
