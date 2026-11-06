@@ -63,6 +63,9 @@ pub struct NewMessage {
     /// Ids from `POST /api/conversations/{id}/attachments`.
     #[serde(default)]
     pub attachments: Vec<String>,
+    /// The id of the thread entry this message answers.
+    #[serde(default)]
+    pub reply_to: Option<u64>,
 }
 
 /// `PATCH /api/conversations/{id}` body. `linkedRepo: null` sets the repo back to auto.
@@ -131,7 +134,10 @@ mod tests {
     #[test]
     fn message_defaults_attachments() {
         let m: NewMessage = serde_json::from_value(json!({"text": "hi"})).unwrap();
-        assert!(m.attachments.is_empty());
+        assert!(m.attachments.is_empty() && m.reply_to.is_none());
+        let reply: NewMessage =
+            serde_json::from_value(json!({"text": "hi", "replyTo": 4})).unwrap();
+        assert_eq!(reply.reply_to, Some(4));
         assert!(serde_json::from_value::<NewMessage>(json!({"text": "hi", "repo": "x"})).is_err());
     }
 }

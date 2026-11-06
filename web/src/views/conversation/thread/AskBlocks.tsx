@@ -179,7 +179,7 @@ export function NeedsYouBlock({ entry, open, answer: sent }: NeedsYouBlockProps)
   const choices = open && !hasOptions ? entry.choices : [];
   const picked = sent === undefined ? null : answerText(view, sent);
   return (
-    <Message from="ask" at={entry.at} answered={!open}>
+    <Message from="ask" at={entry.at} answered={!open} entry={entry}>
       <Ask who={entry.agent} open={open} question={view.prompt} context={view.context} picked={picked}>
         {open && hasOptions ? <AskOptions options={view.options} busy={busy} onPick={(n) => void pick(n)} /> : null}
         {open && task !== undefined && suggestion !== null && yes !== null ? (
@@ -220,7 +220,7 @@ export function RepoAskBlock({ entry, open }: { readonly entry: RepoAskEntry; re
   const pick = (text: string) => void run(() => sendMessage(text));
   const disabled = busy || thinking;
   return (
-    <Message from="ask" at={entry.at} answered={!open}>
+    <Message from="ask" at={entry.at} answered={!open} entry={entry}>
       <Ask who="townhall" open={open} question={entry.question}>
         {open ? (
           <div className="th-ask-actions">

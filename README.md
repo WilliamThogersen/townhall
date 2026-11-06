@@ -87,6 +87,26 @@ Output lands under `target/`. How it behaves:
   inside the app and to same-origin `/api` in a browser. The daemon allows CORS only
   for the desktop and Vite dev origins.
 
+### private repos
+
+An app started from Finder does not get your shell's environment. For every `git`, `ssh`,
+`gh` and `glab` it runs (clone, fetch, push, pull request), townhall asks your login shell
+(`$SHELL -l -i -c`, given up after 5 seconds) for `PATH`, `SSH_AUTH_SOCK` and
+`GIT_SSH_COMMAND`, once per start. Then:
+
+- `PATH` is your shell's, then the app's, then `/opt/homebrew/bin` and `/usr/local/bin`.
+- `SSH_AUTH_SOCK` is the app's own if set, else your shell's, else (macOS) launchd's
+  (`launchctl getenv SSH_AUTH_SOCK`). Load your key with `ssh-add` so the agent holds it.
+- Nothing ever waits for input: `GIT_TERMINAL_PROMPT=0`, and ssh runs with
+  `-o BatchMode=yes` unless you set `GIT_SSH_COMMAND` (in the app's environment or your
+  shell), which is used as it is.
+- https remotes need a credential helper or token that works without a prompt (for
+  example `gh auth setup-git`); `gh` and `glab` must be logged in (`gh auth login`).
+
+A refused login shows as `authentication failed: ...` with what to check: an ssh key that
+is not loaded (`ssh-add -l`), a host key that is not trusted yet (run `ssh -T git@<host>`
+once in a terminal), or missing https credentials.
+
 ## where things live
 
 Everything townhall creates lives in one folder, `~/.townhall` (override with

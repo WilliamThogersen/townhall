@@ -1,4 +1,5 @@
 import type { Conversation, EntryBody, RepoRule, Task, ThreadEntry } from "../../../api/types";
+import type { ReplyTarget } from "../../../composer/replies";
 
 export type StatusWords = "thinking" | "your turn" | "ended";
 
@@ -20,6 +21,43 @@ export function clockTime(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return "";
   return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+
+const EXCERPT_CHARS = 120;
+
+function said(body: EntryBody): { readonly author: string; readonly text: string } | null {
+  switch (body.kind) {
+    case "you":
+      return { author: "you", text: body.text };
+    case "townhall":
+      return { author: "townhall", text: body.text };
+    case "repoAsk":
+      return { author: "townhall", text: body.question };
+    case "needsYou":
+      return { author: body.agent, text: body.question };
+    case "agent":
+      return { author: body.agent, text: body.text === "" ? body.event : body.text };
+    case "event":
+      return { author: "task event", text: body.text };
+    case "handoff":
+      return { author: body.from, text: body.reason };
+    case "error":
+      return { author: "townhall", text: body.message };
+    case "repo":
+    case "tasksCreated":
+      return null;
+  }
+}
+
+export function excerptOf(text: string): string {
+  const joined = text.split(/\s+/).filter((word) => word !== "").join(" ");
+  const chars = Array.from(joined);
+  return chars.length > EXCERPT_CHARS ? `${chars.slice(0, EXCERPT_CHARS).join("")}…` : joined;
+}
+
+export function replyTarget(entry: ThreadEntry): ReplyTarget | null {
+  const line = said(entry);
+  return line === null ? null : { id: entry.id, author: line.author, excerpt: excerptOf(line.text) };
 }
 
 export function repoReason(entry: RepoBody): string {

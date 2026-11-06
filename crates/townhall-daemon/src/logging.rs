@@ -28,6 +28,8 @@ const SUFFIX: &str = "jsonl";
 const KEEP_FILES: usize = 14;
 /// The folder is pruned to this many bytes.
 pub const MAX_LOG_BYTES: u64 = 200 * 1024 * 1024;
+/// Log files older than this many days are deleted.
+pub const MAX_LOG_AGE_DAYS: u64 = 30;
 const BACKTRACE_CAP: usize = 4096;
 
 pub struct LogConfig {
@@ -47,7 +49,12 @@ pub struct Guard {
 /// Sets up the file layer, the stderr layer and the panic hook, and prunes old files.
 /// Safe to call again: when a subscriber is already installed this changes nothing.
 pub fn init(config: LogConfig) -> Guard {
-    if let Err(e) = prune(&config.dir, MAX_LOG_BYTES) {
+    if let Err(e) = prune(
+        &config.dir,
+        MAX_LOG_BYTES,
+        MAX_LOG_AGE_DAYS,
+        SystemTime::now(),
+    ) {
         eprintln!(
             "townhall: cannot prune logs in {}: {e}",
             config.dir.display()
@@ -148,9 +155,27 @@ fn cut(text: &str, max: usize) -> &str {
     &text[..end]
 }
 
-/// Deletes the oldest `*.jsonl` files in `dir` until the rest fit in `max_bytes`. The newest
-/// file is always kept (it is the one being written). Returns how many files were deleted.
-pub fn prune(dir: &Path, max_bytes: u64) -> io::Result<usize> {
+/// The day (since the epoch, UTC) a log file belongs to: the `YYYY-MM-DD` in
+/// `<prefix>.YYYY-MM-DD.jsonl`, or the day of its mtime when the name has no such date.
+fn file_day(path: &Path, modified: SystemTime) -> i64 {
+    let from_name = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .and_then(|s| s.rsplit_once('.'))
+        .and_then(|(_, date)| townhall_core::clock::day_number(date));
+    from_name.unwrap_or_else(|| day_of(modified))
+}
+
+fn day_of(time: SystemTime) -> i64 {
+    time.duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| (d.as_secs() / 86_400) as i64)
+}
+
+/// Deletes `*.jsonl` files in `dir` that are more than `max_age_days` old at `now` (by the date
+/// in the name, else the mtime), then the oldest of the rest until they fit in `max_bytes`.
+/// The newest file is always kept (it is the one being written). Returns how many files were
+/// deleted.
+pub fn prune(dir: &Path, max_bytes: u64, max_age_days: u64, now: SystemTime) -> io::Result<usize> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(0),
@@ -171,17 +196,30 @@ pub fn prune(dir: &Path, max_bytes: u64) -> io::Result<usize> {
         })
         .collect();
     files.sort();
+    let keep_from = files.len().saturating_sub(1);
+    let oldest_kept_day = day_of(now) - i64::try_from(max_age_days).unwrap_or(i64::MAX);
     let mut total: u64 = files.iter().map(|f| f.2).sum();
     let mut deleted = 0;
-    for (_, path, len) in files.iter().take(files.len().saturating_sub(1)) {
-        if total <= max_bytes {
-            break;
+    for (modified, path, len) in &files[..keep_from] {
+        if total <= max_bytes && file_day(path, *modified) >= oldest_kept_day {
+            continue;
         }
-        std::fs::remove_file(path)?;
         total -= len;
-        deleted += 1;
+        if remove_if_present(path)? {
+            deleted += 1;
+        }
     }
     Ok(deleted)
+}
+
+/// Deletes `path`. `Ok(false)` when it was already gone (the app and the standalone daemon
+/// prune the same folder, so the other one may have got there first).
+fn remove_if_present(path: &Path) -> io::Result<bool> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 /// Lines captured in memory by [`test_capture`].
@@ -246,10 +284,25 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    /// 2024-02-01 00:00 UTC, the `now` of the age tests (day 19754 since the epoch).
+    fn now() -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(19754 * 86400)
+    }
+
+    const AGE: u64 = 30;
+
     fn file(dir: &Path, name: &str, bytes: usize, age_secs: u64) {
+        file_at(
+            dir,
+            name,
+            bytes,
+            SystemTime::now() - Duration::from_secs(age_secs),
+        );
+    }
+
+    fn file_at(dir: &Path, name: &str, bytes: usize, modified: SystemTime) {
         let path = dir.join(name);
         std::fs::write(&path, vec![b'x'; bytes]).unwrap();
-        let modified = SystemTime::now() - Duration::from_secs(age_secs);
         std::fs::File::options()
             .write(true)
             .open(&path)
@@ -273,12 +326,16 @@ mod tests {
         file(tmp.path(), "a.2024-01-01.jsonl", 100, 3000);
         file(tmp.path(), "a.2024-01-02.jsonl", 100, 2000);
         file(tmp.path(), "a.2024-01-03.jsonl", 100, 1000);
-        assert_eq!(prune(tmp.path(), 250).unwrap(), 1);
+        assert_eq!(prune(tmp.path(), 250, AGE, now()).unwrap(), 1);
         assert_eq!(
             names(tmp.path()),
             ["a.2024-01-02.jsonl", "a.2024-01-03.jsonl"]
         );
-        assert_eq!(prune(tmp.path(), 250).unwrap(), 0, "already under the cap");
+        assert_eq!(
+            prune(tmp.path(), 250, AGE, now()).unwrap(),
+            0,
+            "already under the cap"
+        );
     }
 
     #[test]
@@ -287,7 +344,7 @@ mod tests {
         file(tmp.path(), "daemon.2024-01-02.jsonl", 100, 3000);
         file(tmp.path(), "app.2024-01-01.jsonl", 100, 1000);
         file(tmp.path(), "notes.txt", 10_000, 9000);
-        assert_eq!(prune(tmp.path(), 100).unwrap(), 1);
+        assert_eq!(prune(tmp.path(), 100, AGE, now()).unwrap(), 1);
         assert_eq!(names(tmp.path()), ["app.2024-01-01.jsonl", "notes.txt"]);
     }
 
@@ -295,14 +352,102 @@ mod tests {
     fn prune_keeps_the_newest_file_even_when_it_alone_is_over_the_cap() {
         let tmp = tempfile::tempdir().unwrap();
         file(tmp.path(), "a.2024-01-01.jsonl", 500, 100);
-        assert_eq!(prune(tmp.path(), 10).unwrap(), 0);
+        assert_eq!(prune(tmp.path(), 10, AGE, now()).unwrap(), 0);
         assert_eq!(names(tmp.path()).len(), 1);
     }
 
     #[test]
     fn prune_of_a_missing_folder_is_fine() {
         let tmp = tempfile::tempdir().unwrap();
-        assert_eq!(prune(&tmp.path().join("nope"), 1).unwrap(), 0);
+        assert_eq!(prune(&tmp.path().join("nope"), 1, AGE, now()).unwrap(), 0);
+    }
+
+    #[test]
+    fn prune_deletes_files_older_than_the_max_age_by_filename_date() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Same mtime for all: only the date in the name can decide.
+        for name in [
+            "a.2023-12-01.jsonl",
+            "a.2024-01-01.jsonl", // 31 days old
+            "a.2024-01-02.jsonl", // exactly 30 days old: kept
+            "a.2024-01-31.jsonl",
+        ] {
+            file_at(tmp.path(), name, 10, now());
+        }
+        assert_eq!(prune(tmp.path(), u64::MAX, AGE, now()).unwrap(), 2);
+        assert_eq!(
+            names(tmp.path()),
+            ["a.2024-01-02.jsonl", "a.2024-01-31.jsonl"]
+        );
+    }
+
+    #[test]
+    fn prune_keeps_the_newest_file_even_when_it_is_too_old() {
+        let tmp = tempfile::tempdir().unwrap();
+        file_at(
+            tmp.path(),
+            "a.2023-01-01.jsonl",
+            10,
+            now() - Duration::from_secs(2000),
+        );
+        file_at(
+            tmp.path(),
+            "a.2023-01-02.jsonl",
+            10,
+            now() - Duration::from_secs(1000),
+        );
+        assert_eq!(prune(tmp.path(), u64::MAX, AGE, now()).unwrap(), 1);
+        assert_eq!(names(tmp.path()), ["a.2023-01-02.jsonl"]);
+    }
+
+    #[test]
+    fn prune_ignores_non_log_files_however_old() {
+        let tmp = tempfile::tempdir().unwrap();
+        file_at(tmp.path(), "a.2024-01-31.jsonl", 10, now());
+        file_at(tmp.path(), "notes.2020-01-01.txt", 10, now());
+        file_at(tmp.path(), "old.2020-01-01.jsonl.bak", 10, now());
+        assert_eq!(prune(tmp.path(), u64::MAX, AGE, now()).unwrap(), 0);
+        assert_eq!(names(tmp.path()).len(), 3);
+    }
+
+    #[test]
+    fn prune_falls_back_to_mtime_when_the_name_has_no_date() {
+        let tmp = tempfile::tempdir().unwrap();
+        let day = Duration::from_secs(86400);
+        file_at(tmp.path(), "odd.jsonl", 10, now() - 60 * day);
+        file_at(tmp.path(), "a.2024-01-31.jsonl", 10, now());
+        assert_eq!(prune(tmp.path(), u64::MAX, AGE, now()).unwrap(), 1);
+        assert_eq!(names(tmp.path()), ["a.2024-01-31.jsonl"]);
+    }
+
+    #[test]
+    fn prune_applies_the_size_cap_and_the_age_limit_together() {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = |secs| now() - Duration::from_secs(secs);
+        file_at(tmp.path(), "a.2023-12-01.jsonl", 100, t(4000)); // too old
+        file_at(tmp.path(), "a.2024-01-20.jsonl", 100, t(3000)); // over the cap
+        file_at(tmp.path(), "a.2024-01-30.jsonl", 100, t(2000));
+        file_at(tmp.path(), "a.2024-01-31.jsonl", 100, t(1000));
+        assert_eq!(prune(tmp.path(), 200, AGE, now()).unwrap(), 2);
+        assert_eq!(
+            names(tmp.path()),
+            ["a.2024-01-30.jsonl", "a.2024-01-31.jsonl"]
+        );
+    }
+
+    #[test]
+    fn remove_if_present_treats_a_missing_file_as_already_deleted() {
+        let tmp = tempfile::tempdir().unwrap();
+        file_at(tmp.path(), "a.jsonl", 10, now());
+        assert!(remove_if_present(&tmp.path().join("a.jsonl")).unwrap());
+        assert!(!remove_if_present(&tmp.path().join("a.jsonl")).unwrap());
+    }
+
+    #[test]
+    fn remove_if_present_still_reports_other_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A directory is not removable with remove_file, and is not NotFound.
+        assert!(remove_if_present(tmp.path()).is_err());
     }
 
     #[test]

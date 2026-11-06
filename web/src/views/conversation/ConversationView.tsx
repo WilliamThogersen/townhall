@@ -1,7 +1,8 @@
-import { useRef } from "react";
+import { useCallback, useRef } from "react";
 import type { ConversationDetail } from "../../api/types";
 import { DropZone, useFileDrop } from "../../attachments";
 import { Composer, type ComposerHandle } from "../../composer";
+import { writeReply, type ReplyTarget } from "../../composer/replies";
 import { useRepos } from "../../data";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
@@ -37,9 +38,16 @@ export function ConversationView({ id, detail }: ConversationViewProps) {
   const pane = usePaneRoute(id, detail.tasks);
   const rail = useRail(pane);
   const commands = useCommands(id);
-  const thread = useThreadValue(detail, pane, commands);
-  const { repos } = useRepos();
   const composer = useRef<ComposerHandle>(null);
+  const onReply = useCallback(
+    (target: ReplyTarget) => {
+      writeReply(id, target);
+      composer.current?.focus();
+    },
+    [id],
+  );
+  const thread = useThreadValue(detail, pane, commands, onReply);
+  const { repos } = useRepos();
   const drop = useFileDrop((files) => composer.current?.addFiles(files));
   useConversationKeys({
     onToggleSession: rail.toggle,

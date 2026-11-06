@@ -1,0 +1,112 @@
+//! `open_pr`: pushes the task's branch and opens its pull request (GitHub) or merge request
+//! (GitLab), then keeps the link on the task.
+
+use serde::Deserialize;
+use serde_json::{json, Value};
+
+use crate::context::Context;
+use crate::model::{Checks, Pr, Task};
+use crate::repos::publish::{publish, PrRequest, Programs, Published};
+
+use super::checks::{one_line, Checked};
+use super::hand_back::worktree_of;
+use super::{ToolDef, MAX_PROMPT_LEN};
+
+pub const OPEN_PR: &str = "open_pr";
+
+const MAX_TITLE_LEN: u64 = 200;
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct OpenPrInput {
+    title: String,
+    #[serde(default)]
+    body: Option<String>,
+}
+
+pub fn tools() -> Vec<ToolDef> {
+    vec![ToolDef {
+        name: OPEN_PR,
+        description: "Push this task's branch to origin and open a pull request (GitHub) or merge request (GitLab) into the task's base branch. Returns state `opened` with the url, or `noRemote` when the repo has no origin (nothing is pushed). Commit your work first.",
+        input_schema: schema(),
+    }]
+}
+
+fn schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string", "minLength": 1, "maxLength": MAX_TITLE_LEN,
+                "description": "The title of the pull or merge request."
+            },
+            "body": {
+                "type": "string", "maxLength": MAX_PROMPT_LEN,
+                "description": "Its description: what changed and why."
+            }
+        },
+        "required": ["title"],
+        "additionalProperties": false
+    })
+}
+
+fn text(e: crate::Error) -> String {
+    e.to_string()
+}
+
+pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Checked<Value> {
+    let store = ctx.store().map_err(text)?;
+    let task = store
+        .find_task(task)
+        .await
+        .map_err(text)?
+        .ok_or_else(|| format!("no task named `{task}`"))?;
+    let title = one_line(&input.title);
+    if title.is_empty() {
+        return Err("`title` must not be blank".into());
+    }
+    let worktree = worktree_of(ctx, &task).await.ok_or_else(|| {
+        format!(
+            "task `{}` has no worktree: it has not started or was cleaned up",
+            task.name
+        )
+    })?;
+    let (branch, base) = (task.branch(), task.base_branch.clone());
+    let body = input.body.unwrap_or_default();
+    let published = tokio::task::spawn_blocking(move || {
+        let req = PrRequest {
+            worktree: &worktree,
+            branch: &branch,
+            base: &base,
+            title: &title,
+            body: &body,
+        };
+        publish(&req, &Programs::from_env())
+    })
+    .await
+    .map_err(|e| format!("publishing failed: {e}"))?
+    .map_err(text)?;
+    match published {
+        Published::NoRemote => Ok(json!({
+            "state": "noRemote",
+            "branch": task.branch(),
+            "message": format!(
+                "repo `{}` has no origin remote: nothing was pushed and no pull request was opened; the work stays on branch {}",
+                task.repo,
+                task.branch()
+            )
+        })),
+        Published::Opened { url, number } => {
+            if let Some(number) = number {
+                let pr = Pr {
+                    number,
+                    url: Some(url.clone()),
+                    checks: Checks::Pending,
+                };
+                let change = move |t: Task| Ok(Task { pr: Some(pr), ..t });
+                store.update_task(&task.name, change).await.map_err(text)?;
+            }
+            Ok(json!({"state": "opened", "url": url, "number": number}))
+        }
+    }
+}

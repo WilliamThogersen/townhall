@@ -44,7 +44,7 @@ pub async fn start_background(state: &AppState) -> Background {
 
 const PRUNE_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
 
-/// Keeps the logs folder under its size cap while the process runs (`init` prunes at startup).
+/// Keeps the logs folder under its size and age limits while the process runs (`init` prunes at startup).
 fn start_log_pruning(home: townhall_core::Home) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(PRUNE_EVERY);
@@ -52,9 +52,15 @@ fn start_log_pruning(home: townhall_core::Home) -> JoinHandle<()> {
         loop {
             tick.tick().await;
             let dir = home.root().join("logs");
-            let pruned =
-                tokio::task::spawn_blocking(move || logging::prune(&dir, logging::MAX_LOG_BYTES))
-                    .await;
+            let pruned = tokio::task::spawn_blocking(move || {
+                logging::prune(
+                    &dir,
+                    logging::MAX_LOG_BYTES,
+                    logging::MAX_LOG_AGE_DAYS,
+                    std::time::SystemTime::now(),
+                )
+            })
+            .await;
             match pruned {
                 Ok(Ok(deleted)) if deleted > 0 => {
                     tracing::info!(target: "townhall::logging", event = "logs.pruned", deleted, "pruned old log files");
