@@ -179,3 +179,41 @@ async fn create_task_refuses_a_name_an_agent_has_in_another_case() {
     assert!(text.contains(&named), "{text}");
     assert!(m.store().all_tasks().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn create_task_takes_a_pr_target_that_is_an_existing_branch_and_never_a_sha() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    common::git(&m.env.startup, &["branch", "reviewed"]).await;
+    let head = common::git(&m.env.startup, &["rev-parse", "main"]).await;
+
+    let plain = m.ok("create_task", task(&unique("plain"))).await;
+    assert_eq!(plain["prBase"], json!(null));
+
+    let mut aimed = task(&unique("ship"));
+    aimed["baseBranch"] = json!("reviewed");
+    aimed["prBase"] = json!(" main ");
+    let created = m.ok("create_task", aimed).await;
+    assert_eq!(created["baseBranch"], "reviewed");
+    assert_eq!(created["prBase"], "main");
+    let name = created["name"].as_str().unwrap();
+    let stored = m.store().find_task(name).await.unwrap().unwrap();
+    assert_eq!(stored.pr_base.as_deref(), Some("main"));
+    assert_eq!(stored.pr_target(), "main");
+
+    let refused = [
+        ("no-such-branch", "does not exist"),
+        ("   ", "must not be blank"),
+        ("", "must not be blank"),
+        (head.as_str(), "not a commit id"),
+        ("-main", "not a commit id"),
+        ("main^", "does not exist"),
+    ];
+    for (bad, why) in refused {
+        let mut args = task(&unique("bad"));
+        args["prBase"] = json!(bad);
+        let text = m.refused("create_task", args).await;
+        assert!(text.contains(why), "`{bad}`: {text}");
+    }
+    assert_eq!(m.store().all_tasks().await.unwrap().len(), 2);
+}

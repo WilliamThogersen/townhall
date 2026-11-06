@@ -1,7 +1,8 @@
 //! The scheduler's gate on an agent type's `requires`: a gated task starts only once each
 //! required task ended with a report that clears it for the commit it will start from.
 
-use std::path::Path;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use serde_json::json;
@@ -50,6 +51,7 @@ async fn create_as(s: &Sched, name: &str, agent: &str, after: &[&str], base: &st
 
 async fn gated_on(base: &str) -> Gated {
     projects();
+    deny_dir();
     let s = Sched::new().await;
     for source in [TESTER, REVIEWER, SHIPPER] {
         s.store().save_agent_type(source).await.unwrap();
@@ -761,4 +763,211 @@ async fn a_branch_with_no_commits_of_its_own_clears_only_for_its_tip() {
     let tip = rev(&g.s, "empty").await;
     both_clear(&g, &tip).await;
     assert_starts(&g).await;
+}
+
+#[tokio::test]
+async fn a_shipper_started_from_the_reviewed_branch_starts_and_keeps_its_pr_target() {
+    let g = gated_on("change").await;
+    change_branch(&g.s).await;
+    commit_on(&g.s, "change", "reviewed work").await;
+    let reviewed = rev(&g.s, "change").await;
+    both_clear(&g, &reviewed).await;
+    let aim = |t: Task| {
+        Ok(Task {
+            pr_base: Some("main".into()),
+            ..t
+        })
+    };
+    g.s.store().update_task(&g.ship, aim).await.unwrap();
+    assert_starts(&g).await;
+    let task = g.s.store().find_task(&g.ship).await.unwrap().unwrap();
+    assert_eq!(task.base_branch, "change");
+    assert_eq!(task.pr_target(), "main");
+    let started = git(&g.s.worktree(&g.ship), &["rev-parse", "HEAD"]).await;
+    assert_eq!(started, reviewed);
+}
+
+#[tokio::test]
+async fn an_ordinary_error_on_a_held_task_clears_blocked_but_a_gate_rejection_keeps_it() {
+    let g = gated().await;
+    assert_blocked(&g, &[&g.tester, "no recorded session"]).await;
+    let missing = |t: Task| {
+        Ok(Task {
+            base_branch: "no-such-branch".into(),
+            ..t
+        })
+    };
+    g.s.store().update_task(&g.ship, missing).await.unwrap();
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert_eq!(pass.failed, [g.ship.as_str()], "{pass:?}");
+    let task = g.s.store().find_task(&g.ship).await.unwrap().unwrap();
+    assert_eq!((task.state, task.blocked), (TaskState::Error, None));
+
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    file_report(&g.s, &g.tester, &clearing("FAIL", &head)).await;
+    file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
+    assert_rejected(&g, &[&g.tester, "FAIL"]).await;
+}
+
+static DENY: OnceLock<TempDir> = OnceLock::new();
+
+fn real_tmux() -> PathBuf {
+    let path = std::env::var_os("PATH").unwrap();
+    std::env::split_paths(&path)
+        .map(|dir| dir.join("tmux"))
+        .find(|candidate| candidate.is_file())
+        .expect("tmux on PATH")
+}
+
+fn deny_dir() -> PathBuf {
+    let dir = DENY.get_or_init(|| {
+        let dir = TempDir::new().unwrap();
+        let (bin, deny) = (dir.path().join("bin"), dir.path().join("deny"));
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&deny).unwrap();
+        let script = format!(
+            "#!/bin/sh\nfor f in '{deny}'/*; do\n  [ -e \"$f\" ] || continue\n  case \"$*\" in\n    *kill-session*\"$(basename \"$f\")\"*) echo \"kill-session refused: $(basename \"$f\")\" >&2; exit 1;;\n  esac\ndone\nexec '{real}' \"$@\"\n",
+            deny = deny.display(),
+            real = real_tmux().display()
+        );
+        let tmux = bin.join("tmux");
+        std::fs::write(&tmux, script).unwrap();
+        std::fs::set_permissions(&tmux, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let path = std::env::var_os("PATH").unwrap();
+        let all = std::iter::once(bin).chain(std::env::split_paths(&path));
+        std::env::set_var("PATH", std::env::join_paths(all).unwrap());
+        dir
+    });
+    dir.path().join("deny")
+}
+
+struct Refusing(PathBuf);
+
+impl Refusing {
+    fn to_kill(task: &str) -> Self {
+        let mark = deny_dir().join(task);
+        std::fs::write(&mark, "").unwrap();
+        Self(mark)
+    }
+}
+
+impl Drop for Refusing {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+async fn alive(g: &Gated, work: &str) -> bool {
+    g.s.agents().await.iter().any(|a| a.name == work && a.alive)
+}
+
+async fn handed_back(g: &Gated) -> String {
+    let work = start_work(g).await;
+    g.s.store()
+        .hand_back(&work, "shipper", "ship it", "")
+        .await
+        .unwrap();
+    work
+}
+
+#[tokio::test]
+async fn the_old_session_is_stopped_before_the_gate_even_when_the_gate_blocks() {
+    let g = gated().await;
+    let work = start_work(&g).await;
+    assert!(alive(&g, &work).await);
+    g.s.store()
+        .hand_back(&work, "shipper", "ship it", "")
+        .await
+        .unwrap();
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.blocked.contains(&work), "{pass:?}");
+    assert!(!alive(&g, &work).await);
+}
+
+#[tokio::test]
+async fn a_dirty_worktree_blocks_with_the_old_session_already_stopped() {
+    let g = gated().await;
+    let work = handed_back(&g).await;
+    let head = rev(&g.s, &format!("townhall/{work}")).await;
+    both_clear(&g, &head).await;
+    std::fs::write(g.s.worktree(&work).join("stray.txt"), "x\n").unwrap();
+    assert!(alive(&g, &work).await);
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.blocked.contains(&work), "{pass:?}");
+    assert!(!alive(&g, &work).await);
+}
+
+#[tokio::test]
+async fn a_resume_at_another_commit_than_the_checked_one_is_refused() {
+    let g = gated().await;
+    let work = start_work(&g).await;
+    let tree = g.s.worktree(&work);
+    let before = git(&tree, &["rev-parse", "HEAD"]).await;
+    scheduler_support::commit(&tree, "reviewed work").await;
+    g.s.store()
+        .hand_back(&work, "shipper", "ship it", "")
+        .await
+        .unwrap();
+    let reviewed = rev(&g.s, &format!("townhall/{work}")).await;
+    both_clear(&g, &reviewed).await;
+    git(&tree, &["checkout", "-q", "--detach", &before]).await;
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert_eq!(pass.failed, [work.as_str()], "{pass:?}");
+    let text = g.s.failed_text(&work).await;
+    assert!(
+        text.contains("not the checked commit") && text.contains(&reviewed),
+        "{text}"
+    );
+    let task = g.s.store().find_task(&work).await.unwrap().unwrap();
+    assert_eq!((task.state, task.blocked), (TaskState::Error, None));
+    assert!(!alive(&g, &work).await);
+}
+
+#[tokio::test]
+async fn a_resume_with_another_branch_checked_out_is_refused_with_a_reason() {
+    let g = gated().await;
+    let work = handed_back(&g).await;
+    let reviewed = rev(&g.s, &format!("townhall/{work}")).await;
+    both_clear(&g, &reviewed).await;
+    git(&g.s.worktree(&work), &["checkout", "-q", "-b", "elsewhere"]).await;
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert_eq!(pass.failed, [work.as_str()], "{pass:?}");
+    let text = g.s.failed_text(&work).await;
+    let own = format!("refs/heads/townhall/{work}");
+    assert!(
+        text.contains("refs/heads/elsewhere") && text.contains("not its own branch"),
+        "{text}"
+    );
+    assert!(text.contains(&own), "{text}");
+    assert!(!alive(&g, &work).await);
+}
+
+#[tokio::test]
+async fn an_old_session_that_cannot_be_stopped_keeps_the_task_queued_and_unchecked() {
+    let g = gated().await;
+    let work = handed_back(&g).await;
+    let reviewed = rev(&g.s, &format!("townhall/{work}")).await;
+    both_clear(&g, &reviewed).await;
+    let refusing = Refusing::to_kill(&work);
+    let other = unique("other");
+    create_as(&g.s, &other, "plain", &[], "main").await;
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.started.contains(&other), "{pass:?}");
+    assert!(
+        !pass.started.contains(&work) && pass.failed.is_empty(),
+        "{pass:?}"
+    );
+    let warning = pass.warnings.join("; ");
+    assert!(
+        warning.contains(&work) && warning.contains("could not be stopped"),
+        "{warning}"
+    );
+    let task = g.s.store().find_task(&work).await.unwrap().unwrap();
+    assert_eq!(task.state, TaskState::Queued);
+    assert!(alive(&g, &work).await);
+
+    drop(refusing);
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.started.contains(&work), "{pass:?}");
 }
