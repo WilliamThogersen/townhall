@@ -73,6 +73,7 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
     })?;
     let (branch, base) = (task.branch(), task.base_branch.clone());
     let body = input.body.unwrap_or_default();
+    let account = store.settings().await.map_err(text)?.github_account;
     let published = tokio::task::spawn_blocking(move || {
         let req = PrRequest {
             worktree: &worktree,
@@ -80,6 +81,7 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
             base: &base,
             title: &title,
             body: &body,
+            account: &account,
         };
         publish(&req, &Programs::from_env())
     })
