@@ -8,6 +8,19 @@ use crate::{Error, Result};
 const GB: u64 = 1_000_000_000;
 const NO_SPACE_TEXT: &str = "No space left on device";
 
+/// The os's own text for ENOSPC, as git's stderr quotes it, without Rust's ` (os error N)`.
+fn errno_text() -> String {
+    let full = std::io::Error::from_raw_os_error(libc::ENOSPC).to_string();
+    match full.split_once(" (os error") {
+        Some((text, _)) => text.to_string(),
+        None => full,
+    }
+}
+
+fn says_no_space(stderr: &str) -> bool {
+    stderr.contains(NO_SPACE_TEXT) || stderr.contains(&errno_text())
+}
+
 /// Bytes a normal user can still write on the volume of `path`, or of its nearest folder
 /// that exists (the home is created on first use).
 #[cfg(unix)]
@@ -57,7 +70,7 @@ pub fn out_of_space(e: &Error) -> bool {
     let full = |io: &std::io::Error| io.raw_os_error() == Some(libc::ENOSPC);
     match e {
         Error::Io { source, .. } | Error::Spawn { source, .. } => full(source),
-        Error::Command { stderr, .. } => stderr.contains(NO_SPACE_TEXT),
+        Error::Command { stderr, .. } => says_no_space(stderr),
         _ => false,
     }
 }
@@ -66,7 +79,7 @@ pub fn out_of_space(e: &Error) -> bool {
 pub fn explain(e: &Error, free: Option<u64>) -> Option<String> {
     out_of_space(e).then(|| match free {
         Some(free) => low_message(free),
-        None => "disk full: no space left on device".to_string(),
+        None => "disk almost full: no space left on device".to_string(),
     })
 }
 
@@ -117,6 +130,10 @@ mod tests {
         assert!(out_of_space(&cmd(
             "fatal: write error: No space left on device"
         )));
+        assert!(out_of_space(&cmd(&format!(
+            "fatal: write error: {}",
+            errno_text()
+        ))));
         assert!(!out_of_space(&cmd("fatal: not a git repository")));
         let denied = std::io::Error::from_raw_os_error(libc::EACCES);
         assert!(!out_of_space(&Error::io("x", denied)));
@@ -130,7 +147,7 @@ mod tests {
         assert_eq!(text, "disk almost full: 0.1 GB free");
         assert_eq!(
             explain(&full, None).unwrap(),
-            "disk full: no space left on device"
+            "disk almost full: no space left on device"
         );
         assert!(explain(&Error::Conflict("x".into()), Some(1)).is_none());
     }

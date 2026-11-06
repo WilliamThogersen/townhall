@@ -53,6 +53,9 @@ pub async fn run(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<Str
 async fn exec(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
     let mut command = Command::new(program);
     command.args(args);
+    if program == "git" {
+        command.env("LC_ALL", "C");
+    }
     if let Some(dir) = cwd {
         command.current_dir(dir);
     }
@@ -95,7 +98,11 @@ fn exec_blocking(
     envs: &[(&str, &str)],
 ) -> Result<String> {
     let mut command = std::process::Command::new(program);
-    command.args(args).envs(envs.iter().copied());
+    command.args(args);
+    if program == "git" {
+        command.env("LC_ALL", "C");
+    }
+    command.envs(envs.iter().copied());
     if let Some(dir) = cwd {
         command.current_dir(dir);
     }
