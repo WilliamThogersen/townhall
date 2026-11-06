@@ -71,6 +71,7 @@ pub fn out_of_space(e: &Error) -> bool {
     match e {
         Error::Io { source, .. } | Error::Spawn { source, .. } => full(source),
         Error::Command { stderr, .. } => says_no_space(stderr),
+        Error::RollbackFailed { cause, .. } => says_no_space(cause),
         _ => false,
     }
 }
@@ -134,6 +135,15 @@ mod tests {
             "fatal: write error: {}",
             errno_text()
         ))));
+        let rollback = |cause: String| Error::RollbackFailed {
+            cause,
+            cleanup: "could not remove the worktree".into(),
+        };
+        assert!(out_of_space(&rollback(full().to_string())));
+        assert!(out_of_space(&rollback(
+            cmd("write error: No space left on device").to_string()
+        )));
+        assert!(!out_of_space(&rollback("tmux: no server".into())));
         assert!(!out_of_space(&cmd("fatal: not a git repository")));
         let denied = std::io::Error::from_raw_os_error(libc::EACCES);
         assert!(!out_of_space(&Error::io("x", denied)));
