@@ -3,7 +3,7 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
-use super::clone::{AUTH_FAILED, CLONE_ENV, SSH_NO_PROMPT};
+use super::auth_env::{auth_failure, remote_env};
 use super::source::split_remote;
 use crate::cmd::{run_blocking, run_blocking_env};
 use crate::redact::redact;
@@ -111,7 +111,8 @@ fn check_login(program: &str, origin: &Origin, dir: &Path) -> Result<()> {
         Forge::GitHub => ("GitHub CLI", "https://cli.github.com"),
         Forge::GitLab => ("GitLab CLI", "https://gitlab.com/gitlab-org/cli"),
     };
-    match run_blocking(program, &["auth", "status", "--hostname", host], Some(dir)) {
+    let args = ["auth", "status", "--hostname", host];
+    match run_blocking_env(program, &args, Some(dir), &remote_env()) {
         Ok(_) => Ok(()),
         Err(Error::Spawn { source, .. }) if source.kind() == ErrorKind::NotFound => {
             Err(invalid(format!(
@@ -127,20 +128,13 @@ fn check_login(program: &str, origin: &Origin, dir: &Path) -> Result<()> {
 }
 
 fn push(req: &PrRequest) -> Result<()> {
-    let mut envs = CLONE_ENV.to_vec();
-    if std::env::var_os("GIT_SSH_COMMAND").is_none() {
-        envs.push(("GIT_SSH_COMMAND", SSH_NO_PROMPT));
-    }
+    let envs = remote_env();
     let args = ["push", "--set-upstream", "origin", req.branch];
     match run_blocking_env("git", &args, Some(req.worktree), &envs) {
         Ok(_) => Ok(()),
         Err(Error::Command { stderr, .. }) => {
-            let lower = stderr.to_ascii_lowercase();
-            let why = if AUTH_FAILED.iter().any(|n| lower.contains(n)) {
-                "authentication failed: check your git credentials or ssh key".to_string()
-            } else {
-                stderr.trim().to_string()
-            };
+            let why =
+                auth_failure(&stderr).map_or_else(|| stderr.trim().to_string(), str::to_string);
             Err(invalid(format!(
                 "could not push {} to origin: {why}",
                 req.branch
@@ -151,36 +145,37 @@ fn push(req: &PrRequest) -> Result<()> {
 }
 
 fn create(req: &PrRequest, origin: &Origin, programs: &Programs) -> Result<String> {
-    let (program, shown, args, envs): (&str, &str, Vec<&str>, [(&str, &str); 1]) =
-        match origin.forge {
-            Forge::GitHub => (
-                &programs.gh,
-                "gh pr create",
-                vec![
-                    "pr", "create", "--head", req.branch, "--base", req.base, "--title", req.title,
-                    "--body", req.body,
-                ],
-                [("GH_PROMPT_DISABLED", "1")],
-            ),
-            Forge::GitLab => (
-                &programs.glab,
-                "glab mr create",
-                vec![
-                    "mr",
-                    "create",
-                    "--source-branch",
-                    req.branch,
-                    "--target-branch",
-                    req.base,
-                    "--title",
-                    req.title,
-                    "--description",
-                    req.body,
-                    "--yes",
-                ],
-                [("GITLAB_HOST", origin.host.as_str())],
-            ),
-        };
+    let (program, shown, args, extra): (&str, &str, Vec<&str>, (&str, &str)) = match origin.forge {
+        Forge::GitHub => (
+            &programs.gh,
+            "gh pr create",
+            vec![
+                "pr", "create", "--head", req.branch, "--base", req.base, "--title", req.title,
+                "--body", req.body,
+            ],
+            ("GH_PROMPT_DISABLED", "1"),
+        ),
+        Forge::GitLab => (
+            &programs.glab,
+            "glab mr create",
+            vec![
+                "mr",
+                "create",
+                "--source-branch",
+                req.branch,
+                "--target-branch",
+                req.base,
+                "--title",
+                req.title,
+                "--description",
+                req.body,
+                "--yes",
+            ],
+            ("GITLAB_HOST", origin.host.as_str()),
+        ),
+    };
+    let mut envs = remote_env();
+    envs.push(extra);
     match run_blocking_env(program, &args, Some(req.worktree), &envs) {
         Ok(out) => link_in(&out)
             .ok_or_else(|| invalid(format!("`{shown}` printed no link: {}", out.trim()))),

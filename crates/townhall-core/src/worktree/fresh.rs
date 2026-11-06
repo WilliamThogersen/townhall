@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::cmd::{run_blocking, run_blocking_env};
 use crate::home::REPOS_DIR;
-use crate::repos::no_prompt_env;
+use crate::repos::remote_env;
 use crate::{Result, Workspace};
 
 const REMOTE: &str = "origin";
@@ -60,7 +60,7 @@ fn refresh(ws: &Workspace, base: &str) -> String {
 }
 
 fn fetch(repo: &Path) -> Result<String> {
-    let envs = no_prompt_env();
+    let envs = remote_env();
     run_blocking_env("git", &["fetch", "--quiet", REMOTE], Some(repo), &envs)
 }
 
