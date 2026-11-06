@@ -1,14 +1,17 @@
 //! The repo registry: the `repos` table plus the git checks around it.
 //! Removing a repo only unregisters it: the folder, its worktrees and branches stay.
 
+mod auth_env;
 mod clone;
 mod discard;
 mod git;
 pub mod names;
+pub mod publish;
 pub mod source;
 
 use std::path::{Path, PathBuf};
 
+pub(crate) use auth_env::remote_env;
 use clone::clone_or_reuse;
 use source::{Remote, Source};
 
