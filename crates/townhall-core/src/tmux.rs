@@ -78,24 +78,17 @@ const KIND_OPTION: &str = "@townhall_kind";
 
 /// The pane gets its own `PWD`, so it never inherits the stale one of whoever started
 /// the tmux server. The session keeps `kind` in [`KIND_OPTION`].
-fn new_session(
-    key: &str,
-    name: &str,
-    cwd: &str,
-    env: &[(String, String)],
-    command: &str,
-    kind: &str,
-) -> Vec<String> {
+fn new_session(key: &str, name: &str, cwd: &str, command: &str, kind: &str) -> Vec<String> {
     let session = session_name(key, name);
-    let vars = env
-        .iter()
-        .flat_map(|(var, value)| ["-e".to_string(), format!("{var}={value}")]);
-    let head = ["new-session", "-d", "-s", &session, "-c", cwd, "-e"]
-        .map(String::from)
-        .into_iter()
-        .chain([format!("PWD={cwd}")])
-        .chain(vars);
-    let tail = [
+    [
+        "new-session",
+        "-d",
+        "-s",
+        &session,
+        "-c",
+        cwd,
+        "-e",
+        &format!("PWD={cwd}"),
         command,
         ";",
         "set-option",
@@ -111,8 +104,8 @@ fn new_session(
         KIND_OPTION,
         kind,
     ]
-    .map(String::from);
-    head.chain(tail).collect()
+    .map(String::from)
+    .to_vec()
 }
 
 fn duplicate(e: &Error) -> bool {
@@ -147,20 +140,8 @@ async fn run_new_session(args: &[String]) -> Result<String> {
 /// tmux owns the process, so it survives the townhall daemon exiting. A dead session
 /// left by an earlier agent of the same name is replaced; a live one is a conflict.
 pub async fn spawn(key: &str, name: &str, cwd: &Path, command: &str, kind: &str) -> Result<()> {
-    spawn_with_env(key, name, cwd, &[], command, kind).await
-}
-
-/// Like [`spawn`], with `env` set in the session on top of what the tmux server has.
-pub async fn spawn_with_env(
-    key: &str,
-    name: &str,
-    cwd: &Path,
-    env: &[(String, String)],
-    command: &str,
-    kind: &str,
-) -> Result<()> {
     validate_name(name)?;
-    let args = new_session(key, name, &cwd.to_string_lossy(), env, command, kind);
+    let args = new_session(key, name, &cwd.to_string_lossy(), command, kind);
     let first = run_new_session(&args).await;
     let result = match first {
         Err(e) if duplicate(&e) && dead_leftover(key, name).await? => {
@@ -462,23 +443,10 @@ mod tests {
 
     #[test]
     fn a_new_session_gets_its_own_pwd() {
-        let args = new_session("k", "a", "/w/a", &[], "run it", "shell");
+        let args = new_session("k", "a", "/w/a", "run it", "shell");
         let at = args.iter().position(|a| a == "-e").unwrap();
         assert_eq!(args[at + 1], "PWD=/w/a");
         let command = args.iter().position(|a| a == "run it").unwrap();
         assert!(at < command, "{args:?}");
-    }
-
-    #[test]
-    fn a_new_session_gets_the_variables_before_its_command() {
-        let env = [("CARGO_TARGET_DIR".to_string(), "/t/a b".to_string())];
-        let args = new_session("k", "a", "/w/a", &env, "run it", "shell");
-        let var = args
-            .iter()
-            .position(|a| a == "CARGO_TARGET_DIR=/t/a b")
-            .unwrap();
-        assert_eq!(args[var - 1], "-e");
-        let command = args.iter().position(|a| a == "run it").unwrap();
-        assert!(var < command, "{args:?}");
     }
 }

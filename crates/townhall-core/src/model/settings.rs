@@ -6,10 +6,9 @@ use crate::{Error, Result};
 pub const AGENTS_AT_ONCE_MIN: u32 = 1;
 pub const AGENTS_AT_ONCE_MAX: u32 = 50;
 pub const AGENTS_AT_ONCE_DEFAULT: u32 = 6;
-/// Most gigabytes `minFreeDiskGb` and `sharedTargetMaxGb` take; `0` turns the limit off.
+/// Most gigabytes `minFreeDiskGb` takes; `0` turns the limit off.
 pub const DISK_GB_MAX: u32 = 100_000;
 pub const MIN_FREE_DISK_GB_DEFAULT: u32 = 5;
-pub const SHARED_TARGET_MAX_GB_DEFAULT: u32 = 50;
 
 /// Claude Code's `--permission-mode`, named as in `web/src/settings/settings.ts`.
 /// `BypassPermissions` is `skip all`: only `PUT /api/settings/permissionMode` may choose it.
@@ -87,13 +86,11 @@ pub enum SettingKey {
     SessionPanelOpen,
     NotifyWhen,
     TownhallModel,
-    SharedCargoTarget,
     MinFreeDiskGb,
-    SharedTargetMaxGb,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 10] = [
+    pub const ALL: [SettingKey; 8] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
@@ -101,9 +98,7 @@ impl SettingKey {
         Self::SessionPanelOpen,
         Self::NotifyWhen,
         Self::TownhallModel,
-        Self::SharedCargoTarget,
         Self::MinFreeDiskGb,
-        Self::SharedTargetMaxGb,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -115,9 +110,7 @@ impl SettingKey {
             Self::SessionPanelOpen => "sessionPanelOpen",
             Self::NotifyWhen => "notifyWhen",
             Self::TownhallModel => "townhallModel",
-            Self::SharedCargoTarget => "sharedCargoTarget",
             Self::MinFreeDiskGb => "minFreeDiskGb",
-            Self::SharedTargetMaxGb => "sharedTargetMaxGb",
         }
     }
 
@@ -136,12 +129,8 @@ impl SettingKey {
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
             Self::TownhallModel => parses::<TownhallModel>(value),
-            Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::SharedCargoTarget => {
-                value.is_boolean()
-            }
-            Self::MinFreeDiskGb | Self::SharedTargetMaxGb => {
-                value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX))
-            }
+            Self::WorkWithoutAsking | Self::SessionPanelOpen => value.is_boolean(),
+            Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
             }),
@@ -170,12 +159,8 @@ pub struct Settings {
     pub session_panel_open: bool,
     pub notify_when: NotifyWhen,
     pub townhall_model: TownhallModel,
-    /// Agents of one repo build into one cargo target folder (`CARGO_TARGET_DIR`).
-    pub shared_cargo_target: bool,
     /// A task does not start while the data volume has less free space; `0` is off.
     pub min_free_disk_gb: u32,
-    /// The reaper trims a repo's shared target folder above this size; `0` is no cap.
-    pub shared_target_max_gb: u32,
 }
 
 impl Default for Settings {
@@ -188,9 +173,7 @@ impl Default for Settings {
             session_panel_open: true,
             notify_when: NotifyWhen::NeedsYou,
             townhall_model: TownhallModel::Sonnet,
-            shared_cargo_target: false,
             min_free_disk_gb: MIN_FREE_DISK_GB_DEFAULT,
-            shared_target_max_gb: SHARED_TARGET_MAX_GB_DEFAULT,
         }
     }
 }
@@ -214,9 +197,7 @@ impl Settings {
             session_panel_open: field(raw, SettingKey::SessionPanelOpen, d.session_panel_open),
             notify_when: field(raw, SettingKey::NotifyWhen, d.notify_when),
             townhall_model: field(raw, SettingKey::TownhallModel, d.townhall_model),
-            shared_cargo_target: field(raw, SettingKey::SharedCargoTarget, d.shared_cargo_target),
             min_free_disk_gb: field(raw, SettingKey::MinFreeDiskGb, d.min_free_disk_gb),
-            shared_target_max_gb: field(raw, SettingKey::SharedTargetMaxGb, d.shared_target_max_gb),
         }
     }
 
@@ -256,9 +237,7 @@ mod tests {
                 "sessionPanelOpen": true,
                 "notifyWhen": "needsYou",
                 "townhallModel": "sonnet",
-                "sharedCargoTarget": false,
-                "minFreeDiskGb": 5,
-                "sharedTargetMaxGb": 50
+                "minFreeDiskGb": 5
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -327,28 +306,34 @@ mod tests {
     #[test]
     fn disk_settings_check_their_values() {
         let ok = [
-            (SettingKey::SharedCargoTarget, json!(false)),
             (SettingKey::MinFreeDiskGb, json!(0)),
             (SettingKey::MinFreeDiskGb, json!(DISK_GB_MAX)),
-            (SettingKey::SharedTargetMaxGb, json!(0)),
-            (SettingKey::SharedTargetMaxGb, json!(200)),
         ];
         for (key, value) in ok {
             assert_eq!(key.check(&value).unwrap(), value);
         }
         let bad = [
-            (SettingKey::SharedCargoTarget, json!("on")),
             (SettingKey::MinFreeDiskGb, json!(-1)),
             (SettingKey::MinFreeDiskGb, json!(DISK_GB_MAX + 1)),
             (SettingKey::MinFreeDiskGb, json!(2.5)),
-            (SettingKey::SharedTargetMaxGb, json!("50")),
-            (SettingKey::SharedTargetMaxGb, json!(DISK_GB_MAX + 1)),
         ];
         for (key, value) in bad {
             assert!(key.check(&value).is_err(), "{key:?} {value}");
         }
         let s: Settings = serde_json::from_value(json!({"minFreeDiskGb": "x"})).unwrap();
         assert_eq!(s.min_free_disk_gb, MIN_FREE_DISK_GB_DEFAULT);
+    }
+
+    #[test]
+    fn keys_of_removed_settings_are_ignored() {
+        let raw = json!({
+            "agentsAtOnce": 3, "sharedCargoTarget": true, "sharedTargetMaxGb": 80,
+            "minFreeDiskGb": 7
+        });
+        let s: Settings = serde_json::from_value(raw).unwrap();
+        assert_eq!((s.agents_at_once, s.min_free_disk_gb), (3, 7));
+        assert!(SettingKey::parse("sharedCargoTarget").is_err());
+        assert!(SettingKey::parse("sharedTargetMaxGb").is_err());
     }
 
     #[test]

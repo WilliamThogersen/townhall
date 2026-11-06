@@ -161,16 +161,18 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
         json!({
             "permissionMode": "acceptEdits", "workWithoutAsking": false, "agentsAtOnce": 6,
             "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
-            "townhallModel": "sonnet", "sharedCargoTarget": true, "minFreeDiskGb": 5,
-            "sharedTargetMaxGb": 50
+            "townhallModel": "sonnet", "minFreeDiskGb": 5
         })
     );
-    let put = Some(json!({"value": false}));
-    let (s, v) = call(&app, "PUT", "/api/settings/sharedCargoTarget", put).await;
+    let put = Some(json!({"value": 0}));
+    let (s, v) = call(&app, "PUT", "/api/settings/minFreeDiskGb", put).await;
     assert_eq!(
-        (s, &v["data"]["sharedCargoTarget"]),
-        (StatusCode::OK, &json!(false))
+        (s, &v["data"]["minFreeDiskGb"]),
+        (StatusCode::OK, &json!(0))
     );
+    let put = Some(json!({"value": true}));
+    let (s, _) = call(&app, "PUT", "/api/settings/sharedCargoTarget", put).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
     let put = Some(json!({"value": 100_001}));
     let (s, _) = call(&app, "PUT", "/api/settings/minFreeDiskGb", put).await;
     assert_eq!(s, StatusCode::BAD_REQUEST);

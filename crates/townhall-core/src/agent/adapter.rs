@@ -27,8 +27,6 @@ pub struct LaunchOptions {
     /// The MCP tools of that server (`mcp__<server>__<tool>`), allowed without asking and
     /// kept apart from `allowed_tools`: they never turn a type with no tool list into one.
     pub mcp_tools: Vec<String>,
-    /// Variables set in the agent's tmux session, whatever the adapter.
-    pub env: Vec<(String, String)>,
 }
 
 /// Knows how to turn launch options into the shell command run inside tmux.

@@ -55,8 +55,8 @@ pub async fn commit(dir: &Path, message: &str) {
 fn fake_claude(dir: &Path, args_dir: &Path) -> String {
     let path = dir.join("fake-claude");
     let script = format!(
-        "#!/bin/sh\nprintf '%s\\n' \"${{CARGO_TARGET_DIR-unset}}\" > '{dir}'/\"$(basename \"$(pwd)\")\".env\nprintf '%s\\n' \"$@\" > '{dir}'/\"$(basename \"$(pwd)\")\".args\nexec sleep 120\n",
-        dir = args_dir.display()
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'/\"$(basename \"$(pwd)\")\".args\nexec sleep 120\n",
+        args_dir.display()
     );
     std::fs::write(&path, script).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -209,13 +209,6 @@ impl Sched {
         let repo = self.ctx().registry().unwrap().add(&add).await.unwrap();
         let ws = self.ctx().workspace(&repo).unwrap();
         (repo, ws)
-    }
-
-    /// The `CARGO_TARGET_DIR` the fake claude ran with (`unset` when it had none).
-    pub async fn target_dir(&self, name: &str) -> String {
-        self.args(name).await;
-        let path = self.args_dir.join(format!("{name}.env"));
-        std::fs::read_to_string(path).unwrap().trim().to_string()
     }
 
     /// The fake claude's arguments, once it has written them.
