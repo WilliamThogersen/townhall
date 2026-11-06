@@ -118,7 +118,8 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     let mut free = plan::free_slots(limit, fleet.active(tasks));
     let mut pass = Pass::default();
     for task in ready {
-        if fleet.agent_of(task).is_none() {
+        let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
+        if fleet.agent_of(task).is_none() || handed_back {
             match gate::check(ctx, task, tasks).await {
                 Ok(Gate::Open) => gate::clear(ctx, task).await?,
                 Ok(Gate::Blocked(why)) => {
@@ -136,7 +137,6 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
                 }
             }
         }
-        let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
         let done = act(ctx, task, decide(&fleet, task, free, handed_back)).await?;
         let alive = fleet.agent_of(task).is_some_and(|a| a.alive);
         if matches!(done, Done::Started(_)) || (matches!(done, Done::Adopted(_)) && alive) {

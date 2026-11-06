@@ -9,6 +9,10 @@
 //!   one (a task handed back), else its base branch. It is stale unless it is that head, or
 //!   an ancestor of it and every commit since is a merge or already on the repo's base
 //!   branch, so merging the base branch in keeps a report fresh and any other change does not.
+//!   When the head is the repo's base branch itself that allowance would excuse any older
+//!   commit, so there the report must name the tip exactly.
+//! - The gate runs for a task with no agent yet and for a handed-back task before its new
+//!   agent resumes; an agent that is already running is adopted, never gated.
 //!
 //! A blocked task stays queued, its reason stored in `blocked`; the planner is told when the
 //! reason first appears or changes.
@@ -82,6 +86,11 @@ impl Head<'_> {
             short(&covered),
             short(&head)
         );
+        if at == self.base {
+            return Ok(Some(format!(
+                "{behind}: a task starting from the repo's base branch needs a report for its tip"
+            )));
+        }
         if !self.is_ancestor(&covered, &head).await? {
             return Ok(Some(format!("{behind}, which does not contain it")));
         }

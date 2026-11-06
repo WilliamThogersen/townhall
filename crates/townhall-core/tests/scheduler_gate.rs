@@ -275,3 +275,102 @@ async fn a_commit_the_repo_does_not_have_is_named_in_the_block() {
     both_clear(&g, unknown).await;
     assert_blocked(&g, &["0123456", "not a commit"]).await;
 }
+
+async fn start_work(g: &Gated) -> String {
+    let work = unique("work");
+    create_as(&g.s, &work, "builder", &[&g.tester, &g.reviewer], "main").await;
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert_eq!(pass.started, [work.as_str()], "{pass:?}");
+    g.s.args(&work).await;
+    work
+}
+
+#[tokio::test]
+async fn a_hand_back_to_a_gated_type_waits_for_the_reports() {
+    let g = gated().await;
+    let work = start_work(&g).await;
+    let before = g.s.agents().await.len();
+    g.s.store()
+        .hand_back(&work, "shipper", "ship it", "")
+        .await
+        .unwrap();
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(
+        !pass.started.contains(&work) && pass.blocked.contains(&work),
+        "{pass:?}"
+    );
+    let task = g.s.store().find_task(&work).await.unwrap().unwrap();
+    assert_eq!(task.state, TaskState::Queued);
+    let why = task.blocked.expect("a block reason");
+    assert!(
+        why.contains(&g.tester) && why.contains("no report"),
+        "{why}"
+    );
+    assert_eq!(g.s.agents().await.len(), before);
+}
+
+#[tokio::test]
+async fn a_hand_back_to_a_gated_type_resumes_once_the_reports_clear_its_branch() {
+    let g = gated().await;
+    let work = start_work(&g).await;
+    g.s.store()
+        .hand_back(&work, "shipper", "ship it", "")
+        .await
+        .unwrap();
+    let head = rev(&g.s, &format!("townhall/{work}")).await;
+    both_clear(&g, &head).await;
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.started.contains(&work), "{pass:?}");
+    let task = g.s.store().find_task(&work).await.unwrap().unwrap();
+    assert_eq!((task.state, task.blocked), (TaskState::Working, None));
+}
+
+#[tokio::test]
+async fn a_running_agent_is_adopted_not_gated() {
+    let g = gated().await;
+    let work = start_work(&g).await;
+    let change = |t: Task| {
+        Ok(Task {
+            agent: "shipper".into(),
+            state: TaskState::Queued,
+            ..t
+        })
+    };
+    g.s.store().update_task(&work, change).await.unwrap();
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert_eq!(pass.adopted, [work.as_str()], "{pass:?}");
+    assert!(!pass.blocked.contains(&work), "{pass:?}");
+    assert!(g.s.agents().await.iter().any(|a| a.name == work && a.alive));
+}
+
+#[tokio::test]
+async fn from_the_base_branch_only_its_tip_clears() {
+    let g = gated().await;
+    let old = rev(&g.s, "main").await;
+    scheduler_support::commit(&g.s.repo, "main moved on").await;
+    both_clear(&g, &old).await;
+    let why = assert_blocked(&g, &["stale", &g.tester, &old[..7]]).await;
+    assert!(why.contains("tip"), "{why}");
+
+    let tip = rev(&g.s, "main").await;
+    both_clear(&g, &tip).await;
+    assert_starts(&g).await;
+}
+
+#[tokio::test]
+async fn a_report_commit_may_be_short_or_full_but_not_upper_case() {
+    let short = gated().await;
+    let tip = rev(&short.s, "main").await;
+    both_clear(&short, &tip[..7]).await;
+    assert_starts(&short).await;
+
+    let full = gated().await;
+    let tip = rev(&full.s, "main").await;
+    both_clear(&full, &tip).await;
+    assert_starts(&full).await;
+
+    let upper = gated().await;
+    let tip = rev(&upper.s, "main").await;
+    both_clear(&upper, &tip.to_uppercase()).await;
+    assert_blocked(&upper, &[&upper.tester, "COMMIT"]).await;
+}
