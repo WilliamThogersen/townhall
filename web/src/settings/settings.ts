@@ -11,6 +11,9 @@ export interface Settings {
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
+  readonly sharedCargoTarget: boolean;
+  readonly minFreeDiskGb: number;
+  readonly sharedTargetMaxGb: number;
 }
 
 export const PERMISSION_MODES: readonly PermissionMode[] = [
@@ -26,6 +29,7 @@ export const TOWNHALL_MODELS: readonly TownhallModel[] = ["sonnet", "opus", "hai
 
 export const AGENTS_AT_ONCE_MIN = 1;
 export const AGENTS_AT_ONCE_MAX = 50;
+export const DISK_GB_MAX = 100_000;
 
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
   permissionMode: "acceptEdits",
@@ -35,6 +39,9 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   sessionPanelOpen: true,
   notifyWhen: "needsYou",
   townhallModel: "sonnet",
+  sharedCargoTarget: true,
+  minFreeDiskGb: 5,
+  sharedTargetMaxGb: 50,
 });
 
 export type SettingKey = keyof Settings;
@@ -47,6 +54,9 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "sessionPanelOpen",
   "notifyWhen",
   "townhallModel",
+  "sharedCargoTarget",
+  "minFreeDiskGb",
+  "sharedTargetMaxGb",
 ]);
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -68,6 +78,9 @@ const isAgentsAtOnce: Check<number> = (value): value is number =>
   value >= AGENTS_AT_ONCE_MIN &&
   value <= AGENTS_AT_ONCE_MAX;
 
+const isDiskGb: Check<number> = (value): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= DISK_GB_MAX;
+
 const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   permissionMode: choiceOf(PERMISSION_MODES),
   workWithoutAsking: isFlag,
@@ -76,6 +89,9 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   sessionPanelOpen: isFlag,
   notifyWhen: choiceOf(NOTIFY_VALUES),
   townhallModel: choiceOf(TOWNHALL_MODELS),
+  sharedCargoTarget: isFlag,
+  minFreeDiskGb: isDiskGb,
+  sharedTargetMaxGb: isDiskGb,
 };
 
 export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
@@ -102,5 +118,8 @@ export function parseSettings(raw: unknown): Settings {
     sessionPanelOpen: pick(fields, "sessionPanelOpen"),
     notifyWhen: pick(fields, "notifyWhen"),
     townhallModel: pick(fields, "townhallModel"),
+    sharedCargoTarget: pick(fields, "sharedCargoTarget"),
+    minFreeDiskGb: pick(fields, "minFreeDiskGb"),
+    sharedTargetMaxGb: pick(fields, "sharedTargetMaxGb"),
   });
 }

@@ -17,6 +17,9 @@ const custom: Settings = {
   sessionPanelOpen: false,
   notifyWhen: "everything",
   townhallModel: "opus",
+  sharedCargoTarget: false,
+  minFreeDiskGb: 20,
+  sharedTargetMaxGb: 0,
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -29,6 +32,9 @@ describe("DEFAULT_SETTINGS", () => {
       sessionPanelOpen: true,
       notifyWhen: "needsYou",
       townhallModel: "sonnet",
+      sharedCargoTarget: true,
+      minFreeDiskGb: 5,
+      sharedTargetMaxGb: 50,
     });
   });
 
@@ -119,6 +125,11 @@ describe("isSettingValue", () => {
     expect(isSettingValue("notifyWhen", null)).toBe(false);
     expect(isSettingValue("townhallModel", "fable")).toBe(false);
     expect(isSettingValue("townhallModel", "Sonnet")).toBe(false);
+    expect(isSettingValue("sharedCargoTarget", "on")).toBe(false);
+    expect(isSettingValue("minFreeDiskGb", 0)).toBe(true);
+    expect(isSettingValue("minFreeDiskGb", -1)).toBe(false);
+    expect(isSettingValue("minFreeDiskGb", 1.5)).toBe(false);
+    expect(isSettingValue("sharedTargetMaxGb", 100_001)).toBe(false);
     [0, 51, 2.5, "6", Number.NaN].forEach((value) => {
       expect(isSettingValue("agentsAtOnce", value)).toBe(false);
     });

@@ -55,6 +55,9 @@ export interface Settings {
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
+  readonly sharedCargoTarget: boolean;
+  readonly minFreeDiskGb: number;
+  readonly sharedTargetMaxGb: number;
 }
 
 export type SettingKey = keyof Settings;
