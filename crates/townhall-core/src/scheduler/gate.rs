@@ -3,8 +3,8 @@
 //! `after` chain ended with a report that clears it for the commit the task will start from.
 //!
 //! - The report is that task's final message, else its latest `report` artifact.
-//! - Its last lines must say `VERDICT: APPROVE` or `VERDICT: PASS` and `COMMIT: <sha>`
-//!   (`report.rs`). A REJECT, a FAIL or a missing line blocks.
+//! - Its lines `VERDICT: APPROVE` or `VERDICT: PASS` and `COMMIT: <sha>` may be anywhere in
+//!   it (`report.rs`). A REJECT, a FAIL, a missing or conflicting line blocks.
 //! - The commit is compared with the head the task starts from: its own branch when it has
 //!   one (a task handed back), else its base branch. It is stale unless it is that head, or
 //!   an ancestor of it and every commit since is a merge or already on the repo's base
@@ -144,19 +144,19 @@ async fn judge(ctx: &Context, done: &Task, head: &Head<'_>) -> Result<Option<Str
             "{who} left no report: it must finish with the report as its last message or add a report artifact"
         )));
     };
-    let parsed = report::parse(&text);
-    let Some(verdict) = parsed.verdict else {
-        return Ok(Some(format!(
-            "{who} report has no `VERDICT:` line in its last lines"
-        )));
+    let parsed = report::parse(&text, &done.agent);
+    let verdict = match parsed.verdict {
+        Ok(Some(verdict)) => verdict,
+        Ok(None) => return Ok(Some(format!("{who} report has no `VERDICT:` line"))),
+        Err(why) => return Ok(Some(format!("{who} report: {why}"))),
     };
     if !verdict.clears() {
         return Ok(Some(format!("{who} reported {}", verdict.as_str())));
     }
-    let Some(commit) = parsed.commit else {
-        return Ok(Some(format!(
-            "{who} report has no `COMMIT:` line in its last lines"
-        )));
+    let commit = match parsed.commit {
+        Ok(Some(commit)) => commit,
+        Ok(None) => return Ok(Some(format!("{who} report has no `COMMIT:` line"))),
+        Err(why) => return Ok(Some(format!("{who} report: {why}"))),
     };
     head.stale(&who, &commit).await
 }

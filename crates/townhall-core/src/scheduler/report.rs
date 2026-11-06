@@ -1,8 +1,6 @@
-//! What a tester's or reviewer's report says in its last lines: `VERDICT: APPROVE|REJECT`
-//! (reviewer), `VERDICT: PASS|FAIL` (tester) and `COMMIT: <sha>`.
-
-/// How many of a report's last non-blank lines are read for the verdict and the commit.
-pub const TAIL_LINES: usize = 8;
+//! What a tester's or reviewer's report says: `VERDICT: APPROVE|REJECT` (reviewer),
+//! `VERDICT: PASS|FAIL` (tester) and `COMMIT: <sha>`, each on a line of its own anywhere in
+//! the final message.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
@@ -27,40 +25,110 @@ impl Verdict {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Report {
-    pub verdict: Option<Verdict>,
-    pub commit: Option<String>,
+const TESTER_WORDS: [Verdict; 2] = [Verdict::Pass, Verdict::Fail];
+const REVIEWER_WORDS: [Verdict; 2] = [Verdict::Approve, Verdict::Reject];
+const ANY_WORDS: [Verdict; 4] = [
+    Verdict::Approve,
+    Verdict::Reject,
+    Verdict::Pass,
+    Verdict::Fail,
+];
+
+/// The verdict words an agent type may use; a type other than tester or reviewer may use any.
+pub fn vocabulary(agent_type: &str) -> &'static [Verdict] {
+    match agent_type.to_ascii_lowercase().as_str() {
+        "tester" => &TESTER_WORDS,
+        "reviewer" => &REVIEWER_WORDS,
+        _ => &ANY_WORDS,
+    }
 }
 
-fn verdict_of(word: &str) -> Option<Verdict> {
-    match word {
-        "APPROVE" => Some(Verdict::Approve),
-        "REJECT" => Some(Verdict::Reject),
-        "PASS" => Some(Verdict::Pass),
-        "FAIL" => Some(Verdict::Fail),
-        _ => None,
-    }
+/// What a report says. Each field is `Err` with the reason when its lines cannot be trusted
+/// and `Ok(None)` when there is no such line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Report {
+    pub verdict: Result<Option<Verdict>, String>,
+    pub commit: Result<Option<String>, String>,
 }
 
 fn is_sha(word: &str) -> bool {
     (7..=40).contains(&word.len()) && word.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
 }
 
-/// The verdict and commit of the last `VERDICT:` and `COMMIT:` lines among the report's last
-/// [`TAIL_LINES`] non-blank lines. A line that is not exactly one of the forms is ignored.
-pub fn parse(text: &str) -> Report {
-    let tail: Vec<&str> = text
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .rev()
-        .take(TAIL_LINES)
-        .collect();
-    let value = |key: &str| tail.iter().find_map(|l| l.strip_prefix(key)).map(str::trim);
+fn is_fence(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("```") || line.starts_with("~~~")
+}
+
+fn is_quote(line: &str) -> bool {
+    line.trim_start().starts_with('>')
+}
+
+fn distinct<'a>(found: &[&'a str]) -> Vec<&'a str> {
+    let mut out: Vec<&str> = vec![];
+    for word in found {
+        if !out.contains(word) {
+            out.push(word);
+        }
+    }
+    out
+}
+
+fn single<'a>(key: &str, found: &[&'a str]) -> Result<Option<&'a str>, String> {
+    match distinct(found).as_slice() {
+        [] => Ok(None),
+        [one] => Ok(Some(one)),
+        many => Err(format!("conflicting {key} lines: {}", many.join(", "))),
+    }
+}
+
+fn verdict_of(word: &str, allowed: &[Verdict]) -> Result<Verdict, String> {
+    match allowed.iter().find(|v| v.as_str() == word) {
+        Some(v) => Ok(*v),
+        None => {
+            let words: Vec<&str> = allowed.iter().map(|v| v.as_str()).collect();
+            Err(format!(
+                "`VERDICT: {word}` is not one of {}",
+                words.join(", ")
+            ))
+        }
+    }
+}
+
+/// The verdict and commit of the report's `VERDICT: <WORD>` and `COMMIT: <sha>` lines,
+/// scanned over the whole text. A line counts only when it starts at the first column, holds
+/// nothing after the value but whitespace, and is neither inside a fenced code block nor in a
+/// blockquote; any other line is ignored. Identical repeats are one line; different ones are
+/// a conflict. The verdict word must belong to `agent_type`'s [`vocabulary`].
+pub fn parse(text: &str, agent_type: &str) -> Report {
+    let mut verdicts = vec![];
+    let mut commits = vec![];
+    let mut fenced = false;
+    for line in text.lines() {
+        if is_fence(line) {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced || is_quote(line) {
+            continue;
+        }
+        let line = line.trim_end();
+        if let Some(word) = line.strip_prefix("VERDICT: ") {
+            if !word.is_empty() && !word.contains(char::is_whitespace) {
+                verdicts.push(word);
+            }
+        } else if let Some(sha) = line.strip_prefix("COMMIT: ") {
+            if is_sha(sha) {
+                commits.push(sha);
+            }
+        }
+    }
     Report {
-        verdict: value("VERDICT:").and_then(verdict_of),
-        commit: value("COMMIT:").filter(|c| is_sha(c)).map(String::from),
+        verdict: single("VERDICT", &verdicts).and_then(|word| {
+            word.map(|w| verdict_of(w, vocabulary(agent_type)))
+                .transpose()
+        }),
+        commit: single("COMMIT", &commits).map(|sha| sha.map(String::from)),
     }
 }
 
@@ -68,49 +136,105 @@ pub fn parse(text: &str) -> Report {
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_last_lines_carry_the_verdict_and_the_commit() {
-        let text = "All checks ran.\n\nVERDICT: APPROVE\nCOMMIT: 3f573aa\n";
-        assert_eq!(
-            parse(text),
-            Report {
-                verdict: Some(Verdict::Approve),
-                commit: Some("3f573aa".into())
-            }
-        );
-        let fail = parse("notes\nCOMMIT: abc1234\nVERDICT: FAIL\n\n\n");
-        assert_eq!(fail.verdict, Some(Verdict::Fail));
-        assert_eq!(fail.commit.as_deref(), Some("abc1234"));
+    fn verdict(text: &str, agent: &str) -> Result<Option<Verdict>, String> {
+        parse(text, agent).verdict
+    }
+
+    fn commit(text: &str) -> Result<Option<String>, String> {
+        parse(text, "tester").commit
     }
 
     #[test]
-    fn every_verdict_word_is_read_and_only_those() {
-        let word = |w: &str| parse(&format!("VERDICT: {w}")).verdict;
-        assert_eq!(word("REJECT"), Some(Verdict::Reject));
-        assert_eq!(word("PASS"), Some(Verdict::Pass));
-        assert_eq!(word("  PASS  "), Some(Verdict::Pass));
-        assert_eq!(word("MAYBE"), None);
-        assert_eq!(word("approve"), None);
-        assert_eq!(word("PASS but flaky"), None);
+    fn the_verdict_and_the_commit_may_come_first_or_last() {
+        let last = parse(
+            "All checks ran.\n\nVERDICT: APPROVE\nCOMMIT: 3f573aa\n",
+            "reviewer",
+        );
+        assert_eq!(last.verdict, Ok(Some(Verdict::Approve)));
+        assert_eq!(last.commit, Ok(Some("3f573aa".into())));
+        let long = "line\n".repeat(200);
+        let first = parse(&format!("VERDICT: FAIL\nCOMMIT: abc1234\n{long}"), "tester");
+        assert_eq!(first.verdict, Ok(Some(Verdict::Fail)));
+        assert_eq!(first.commit, Ok(Some("abc1234".into())));
+        let middle = parse(&format!("{long}VERDICT: PASS\n{long}"), "tester");
+        assert_eq!(middle.verdict, Ok(Some(Verdict::Pass)));
+    }
+
+    #[test]
+    fn a_word_must_be_in_the_required_types_vocabulary() {
+        assert_eq!(verdict("VERDICT: PASS", "tester"), Ok(Some(Verdict::Pass)));
+        assert_eq!(verdict("VERDICT: FAIL", "Tester"), Ok(Some(Verdict::Fail)));
+        assert_eq!(
+            verdict("VERDICT: REJECT", "reviewer"),
+            Ok(Some(Verdict::Reject))
+        );
+        let wrong = verdict("VERDICT: APPROVE", "tester").unwrap_err();
+        assert!(
+            wrong.contains("APPROVE") && wrong.contains("PASS, FAIL"),
+            "{wrong}"
+        );
+        assert!(verdict("VERDICT: PASS", "reviewer").is_err());
+        assert!(verdict("VERDICT: MAYBE", "tester").is_err());
+        assert!(verdict("VERDICT: approve", "reviewer").is_err());
+        assert_eq!(verdict("VERDICT: PASS", "auditor"), Ok(Some(Verdict::Pass)));
         assert!(Verdict::Approve.clears() && Verdict::Pass.clears());
         assert!(!Verdict::Reject.clears() && !Verdict::Fail.clears());
     }
 
     #[test]
-    fn a_missing_line_is_none_and_the_commit_must_look_like_a_sha() {
-        assert_eq!(parse("looks fine to me"), Report::default());
-        assert_eq!(parse("COMMIT: not a sha").commit, None);
-        assert_eq!(parse("COMMIT: HEAD").commit, None);
-        assert_eq!(parse("COMMIT: ABCDEF1").commit, None);
-        assert_eq!(parse("").commit, None);
+    fn trailing_whitespace_is_fine_but_nothing_else_around_the_line() {
+        assert_eq!(
+            verdict("VERDICT: PASS  \t\r\n", "tester"),
+            Ok(Some(Verdict::Pass))
+        );
+        for text in [
+            " VERDICT: PASS",
+            "\tVERDICT: PASS",
+            "- VERDICT: PASS",
+            "**VERDICT: PASS**",
+            "VERDICT: PASS but flaky",
+            "VERDICT:PASS",
+            "VERDICT:  PASS",
+            "verdict: PASS",
+            "VERDICT: ",
+        ] {
+            assert_eq!(verdict(text, "tester"), Ok(None), "{text:?}");
+        }
     }
 
     #[test]
-    fn only_the_tail_counts_and_the_last_line_of_a_kind_wins() {
-        let early = format!("VERDICT: PASS\n{}", "line\n".repeat(TAIL_LINES));
-        assert_eq!(parse(&early).verdict, None);
-        let twice = parse("VERDICT: FAIL\nCOMMIT: aaaaaaa\nVERDICT: PASS\nCOMMIT: bbbbbbb\n");
-        assert_eq!(twice.verdict, Some(Verdict::Pass));
-        assert_eq!(twice.commit.as_deref(), Some("bbbbbbb"));
+    fn fenced_and_quoted_lines_do_not_count() {
+        let fenced = "```\nVERDICT: PASS\nCOMMIT: aaaaaaa\n```\n";
+        assert_eq!(parse(fenced, "tester").verdict, Ok(None));
+        assert_eq!(commit(fenced), Ok(None));
+        let tilde = "~~~text\nVERDICT: PASS\n~~~\nVERDICT: FAIL\n";
+        assert_eq!(verdict(tilde, "tester"), Ok(Some(Verdict::Fail)));
+        let quoted = "> VERDICT: PASS\n>COMMIT: aaaaaaa\n  > VERDICT: PASS\n";
+        assert_eq!(parse(quoted, "tester").verdict, Ok(None));
+        assert_eq!(commit(quoted), Ok(None));
+        let after = "```\nVERDICT: FAIL\n```\nVERDICT: PASS\n";
+        assert_eq!(verdict(after, "tester"), Ok(Some(Verdict::Pass)));
+    }
+
+    #[test]
+    fn different_lines_conflict_and_identical_repeats_do_not() {
+        let conflict = verdict("VERDICT: FAIL\nnote\nVERDICT: PASS\n", "tester").unwrap_err();
+        assert_eq!(conflict, "conflicting VERDICT lines: FAIL, PASS");
+        let same = "VERDICT: PASS\nCOMMIT: aaaaaaa\nVERDICT: PASS\nCOMMIT: aaaaaaa\n";
+        assert_eq!(verdict(same, "tester"), Ok(Some(Verdict::Pass)));
+        assert_eq!(commit(same), Ok(Some("aaaaaaa".into())));
+        let commits = commit("COMMIT: aaaaaaa\nCOMMIT: bbbbbbb\n").unwrap_err();
+        assert_eq!(commits, "conflicting COMMIT lines: aaaaaaa, bbbbbbb");
+    }
+
+    #[test]
+    fn a_missing_line_is_none_and_the_commit_must_look_like_a_sha() {
+        assert_eq!(parse("looks fine to me", "tester").verdict, Ok(None));
+        assert_eq!(commit("looks fine to me"), Ok(None));
+        assert_eq!(commit("COMMIT: not a sha"), Ok(None));
+        assert_eq!(commit("COMMIT: HEAD"), Ok(None));
+        assert_eq!(commit("COMMIT: ABCDEF1"), Ok(None));
+        assert_eq!(commit("COMMIT: abc123"), Ok(None));
+        assert_eq!(commit(""), Ok(None));
     }
 }
