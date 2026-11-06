@@ -67,7 +67,8 @@ async fn list_and_read_show_the_saved_types() {
 #[tokio::test]
 async fn read_agent_type_shows_what_a_type_requires() {
     let m = Mcp::new().await;
-    let source = "name = \"shipper\"\nadapter = \"claude\"\nrequires = [\"tester\", \"reviewer\"]\n";
+    let source =
+        "name = \"shipper\"\nadapter = \"claude\"\nrequires = [\"tester\", \"reviewer\"]\n";
     m.store().save_agent_type(source).await.unwrap();
     let read = m.ok("read_agent_type", json!({"name": "shipper"})).await;
     assert_eq!(read["requires"], json!(["tester", "reviewer"]), "{read}");
