@@ -18,7 +18,7 @@
 //! moves does not tell the planner again. A REJECT or FAIL is final: the task ends in `error`
 //! with that reason and the planner is told once, so a new task is made after the fix.
 
-use crate::agent::state;
+use crate::agent::{self, state};
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::{runner, steps, Error, Result, Workspace};
@@ -226,7 +226,9 @@ pub(super) async fn hold(ctx: &Context, task: &Task, why: &str) -> Result<()> {
 }
 
 /// Ends `task` in `error` with the reason, so the planner makes a new task after the fix; a
-/// task that moved on meanwhile is left alone. The planner hears of it once.
+/// task that moved on meanwhile is left alone. The session of a handed-back task is killed,
+/// and the watcher leaves an `error` task as it is, so it never reaches ended or needsYou
+/// and no task `after` it starts. The planner hears of it once.
 pub(super) async fn reject(ctx: &Context, task: &Task, why: &str) -> Result<bool> {
     let change = |t: Task| match t.state == TaskState::Queued {
         true => Ok(Task {
@@ -242,6 +244,8 @@ pub(super) async fn reject(ctx: &Context, task: &Task, why: &str) -> Result<bool
         Err(Error::Conflict(m)) if m == MOVED => return Ok(false),
         Err(e) => return Err(e),
     }
+    let repo = ctx.repo(&task.repo).await?;
+    agent::kill_session(&ctx.workspace(&repo)?, &task.name).await?;
     let text = format!("task `{}` failed, it will not start: {why}", task.name);
     let body = EntryBody::Agent {
         agent: task.name.clone(),

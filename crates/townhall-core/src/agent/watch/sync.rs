@@ -1,7 +1,8 @@
 //! What a task needs when its agent's state is seen. The task follows the agent, except
 //! where another unit owns it: `queued` (the scheduler starts it), `merged` and the pull
-//! request states. A thread entry marks each time the agent starts to need you, fails or
-//! ends; going back to work adds none.
+//! request states. A task in `error` stays there: the scheduler's gate ends a rejected task
+//! that way, and its agent session must not carry it on to ended or needsYou. A thread entry
+//! marks each time the agent starts to need you, fails or ends; going back to work adds none.
 
 use crate::agent::state::choices;
 use crate::model::{AgentEvent, AgentState, EntryBody, Task, TaskState};
@@ -18,7 +19,11 @@ pub(super) const REMOVED: &str = "the agent was removed";
 fn hands_off(state: TaskState) -> bool {
     matches!(
         state,
-        TaskState::Queued | TaskState::Merged | TaskState::InCi | TaskState::InReview
+        TaskState::Queued
+            | TaskState::Merged
+            | TaskState::InCi
+            | TaskState::InReview
+            | TaskState::Error
     )
 }
 
@@ -218,6 +223,16 @@ mod tests {
                 "{state:?}"
             );
             assert_eq!(removed(&task(state)), None);
+        }
+    }
+
+    #[test]
+    fn an_error_task_never_follows_its_agent_on() {
+        let waiting = AgentState::Waiting {
+            question: "go? [y/n]".into(),
+        };
+        for now in [AgentState::Ended, AgentState::Working, waiting] {
+            assert_eq!(plan(&task(TaskState::Error), &now, None), None, "{now:?}");
         }
     }
 

@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 use serde_json::json;
 use tempfile::TempDir;
+use townhall_core::agent::watch::Watcher;
 use townhall_core::model::{ArtifactKind, AuthorRole, NewArtifact, NewTask, Task, TaskState};
 use townhall_core::scheduler::{run_once, TaskLaunch};
 use townhall_core::steps::{project_dir_for, CLAUDE_PROJECTS_ENV};
@@ -484,6 +485,35 @@ async fn a_hand_back_to_a_gated_type_resumes_once_the_reports_clear_its_branch()
     assert!(pass.started.contains(&work), "{pass:?}");
     let task = g.s.store().find_task(&work).await.unwrap().unwrap();
     assert_eq!((task.state, task.blocked), (TaskState::Working, None));
+}
+
+#[tokio::test]
+async fn a_rejected_hand_back_never_reaches_ended_and_its_dependents_stay_blocked() {
+    let g = gated().await;
+    let work = start_work(&g).await;
+    let dependent = unique("after");
+    create_as(&g.s, &dependent, "plain", &[&work], "main").await;
+    g.s.store()
+        .hand_back(&work, "shipper", "ship it", "")
+        .await
+        .unwrap();
+    let head = rev(&g.s, &format!("townhall/{work}")).await;
+    file_report(&g.s, &g.tester, &clearing("PASS", &head)).await;
+    file_report(&g.s, &g.reviewer, &clearing("REJECT", &head)).await;
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.failed.contains(&work), "{pass:?}");
+    assert!(!g.s.agents().await.iter().any(|a| a.name == work && a.alive));
+
+    let mut watcher = Watcher::new(g.s.ctx().clone()).await;
+    for _ in 0..4 {
+        watcher.poll().await;
+        let task = g.s.store().find_task(&work).await.unwrap().unwrap();
+        assert_eq!(task.state, TaskState::Error);
+        let pass = run_once(g.s.ctx()).await.unwrap();
+        assert!(pass.started.is_empty(), "{pass:?}");
+        let after = g.s.store().find_task(&dependent).await.unwrap().unwrap();
+        assert_eq!(after.state, TaskState::Queued);
+    }
 }
 
 #[tokio::test]
