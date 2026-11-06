@@ -190,6 +190,46 @@ async fn a_finished_agent_loses_its_artifacts_but_keeps_its_worktree() {
 }
 
 #[tokio::test]
+async fn an_ended_task_is_purged_at_once_even_while_its_session_lives() {
+    let s = Sched::new().await;
+    std::fs::write(s.repo.join(".gitignore"), "target\nnode_modules\n").unwrap();
+    git(&s.repo, &["add", ".gitignore"]).await;
+    commit(&s.repo, "ignore artifacts").await;
+    let (live, done) = (unique("live"), unique("done"));
+    for name in [&live, &done] {
+        s.create(name, &[]).await;
+    }
+    run_once(s.ctx()).await.unwrap();
+    for name in [&live, &done] {
+        fill(&s.worktree(name));
+    }
+    // Only the state changes: the session of `done` is still running.
+    s.set_state(&done, TaskState::Ended).await;
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+
+    assert!(reaped.warnings.is_empty(), "{reaped:?}");
+    assert!(reaped.removed.is_empty(), "{reaped:?}");
+    assert_eq!(reaped.purged, [done.as_str()]);
+    assert!(!s.worktree(&done).join("target").exists());
+    assert!(!s.worktree(&done).join("node_modules").exists());
+    assert!(s.worktree(&done).join(".git").exists(), "worktree is kept");
+    assert!(has_branch(&s, &done).await, "branch is kept");
+    let mut kept = s.agent_names().await;
+    kept.sort();
+    assert_eq!(kept, sorted(&[done.as_str(), live.as_str()]));
+    assert!(
+        s.agents().await.iter().all(|a| a.alive),
+        "sessions are kept"
+    );
+    assert!(s.worktree(&live).join("target").exists(), "live work");
+    assert!(s.worktree(&live).join("node_modules").exists(), "live work");
+
+    let again = reaper::run_once(s.ctx()).await.unwrap();
+    assert_eq!(again, reaper::Reaped::default(), "a repeat pass is a no-op");
+}
+
+#[tokio::test]
 async fn a_session_whose_worktree_is_gone_is_killed() {
     let s = Sched::new().await;
     let ghost = unique("ghost");

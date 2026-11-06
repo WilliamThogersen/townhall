@@ -5,6 +5,11 @@
 //!   was merged, or that is no task's at all (`verdict.rs`);
 //! - kills townhall sessions whose worktree is gone and prunes git's worktree records.
 //!
+//! - purges the gitignored build folders (`target`, `node_modules`, `dist`, `.venv`, ...) of
+//!   a task as soon as it is `Ended`, without waiting for `GRACE`, and of a task in review
+//!   or CI whose session is gone (`purge.rs`). The worktree, branch and session stay until
+//!   the verdict removes them. A repeat pass finds nothing to delete and reports nothing.
+//!
 //! A branch is deleted only when git calls it merged, so commits that exist nowhere else
 //! keep theirs. Live work, a task of an open conversation that is not merged, is never
 //! touched. It passes at startup, every `EVERY`, and right after a conversation ends
