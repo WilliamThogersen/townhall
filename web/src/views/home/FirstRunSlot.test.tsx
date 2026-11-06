@@ -52,7 +52,7 @@ describe("FirstRunSlot", () => {
     await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
     const form = screen.getByRole("form", { name: "add repository" });
     expect(form).toHaveAttribute("data-layout", "stack");
-    await userEvent.type(screen.getByRole("textbox", { name: "path" }), "~/code/shop");
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "~/code/shop");
     await userEvent.type(screen.getByRole("textbox", { name: "name" }), "shop");
     await userEvent.click(screen.getByRole("button", { name: "add" }));
     expect(add).toHaveBeenCalledWith({ path: "~/code/shop", name: "shop" });

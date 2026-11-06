@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use crate::cmd::{run, validate_name};
+use crate::cmd::{probe, validate_name};
 use crate::context::Context;
 use crate::model::{Conversation, CreateTaskInput, EntryBody, Repo, TASK_BRANCH_PREFIX};
 use crate::repos::{names, verify_branch};
@@ -177,7 +177,7 @@ pub(super) async fn name_is_free(ctx: &Context, repo: &Repo, name: &str) -> Chec
     }
     let branch = format!("refs/heads/{TASK_BRANCH_PREFIX}{name}");
     let args = ["rev-parse", "--verify", "--quiet", branch.as_str()];
-    match run("git", &args, Some(&repo.path)).await {
+    match probe("git", &args, Some(&repo.path)).await {
         Ok(_) => Err(format!(
             "branch `{TASK_BRANCH_PREFIX}{name}` already exists in repo `{}`: pick another name",
             repo.name

@@ -737,6 +737,25 @@
   white-space: nowrap;
 }
 
+.th-setting-row[data-wide="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.th-input.th-profile-input {
+  height: auto;
+  min-height: 12lh;
+  padding: var(--th-space-2) 10px;
+  font: inherit;
+  resize: vertical;
+}
+
+.th-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1ch;
+}
+
 .th-segmented label[data-tone="danger"] input:checked + span {
   background: var(--th-danger);
   color: var(--th-on-danger);

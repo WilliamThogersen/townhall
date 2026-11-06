@@ -21,6 +21,8 @@ pub enum Resolved {
         /// The text for the session: an answered ask brings back the message it asked about.
         text: String,
         attachments: Vec<String>,
+        /// The entry the session text answers: the quote that goes with `text`.
+        reply_to: Option<u64>,
     },
     Asked,
 }
@@ -30,6 +32,7 @@ pub enum Resolved {
 pub struct Message<'a> {
     pub text: &'a str,
     pub attachments: &'a [String],
+    pub reply_to: Option<u64>,
 }
 
 struct Resolver<'a> {
@@ -83,10 +86,17 @@ impl Resolver<'_> {
             None => (self.message.text.to_string(), vec![]),
         };
         attachments.extend(self.message.attachments.iter().cloned());
+        // A bare answer only names the repo: the quote belongs to the message it brings back.
+        let reply_to = match &self.pending {
+            Some(p) if bare => p.reply_to,
+            Some(p) => self.message.reply_to.or(p.reply_to),
+            None => self.message.reply_to,
+        };
         Resolved::Run {
             note,
             text,
             attachments,
+            reply_to,
         }
     }
 

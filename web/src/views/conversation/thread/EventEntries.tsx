@@ -15,7 +15,7 @@ const AGENT_SIGN: Readonly<Record<AgentEvent, string>> = {
 
 export function RepoEvent({ entry }: { readonly entry: Entry<"repo"> }) {
   return (
-    <EventLine sign="~" kind="repo" at={entry.at}>
+    <EventLine sign="~" kind="repo" at={entry.at} entry={entry}>
       repo <b>{entry.repo}</b> · {entry.baseBranch}, {repoReason(entry)}
     </EventLine>
   );
@@ -60,7 +60,7 @@ function agentText(entry: Entry<"agent">) {
 
 export function AgentEventLine({ entry }: { readonly entry: Entry<"agent"> }) {
   return (
-    <EventLine sign={AGENT_SIGN[entry.event]} kind="agent" event={entry.event} at={entry.at}>
+    <EventLine sign={AGENT_SIGN[entry.event]} kind="agent" event={entry.event} at={entry.at} entry={entry}>
       {agentText(entry)}
     </EventLine>
   );
@@ -68,7 +68,7 @@ export function AgentEventLine({ entry }: { readonly entry: Entry<"agent"> }) {
 
 export function TaskEvent({ entry }: { readonly entry: Entry<"event"> }) {
   return (
-    <EventLine sign="◇" kind="event" at={entry.at}>
+    <EventLine sign="◇" kind="event" at={entry.at} entry={entry}>
       {entry.text}
     </EventLine>
   );
@@ -76,7 +76,7 @@ export function TaskEvent({ entry }: { readonly entry: Entry<"event"> }) {
 
 export function HandoffEvent({ entry }: { readonly entry: Entry<"handoff"> }) {
   return (
-    <EventLine sign="↩" kind="handoff" at={entry.at}>
+    <EventLine sign="↩" kind="handoff" at={entry.at} entry={entry}>
       <b>{entry.task}</b>: {entry.from} handed back to <b>{entry.to}</b>, {entry.reason}
     </EventLine>
   );
@@ -84,7 +84,7 @@ export function HandoffEvent({ entry }: { readonly entry: Entry<"handoff"> }) {
 
 export function ErrorEvent({ entry }: { readonly entry: Entry<"error"> }) {
   return (
-    <EventLine sign="×" kind="error" at={entry.at}>
+    <EventLine sign="×" kind="error" at={entry.at} entry={entry}>
       error: {entry.message}
     </EventLine>
   );

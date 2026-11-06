@@ -195,6 +195,11 @@ pub(super) fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
             t.blocked
         ],
     )?;
+    tx.execute(
+        "update tasks set ended_at = case when state = 'ended' then coalesce(ended_at, ?2) end
+         where name = ?1",
+        params![t.name, clock::now_rfc3339()],
+    )?;
     Ok(())
 }
 

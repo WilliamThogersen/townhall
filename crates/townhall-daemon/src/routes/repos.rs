@@ -1,7 +1,8 @@
 //! `/api/repos`: the repo registry (the `repos` table, through `RepoRegistry`).
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
+use serde::Deserialize;
 use townhall_core::fleet;
 use townhall_core::model::AddRepo;
 
@@ -23,10 +24,21 @@ pub async fn add(
     Ok(created(ctx.registry()?.add(&req).await?))
 }
 
-/// Unregisters only: the folder, its worktrees and branches stay on disk.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveQuery {
+    #[serde(default)]
+    delete_clone: bool,
+}
+
+/// Unregisters: the folder, its worktrees and branches stay on disk, unless `?deleteClone=true`
+/// asks to delete a clone townhall made.
 pub async fn remove(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    Query(query): Query<RemoveQuery>,
 ) -> Result<Response, ApiError> {
-    Ok(ok(fleet::unregister(state.ctx(), &name).await?))
+    Ok(ok(
+        fleet::remove(state.ctx(), &name, query.delete_clone).await?
+    ))
 }

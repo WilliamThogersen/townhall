@@ -303,6 +303,22 @@ describe("ConversationPage composer and live thread", () => {
     expect(send).toHaveBeenCalledWith("c1", { text: "more tests" });
   });
 
+  it("answers a chosen entry: reply focuses the composer, the quote goes with the message and is cleared", async () => {
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue({
+      ...detail,
+      entries: [anEntry(7, { kind: "townhall", text: "which repo?" })],
+    });
+    const send = vi.spyOn(conversationsApi, "sendMessage").mockResolvedValue(aYouEntry(8, "shop"));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Reply to townhall: which repo?" }));
+    const box = screen.getByRole("textbox", { name: "Message" });
+    expect(box).toHaveFocus();
+    expect(screen.getByRole("group", { name: "Replying to" })).toHaveTextContent("which repo?");
+    await userEvent.type(box, "shop{Enter}");
+    expect(send).toHaveBeenCalledWith("c1", { text: "shop", replyTo: 7 });
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Replying to" })).not.toBeInTheDocument());
+  });
+
   it("shows the drop zone while files are dragged over the conversation", async () => {
     vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
     renderPage();

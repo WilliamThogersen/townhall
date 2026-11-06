@@ -10,6 +10,7 @@ import {
   isNeedsYouOpen,
   isRepoAskOpen,
   repoReason,
+  replyTarget,
 } from "./threadModel";
 
 const ask: EntryBody = { kind: "needsYou", agent: "fix-login", question: "commit? (y/n)", choices: ["y", "n"] };
@@ -22,6 +23,50 @@ describe("clockTime", () => {
 
   it("shows nothing for a broken time", () => {
     expect(clockTime("not a time")).toBe("");
+  });
+});
+
+describe("replyTarget", () => {
+  const target = (body: EntryBody) => replyTarget(anEntry(7, body));
+
+  it("names who said it and what", () => {
+    expect(target({ kind: "you", text: "use the new login", attachments: [] })).toEqual({
+      id: 7,
+      author: "you",
+      excerpt: "use the new login",
+    });
+    expect(target({ kind: "townhall", text: "which repo?" })).toMatchObject({ author: "townhall", excerpt: "which repo?" });
+    expect(target(ask)).toMatchObject({ author: "fix-login", excerpt: "commit? (y/n)" });
+    expect(target({ kind: "repoAsk", question: "shop or admin?", candidates: [], offerAll: false })).toMatchObject({
+      author: "townhall",
+      excerpt: "shop or admin?",
+    });
+    expect(target({ kind: "agent", agent: "fix-login", event: "failed", text: "tests red" })).toMatchObject({
+      author: "fix-login",
+      excerpt: "tests red",
+    });
+    expect(target({ kind: "agent", agent: "fix-login", event: "ended", text: "" })).toMatchObject({ excerpt: "ended" });
+    expect(target({ kind: "event", text: "task fix ended" })).toMatchObject({ author: "task event", excerpt: "task fix ended" });
+    expect(target({ kind: "handoff", task: "t", from: "shipper", to: "coder", reason: "lint fails" })).toMatchObject({
+      author: "shipper",
+      excerpt: "lint fails",
+    });
+    expect(target({ kind: "error", message: "claude exited with 1" })).toMatchObject({
+      author: "townhall",
+      excerpt: "claude exited with 1",
+    });
+  });
+
+  it("has nothing to reply to on repo notes and task blocks", () => {
+    expect(target({ kind: "repo", repo: "shop", baseBranch: "main", rule: "only", reason: "" })).toBeNull();
+    expect(target({ kind: "tasksCreated", tasks: ["a"] })).toBeNull();
+  });
+
+  it("joins lines and cuts a long text", () => {
+    const joined = target({ kind: "townhall", text: "first\n\n  second   line" });
+    expect(joined?.excerpt).toBe("first second line");
+    const cut = target({ kind: "townhall", text: "x".repeat(300) });
+    expect(cut?.excerpt).toBe(`${"x".repeat(120)}…`);
   });
 });
 

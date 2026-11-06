@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::cmd::run;
+use crate::cmd::{probe, run};
 use crate::{Error, Result};
 use log::{kind, parse_merges, Kind, Merge, MERGE_FORMAT};
 
@@ -99,7 +99,7 @@ async fn check_repo(repo: &Path) -> Result<()> {
         let shown = repo.display();
         return Err(Error::InvalidInput(format!("repo `{shown}` not found")));
     }
-    match run("git", &["rev-parse", "--git-dir"], Some(repo)).await {
+    match probe("git", &["rev-parse", "--git-dir"], Some(repo)).await {
         Err(Error::Command { .. }) => Err(Error::InvalidInput(format!(
             "`{}` is not a git repository",
             repo.display()
@@ -111,7 +111,7 @@ async fn check_repo(repo: &Path) -> Result<()> {
 async fn resolve_branch(repo: &Path, base: &str) -> Result<String> {
     let rev = format!("{base}^{{commit}}");
     let args = ["rev-parse", "--verify", "--quiet", &rev];
-    match run("git", &args, Some(repo)).await {
+    match probe("git", &args, Some(repo)).await {
         Err(Error::Command { .. }) => Err(Error::InvalidInput(format!(
             "branch `{base}` not found in repo `{}`",
             repo.display()

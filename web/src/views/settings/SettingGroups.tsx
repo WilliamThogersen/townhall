@@ -5,6 +5,7 @@ import { Segmented } from "../../ui/Segmented";
 import { Stepper } from "../../ui/Stepper";
 import { Switch } from "../../ui/Switch";
 import { PermissionRow } from "./PermissionRow";
+import { ProfileSection } from "./ProfileSection";
 import { SettingGroup, SettingRow } from "./SettingRow";
 import { HELP, NOTIFY_CHOICES, REPO_UNCLEAR_CHOICES, THEME_CHOICES } from "./settingsCopy";
 
@@ -53,6 +54,22 @@ export function ConversationsGroup() {
           onChange={(sessionPanelOpen) => update({ sessionPanelOpen })}
         />
       </SettingRow>
+    </SettingGroup>
+  );
+}
+
+export function AboutYouGroup() {
+  const { settings, update } = useSettings();
+  return (
+    <SettingGroup title="about you">
+      <SettingRow label="learn about me" help={HELP.learnAboutMe}>
+        <Switch
+          label="Learn about me"
+          checked={settings.learnAboutMe}
+          onChange={(learnAboutMe) => update({ learnAboutMe })}
+        />
+      </SettingRow>
+      <ProfileSection learnAboutMe={settings.learnAboutMe} />
     </SettingGroup>
   );
 }

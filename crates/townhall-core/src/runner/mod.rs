@@ -18,6 +18,7 @@ mod content;
 mod notify;
 mod process;
 mod prompt;
+mod quote;
 mod repo;
 mod session;
 mod stream;

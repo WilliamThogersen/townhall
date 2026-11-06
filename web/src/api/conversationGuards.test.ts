@@ -10,6 +10,7 @@ import type { EntryBody } from "./types";
 
 const bodies: readonly EntryBody[] = [
   { kind: "you", text: "hi", attachments: ["a1"] },
+  { kind: "you", text: "yes", attachments: [], replyTo: 2 },
   { kind: "townhall", text: "**ok**" },
   { kind: "repo", repo: "shop", baseBranch: "develop", rule: "code", reason: "it has src/a.ts" },
   { kind: "repoAsk", question: "which one?", candidates: ["shop", "admin"], offerAll: false },
@@ -47,6 +48,13 @@ describe("conversation guards", () => {
       .toThrow("entry.event");
     expect(() => parseThreadEntry({ id: 1, at: "t", kind: "you", text: "x", attachments: [1] }))
       .toThrow("entry.attachments[0]");
+    expect(() => parseThreadEntry({ id: 1, at: "t", kind: "you", text: "x", attachments: [], replyTo: "2" }))
+      .toThrow("entry.replyTo");
+  });
+
+  it("leaves replyTo out of an entry that replies to nothing", () => {
+    const parsed = parseThreadEntry(anEntry(4, { kind: "you", text: "hi", attachments: [] }));
+    expect(Object.hasOwn(parsed, "replyTo")).toBe(false);
   });
 
   it("reads attachments and refuses an unknown kind", () => {

@@ -14,11 +14,18 @@ use super::migrate::Migration;
 use super::Store;
 use crate::{clock, Result};
 
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    id: 100,
-    name: "0100_session_dirs",
-    sql: include_str!("migrations/0100_session_dirs.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        id: 100,
+        name: "0100_session_dirs",
+        sql: include_str!("migrations/0100_session_dirs.sql"),
+    },
+    Migration {
+        id: 101,
+        name: "0101_message_reply_to",
+        sql: include_str!("migrations/0101_message_reply_to.sql"),
+    },
+];
 
 impl Store {
     /// The folder the conversation's session runs in, once its first turn started.

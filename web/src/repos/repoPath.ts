@@ -34,6 +34,18 @@ export function userHomeOf(townhallHome: string): string | null {
   return parent === "" ? null : parent;
 }
 
+export function clonesDirOf(townhallHome: string): string {
+  return `${trimTrailingSlashes(townhallHome)}/repos`;
+}
+
+export function isManagedClone(path: string, clonesDir: string | null): boolean {
+  if (clonesDir === null) return false;
+  const trimmed = trimTrailingSlashes(path);
+  if (!trimmed.startsWith(`${clonesDir}/`)) return false;
+  const rest = trimmed.slice(clonesDir.length + 1);
+  return rest !== "" && !rest.includes("/");
+}
+
 export function conversationCount(count: number): string {
   if (count === 0) return "no conversations";
   return `${count} conversation${count === 1 ? "" : "s"}`;

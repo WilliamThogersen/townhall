@@ -22,8 +22,10 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 |--------|------|------|----------|--------|------|
 | GET | `/info` | | `{ home, repo, repoKey, userName }` (`userName` from `git config user.name`, or `null`) | | 2.1 |
 | GET | `/repos` | | `Repo[]` in the order added | 503 | 2.1 |
-| POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a plain folder, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found; 409 path registered, name taken ignoring case | 2.1 |
-| DELETE | `/repos/{name}` | | the removed `Repo`. Only unregisters: folder, worktrees and branches stay | 404; 409 it has live agents (tmux sessions), or it is the daemon's startup repo | 2.1 |
+| POST | `/repos` | `AddRepo { path, name?, baseBranch? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a bare repo, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found, `is not a git url`, `could not clone` (authentication failed, repository not found, or git's own message); 409 path registered, name taken ignoring case | 2.1 |
+
+`path` is a folder or a git link, told apart by its shape. A folder that is a git repo is added as it is. A folder that is not inside any git repo is turned into one first: `git init -b <baseBranch or main>`, then one commit of everything in it (an empty commit for an empty folder; a `townhall <townhall@localhost>` author when git has no identity). Townhall never does this to `/` or your home folder. A link (`https://`, `ssh://`, `git@host:owner/repo`, with or without `.git` or a trailing `/`) is cloned into `~/.townhall/repos/<repo>` (`-2`, `-3` ... when that name holds another repo) with your own git credentials and without prompts, an earlier clone of the same link is reused, and `name` defaults to the repo's name made unique. A refused request leaves the folder untouched.
+| DELETE | `/repos/{name}?deleteClone=` | | the removed `Repo`. Only unregisters: folder, worktrees and branches stay. With `deleteClone=true` it also deletes the folder, but only a clone townhall made directly in `~/.townhall/repos`, and only when every check passes first (a refusal changes nothing): not a clone townhall made (a folder of yours, `400 ... is never deleted`); `409` uncommitted changes, commits that are on no remote, linked worktrees left, or a task of the repo that is not `merged` or `ended` | 404; 409 it has live agents (tmux sessions), or it is the daemon's startup repo; the refusals above | 2.1, repo ui polish |
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` or `{ key }` (2.10), exactly one | the name. `text` is typed as it is (`tmux send-keys -l`, so `Down` or `C-c` stay text), then Enter. `key` (`up`, `down`, `enter`, `escape`, `tab`) is pressed alone, without text or Enter. When the agent is a task's, adds an `agent` `sent` entry to its conversation: the text, or the key as `↑`, `↓`, `⏎`, `esc`, `tab` | 400 (neither or both, an unknown key), 404 (also a dead pane), 409 | phase 1, 2.1, 2.10 |
@@ -35,6 +37,9 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/usage` | | `ClaudeUsage`: Claude plan usage, never the token. Always `200`; trouble is `error`, next to the last numbers read | | usage meter |
 | GET | `/settings` | | `Settings` | 503 | 2.1 (was 2.0) |
 | PUT | `/settings/{key}` | `{ value }` | `Settings` after the change | 400 unknown key or invalid value | 2.1 (was 2.0) |
+| GET | `/profile` | | `{ text }`: the user's profile, `""` when none | 503 | 2.14 |
+| PUT | `/profile` | `{ text }` (at most 20 000 characters, counted as Unicode chars; the settings textarea counts UTF-16 units, so it stops a little earlier for emoji) | `{ text }` as stored; replaces the whole profile | 400 too long, not a string, unknown field | 2.14 |
+| DELETE | `/profile` | | `{ text: "" }`: resets the profile to empty, also when it was empty | | 2.14 |
 | GET | `/conversations` | | `Conversation[]`, newest activity first | | 2.2 |
 | POST | `/conversations` | `NewMessage { text, attachments? }`, or `multipart/form-data` with a `text` field and any number of `file` fields (at most 5 files, 20 MB each; 403 foreign origin, 413 over 20 MB), saved as the first message's attachments | `201 ConversationDetail`: created, your message appended, the first turn started | 400 | 2.2 |
 | GET | `/conversations/{id}` | | `ConversationDetail { conversation, entries, tasks, attachments }` | 404 | 2.2 |
@@ -104,7 +109,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 - `Repo { name, path, baseBranch }`. `name`: `[A-Za-z0-9._-]`, starts with a letter or digit, at most 64, unique ignoring case, the folder name by default. `path`: canonical, the top folder of a git work tree, never one of townhall's own worktrees. `baseBranch`: origin's HEAD branch (the local branch when it exists, else `origin/x`), else the current branch, else `HEAD`.
 - `AgentInfo { name, repo, kind, branch, worktree, alive, state }`: phase 1's `Agent` plus `repo` and `state`. `AgentState`: `{ kind: "working" }`, `{ kind: "waiting", question }`, `{ kind: "error", exitCode: number | null }`, `{ kind: "ended" }`.
 - `AgentKey`: `up`, `down`, `enter`, `escape`, `tab`, the `key` of `POST /agents/{name}/send` (`AgentKey::symbol` is how a `sent` entry shows it).
-- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) has no row on the settings page yet.
+- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel, learnAboutMe, githubAccount }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) and `githubAccount` have no row on the settings page yet.
 - `Conversation { id, sessionId, sessionStarted, title, status: "thinking" | "yourTurn", tasks: string[] (task names, oldest first), linkedRepo: string | null, ended, context: { used, limit } | null, createdAt, updatedAt }`. `title` starts as `new conversation`. `sessionStarted` is false until the first turn went through (that turn uses `--session-id`, later ones `--resume`).
 - `ThreadEntry { id, at } & EntryBody`. `id` counts 1, 2, 3 ... per conversation. `EntryBody` is tagged by `kind`:
 
@@ -154,8 +159,16 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | `sessionPanelOpen` | boolean | `true` |
 | `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
 | `townhallModel` | `sonnet`, `opus`, `haiku`: the model of townhall's own session, `--model=<value>` (2.11) | `sonnet` |
+| `learnAboutMe` | boolean: while on, the profile text (below) is added to townhall's own session prompt. Nothing learns into the profile automatically yet | `false` |
+| `githubAccount` | a GitHub login, or empty for none: `open_pr` switches `gh` to it (failing clearly when `gh` has no login for it) and sets the worktree's git author and committer to it before pushing | `WilliamThogersen` on a new database (migration 0003), empty when the row is missing or invalid |
 
 A missing or invalid stored value reads as its default. The store also keeps `desktop.repo` (the desktop app's chosen repo, a path); it is not a setting and not in the API.
+
+## Profile
+
+`/api/profile` (`routes/profile.rs`): one Markdown text the user writes about how they work, their tone of voice and their usual flow. It is one row (`profile.text`, a JSON string) in the `settings` table, so it lives in the local `townhall.db` like the settings, but it is not a setting: it has no `SettingKey` and `PUT /api/settings/{key}` cannot reach it. At most `MAX_PROFILE_CHARS` (20 000) characters. `PUT` replaces the whole text, `DELETE` removes the row, and `GET` answers `{ text: "" }` when there is none.
+
+Only townhall's own planner session ever reads it: when `learnAboutMe` is on and the text is not blank, `runner::prompt::system_prompt` appends it after the repo notes, under a line saying it was written by the user and never overrides the rules. With the setting off (the default) the profile is never read for a turn and never leaves the store. It is not passed to task agents, logged or sent anywhere else.
 
 ## Permission mode
 
@@ -310,7 +323,11 @@ An agent type with `requires` cannot skip the steps it names (`scheduler/require
 
 ## Task agent MCP: `POST /api/tasks/{name}/mcp`
 
-Same JSON-RPC handling as the conversation endpoint (`mcp::handle_task`), for the agent of one task, which gets `hand_back` and the proof tools `add_artifact` and `list_artifacts` (below). A `claude` task whose type can hand back to at least one other type starts with `--mcp-config=` (`mcp::task_config_json(base_url, name)`), `mcp::task_allowed_tools()` (`mcp__townhall__hand_back`, `mcp__townhall__add_artifact`, `mcp__townhall__list_artifacts`) and, in its system prompt, ``you can hand back to: <types>``. A `shell` type, or a type with `can_hand_back_to = []`, gets none of it.
+Same JSON-RPC handling as the conversation endpoint (`mcp::handle_task`), for the agent of one task, which gets `hand_back`, `open_pr` and the proof tools `add_artifact` and `list_artifacts` (below). A `claude` task whose type can hand back to at least one other type starts with `--mcp-config=` (`mcp::task_config_json(base_url, name)`), `mcp::task_allowed_tools()` (`mcp__townhall__hand_back`, `mcp__townhall__open_pr`, `mcp__townhall__add_artifact`, `mcp__townhall__list_artifacts`) and, in its system prompt, ``you can hand back to: <types>``. A `shell` type, or a type with `can_hand_back_to = []`, gets none of it.
+
+The route accepts bodies up to about 30 MB before a tool's own cap applies (`open_pr` and `hand_back` share it).
+
+`open_pr { title, body? }`: pushes `townhall/<name>` to `origin` and opens a pull request with `gh pr create` (GitHub) or a merge request with `glab mr create` (GitLab) into the task's base branch (`repos::publish::publish`). The host comes from the origin URL (https, `ssh://` and scp forms); a host that is neither `github.com`/`gitlab.com` nor contains `github` or `gitlab` needs `git config townhall.forge github|gitlab` in the repo, else it fails before pushing. A repo with no `origin` answers state `noRemote` (nothing pushed, `pr` unchanged); a local-folder origin, a missing or logged-out CLI and a failed push are errors with the command to run. On success it answers state `opened` with `url` and `number`, sets the task's `pr` (`checks` `pending`) and publishes `taskUpdated`; an already open request is returned as is. The programs are `gh` and `glab`, or `TOWNHALL_GH_BIN` and `TOWNHALL_GLAB_BIN`.
 
 `hand_back { to, reason, summary? }`: `to` is a saved agent type (never the task's own, and one of `can_hand_back_to` when the type sets it), `reason` is required, `summary` is what the agent did. Refusals are texts that name the types it can hand back to. It writes once (`Store::hand_back`): a `task_handoffs` row (`reason`, and `summary` plus the branch's commit subjects since its first start), the task `queued` again with `agent` = `to`, and a `handoff` entry in its conversation. Only a `working` or `needsYou` task can be handed back, and at most `MAX_HANDOFFS` (5) times per task, then `Conflict`.
 

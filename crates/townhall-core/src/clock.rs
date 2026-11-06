@@ -76,6 +76,23 @@ pub fn parse_rfc3339(text: &str) -> Option<i64> {
     Some(secs * 1000 + millis - offset_ms)
 }
 
+/// Days since 1970-01-01 of a `YYYY-MM-DD` date (four, two and two digits, month 1-12, day
+/// 1-31). `None` for anything else.
+pub fn day_number(text: &str) -> Option<i64> {
+    let mut parts = text.split('-');
+    let (y, m, d) = (parts.next()?, parts.next()?, parts.next()?);
+    let shaped = parts.next().is_none()
+        && (y.len(), m.len(), d.len()) == (4, 2, 2)
+        && [y, m, d]
+            .iter()
+            .all(|p| p.bytes().all(|b| b.is_ascii_digit()));
+    if !shaped {
+        return None;
+    }
+    let (y, m, d) = (y.parse().ok()?, m.parse().ok()?, d.parse().ok()?);
+    ((1..=12).contains(&m) && (1..=31).contains(&d)).then(|| days_from_civil(y, m, d))
+}
+
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = y - i64::from(m <= 2);
     let era = y.div_euclid(400);
@@ -164,6 +181,37 @@ mod tests {
             "2026-11-05T14:10:00Zjunk",
         ] {
             assert_eq!(parse_rfc3339(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn day_number_matches_known_dates() {
+        assert_eq!(day_number("1970-01-01"), Some(0));
+        assert_eq!(day_number("2024-02-01"), Some(19754));
+        assert_eq!(
+            day_number("2024-03-01").unwrap() - day_number("2024-02-01").unwrap(),
+            29
+        );
+    }
+
+    #[test]
+    fn day_number_refuses_what_is_not_a_date() {
+        for text in [
+            "",
+            "2024-13-01",
+            "2024-00-01",
+            "2024-01-32",
+            "2024-01-00",
+            "24-1-1",
+            "2024-1-01",
+            "2024-01-1",
+            "2024-01-01-01",
+            "2024-01",
+            "+024-01-01",
+            "2024-01-0a",
+            "2024-01-01T00:00:00Z",
+        ] {
+            assert_eq!(day_number(text), None, "{text}");
         }
     }
 

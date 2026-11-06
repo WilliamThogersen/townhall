@@ -11,32 +11,43 @@
 //! (`soon`). Passes never overlap.
 
 mod cancel;
+mod purge;
 mod repo;
 mod verdict;
 
-use std::collections::HashSet;
-use std::time::Duration;
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, SystemTime};
 
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 
+use crate::model::{Task, TaskState};
 use crate::redact::redact;
-use crate::{Context, Result};
+use crate::{clock, Context, Result};
 
 pub use cancel::{cancel_queued, CANCELLED};
 pub use verdict::{verdict, Why};
 
 pub const EVERY: Duration = Duration::from_secs(300);
 
+pub const GRACE: Duration = Duration::from_secs(24 * 60 * 60);
+
 /// One pass at a time: two passes would remove the same worktree at once.
 static PASS: Mutex<()> = Mutex::const_new(());
+
+pub(crate) struct Ended<'a> {
+    pub ended: &'a HashSet<String>,
+    pub settled: &'a HashSet<String>,
+    pub grace: Duration,
+}
 
 /// What one pass did, by agent or task name, plus what it could not do.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Reaped {
     pub cancelled: Vec<String>,
     pub removed: Vec<String>,
+    pub purged: Vec<String>,
     pub sessions: Vec<String>,
     pub warnings: Vec<String>,
 }
@@ -46,15 +57,36 @@ impl Reaped {
         Reaped {
             cancelled: [self.cancelled, other.cancelled].concat(),
             removed: [self.removed, other.removed].concat(),
+            purged: [self.purged, other.purged].concat(),
             sessions: [self.sessions, other.sessions].concat(),
             warnings: [self.warnings, other.warnings].concat(),
         }
     }
 }
 
+fn settled(tasks: &[Task], ended_at: &HashMap<String, String>, grace: Duration) -> HashSet<String> {
+    let now = clock::unix_millis(SystemTime::now());
+    let grace = i64::try_from(grace.as_millis()).unwrap_or(i64::MAX);
+    tasks
+        .iter()
+        .filter(|t| t.state == TaskState::Ended)
+        .filter(|t| {
+            ended_at
+                .get(&t.name)
+                .and_then(|at| clock::parse_rfc3339(at))
+                .is_some_and(|at| at.saturating_add(grace) <= now)
+        })
+        .map(|t| t.name.clone())
+        .collect()
+}
+
+pub async fn run_once(ctx: &Context) -> Result<Reaped> {
+    run_once_after(ctx, GRACE).await
+}
+
 /// One pass. Every repo is surveyed before the tasks are read: an agent is only ever
 /// started for a task that exists, so a fresh agent is never taken for an orphan.
-pub async fn run_once(ctx: &Context) -> Result<Reaped> {
+pub async fn run_once_after(ctx: &Context, grace: Duration) -> Result<Reaped> {
     let _pass = PASS.lock().await;
     let mut surveyed = vec![];
     let mut reaped = Reaped::default();
@@ -79,6 +111,7 @@ pub async fn run_once(ctx: &Context) -> Result<Reaped> {
         .map(|c| c.id)
         .collect();
     let tasks = store.all_tasks().await?;
+    let settled = settled(&tasks, &store.task_ended_times().await?, grace);
     let of_ended: Vec<_> = tasks
         .iter()
         .filter(|t| ended.contains(&t.conversation_id))
@@ -86,7 +119,20 @@ pub async fn run_once(ctx: &Context) -> Result<Reaped> {
         .collect();
     reaped.cancelled = cancel_queued(store, &of_ended).await?;
     for (name, ws, found) in surveyed {
-        reaped = reaped.and(repo::reap(&ws, &name, found, &tasks, &ended).await);
+        reaped = reaped.and(
+            repo::reap(
+                &ws,
+                &name,
+                found,
+                &tasks,
+                &Ended {
+                    ended: &ended,
+                    settled: &settled,
+                    grace,
+                },
+            )
+            .await,
+        );
     }
     Ok(reaped)
 }
@@ -103,7 +149,7 @@ fn report(when: &'static str, result: Result<Reaped>) {
             if done != Reaped::default() {
                 tracing::info!(
                     target: "townhall::task", event = "reaper.pass", when,
-                    removed = done.removed.len(), sessions = done.sessions.len(),
+                    removed = done.removed.len(), purged = done.purged.len(), sessions = done.sessions.len(),
                     cancelled = done.cancelled.len(), "the reaper cleaned up"
                 );
             }

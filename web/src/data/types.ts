@@ -46,7 +46,7 @@ export interface AgentInfosState extends Loadable {
 export interface ReposState extends Loadable {
   readonly repos: readonly Repo[] | null;
   readonly add: (input: AddRepoInput) => Promise<Repo>;
-  readonly remove: (name: string) => Promise<void>;
+  readonly remove: (name: string, deleteClone?: boolean) => Promise<void>;
 }
 
 export interface StatsState extends Loadable {
