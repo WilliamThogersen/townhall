@@ -1,6 +1,6 @@
 import type { AgentInfo, Step, Task } from "../../api/types";
 import { PATHS } from "../../router";
-import { stepVerb } from "../../tasks/stage";
+import { agentKindOf, stepVerb, type AgentKind } from "../../tasks/stage";
 import type { TimeAxis } from "./timeAxis";
 import {
   conversationBar,
@@ -46,6 +46,7 @@ export interface RowsInput {
   readonly entries: readonly ScopedConversation[];
   readonly book: StepsBook;
   readonly agents: readonly AgentInfo[];
+  readonly types?: readonly AgentKind[];
   readonly toggled: ReadonlySet<string>;
   readonly axis: TimeAxis;
 }
@@ -116,7 +117,7 @@ function taskRows(task: Task, input: RowsInput): readonly TraceRow[] {
     kind: "task",
     depth: 1,
     name: task.name,
-    meta: taskMeta(task, latestStep(input.book, task.name)),
+    meta: taskMeta(task, latestStep(input.book, task.name), agentKindOf(input.types ?? [], task)),
     glyph: taskGlyph(task),
     bar: taskBar(task, stepsOf(input.book, task.name), agentOf(input.agents, task), input.axis),
     tag: taskTag(task),

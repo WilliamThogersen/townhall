@@ -1,10 +1,12 @@
 import { Fragment } from "react";
 import type { Task } from "../../../api/types";
+import { useAgentTypes } from "../../../data";
 import { StatusGlyph } from "../../../ui/StatusGlyph";
 import { loopSummary } from "../../../tasks/stage";
 
 export function LoopStrip({ tasks }: { readonly tasks: readonly Task[] }) {
-  const loop = loopSummary(tasks);
+  const types = useAgentTypes().data ?? [];
+  const loop = loopSummary(tasks, undefined, types);
   const last = loop.stages.length - 1;
   return (
     <div className="th-loop" aria-label="Tasks per stage">
