@@ -50,4 +50,8 @@ export const HELP = {
   sessionPanel: "open in new conversations. you can always fold it with s.",
   theme: "dark is the default.",
   notifyWhen: "desktop notifications and toasts.",
+  learnAboutMe:
+    "while on, townhall reads your profile in its own conversations: how you work, your tone of voice, your typical flow. stored locally, edit or reset it below at any time.",
+  profileOff: "not used while learn about me is off.",
+  profileOn: "townhall reads this in its own conversations.",
 } as const;

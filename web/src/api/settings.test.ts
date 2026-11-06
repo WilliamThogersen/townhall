@@ -11,6 +11,7 @@ const daemon: Settings = {
   sessionPanelOpen: false,
   notifyWhen: "failed",
   townhallModel: "haiku",
+  learnAboutMe: true,
 };
 
 function mockFetch(status: number, body: unknown) {

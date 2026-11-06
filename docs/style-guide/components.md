@@ -275,7 +275,7 @@ An agent's terminal, opened from a task row, a task block or a control center ro
 - The help line follows the choice. `skip all` fills its segment red (`label[data-tone="danger"]`), turns the help line red and adds a `more` toggle that opens `.th-setting-more`: `every edit and command runs straight away (--dangerously-skip-permissions). townhall and agents can never switch to this themselves.`
 - Only this page can choose `skip all`. Townhall's own tools and agents may set the other four, never this one (as in Hive).
 
-**Other rows**: `work without asking` (switch), `agents at once` (stepper, 1 to 50), `when the repo is unclear` (`ask` or `guess`), `session panel` open by default (switch), `theme` (`dark`, `light`, `system`), `notify me when` (`needs you`, `+ failed`, `everything`).
+**Other rows**: `work without asking` (switch), `agents at once` (stepper, 1 to 50), `when the repo is unclear` (`ask` or `guess`), `session panel` open by default (switch), `theme` (`dark`, `light`, `system`), `notify me when` (`needs you`, `+ failed`, `everything`), `learn about me` (switch, off by default), `profile` (full-width row: textarea, `save`, `reset` with an inline confirm; `no profile yet` when empty; the help line says it is not used while the switch is off).
 
 **Controls**:
 

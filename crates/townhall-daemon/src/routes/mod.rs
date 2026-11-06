@@ -11,6 +11,7 @@ mod info;
 mod library;
 mod logs;
 mod mcp;
+mod profile;
 mod repos;
 mod runs;
 mod search;
@@ -98,6 +99,10 @@ pub fn router(state: AppState) -> Router {
         .route("/repos/{name}", delete(repos::remove))
         .route("/settings", get(settings::get))
         .route("/settings/{key}", put(settings::put))
+        .route(
+            "/profile",
+            get(profile::get).put(profile::put).delete(profile::remove),
+        )
         .route("/tasks", get(tasks::list))
         .route("/tasks/{name}", get(tasks::get))
         .route("/tasks/{name}/mcp", post(mcp::task_rpc))

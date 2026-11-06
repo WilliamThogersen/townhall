@@ -36,6 +36,7 @@ use rusqlite::Connection;
 pub use import::IMPORTED_SUFFIX;
 pub use lock::LOCK_FILE;
 pub use migrate::Migration;
+pub use settings::MAX_PROFILE_CHARS;
 
 use crate::events::EventBus;
 use crate::{Error, Home, Result};
