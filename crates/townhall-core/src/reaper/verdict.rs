@@ -63,6 +63,7 @@ mod tests {
             pr: None,
             agent: "builder".into(),
             blocked: None,
+            pr_base: None,
         }
     }
 

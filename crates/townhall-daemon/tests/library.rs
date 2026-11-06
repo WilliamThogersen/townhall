@@ -204,6 +204,7 @@ async fn usage_sums_runs_and_tokens_per_agent_type() {
             after: vec![],
             attachments: vec![],
             agent: "builder".into(),
+            pr_base: None,
         };
         store.create_task(&c, task).await.unwrap();
     }

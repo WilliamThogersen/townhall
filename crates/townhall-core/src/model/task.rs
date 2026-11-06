@@ -59,9 +59,14 @@ pub struct Task {
     /// Why a queued task whose `after` tasks finished still waits: its agent type's `requires`
     /// are not met. Set and cleared by the scheduler, `None` when nothing holds it back.
     pub blocked: Option<String>,
+    pub pr_base: Option<String>,
 }
 
 impl Task {
+    pub fn pr_target(&self) -> &str {
+        self.pr_base.as_deref().unwrap_or(&self.base_branch)
+    }
+
     pub fn branch(&self) -> String {
         format!("{TASK_BRANCH_PREFIX}{}", self.name)
     }
@@ -95,6 +100,7 @@ pub struct NewTask {
     pub attachments: Vec<String>,
     /// The stored name of its agent type.
     pub agent: String,
+    pub pr_base: Option<String>,
 }
 
 /// The `create_task` MCP tool's arguments (see `docs/daemon-api.md`).
@@ -115,6 +121,8 @@ pub struct CreateTaskInput {
     /// The agent type's name. Default: `builder` when it exists, else the first by name.
     #[serde(default)]
     pub agent: Option<String>,
+    #[serde(default)]
+    pub pr_base: Option<String>,
 }
 
 #[cfg(test)]
@@ -142,11 +150,19 @@ mod tests {
             }),
             agent: "builder".into(),
             blocked: None,
+            pr_base: None,
         };
         let v = serde_json::to_value(&t).unwrap();
         assert_eq!(v["state"], "needsYou");
         assert_eq!(v["blocked"], json!(null));
         assert_eq!(v["baseBranch"], "develop");
+        assert_eq!(v["prBase"], json!(null));
+        assert_eq!(t.pr_target(), "develop");
+        let aimed = Task {
+            pr_base: Some("main".into()),
+            ..t.clone()
+        };
+        assert_eq!(aimed.pr_target(), "main");
         assert_eq!(v["conversationId"], "a1b2c3d4e5f6");
         assert_eq!(v["agent"], "builder");
         assert_eq!(

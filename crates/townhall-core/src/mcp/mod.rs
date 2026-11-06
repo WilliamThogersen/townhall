@@ -153,6 +153,10 @@ fn create_task_schema() -> Value {
                 "type": "string",
                 "description": "Branch the worktree starts from. Default: the repo's base branch."
             },
+            "prBase": {
+                "type": "string", "minLength": 1,
+                "description": "Existing branch of the repo the task's pull request (open_pr) targets. Default: baseBranch. Set it when the task starts from a branch that is not where the work must land, for example a shipper that starts from the reviewed branch and opens its pull request into main."
+            },
             "after": names_array("Names of tasks that must finish before this one starts."),
             "attachments": names_array("Attachment ids of this conversation the agent needs."),
             "agent": {
@@ -185,7 +189,7 @@ fn task_tools() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: CREATE_TASK,
-            description: "Create one task for an agent of a saved agent type (`agent`). It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. If the agent type has `requires`, the `after` chain must contain a task of each required type or this is refused, and the task starts only once those tasks ended with a report that clears it. Returns the task.",
+            description: "Create one task for an agent of a saved agent type (`agent`). It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. If the agent type has `requires`, the `after` chain must contain a task of each required type or this is refused, and the task starts only once those tasks ended with a report that clears it. `prBase` sets the branch its pull request targets (default: its base branch). Returns the task.",
             input_schema: create_task_schema(),
         },
         ToolDef {
@@ -241,6 +245,7 @@ mod tests {
                 "attachments",
                 "baseBranch",
                 "name",
+                "prBase",
                 "prompt",
                 "repo",
                 "title"

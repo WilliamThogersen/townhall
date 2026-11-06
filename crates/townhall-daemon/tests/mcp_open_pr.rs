@@ -41,6 +41,7 @@ async fn running(m: &Mcp, name: &str) {
         after: vec![],
         attachments: vec![],
         agent: "coder".into(),
+        pr_base: None,
     };
     m.store().create_task(&m.id, new).await.unwrap();
     let change = |t: Task| {

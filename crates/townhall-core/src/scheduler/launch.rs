@@ -4,14 +4,14 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::agent::{self, Agent, LaunchOptions};
-use crate::cmd::run;
+use crate::cmd::{probe, run};
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::redact::redact;
 use crate::{clock, ids, Error, Result, Workspace};
 
 use super::gate::{self, Gate};
-use super::{agent_type, brief, plan, transition, Pass, TaskLaunch};
+use super::{agent_type, brief, plan, transition, Pass, TaskLaunch, MOVED};
 
 /// An `agent` `failed` entry's text stays short: a start error can quote a whole command.
 /// `Error::Command` puts the reason first and the command last, so the cut loses the
@@ -231,14 +231,17 @@ async fn act(
             fail(ctx, task, &why).await?;
             Ok(Done::Failed)
         }
-        Step::Resume => match admit(ctx, task, tasks, handed_back).await? {
-            Err(done) => Ok(done),
-            Ok(sha) => match resume(ctx, task, &sha).await {
-                Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
-                Err(e) => {
-                    fail(ctx, task, &e.to_string()).await?;
-                    Ok(Done::Failed)
-                }
+        Step::Resume => match stop_old_session(ctx, task).await {
+            Err(why) => Ok(Done::Warned(why)),
+            Ok(()) => match admit(ctx, task, tasks, handed_back).await? {
+                Err(done) => Ok(done),
+                Ok(sha) => match resume(ctx, task, &sha).await {
+                    Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
+                    Err(e) => {
+                        fail(ctx, task, &e.to_string()).await?;
+                        Ok(Done::Failed)
+                    }
+                },
             },
         },
         Step::Start => match admit(ctx, task, tasks, handed_back).await? {
@@ -257,6 +260,19 @@ async fn act(
             },
         },
     }
+}
+
+async fn stop_old_session(ctx: &Context, task: &Task) -> std::result::Result<(), String> {
+    let stopped = async {
+        let repo = ctx.repo(&task.repo).await?;
+        agent::kill_session(&ctx.workspace(&repo)?, &task.name).await
+    };
+    stopped.await.map(|_| ()).map_err(|e| {
+        format!(
+            "`{}` waits: its old session could not be stopped: {e}",
+            task.name
+        )
+    })
 }
 
 /// The commit `base` names in the repo. Never an option, so git cannot read it as one.
@@ -352,6 +368,19 @@ async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch>
             task.name
         )));
     }
+    let own = format!("refs/heads/{}", task.branch());
+    let on = probe("git", &["symbolic-ref", "-q", "HEAD"], Some(&dir)).await;
+    let on = match on {
+        Ok(on) => on,
+        Err(Error::Command { .. }) => "no branch (detached HEAD)".to_string(),
+        Err(e) => return Err(e),
+    };
+    if on != own {
+        return Err(Error::Conflict(format!(
+            "the worktree of `{}` is on {on}, not its own branch {own}: check out {own}",
+            task.name
+        )));
+    }
     let start_commit = match store.task_launch(&task.name).await? {
         Some(first) => first.start_commit,
         None => record_fork_point(ctx, task).await?,
@@ -425,7 +454,19 @@ async fn record_fork_point(ctx: &Context, task: &Task) -> Result<String> {
 /// The one `error` the scheduler sets: the agent could not start. Adds `× <name>` with why.
 async fn fail(ctx: &Context, task: &Task, why: &str) -> Result<()> {
     let store = ctx.store()?;
-    let moved = transition(store, &task.name, TaskState::Queued, TaskState::Error).await?;
+    let change = |t: Task| match t.state == TaskState::Queued {
+        true => Ok(Task {
+            state: TaskState::Error,
+            blocked: None,
+            ..t
+        }),
+        false => Err(Error::Conflict(MOVED.into())),
+    };
+    let moved = match store.update_task(&task.name, change).await {
+        Ok(task) => Some(task),
+        Err(Error::Conflict(m)) if m == MOVED => None,
+        Err(e) => return Err(e),
+    };
     if moved.is_some() {
         let body = EntryBody::Agent {
             agent: task.name.clone(),

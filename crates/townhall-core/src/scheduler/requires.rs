@@ -50,6 +50,7 @@ mod tests {
             pr: None,
             agent: agent.into(),
             blocked: None,
+            pr_base: None,
         }
     }
 

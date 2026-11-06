@@ -45,6 +45,7 @@ struct TaskStatus {
     agent: String,
     /// Why a queued task does not start although its `after` tasks finished.
     blocked: Option<String>,
+    pr_target: String,
     entries: Vec<ThreadEntry>,
     /// Its proof artifacts, oldest first.
     artifacts: Vec<ArtifactRef>,
@@ -163,6 +164,7 @@ fn status(task: &Task, entries: &[ThreadEntry], artifacts: Vec<ArtifactRef>) -> 
         after: task.after.clone(),
         agent: task.agent.clone(),
         blocked: task.blocked.clone(),
+        pr_target: task.pr_target().to_string(),
         entries: mine.into_iter().skip(recent).cloned().collect(),
         artifacts,
     }

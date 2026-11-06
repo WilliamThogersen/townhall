@@ -62,11 +62,15 @@ pub(super) fn input(raw: CreateTaskInput) -> Checked<CreateTaskInput> {
     too_long("prompt", &raw.prompt, MAX_PROMPT_LEN)?;
     too_many("after", &raw.after)?;
     too_many("attachments", &raw.attachments)?;
+    if raw.pr_base.as_deref().is_some_and(|b| b.trim().is_empty()) {
+        return Err("`prBase` must not be blank: leave it out to target `baseBranch`".into());
+    }
     Ok(CreateTaskInput {
         title,
         repo: given(raw.repo.as_deref()),
         base_branch: given(raw.base_branch.as_deref()),
         agent: given(raw.agent.as_deref()),
+        pr_base: given(raw.pr_base.as_deref()),
         ..raw
     })
 }
@@ -134,6 +138,38 @@ pub(super) async fn base_branch(repo: &Repo, wanted: Option<&str>) -> Checked<St
         .map_err(|e| format!("base branch check failed: {e}"))?
         .map_err(|e| format!("{e}: pass a branch of repo `{}` or leave it out", repo.name))?;
     Ok(branch)
+}
+
+fn is_sha(name: &str) -> bool {
+    matches!(name.len(), 40 | 64) && name.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+pub(super) async fn pr_base(repo: &Repo, wanted: Option<&str>) -> Checked<Option<String>> {
+    let Some(branch) = wanted else {
+        return Ok(None);
+    };
+    let shaped = !branch.is_empty()
+        && !branch.starts_with('-')
+        && !branch.chars().any(|c| c.is_whitespace() || c.is_control());
+    if !shaped || is_sha(branch) {
+        return Err(format!(
+            "`prBase` `{branch}` must be a branch name of repo `{}`, not a commit id",
+            repo.name
+        ));
+    }
+    for prefix in ["refs/heads", "refs/remotes/origin"] {
+        let full = format!("{prefix}/{branch}");
+        let args = ["rev-parse", "--verify", "--quiet", full.as_str()];
+        match probe("git", &args, Some(&repo.path)).await {
+            Ok(_) => return Ok(Some(branch.to_string())),
+            Err(Error::Command { .. }) => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Err(format!(
+        "`prBase` branch `{branch}` does not exist in repo `{}`: pass an existing branch or leave it out",
+        repo.name
+    ))
 }
 
 /// A task of agent type `agent` needs a task of each type its `requires` lists somewhere in

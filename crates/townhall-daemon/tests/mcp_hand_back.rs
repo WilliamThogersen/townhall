@@ -24,6 +24,7 @@ async fn running(m: &Mcp, name: &str, agent: &str) {
         after: vec![],
         attachments: vec![],
         agent: agent.into(),
+        pr_base: None,
     };
     m.store().create_task(&m.id, new).await.unwrap();
     set_state(m, name, TaskState::Working).await;
@@ -163,6 +164,7 @@ async fn hand_back_to_a_type_with_requires_needs_those_types_in_the_after_chain(
         after: vec![],
         attachments: vec![],
         agent: "tester".into(),
+        pr_base: None,
     };
     m.store().create_task(&m.id, tester).await.unwrap();
     let after = |t: Task| {
