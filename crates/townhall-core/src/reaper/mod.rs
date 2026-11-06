@@ -11,6 +11,7 @@
 //! (`soon`). Passes never overlap.
 
 mod cancel;
+mod purge;
 mod repo;
 mod verdict;
 
