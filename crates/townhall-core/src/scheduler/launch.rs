@@ -8,7 +8,7 @@ use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::redact::redact;
-use crate::{clock, ids, worktree, Error, Result, Workspace};
+use crate::{clock, ids, Error, Result, Workspace};
 
 use super::gate::{self, Gate};
 use super::{agent_type, brief, plan, transition, Pass, TaskLaunch};
@@ -119,31 +119,8 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     let mut pass = Pass::default();
     for task in ready {
         let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
-        if fleet.agent_of(task).is_none() || handed_back {
-            match gate::check(ctx, task, tasks).await {
-                Ok(Gate::Open) => gate::clear(ctx, task).await?,
-                Ok(Gate::Rejected(why)) => {
-                    if gate::reject(ctx, task, &why).await? {
-                        pass.failed.push(task.name.clone());
-                    }
-                    continue;
-                }
-                Ok(Gate::Blocked(why)) => {
-                    gate::hold(ctx, task, &why).await?;
-                    pass.blocked.push(task.name.clone());
-                    continue;
-                }
-                Err(e) => {
-                    let why = format!(
-                        "`{}` waits: its requirements were not checked: {e}",
-                        task.name
-                    );
-                    pass = Done::Warned(why).into_pass(pass, &task.name);
-                    continue;
-                }
-            }
-        }
-        let done = act(ctx, task, decide(&fleet, task, free, handed_back)).await?;
+        let step = decide(&fleet, task, free, handed_back);
+        let done = act(ctx, task, tasks, step, handed_back).await?;
         let alive = fleet.agent_of(task).is_some_and(|a| a.alive);
         if matches!(done, Done::Started(_)) || (matches!(done, Done::Adopted(_)) && alive) {
             free = free.saturating_sub(1);
@@ -159,6 +136,7 @@ enum Done {
     Started(Vec<String>),
     Adopted(Vec<String>),
     Failed,
+    Blocked,
     Warned(String),
 }
 
@@ -181,6 +159,10 @@ impl Done {
                 failed: add(pass.failed),
                 ..pass
             },
+            Self::Blocked => Pass {
+                blocked: add(pass.blocked),
+                ..pass
+            },
             Self::Warned(why) => Pass {
                 warnings: [pass.warnings, vec![why]].concat(),
                 ..pass
@@ -189,7 +171,53 @@ impl Done {
     }
 }
 
-async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
+async fn admit(
+    ctx: &Context,
+    task: &Task,
+    tasks: &[Task],
+    handed_back: bool,
+) -> Result<std::result::Result<String, Done>> {
+    let at = match gate::head_of(ctx, task, handed_back).await {
+        Ok(at) => at,
+        Err(e) if handed_back => {
+            let why = format!("`{}` waits: its branch could not be read: {e}", task.name);
+            return Ok(Err(Done::Warned(why)));
+        }
+        Err(e) => {
+            fail(ctx, task, &e.to_string()).await?;
+            return Ok(Err(Done::Failed));
+        }
+    };
+    Ok(match gate::check(ctx, task, tasks, &at).await {
+        Ok(Gate::Open(sha)) => {
+            gate::clear(ctx, task).await?;
+            Ok(sha)
+        }
+        Ok(Gate::Rejected(why)) => Err(match gate::reject(ctx, task, &why).await? {
+            true => Done::Failed,
+            false => Done::Nothing,
+        }),
+        Ok(Gate::Blocked(why)) => {
+            gate::hold(ctx, task, &why).await?;
+            Err(Done::Blocked)
+        }
+        Err(e) => {
+            let why = format!(
+                "`{}` waits: its requirements were not checked: {e}",
+                task.name
+            );
+            Err(Done::Warned(why))
+        }
+    })
+}
+
+async fn act(
+    ctx: &Context,
+    task: &Task,
+    tasks: &[Task],
+    step: Step,
+    handed_back: bool,
+) -> Result<Done> {
     let name = &task.name;
     match step {
         Step::Wait => Ok(Done::Nothing),
@@ -203,24 +231,30 @@ async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
             fail(ctx, task, &why).await?;
             Ok(Done::Failed)
         }
-        Step::Resume => match resume(ctx, task).await {
-            Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
-            Err(e) => {
-                fail(ctx, task, &e.to_string()).await?;
-                Ok(Done::Failed)
-            }
+        Step::Resume => match admit(ctx, task, tasks, handed_back).await? {
+            Err(done) => Ok(done),
+            Ok(sha) => match resume(ctx, task, &sha).await {
+                Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
+                Err(e) => {
+                    fail(ctx, task, &e.to_string()).await?;
+                    Ok(Done::Failed)
+                }
+            },
         },
-        Step::Start => match launch(ctx, task).await {
-            Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
-            Err(e) => {
-                tracing::warn!(
-                    target: "townhall::task", event = "task.launch_failed", task = %task.name,
-                    repo = %task.repo, error_kind = e.kind(),
-                    error = %redact(&e.to_string()), "task launch failed"
-                );
-                fail(ctx, task, &e.to_string()).await?;
-                Ok(Done::Failed)
-            }
+        Step::Start => match admit(ctx, task, tasks, handed_back).await? {
+            Err(done) => Ok(done),
+            Ok(sha) => match launch(ctx, task, &sha).await {
+                Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
+                Err(e) => {
+                    tracing::warn!(
+                        target: "townhall::task", event = "task.launch_failed", task = %task.name,
+                        repo = %task.repo, error_kind = e.kind(),
+                        error = %redact(&e.to_string()), "task launch failed"
+                    );
+                    fail(ctx, task, &e.to_string()).await?;
+                    Ok(Done::Failed)
+                }
+            },
         },
     }
 }
@@ -272,13 +306,11 @@ fn read_dirs(brief: &Path, files: &[PathBuf]) -> Vec<PathBuf> {
 /// (recorded, so `merged` can be told later) and runs the task's agent type in its tmux
 /// session: `claude` with the type's flags, a new session id and the order to read the
 /// brief, or a `shell` type's command.
-async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
+async fn launch(ctx: &Context, task: &Task, start_commit: &str) -> Result<TaskLaunch> {
     let started = Instant::now();
     let launcher = agent_type::launcher(ctx, task).await?;
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
-    let base = worktree::fresh_base(&ws, &task.base_branch).await;
-    let start_commit = commit_of(&ws, &base).await?;
     let files = attachment_paths(ctx, task).await?;
     let handoffs = ctx.store()?.handoffs(&task.name).await?;
     let brief = brief::write(ctx.home(), task, &files, &handoffs).await?;
@@ -290,7 +322,7 @@ async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
         ..launcher.options
     };
     let adapter = launcher.adapter.as_ref();
-    agent::start(&ws, &task.name, &start_commit, adapter, &options).await?;
+    agent::start(&ws, &task.name, start_commit, adapter, &options).await?;
     tracing::info!(
         target: "townhall::task", event = "task.launched", task = %task.name, repo = %task.repo,
         duration_ms = started.elapsed().as_millis() as u64,
@@ -298,7 +330,7 @@ async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
     );
     Ok(TaskLaunch {
         name: task.name.clone(),
-        start_commit,
+        start_commit: start_commit.to_string(),
         session_id,
         launched_at: clock::now_rfc3339(),
     })
@@ -307,11 +339,19 @@ async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
 /// A handed-back task: its brief now holds the hand backs, and the agent type it was handed
 /// to runs in the worktree it already has, replacing the session that handed it back. The
 /// commit its merge is told from stays the one it first started from.
-async fn resume(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
+async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch> {
     let launcher = agent_type::launcher(ctx, task).await?;
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
     let store = ctx.store()?;
+    let dir = ws.worktrees_dir().join(&task.name);
+    let at = run("git", &["rev-parse", "HEAD"], Some(&dir)).await?;
+    if at != checked {
+        return Err(Error::Conflict(format!(
+            "the worktree of `{}` is at {at}, not the checked commit {checked}",
+            task.name
+        )));
+    }
     let start_commit = match store.task_launch(&task.name).await? {
         Some(first) => first.start_commit,
         None => record_fork_point(ctx, task).await?,

@@ -24,9 +24,10 @@
 //! another in `requires` blocks its tasks with a reason saying so.
 
 use crate::agent::{self, state};
+use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
-use crate::{runner, steps, Error, Result, Workspace};
+use crate::{runner, steps, worktree, Error, Result, Workspace};
 
 use super::launch::{commit_of, MAX_FAILED_TEXT};
 use super::report;
@@ -34,7 +35,7 @@ use super::requires;
 use super::{plan, MOVED};
 
 pub(super) enum Gate {
-    Open,
+    Open(String),
     Blocked(String),
     Rejected(String),
 }
@@ -50,28 +51,49 @@ impl Problem {
     }
 }
 
-/// What the gated task will start from, resolved when a report names a commit.
-struct Head<'a> {
+/// The one commit a task starts from, resolved once before the gate and used by the start.
+pub(super) struct At {
     ws: Workspace,
-    task: &'a Task,
+    label: String,
+    sha: String,
+    handed_back: bool,
 }
 
 fn short(sha: &str) -> &str {
     sha.get(..7).unwrap_or(sha)
 }
 
-impl Head<'_> {
-    async fn at(&self) -> Result<(String, String)> {
-        match commit_of(&self.ws, &self.task.branch()).await {
-            Ok(sha) => Ok((self.task.branch(), sha)),
-            Err(Error::InvalidInput(_)) => {
-                let sha = commit_of(&self.ws, &self.task.base_branch).await?;
-                Ok((self.task.base_branch.clone(), sha))
-            }
-            Err(e) => Err(e),
+/// The commit `task` will start from. A new task: its base branch after `fresh_base`. A
+/// handed-back task: its own branch, never the base, and any git error fails closed.
+pub(super) async fn head_of(ctx: &Context, task: &Task, handed_back: bool) -> Result<At> {
+    let repo = ctx.repo(&task.repo).await?;
+    let ws = ctx.workspace(&repo)?;
+    let (label, sha) = match handed_back {
+        true => {
+            let branch = task.branch();
+            let sha = commit_of(&ws, &branch).await.map_err(|e| match e {
+                Error::InvalidInput(_) => Error::InvalidInput(format!(
+                    "the branch `{branch}` of this handed-back task is not a commit in {}",
+                    ws.repo().display()
+                )),
+                other => other,
+            })?;
+            (branch, sha)
         }
-    }
+        false => {
+            let base = worktree::fresh_base(&ws, &task.base_branch).await;
+            (task.base_branch.clone(), commit_of(&ws, &base).await?)
+        }
+    };
+    Ok(At {
+        ws,
+        label,
+        sha,
+        handed_back,
+    })
+}
 
+impl At {
     /// Why a report covering `commit` is stale, or `None` when it is fresh.
     async fn stale(&self, who: &str, commit: &str) -> Result<Option<String>> {
         let covered = match commit_of(&self.ws, commit).await {
@@ -84,14 +106,27 @@ impl Head<'_> {
             }
             Err(e) => return Err(e),
         };
-        let (at, head) = self.at().await?;
-        if covered == head {
+        if covered == self.sha {
             return Ok(None);
         }
         Ok(Some(format!(
-            "{who} report is stale: it covers {}, not the tip of `{at}`",
-            short(&covered)
+            "{who} report is stale: it covers {}, not the tip of `{}`",
+            short(&covered),
+            self.label
         )))
+    }
+
+    /// Why the worktree of a handed-back task cannot be resumed as it is, or `None`.
+    async fn uncommitted(&self, task: &Task) -> Result<Option<String>> {
+        let dir = self.ws.worktrees_dir().join(&task.name);
+        let status = run("git", &["status", "--porcelain"], Some(&dir)).await?;
+        Ok(match status.trim().is_empty() {
+            true => None,
+            false => Some(format!(
+                "`{}` has uncommitted changes in its worktree that no COMMIT covers: commit or discard them",
+                task.name
+            )),
+        })
     }
 }
 
@@ -125,7 +160,7 @@ async fn report_of(
 }
 
 /// What keeps `done`'s report from clearing the gated task, or `None` when it clears it.
-async fn judge(ctx: &Context, done: &Task, head: &Head<'_>) -> Result<Option<Problem>> {
+async fn judge(ctx: &Context, done: &Task, head: &At) -> Result<Option<Problem>> {
     let who = format!("`{}` ({})", done.name, done.agent);
     if !plan::finished(done.state) {
         let why = format!("{who} did not end (state {:?})", done.state);
@@ -164,22 +199,21 @@ async fn judge(ctx: &Context, done: &Task, head: &Head<'_>) -> Result<Option<Pro
     Ok(head.stale(&who, &commit).await?.and_then(Problem::waiting))
 }
 
-/// Whether `task` may start. `tasks` is every task, so the `after` chain can be walked.
-pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task]) -> Result<Gate> {
+/// Whether `task` may start from `at`. `tasks` is every task, so the `after` chain can be
+/// walked. `Open` carries the sha that was checked: the start must use exactly it.
+pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task], at: &At) -> Result<Gate> {
     let Some(kind) = ctx.store()?.agent_type(&task.agent).await? else {
-        return Ok(Gate::Open);
+        return Ok(Gate::Open(at.sha.clone()));
     };
     if kind.def.requires.is_empty() {
-        return Ok(Gate::Open);
+        return Ok(Gate::Open(at.sha.clone()));
     }
-    let repo = ctx.repo(&task.repo).await?;
-    let head = Head {
-        ws: ctx.workspace(&repo)?,
-        task,
-    };
     let chain = requires::chain(tasks, &task.after);
     let mut waiting = vec![];
     let mut rejected = vec![];
+    if at.handed_back {
+        waiting.extend(at.uncommitted(task).await?);
+    }
     for wanted in &kind.def.requires {
         if let Some(why) = report::unrequirable(wanted) {
             waiting.push(format!("agent type `{}`: {why}", task.agent));
@@ -190,7 +224,7 @@ pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task]) -> Result<
             .rev()
             .find(|t| t.agent.eq_ignore_ascii_case(wanted));
         let problem = match newest {
-            Some(done) => judge(ctx, done, &head).await?,
+            Some(done) => judge(ctx, done, at).await?,
             None => Problem::waiting(format!("no task of type `{wanted}` in its `after` chain")),
         };
         match problem {
@@ -202,7 +236,7 @@ pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task]) -> Result<
     Ok(match (rejected.is_empty(), waiting.is_empty()) {
         (false, _) => Gate::Rejected(rejected.join("; ")),
         (true, false) => Gate::Blocked(waiting.join("; ")),
-        (true, true) => Gate::Open,
+        (true, true) => Gate::Open(at.sha.clone()),
     })
 }
 
@@ -254,16 +288,24 @@ pub(super) async fn reject(ctx: &Context, task: &Task, why: &str) -> Result<bool
         Err(Error::Conflict(m)) if m == MOVED => return Ok(false),
         Err(e) => return Err(e),
     }
-    let repo = ctx.repo(&task.repo).await?;
-    agent::kill_session(&ctx.workspace(&repo)?, &task.name).await?;
     let text = format!("task `{}` failed, it will not start: {why}", task.name);
+    runner::notify(ctx, &task.conversation_id, text.clone());
     let body = EntryBody::Agent {
         agent: task.name.clone(),
         event: AgentEvent::Failed,
         text: plan::capped(&text, MAX_FAILED_TEXT),
     };
     store.append_entry(&task.conversation_id, body).await?;
-    runner::notify(ctx, &task.conversation_id, text);
+    let killed = match ctx.repo(&task.repo).await.and_then(|r| ctx.workspace(&r)) {
+        Ok(ws) => agent::kill_session(&ws, &task.name).await,
+        Err(e) => Err(e),
+    };
+    if let Err(e) = killed {
+        tracing::warn!(
+            target: "townhall::task", event = "task.reject_kill_failed", task = %task.name,
+            error = %e, "the session of a rejected task could not be killed"
+        );
+    }
     Ok(true)
 }
 
