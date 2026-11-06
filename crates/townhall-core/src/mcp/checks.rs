@@ -8,6 +8,7 @@ use crate::cmd::{run, validate_name};
 use crate::context::Context;
 use crate::model::{Conversation, CreateTaskInput, EntryBody, Repo, TASK_BRANCH_PREFIX};
 use crate::repos::{names, verify_branch};
+use crate::scheduler::requires;
 use crate::{fleet, Error};
 
 use super::{MAX_LIST_LEN, MAX_NAME_LEN, MAX_PROMPT_LEN, MAX_TITLE_LEN};
@@ -133,6 +134,30 @@ pub(super) async fn base_branch(repo: &Repo, wanted: Option<&str>) -> Checked<St
         .map_err(|e| format!("base branch check failed: {e}"))?
         .map_err(|e| format!("{e}: pass a branch of repo `{}` or leave it out", repo.name))?;
     Ok(branch)
+}
+
+/// A task of agent type `agent` needs a task of each type its `requires` lists somewhere in
+/// its `after` chain: the refusal names what is missing.
+pub(super) async fn requirements(ctx: &Context, agent: &str, after: &[String]) -> Checked<()> {
+    let store = ctx.store().map_err(|e| e.to_string())?;
+    let Some(kind) = store.agent_type(agent).await.map_err(|e| e.to_string())? else {
+        return Ok(());
+    };
+    if kind.def.requires.is_empty() {
+        return Ok(());
+    }
+    let tasks = store.all_tasks().await.map_err(|e| e.to_string())?;
+    let chain = requires::chain(&tasks, after);
+    let missing = requires::missing(&kind.def.requires, &chain);
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let listed: Vec<String> = missing.iter().map(|m| format!("`{m}`")).collect();
+    Err(format!(
+        "agent type `{}` requires a task of type {} in the `after` chain: create those tasks first and pass them in `after`",
+        kind.def.name,
+        listed.join(" and ")
+    ))
 }
 
 /// No agent in any repo (ignoring case) and no branch `townhall/<name>` in this one has the
