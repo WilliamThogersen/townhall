@@ -169,6 +169,7 @@ export interface Task {
   readonly createdAt: string;
   readonly pr: Pr | null;
   readonly agent: string;
+  readonly blocked: string | null;
 }
 
 export interface CreateTaskInput {

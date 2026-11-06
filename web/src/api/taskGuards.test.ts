@@ -9,6 +9,14 @@ describe("task guards", () => {
     expect(parseTask(reviewed)).toEqual(reviewed);
   });
 
+  it("reads why a queued task is held back", () => {
+    const held = aTask({ blocked: "`t1` (reviewer) reported REJECT" });
+    expect(parseTask(held).blocked).toBe("`t1` (reviewer) reported REJECT");
+    expect(parseTask(aTask()).blocked).toBeNull();
+    expect(() => parseTask({ ...aTask(), blocked: 3 })).toThrow("task.blocked");
+    expect(parseTask({ ...aTask(), blocked: undefined }).blocked).toBeNull();
+  });
+
   it("refuses broken tasks and prs", () => {
     expect(() => parseTask({ ...aTask(), after: [3] })).toThrow("task.after[0]");
     expect(() => parseTask({ ...aTask(), agent: undefined })).toThrow("task.agent");

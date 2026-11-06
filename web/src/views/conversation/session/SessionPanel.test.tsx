@@ -68,6 +68,15 @@ describe("SessionPanel head", () => {
     expect(screen.getByRole("link", { name: "control center ↗" })).toHaveAttribute("href", "/townhall?c=login-loop");
   });
 
+  it("shows why a held back task does not start", () => {
+    const why = "`rev-1` (reviewer) reported REJECT";
+    renderPanel(fullDetail({ tasks: [aTask({ name: "ship", state: "queued", blocked: why })] }));
+    const row = rowAt(0);
+    expect(within(row).getByText("blocked")).toHaveClass("th-task-state");
+    expect(within(row).getByText(why)).toHaveClass("th-task-blocked");
+    expect(within(rowAt(0)).queryByText("queued")).toBeNull();
+  });
+
   it("says 1 task for one", () => {
     renderPanel(fullDetail({ tasks: [aTask()] }));
     expect(within(panel().querySelector(".th-session-head") as HTMLElement).getByText("1 task")).toBeInTheDocument();

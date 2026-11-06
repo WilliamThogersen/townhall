@@ -95,6 +95,24 @@ describe("taskView", () => {
     expect(view(cookie, [login, cookie]).words).toBe("queued");
   });
 
+  it("says blocked, with the reason, for a queued task held back by its requirements", () => {
+    const why = "`rev-1` (reviewer) reported REJECT";
+    const held = named("ship", "queued", { blocked: why });
+    expect(view(held)).toMatchObject({ words: "blocked", blocked: why, glyph: "queued", tone: null });
+    expect(view(named("ship", "queued")).blocked).toBeNull();
+  });
+
+  it("names the unfinished after task before a stale block reason", () => {
+    const login = named("fix-login", "working");
+    const held = named("ship", "queued", { after: ["fix-login"], blocked: "old reason" });
+    expect(view(held, [login, held])).toMatchObject({ words: "after fix-login", blocked: null });
+  });
+
+  it("shows no block reason once a task is past the queue", () => {
+    const v = view(named("ship", "working", { blocked: "old reason" }));
+    expect(v).toMatchObject({ words: "working", blocked: null });
+  });
+
   it("says checks failed in red for a failed pull request", () => {
     const v = view(named("guard", "inCi", { pr: pr({ checks: "failed" }) }));
     expect(v).toMatchObject({ words: "checks failed", glyph: "error", tone: "error" });

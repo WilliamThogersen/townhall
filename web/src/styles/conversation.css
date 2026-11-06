@@ -645,6 +645,15 @@
   min-width: 0;
 }
 
+.th-task-blocked {
+  grid-column: 2 / -1;
+  min-width: 0;
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
 .th-task-title {
   color: var(--th-fg-faint);
   font-size: var(--th-text-xs);

@@ -10,6 +10,7 @@ export interface TaskView {
   readonly glyph: TaskGlyphState;
   readonly tone: TaskTone | null;
   readonly words: string;
+  readonly blocked: string | null;
   readonly prOpen: boolean;
 }
 
@@ -64,19 +65,27 @@ export function pendingAfter(task: Task, siblings: readonly Task[]): readonly st
   });
 }
 
-function wordsOf(task: Task, look: StateLook, siblings: readonly Task[]): string {
+function blockedOf(task: Task, siblings: readonly Task[]): string | null {
+  if (task.state !== "queued" || pendingAfter(task, siblings).length > 0) return null;
+  return task.blocked;
+}
+
+function wordsOf(task: Task, look: StateLook, siblings: readonly Task[], blocked: string | null): string {
   if (task.state !== "queued") return look.words;
   const waiting = pendingAfter(task, siblings);
-  return waiting.length > 0 ? `after ${waiting.join(", ")}` : look.words;
+  if (waiting.length > 0) return `after ${waiting.join(", ")}`;
+  return blocked === null ? look.words : "blocked";
 }
 
 export function taskView(task: Task, siblings: readonly Task[]): TaskView {
   const look = lookOf(task);
+  const blocked = blockedOf(task, siblings);
   return {
     task,
     glyph: look.glyph,
     tone: look.tone,
-    words: wordsOf(task, look, siblings),
+    words: wordsOf(task, look, siblings, blocked),
+    blocked,
     prOpen: task.pr !== null && !FINISHED.has(task.state),
   };
 }

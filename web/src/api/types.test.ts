@@ -74,6 +74,7 @@ const task = {
   createdAt: "2026-11-04T10:42:05.000Z",
   pr: { number: 41, url: null, checks: "failed" },
   agent: "builder",
+  blocked: null,
 } as const satisfies Task;
 
 const agent = {
