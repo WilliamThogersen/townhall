@@ -155,16 +155,6 @@ fn cut(text: &str, max: usize) -> &str {
     &text[..end]
 }
 
-/// Days since 1970-01-01 of a proleptic Gregorian date (Hinnant's `days_from_civil`).
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let doy = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
 /// The day (since the epoch, UTC) a log file belongs to: the `YYYY-MM-DD` in
 /// `<prefix>.YYYY-MM-DD.jsonl`, or the day of its mtime when the name has no such date.
 fn file_day(path: &Path, modified: SystemTime) -> i64 {
@@ -172,18 +162,7 @@ fn file_day(path: &Path, modified: SystemTime) -> i64 {
         .file_stem()
         .and_then(|s| s.to_str())
         .and_then(|s| s.rsplit_once('.'))
-        .and_then(|(_, date)| {
-            let mut parts = date.split('-');
-            let (y, m, d) = (parts.next()?, parts.next()?, parts.next()?);
-            let digits = [y, m, d]
-                .iter()
-                .all(|p| p.bytes().all(|b| b.is_ascii_digit()));
-            if parts.next().is_some() || !digits || (y.len(), m.len(), d.len()) != (4, 2, 2) {
-                return None;
-            }
-            let (y, m, d) = (y.parse().ok()?, m.parse().ok()?, d.parse().ok()?);
-            ((1..=12).contains(&m) && (1..=31).contains(&d)).then(|| days_from_civil(y, m, d))
-        });
+        .and_then(|(_, date)| townhall_core::clock::day_number(date));
     from_name.unwrap_or_else(|| day_of(modified))
 }
 
@@ -442,16 +421,6 @@ mod tests {
         assert_eq!(
             names(tmp.path()),
             ["a.2024-01-30.jsonl", "a.2024-01-31.jsonl"]
-        );
-    }
-
-    #[test]
-    fn day_number_matches_known_dates() {
-        assert_eq!(days_from_civil(1970, 1, 1), 0);
-        assert_eq!(days_from_civil(2024, 2, 1), 19754);
-        assert_eq!(
-            days_from_civil(2024, 3, 1) - days_from_civil(2024, 2, 1),
-            29
         );
     }
 
