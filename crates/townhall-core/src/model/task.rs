@@ -56,6 +56,9 @@ pub struct Task {
     pub pr: Option<Pr>,
     /// The agent type it runs as (`AgentType`), resolved when it was created.
     pub agent: String,
+    /// Why a queued task whose `after` tasks finished still waits: its agent type's `requires`
+    /// are not met. Set and cleared by the scheduler, `None` when nothing holds it back.
+    pub blocked: Option<String>,
 }
 
 impl Task {
@@ -138,9 +141,11 @@ mod tests {
                 checks: Checks::Failed,
             }),
             agent: "builder".into(),
+            blocked: None,
         };
         let v = serde_json::to_value(&t).unwrap();
         assert_eq!(v["state"], "needsYou");
+        assert_eq!(v["blocked"], json!(null));
         assert_eq!(v["baseBranch"], "develop");
         assert_eq!(v["conversationId"], "a1b2c3d4e5f6");
         assert_eq!(v["agent"], "builder");

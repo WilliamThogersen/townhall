@@ -54,6 +54,7 @@ mod tests {
             created_at: "2026-11-05T10:00:00.000Z".into(),
             pr: None,
             agent: "builder".into(),
+            blocked: None,
         }
     }
 

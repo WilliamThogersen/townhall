@@ -10,7 +10,7 @@ use crate::model::{NewTask, Pr, ServerEvent, Task, TaskState};
 use crate::{clock, Error, Result};
 
 const COLUMNS: &str = "name, conversation_id, title, prompt, repo, base_branch, after, state, \
-                       attachments, pr_number, pr_url, pr_checks, created_at, agent";
+                       attachments, pr_number, pr_url, pr_checks, created_at, agent, blocked";
 
 type Row = (
     [String; 8],
@@ -19,6 +19,7 @@ type Row = (
     Option<String>,
     Option<String>,
     [String; 2],
+    Option<String>,
 );
 
 fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
@@ -39,6 +40,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
         r.get(10)?,
         r.get(11)?,
         [text(12)?, text(13)?],
+        r.get(14)?,
     ))
 }
 
@@ -50,6 +52,7 @@ fn build(row: Row) -> Result<Task> {
         url,
         checks,
         [created_at, agent],
+        blocked,
     ) = row;
     let pr = match (number, checks) {
         (Some(number), Some(checks)) => Some(Pr {
@@ -72,6 +75,7 @@ fn build(row: Row) -> Result<Task> {
         created_at,
         pr,
         agent,
+        blocked,
     })
 }
 
@@ -174,7 +178,7 @@ pub(super) fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
     tx.execute(
         "update tasks set title = ?2, prompt = ?3, repo = ?4, base_branch = ?5, after = ?6,
          state = ?7, attachments = ?8, pr_number = ?9, pr_url = ?10, pr_checks = ?11,
-         agent = ?12 where name = ?1",
+         agent = ?12, blocked = ?13 where name = ?1",
         params![
             t.name,
             t.title,
@@ -187,7 +191,8 @@ pub(super) fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
             number,
             url,
             checks,
-            t.agent
+            t.agent,
+            t.blocked
         ],
     )?;
     Ok(())
@@ -207,6 +212,7 @@ fn queued(conversation_id: &str, new: NewTask) -> Task {
         created_at: clock::now_rfc3339(),
         pr: None,
         agent: new.agent,
+        blocked: None,
     }
 }
 
