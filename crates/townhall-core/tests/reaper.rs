@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use townhall_core::model::{AgentEvent, Conversation, EntryBody, TaskState};
+use serde_json::json;
+use townhall_core::model::{AgentEvent, Conversation, EntryBody, SettingKey, TaskState};
 use townhall_core::reaper::{self, CANCELLED};
 use townhall_core::runner;
 use townhall_core::scheduler::run_once;
@@ -269,4 +270,128 @@ async fn folders_git_does_not_know_are_swept_but_live_work_is_kept() {
         "a live task's folder stays"
     );
     assert!(s.worktree(&live).exists());
+}
+
+const GB: u64 = 1_000_000_000;
+
+async fn set_floor(s: &Sched, gb: u32) {
+    let put = s.store().set_setting(SettingKey::MinFreeDiskGb, json!(gb));
+    put.await.unwrap();
+}
+
+/// A disk that holds 1 GB and gets 2 GB back for every folder of `watched` that is gone.
+fn fake_disk(s: &Sched, watched: &[&str]) {
+    let folders: Vec<_> = watched.iter().map(|n| s.worktree(n)).collect();
+    s.ctx().set_free_space(move || {
+        let gone = folders.iter().filter(|f| !f.exists()).count() as u64;
+        Ok(GB + 2 * GB * gone)
+    });
+}
+
+/// Starts `names`, then ends them in that order, a moment apart.
+async fn end_in_order(s: &Sched, names: &[&str]) {
+    for name in names {
+        s.create(name, &[]).await;
+    }
+    run_once(s.ctx()).await.unwrap();
+    for name in names {
+        s.end(name).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+#[tokio::test]
+async fn under_pressure_the_oldest_ended_tasks_go_first_until_there_is_room() {
+    let s = Sched::new().await;
+    let (a, b, c, live) = (unique("a"), unique("b"), unique("c"), unique("live"));
+    s.create(&a, &[]).await;
+    s.create(&b, &[]).await;
+    s.create(&c, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    commit(&s.worktree(&b), "work that exists nowhere else").await;
+    // b ended first, then a, then c: creation order is not the order that counts.
+    for name in [&b, &a, &c] {
+        s.end(name).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    s.create(&live, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    set_floor(&s, 5).await;
+    fake_disk(&s, &[&a, &b, &c]);
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+
+    assert!(reaped.warnings.is_empty(), "{reaped:?}");
+    assert_eq!(reaped.removed, [b.as_str(), a.as_str()], "{reaped:?}");
+    assert!(!s.worktree(&b).exists() && !s.worktree(&a).exists());
+    assert!(s.worktree(&c).exists(), "stopped once there was room");
+    assert!(s.worktree(&live).exists(), "live work is kept");
+    assert_eq!(s.state(&live).await, TaskState::Working);
+    assert!(
+        has_branch(&s, &b).await,
+        "unmerged commits keep their branch"
+    );
+    assert!(!has_branch(&s, &a).await, "a branch with nothing new goes");
+}
+
+#[tokio::test]
+async fn under_pressure_live_work_is_never_removed() {
+    let s = Sched::new().await;
+    let (working, review) = (unique("working"), unique("review"));
+    s.create(&working, &[]).await;
+    s.create(&review, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    s.set_state(&review, TaskState::InReview).await;
+    set_floor(&s, 5).await;
+    s.ctx().set_free_space(|| Ok(GB));
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+
+    assert!(reaped.removed.is_empty(), "{reaped:?}");
+    assert_eq!(s.agent_names().await, sorted(&[&working, &review]));
+}
+
+#[tokio::test]
+async fn with_room_the_grace_still_holds_an_ended_task() {
+    let s = Sched::new().await;
+    let done = unique("done");
+    end_in_order(&s, &[&done]).await;
+    set_floor(&s, 5).await;
+    s.ctx().set_free_space(|| Ok(50 * GB));
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+
+    assert!(reaped.removed.is_empty(), "{reaped:?}");
+    assert!(s.worktree(&done).exists(), "inside the grace period");
+}
+
+#[tokio::test]
+async fn a_floor_of_zero_turns_the_pressure_off() {
+    let s = Sched::new().await;
+    let done = unique("done");
+    end_in_order(&s, &[&done]).await;
+    s.ctx().set_free_space(|| Ok(0));
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+
+    assert!(reaped.removed.is_empty(), "{reaped:?}");
+    assert!(s.worktree(&done).exists());
+}
+
+#[tokio::test]
+async fn a_launch_blocked_by_the_disk_floor_wakes_the_reaper() {
+    let s = Sched::new().await;
+    let (done, next) = (unique("done"), unique("next"));
+    end_in_order(&s, &[&done]).await;
+    s.create(&next, &[]).await;
+    set_floor(&s, 5).await;
+    fake_disk(&s, &[&done]);
+
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert!(pass.started.is_empty(), "{pass:?}");
+
+    wait_gone(&s, &[done.as_str()]).await;
+    assert!(!s.worktree(&done).exists());
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert_eq!(pass.started, [next.as_str()], "there is room now");
 }
