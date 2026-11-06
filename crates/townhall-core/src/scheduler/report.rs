@@ -55,9 +55,26 @@ fn is_sha(word: &str) -> bool {
     word.len() == 40 && word.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-fn is_fence(line: &str) -> bool {
+/// A fence's character and length: a run of at least three backticks or tildes.
+type Fence = (char, usize);
+
+fn fence_run(line: &str) -> Option<(Fence, &str)> {
     let line = line.trim_start();
-    line.starts_with("```") || line.starts_with("~~~")
+    let mark = line.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let rest = line.trim_start_matches(mark);
+    let len = line.len() - rest.len();
+    (len >= 3).then_some(((mark, len), rest))
+}
+
+fn opens_fence(line: &str) -> Option<Fence> {
+    fence_run(line).map(|(fence, _)| fence)
+}
+
+fn closes_fence(line: &str, open: Fence) -> bool {
+    match fence_run(line) {
+        Some(((mark, len), rest)) => mark == open.0 && len >= open.1 && rest.trim().is_empty(),
+        None => false,
+    }
 }
 
 fn is_quote(line: &str) -> bool {
@@ -98,18 +115,34 @@ fn verdict_of(word: &str, allowed: &[Verdict]) -> Result<Verdict, String> {
 /// The verdict and commit of the report's `VERDICT: <WORD>` and `COMMIT: <sha>` lines,
 /// scanned over the whole text. A line counts only when it starts at the first column, holds
 /// nothing after the value but whitespace, and is neither inside a fenced code block nor in a
-/// blockquote; any other line is ignored. Identical repeats are one line; different ones are
+/// blockquote; any other line is ignored. A fence opens with three or more backticks or
+/// tildes and closes only with the same character, at least as many, and nothing else on the
+/// line; one never closed runs to the end. A line right after a `>` line, with no blank line
+/// between, is taken as quoted too. Identical repeats are one line; different ones are
 /// a conflict. The verdict word must belong to `agent_type`'s [`vocabulary`].
 pub fn parse(text: &str, agent_type: &str) -> Report {
     let mut verdicts = vec![];
     let mut commits = vec![];
-    let mut fenced = false;
+    let mut fence: Option<Fence> = None;
+    let mut quoting = false;
     for line in text.lines() {
-        if is_fence(line) {
-            fenced = !fenced;
+        if let Some(open) = fence {
+            if closes_fence(line, open) {
+                fence = None;
+            }
             continue;
         }
-        if fenced || is_quote(line) {
+        if let Some(open) = opens_fence(line) {
+            fence = Some(open);
+            quoting = false;
+            continue;
+        }
+        if line.trim().is_empty() {
+            quoting = false;
+            continue;
+        }
+        quoting = quoting || is_quote(line);
+        if quoting {
             continue;
         }
         let line = line.trim_end();
@@ -217,6 +250,46 @@ mod tests {
         assert_eq!(commit(&quoted), Ok(None));
         let after = "```\nVERDICT: FAIL\n```\nVERDICT: PASS\n";
         assert_eq!(verdict(after, "tester"), Ok(Some(Verdict::Pass)));
+    }
+
+    #[test]
+    fn a_fence_closes_only_with_its_own_character_and_at_least_its_length() {
+        let tilde_inside = "```\n~~~\nVERDICT: PASS\n```\nVERDICT: FAIL\n";
+        assert_eq!(verdict(tilde_inside, "tester"), Ok(Some(Verdict::Fail)));
+        let backtick_inside = "~~~\n```\nVERDICT: PASS\n~~~\nVERDICT: FAIL\n";
+        assert_eq!(verdict(backtick_inside, "tester"), Ok(Some(Verdict::Fail)));
+        let shorter = "````\n```\nVERDICT: PASS\n````\nVERDICT: FAIL\n";
+        assert_eq!(verdict(shorter, "tester"), Ok(Some(Verdict::Fail)));
+        let longer = "```\nVERDICT: PASS\n`````\nVERDICT: FAIL\n";
+        assert_eq!(verdict(longer, "tester"), Ok(Some(Verdict::Fail)));
+        let text_after = "```\n``` VERDICT: PASS\nVERDICT: FAIL\n```\nVERDICT: PASS\n";
+        assert_eq!(verdict(text_after, "tester"), Ok(Some(Verdict::Pass)));
+    }
+
+    #[test]
+    fn a_verdict_after_an_unterminated_fence_does_not_count() {
+        for open in ["```", "~~~", "````text"] {
+            let text = format!("{open}\nsome output\nVERDICT: PASS\nCOMMIT: {A}\n");
+            assert_eq!(parse(&text, "tester").verdict, Ok(None), "{open}");
+            assert_eq!(commit(&text), Ok(None), "{open}");
+        }
+        let after = format!("```\nunclosed\nVERDICT: PASS\nCOMMIT: {A}\n");
+        assert_eq!(parse(&after, "tester").verdict, Ok(None));
+    }
+
+    #[test]
+    fn a_line_right_after_a_quote_is_quoted_until_a_blank_line() {
+        let lazy = format!("> quoted\nVERDICT: PASS\nCOMMIT: {A}\n");
+        assert_eq!(verdict(&lazy, "tester"), Ok(None));
+        assert_eq!(commit(&lazy), Ok(None));
+        let long = "> a\nlazy\nVERDICT: PASS\n";
+        assert_eq!(verdict(long, "tester"), Ok(None));
+        let blank = "> quoted\n\nVERDICT: PASS\n";
+        assert_eq!(verdict(blank, "tester"), Ok(Some(Verdict::Pass)));
+        let before = "VERDICT: PASS\n> quoted\n";
+        assert_eq!(verdict(before, "tester"), Ok(Some(Verdict::Pass)));
+        let fenced = "> quoted\n```\nVERDICT: FAIL\n```\n\nVERDICT: PASS\n";
+        assert_eq!(verdict(fenced, "tester"), Ok(Some(Verdict::Pass)));
     }
 
     #[test]
