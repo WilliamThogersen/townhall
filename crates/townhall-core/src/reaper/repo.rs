@@ -49,7 +49,7 @@ pub(super) async fn reap(
     let mut reaped = Reaped::default();
     for a in found.agents {
         let Some(reason) = verdict(&a.name, tasks, why.ended, why.settled) else {
-            if !a.alive && finished(&a.name, tasks) {
+            if purgeable(&a, tasks) {
                 purge_artifacts(&a, repo, &mut reaped).await;
             }
             continue;
@@ -138,14 +138,17 @@ async fn sweep(ws: &Workspace, repo: &str, tasks: &[Task], why: &Ended<'_>) -> R
     Ok(swept)
 }
 
-fn finished(name: &str, tasks: &[Task]) -> bool {
-    tasks.iter().any(|t| {
-        t.name.eq_ignore_ascii_case(name)
-            && matches!(
-                t.state,
-                TaskState::Ended | TaskState::InReview | TaskState::InCi
-            )
-    })
+/// Whether the agent's build artifacts go now: its task has ended (even if its session
+/// still runs), or it is in review or CI and its session is gone.
+fn purgeable(agent: &Agent, tasks: &[Task]) -> bool {
+    tasks
+        .iter()
+        .find(|t| t.name.eq_ignore_ascii_case(&agent.name))
+        .is_some_and(|t| match t.state {
+            TaskState::Ended => true,
+            TaskState::InReview | TaskState::InCi => !agent.alive,
+            _ => false,
+        })
 }
 
 async fn purge_artifacts(agent: &Agent, repo: &str, reaped: &mut Reaped) {
