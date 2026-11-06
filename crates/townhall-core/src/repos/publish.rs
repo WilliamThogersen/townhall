@@ -5,7 +5,7 @@ use std::path::Path;
 
 use super::auth_env::{auth_failure, remote_env};
 use super::source::split_remote;
-use crate::cmd::{probe_blocking, run_blocking_env};
+use crate::cmd::{probe_blocking, run_blocking, run_blocking_env};
 use crate::redact::redact;
 use crate::{Error, Result};
 
