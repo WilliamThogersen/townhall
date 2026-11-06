@@ -6,6 +6,8 @@ use crate::{Error, Result};
 pub const AGENTS_AT_ONCE_MIN: u32 = 1;
 pub const AGENTS_AT_ONCE_MAX: u32 = 50;
 pub const AGENTS_AT_ONCE_DEFAULT: u32 = 6;
+pub const DISK_GB_MAX: u32 = 100_000;
+pub const MIN_FREE_DISK_GB_DEFAULT: u32 = 5;
 
 /// Claude Code's `--permission-mode`, named as in `web/src/settings/settings.ts`.
 /// `BypassPermissions` is `skip all`: only `PUT /api/settings/permissionMode` may choose it.
@@ -83,12 +85,13 @@ pub enum SettingKey {
     SessionPanelOpen,
     NotifyWhen,
     TownhallModel,
+    MinFreeDiskGb,
     LearnAboutMe,
     GithubAccount,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 9] = [
+    pub const ALL: [SettingKey; 10] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
@@ -96,6 +99,7 @@ impl SettingKey {
         Self::SessionPanelOpen,
         Self::NotifyWhen,
         Self::TownhallModel,
+        Self::MinFreeDiskGb,
         Self::LearnAboutMe,
         Self::GithubAccount,
     ];
@@ -109,6 +113,7 @@ impl SettingKey {
             Self::SessionPanelOpen => "sessionPanelOpen",
             Self::NotifyWhen => "notifyWhen",
             Self::TownhallModel => "townhallModel",
+            Self::MinFreeDiskGb => "minFreeDiskGb",
             Self::LearnAboutMe => "learnAboutMe",
             Self::GithubAccount => "githubAccount",
         }
@@ -132,6 +137,7 @@ impl SettingKey {
             Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::LearnAboutMe => {
                 value.is_boolean()
             }
+            Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
             Self::GithubAccount => value.as_str().is_some_and(is_github_login),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
@@ -168,6 +174,8 @@ pub struct Settings {
     pub session_panel_open: bool,
     pub notify_when: NotifyWhen,
     pub townhall_model: TownhallModel,
+    /// A task does not start while the data volume has less free space; `0` is off.
+    pub min_free_disk_gb: u32,
     pub learn_about_me: bool,
     pub github_account: String,
 }
@@ -182,6 +190,7 @@ impl Default for Settings {
             session_panel_open: true,
             notify_when: NotifyWhen::NeedsYou,
             townhall_model: TownhallModel::Sonnet,
+            min_free_disk_gb: MIN_FREE_DISK_GB_DEFAULT,
             learn_about_me: false,
             github_account: String::new(),
         }
@@ -207,6 +216,7 @@ impl Settings {
             session_panel_open: field(raw, SettingKey::SessionPanelOpen, d.session_panel_open),
             notify_when: field(raw, SettingKey::NotifyWhen, d.notify_when),
             townhall_model: field(raw, SettingKey::TownhallModel, d.townhall_model),
+            min_free_disk_gb: field(raw, SettingKey::MinFreeDiskGb, d.min_free_disk_gb),
             learn_about_me: field(raw, SettingKey::LearnAboutMe, d.learn_about_me),
             github_account: field(raw, SettingKey::GithubAccount, d.github_account),
         }
@@ -255,6 +265,7 @@ mod tests {
                 "sessionPanelOpen": true,
                 "notifyWhen": "needsYou",
                 "townhallModel": "sonnet",
+                "minFreeDiskGb": 5,
                 "learnAboutMe": false,
                 "githubAccount": ""
             })
@@ -320,6 +331,39 @@ mod tests {
             SettingKey::parse("townhallModel").unwrap(),
             SettingKey::TownhallModel
         );
+    }
+
+    #[test]
+    fn disk_settings_check_their_values() {
+        let ok = [
+            (SettingKey::MinFreeDiskGb, json!(0)),
+            (SettingKey::MinFreeDiskGb, json!(DISK_GB_MAX)),
+        ];
+        for (key, value) in ok {
+            assert_eq!(key.check(&value).unwrap(), value);
+        }
+        let bad = [
+            (SettingKey::MinFreeDiskGb, json!(-1)),
+            (SettingKey::MinFreeDiskGb, json!(DISK_GB_MAX + 1)),
+            (SettingKey::MinFreeDiskGb, json!(2.5)),
+        ];
+        for (key, value) in bad {
+            assert!(key.check(&value).is_err(), "{key:?} {value}");
+        }
+        let s: Settings = serde_json::from_value(json!({"minFreeDiskGb": "x"})).unwrap();
+        assert_eq!(s.min_free_disk_gb, MIN_FREE_DISK_GB_DEFAULT);
+    }
+
+    #[test]
+    fn keys_of_removed_settings_are_ignored() {
+        let raw = json!({
+            "agentsAtOnce": 3, "sharedCargoTarget": true, "sharedTargetMaxGb": 80,
+            "minFreeDiskGb": 7
+        });
+        let s: Settings = serde_json::from_value(raw).unwrap();
+        assert_eq!((s.agents_at_once, s.min_free_disk_gb), (3, 7));
+        assert!(SettingKey::parse("sharedCargoTarget").is_err());
+        assert!(SettingKey::parse("sharedTargetMaxGb").is_err());
     }
 
     #[test]

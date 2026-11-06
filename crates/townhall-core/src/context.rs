@@ -2,8 +2,9 @@
 //! the startup repo, the store (with the repo registry over it), the event bus and options.
 //! The daemon's `AppState` wraps it; core units (runner, scheduler, watcher) take it directly.
 
+use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use tokio::sync::OnceCell;
@@ -67,6 +68,7 @@ struct Inner {
     startup_name: OnceCell<Option<String>>,
     turns: Turns,
     notes: Notes,
+    disk_told: Mutex<HashSet<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +131,7 @@ impl Context {
             startup_name: OnceCell::new(),
             turns: Turns::default(),
             notes: Notes::default(),
+            disk_told: Mutex::default(),
         };
         Self {
             inner: Arc::new(inner),
@@ -176,6 +179,26 @@ impl Context {
     /// The task events waiting to wake each conversation's planner.
     pub fn notes(&self) -> &Notes {
         &self.inner.notes
+    }
+
+    /// Marks a conversation as told the disk is too full; false when it already was.
+    pub(crate) fn tell_disk_low(&self, conversation: &str) -> bool {
+        let mut told = self
+            .inner
+            .disk_told
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        told.insert(conversation.to_string())
+    }
+
+    /// Forgets every told conversation: the disk has room again.
+    pub(crate) fn clear_disk_told(&self) {
+        let mut told = self
+            .inner
+            .disk_told
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        told.clear();
     }
 
     pub fn notify_delay(&self) -> Duration {

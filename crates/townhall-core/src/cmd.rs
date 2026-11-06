@@ -105,6 +105,9 @@ pub async fn probe(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<S
 async fn exec(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
     let mut command = Command::new(program);
     command.args(args);
+    if program == "git" {
+        command.env("LC_MESSAGES", "C").env_remove("LC_ALL");
+    }
     if let Some(dir) = cwd {
         command.current_dir(dir);
     }
@@ -155,7 +158,11 @@ fn exec_blocking(
     envs: &[(&str, &str)],
 ) -> Result<String> {
     let mut command = std::process::Command::new(program);
-    command.args(args).envs(envs.iter().copied());
+    command.args(args);
+    if program == "git" {
+        command.env("LC_MESSAGES", "C").env_remove("LC_ALL");
+    }
+    command.envs(envs.iter().copied());
     if let Some(dir) = cwd {
         command.current_dir(dir);
     }
@@ -183,5 +190,24 @@ pub fn validate_name(name: &str) -> Result<()> {
         Ok(())
     } else {
         Err(Error::InvalidName(name.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SHOW_ENV: [&str; 3] = ["-c", "alias.e=!env", "e"];
+
+    #[test]
+    fn blocking_git_runs_with_the_c_message_locale() {
+        let out = run_blocking("git", &SHOW_ENV, None).unwrap();
+        assert!(out.lines().any(|l| l == "LC_MESSAGES=C"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn async_git_runs_with_the_c_message_locale() {
+        let out = run("git", &SHOW_ENV, None).await.unwrap();
+        assert!(out.lines().any(|l| l == "LC_MESSAGES=C"), "{out}");
     }
 }

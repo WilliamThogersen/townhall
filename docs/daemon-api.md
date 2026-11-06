@@ -109,7 +109,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 - `Repo { name, path, baseBranch }`. `name`: `[A-Za-z0-9._-]`, starts with a letter or digit, at most 64, unique ignoring case, the folder name by default. `path`: canonical, the top folder of a git work tree, never one of townhall's own worktrees. `baseBranch`: origin's HEAD branch (the local branch when it exists, else `origin/x`), else the current branch, else `HEAD`.
 - `AgentInfo { name, repo, kind, branch, worktree, alive, state }`: phase 1's `Agent` plus `repo` and `state`. `AgentState`: `{ kind: "working" }`, `{ kind: "waiting", question }`, `{ kind: "error", exitCode: number | null }`, `{ kind: "ended" }`.
 - `AgentKey`: `up`, `down`, `enter`, `escape`, `tab`, the `key` of `POST /agents/{name}/send` (`AgentKey::symbol` is how a `sent` entry shows it).
-- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel, learnAboutMe, githubAccount }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) and `githubAccount` have no row on the settings page yet.
+- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel, minFreeDiskGb, learnAboutMe, githubAccount }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) and `githubAccount` have no row on the settings page yet.
 - `Conversation { id, sessionId, sessionStarted, title, status: "thinking" | "yourTurn", tasks: string[] (task names, oldest first), linkedRepo: string | null, ended, context: { used, limit } | null, createdAt, updatedAt }`. `title` starts as `new conversation`. `sessionStarted` is false until the first turn went through (that turn uses `--session-id`, later ones `--resume`).
 - `ThreadEntry { id, at } & EntryBody`. `id` counts 1, 2, 3 ... per conversation. `EntryBody` is tagged by `kind`:
 
@@ -159,10 +159,19 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | `sessionPanelOpen` | boolean | `true` |
 | `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
 | `townhallModel` | `sonnet`, `opus`, `haiku`: the model of townhall's own session, `--model=<value>` (2.11) | `sonnet` |
+| `minFreeDiskGb` | integer 0 to 100000: a task does not start with less free space on the data volume; `0` is off | `5` |
 | `learnAboutMe` | boolean: while on, the profile text (below) is added to townhall's own session prompt. Nothing learns into the profile automatically yet | `false` |
 | `githubAccount` | a GitHub login, or empty for none: `open_pr` switches `gh` to it (failing clearly when `gh` has no login for it) and sets the worktree's git author and committer to it before pushing | `WilliamThogersen` on a new database (migration 0003), empty when the row is missing or invalid |
 
 A missing or invalid stored value reads as its default. The store also keeps `desktop.repo` (the desktop app's chosen repo, a path); it is not a setting and not in the API.
+
+## Disk use
+
+Every task runs in its own worktree, and a Rust repo builds a target folder of several GB in each. That `target/` goes with the worktree when its agent is retired (`git worktree remove --force` in `worktree::retire`). One setting, `minFreeDiskGb`, keeps the disk from filling (`scheduler/`, `disk.rs`).
+
+- **No shared cargo target.** Sharing one cargo target folder across branches was tried and removed: cargo copies each built binary to `target/<profile>/<bin>` and releases its lock before a test runs it, so an agent can run the binary another branch built, with no error. Sharing only `build.build-dir` does not fix it either, as worktrees of one repo have the same package names and paths, and cargo's freshness check compares file times only. Agents build in their own worktree. Settings files that still hold `sharedCargoTarget` or `sharedTargetMaxGb` load as before: those keys are ignored.
+- **Disk floor.** Before a task starts (or resumes) the scheduler reads the free space of the volume under the home. Below `minFreeDiskGb` the task stays `queued`, no worktree is made, and the conversation's planner gets one `event` entry, `disk almost full: 3.2 GB free (needs 5 GB): \`<task>\` waits in the queue`, which the UI shows like any task event. It is told once per low-disk episode: the episode ends only when free space is back to `minFreeDiskGb` plus 1 GB (or the floor is `0`), so space that bounces just across the floor does not tell again. The log warning of a waiting task does not quote the free space, so a steady low disk logs once; the scheduler's own tick starts the task once there is room. A volume that cannot be measured is a warning, and tasks start as before.
+- **A full disk anyway.** A start that fails with `ENOSPC` (or git's `No space left on device`) sets the task to `error` with `could not start: disk almost full: 0.1 GB free`, never the os error, and the conversation's planner gets an `event` entry with the same text.
 
 ## Profile
 

@@ -8,7 +8,7 @@ use crate::cmd::{probe, run};
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::redact::redact;
-use crate::{clock, ids, Error, Result, Workspace};
+use crate::{clock, disk, ids, runner, Error, Result, Workspace};
 
 use super::gate::{self, Gate};
 use super::{agent_type, brief, plan, transition, Pass, TaskLaunch, MOVED};
@@ -110,16 +110,22 @@ fn decide(fleet: &Fleet, task: &Task, free: usize, handed_back: bool) -> Step {
 /// agent already exists (a start cut short by a restart) instead of starting a second one.
 pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     let ready = plan::ready(tasks);
+    let settings = ctx.settings().await?;
+    let mut pass = Pass::default();
+    let low = low_disk(ctx, settings.min_free_disk_gb, &mut pass);
     if ready.is_empty() {
-        return Ok(Pass::default());
+        return Ok(pass);
     }
-    let limit = ctx.settings().await?.agents_at_once;
+    let limit = settings.agents_at_once;
     let fleet = survey(ctx).await?;
     let mut free = plan::free_slots(limit, fleet.active(tasks));
-    let mut pass = Pass::default();
     for task in ready {
         let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
         let step = decide(&fleet, task, free, handed_back);
+        if let (Some(bytes), Step::Start | Step::Resume) = (low, &step) {
+            wait_for_space(ctx, task, bytes, settings.min_free_disk_gb, &mut pass);
+            continue;
+        }
         let done = act(ctx, task, tasks, step, handed_back).await?;
         let alive = fleet.agent_of(task).is_some_and(|a| a.alive);
         if matches!(done, Done::Started(_)) || (matches!(done, Done::Adopted(_)) && alive) {
@@ -128,6 +134,60 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
         pass = done.into_pass(pass, &task.name);
     }
     Ok(pass)
+}
+
+/// The free bytes when they are below the floor. A volume that cannot be measured is a
+/// warning, and tasks start as they did before the check.
+fn low_disk(ctx: &Context, floor_gb: u32, pass: &mut Pass) -> Option<u64> {
+    if floor_gb == 0 {
+        ctx.clear_disk_told();
+        return None;
+    }
+    match disk::free_bytes(ctx.home().root()) {
+        Ok(bytes) => judge(ctx, bytes, floor_gb),
+        Err(e) => {
+            pass.warnings
+                .push(format!("free disk space not checked: {e}"));
+            None
+        }
+    }
+}
+
+fn judge(ctx: &Context, bytes: u64, floor_gb: u32) -> Option<u64> {
+    if disk::recovered(bytes, floor_gb) {
+        ctx.clear_disk_told();
+    }
+    disk::below_floor(bytes, floor_gb).then_some(bytes)
+}
+
+/// The task stays queued. Its conversation's planner is told once, and the warning of the
+/// pass says it for the log.
+fn wait_for_space(ctx: &Context, task: &Task, bytes: u64, floor_gb: u32, pass: &mut Pass) {
+    let needs = format!("(needs {floor_gb} GB): `{}` waits in the queue", task.name);
+    if ctx.tell_disk_low(&task.conversation_id) {
+        let said = disk::low_message(bytes);
+        runner::notify(ctx, &task.conversation_id, format!("{said} {needs}"));
+    }
+    pass.warnings.push(format!("disk almost full {needs}"));
+}
+
+/// Why a start failed, as the task's `failed` entry says it: a full disk reads as the disk
+/// message, never as the os error.
+pub async fn start_failure(ctx: &Context, e: &Error) -> String {
+    let free = disk::free_bytes(ctx.home().root()).ok();
+    disk::explain(e, free).unwrap_or_else(|| e.to_string())
+}
+
+/// A start that failed: the task's `failed` entry, and for a full disk the planner is woken
+/// too, since nothing it plans can start until space is freed.
+async fn fail_start(ctx: &Context, task: &Task, e: &Error) -> Result<()> {
+    let why = start_failure(ctx, e).await;
+    let moved = fail(ctx, task, &why).await?;
+    if moved && disk::out_of_space(e) {
+        let said = format!("{why}: `{}` could not start", task.name);
+        runner::notify(ctx, &task.conversation_id, said);
+    }
+    Ok(())
 }
 
 /// What happened to one ready task.
@@ -238,7 +298,7 @@ async fn act(
                 Ok(sha) => match resume(ctx, task, &sha).await {
                     Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
                     Err(e) => {
-                        fail(ctx, task, &e.to_string()).await?;
+                        fail_start(ctx, task, &e).await?;
                         Ok(Done::Failed)
                     }
                 },
@@ -254,7 +314,7 @@ async fn act(
                         repo = %task.repo, error_kind = e.kind(),
                         error = %redact(&e.to_string()), "task launch failed"
                     );
-                    fail(ctx, task, &e.to_string()).await?;
+                    fail_start(ctx, task, &e).await?;
                     Ok(Done::Failed)
                 }
             },
@@ -452,7 +512,7 @@ async fn record_fork_point(ctx: &Context, task: &Task) -> Result<String> {
 }
 
 /// The one `error` the scheduler sets: the agent could not start. Adds `× <name>` with why.
-async fn fail(ctx: &Context, task: &Task, why: &str) -> Result<()> {
+async fn fail(ctx: &Context, task: &Task, why: &str) -> Result<bool> {
     let store = ctx.store()?;
     let change = |t: Task| match t.state == TaskState::Queued {
         true => Ok(Task {
@@ -475,5 +535,131 @@ async fn fail(ctx: &Context, task: &Task, why: &str) -> Result<()> {
         };
         store.append_entry(&task.conversation_id, body).await?;
     }
-    Ok(())
+    Ok(moved.is_some())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ContextOptions, Home};
+
+    const GB: u64 = 1_000_000_000;
+
+    fn context(dir: &Path) -> Context {
+        let ws = Workspace::new(Home::at(dir.join("home")), dir).unwrap();
+        let options = ContextOptions {
+            notify_delay: std::time::Duration::from_secs(3600),
+            ..ContextOptions::default()
+        };
+        Context::open(ws, options).unwrap()
+    }
+
+    async fn queued(dir: &Path) -> (Context, Task) {
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let git = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .status()
+                .unwrap();
+            assert!(status.success());
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "i",
+        ]);
+        let ctx = context(&repo);
+        let repos = ctx.repos().await.unwrap();
+        let store = ctx.store().unwrap();
+        store
+            .save_agent_type("name = \"plain\"\nadapter = \"claude\"\n")
+            .await
+            .unwrap();
+        let conversation = store.create_conversation().await.unwrap().id;
+        let new = crate::model::NewTask {
+            name: "job".into(),
+            title: "do job".into(),
+            prompt: "the brief".into(),
+            repo: repos[0].name.clone(),
+            base_branch: "main".into(),
+            pr_base: None,
+            after: vec![],
+            attachments: vec![],
+            agent: "plain".into(),
+        };
+        let task = store.create_task(&conversation, new).await.unwrap();
+        (ctx, task)
+    }
+
+    fn full() -> Error {
+        Error::io("write", std::io::Error::from_raw_os_error(libc::ENOSPC))
+    }
+
+    #[tokio::test]
+    async fn a_full_disk_start_fails_with_the_disk_message_and_tells_the_planner_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        assert!(act_failing(&ctx, &task, &full()).await);
+        assert!(!act_failing(&ctx, &task, &full()).await);
+        let entries = ctx.store().unwrap().entries(&task.conversation_id).await;
+        let text = format!("{:?}", entries.unwrap().last().unwrap().body);
+        assert!(
+            text.contains("could not start: disk almost full: "),
+            "{text}"
+        );
+        let told = ctx.notes().waiting(&task.conversation_id);
+        assert_eq!(told.len(), 1, "{told:?}");
+        assert!(told[0].starts_with("disk almost full: "), "{told:?}");
+    }
+
+    #[tokio::test]
+    async fn a_task_that_moved_on_is_not_told_as_a_full_disk_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let change = |t: Task| {
+            Ok(Task {
+                state: TaskState::Ended,
+                ..t
+            })
+        };
+        ctx.store()
+            .unwrap()
+            .update_task(&task.name, change)
+            .await
+            .unwrap();
+        assert!(!act_failing(&ctx, &task, &full()).await);
+        assert!(ctx.notes().waiting(&task.conversation_id).is_empty());
+        let entries = ctx.store().unwrap().entries(&task.conversation_id).await;
+        assert!(entries.unwrap().is_empty());
+    }
+
+    async fn act_failing(ctx: &Context, task: &Task, e: &Error) -> bool {
+        let before = ctx.store().unwrap().find_task(&task.name).await.unwrap();
+        fail_start(ctx, task, e).await.unwrap();
+        before.is_some_and(|t| t.state == TaskState::Queued)
+    }
+
+    #[test]
+    fn free_space_bouncing_across_the_floor_is_one_episode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = context(tmp.path());
+        assert_eq!(judge(&ctx, 4 * GB, 5), Some(4 * GB));
+        assert!(ctx.tell_disk_low("c"));
+        assert_eq!(judge(&ctx, 5 * GB + 1, 5), None);
+        assert_eq!(judge(&ctx, 5 * GB + 500_000_000, 5), None);
+        assert_eq!(judge(&ctx, 4 * GB, 5), Some(4 * GB));
+        assert!(!ctx.tell_disk_low("c"), "a bounce told the planner again");
+        assert_eq!(judge(&ctx, 6 * GB, 5), None);
+        assert_eq!(judge(&ctx, 4 * GB, 5), Some(4 * GB));
+        assert!(ctx.tell_disk_low("c"), "a clear recovery is a new episode");
+    }
 }

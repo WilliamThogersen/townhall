@@ -11,6 +11,7 @@ export interface Settings {
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
+  readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
 }
@@ -28,6 +29,7 @@ export const TOWNHALL_MODELS: readonly TownhallModel[] = ["sonnet", "opus", "hai
 
 export const AGENTS_AT_ONCE_MIN = 1;
 export const AGENTS_AT_ONCE_MAX = 50;
+export const DISK_GB_MAX = 100_000;
 
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
   permissionMode: "acceptEdits",
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   sessionPanelOpen: true,
   notifyWhen: "needsYou",
   townhallModel: "sonnet",
+  minFreeDiskGb: 5,
   learnAboutMe: false,
   githubAccount: "",
 });
@@ -51,6 +54,7 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "sessionPanelOpen",
   "notifyWhen",
   "townhallModel",
+  "minFreeDiskGb",
   "learnAboutMe",
   "githubAccount",
 ]);
@@ -74,6 +78,8 @@ const isAgentsAtOnce: Check<number> = (value): value is number =>
   value >= AGENTS_AT_ONCE_MIN &&
   value <= AGENTS_AT_ONCE_MAX;
 
+const isDiskGb: Check<number> = (value): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= DISK_GB_MAX;
 const GITHUB_LOGIN = /^(?!-)[A-Za-z0-9-]{0,39}$/;
 
 const isGithubAccount: Check<string> = (value): value is string =>
@@ -87,6 +93,7 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   sessionPanelOpen: isFlag,
   notifyWhen: choiceOf(NOTIFY_VALUES),
   townhallModel: choiceOf(TOWNHALL_MODELS),
+  minFreeDiskGb: isDiskGb,
   learnAboutMe: isFlag,
   githubAccount: isGithubAccount,
 };
@@ -115,6 +122,7 @@ export function parseSettings(raw: unknown): Settings {
     sessionPanelOpen: pick(fields, "sessionPanelOpen"),
     notifyWhen: pick(fields, "notifyWhen"),
     townhallModel: pick(fields, "townhallModel"),
+    minFreeDiskGb: pick(fields, "minFreeDiskGb"),
     learnAboutMe: pick(fields, "learnAboutMe"),
     githubAccount: pick(fields, "githubAccount"),
   });

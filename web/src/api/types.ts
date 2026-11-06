@@ -55,6 +55,7 @@ export interface Settings {
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
+  readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
 }

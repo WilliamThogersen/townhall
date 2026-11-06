@@ -45,6 +45,11 @@ impl Notes {
         lock(&self.waiting).remove(id).unwrap_or_default()
     }
 
+    /// What waits for the conversation's planner now, oldest first; nothing is taken.
+    pub fn waiting(&self, id: &str) -> Vec<String> {
+        lock(&self.waiting).get(id).cloned().unwrap_or_default()
+    }
+
     pub fn is_waiting(&self, id: &str) -> bool {
         lock(&self.waiting).contains_key(id)
     }

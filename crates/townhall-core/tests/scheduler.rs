@@ -286,3 +286,81 @@ async fn a_start_tmux_refuses_keeps_the_reason_before_the_command() {
     );
     assert!(s.agents().await.is_empty());
 }
+
+async fn set_floor(s: &Sched, gb: u32) {
+    let put = s.store().set_setting(SettingKey::MinFreeDiskGb, json!(gb));
+    put.await.unwrap();
+}
+
+#[tokio::test]
+async fn a_task_waits_queued_while_the_disk_is_below_the_floor() {
+    let s = Sched::new().await;
+    set_floor(&s, 100_000).await;
+    let name = unique("no-room");
+    s.create(&name, &[]).await;
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert!(
+        pass.started.is_empty() && pass.failed.is_empty(),
+        "{pass:?}"
+    );
+    assert_eq!(s.state(&name).await, TaskState::Queued);
+    assert!(s.agents().await.is_empty());
+    assert!(!s.worktree(&name).exists());
+    let said = pass.warnings.join("; ");
+    assert!(said.starts_with("disk almost full (needs "), "{said}");
+    assert!(!said.contains(" GB free"), "{said}");
+
+    let waiting = s.ctx().notes().waiting(&s.conversation);
+    assert_eq!(waiting.len(), 1, "{waiting:?}");
+    assert!(waiting[0].starts_with("disk almost full: "), "{waiting:?}");
+    assert!(waiting[0].contains(&name), "{waiting:?}");
+    run_once(s.ctx()).await.unwrap();
+    let again = s.ctx().notes().waiting(&s.conversation);
+    assert_eq!(
+        again.len(),
+        1,
+        "one event for as long as it blocks: {again:?}"
+    );
+
+    set_floor(&s, 0).await;
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert_eq!(pass.started, [name.as_str()]);
+    assert_eq!(s.state(&name).await, TaskState::Working);
+}
+
+#[tokio::test]
+async fn a_later_low_disk_episode_tells_the_planner_again() {
+    let s = Sched::new().await;
+    set_floor(&s, 100_000).await;
+    let first = unique("cancelled");
+    s.create(&first, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(s.ctx().notes().waiting(&s.conversation).len(), 1);
+
+    s.set_state(&first, TaskState::Ended).await;
+    set_floor(&s, 0).await;
+    run_once(s.ctx()).await.unwrap();
+
+    set_floor(&s, 100_000).await;
+    let second = unique("later");
+    s.create(&second, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    let waiting = s.ctx().notes().waiting(&s.conversation);
+    assert!(waiting.iter().any(|w| w.contains(&second)), "{waiting:?}");
+}
+
+#[tokio::test]
+async fn a_start_that_runs_out_of_space_says_the_disk_is_full() {
+    let s = Sched::new().await;
+    let name = unique("enospc");
+    s.create(&name, &[]).await;
+    let full = townhall_core::Error::io("write", std::io::Error::from_raw_os_error(28));
+    let text = townhall_core::scheduler::start_failure(s.ctx(), &full).await;
+    assert!(text.starts_with("disk almost full: "), "{text}");
+    assert!(text.contains(" GB free"), "{text}");
+    let other = townhall_core::Error::Conflict("a clash".into());
+    assert_eq!(
+        townhall_core::scheduler::start_failure(s.ctx(), &other).await,
+        "a clash"
+    );
+}

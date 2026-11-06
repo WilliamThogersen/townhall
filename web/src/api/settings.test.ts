@@ -11,6 +11,7 @@ const daemon: Settings = {
   sessionPanelOpen: false,
   notifyWhen: "failed",
   townhallModel: "haiku",
+  minFreeDiskGb: 10,
   learnAboutMe: true,
   githubAccount: "octocat",
 };

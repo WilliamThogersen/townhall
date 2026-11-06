@@ -7,7 +7,9 @@ use std::time::Duration;
 
 use tempfile::TempDir;
 use townhall_core::agent::{LaunchOptions, ShellAdapter};
-use townhall_core::model::{AddRepo, AgentEvent, EntryBody, NewTask, Repo, Task, TaskState};
+use townhall_core::model::{
+    AddRepo, AgentEvent, EntryBody, NewTask, Repo, SettingKey, Task, TaskState,
+};
 use townhall_core::store::Store;
 use townhall_core::{agent, Context, ContextOptions, Home, Workspace};
 
@@ -94,6 +96,8 @@ impl Sched {
         ctx.repos().await.unwrap();
         let store = ctx.store().unwrap();
         store.save_agent_type(PLAIN_TYPE).await.unwrap();
+        let floor_off = store.set_setting(SettingKey::MinFreeDiskGb, serde_json::json!(0));
+        floor_off.await.unwrap();
         let conversation = store.create_conversation().await.unwrap().id;
         Self {
             root,
@@ -265,6 +269,7 @@ pub fn kill_sessions(ws: &Workspace) {
 fn open(ws: &Workspace, claude: &str) -> Context {
     let options = ContextOptions {
         claude_bin: claude.to_string(),
+        notify_delay: Duration::from_secs(3600),
         ..ContextOptions::default()
     };
     Context::open(ws.clone(), options).unwrap()
