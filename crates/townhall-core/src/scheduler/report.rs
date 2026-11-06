@@ -25,22 +25,31 @@ impl Verdict {
     }
 }
 
-const TESTER_WORDS: [Verdict; 2] = [Verdict::Pass, Verdict::Fail];
-const REVIEWER_WORDS: [Verdict; 2] = [Verdict::Approve, Verdict::Reject];
-const ANY_WORDS: [Verdict; 4] = [
-    Verdict::Approve,
-    Verdict::Reject,
-    Verdict::Pass,
-    Verdict::Fail,
+/// The only agent types a `requires` may name, each with the verdict words its report may use.
+static VOCABULARY: [(&str, [Verdict; 2]); 2] = [
+    ("tester", [Verdict::Pass, Verdict::Fail]),
+    ("reviewer", [Verdict::Approve, Verdict::Reject]),
 ];
 
-/// The verdict words an agent type may use; a type other than tester or reviewer may use any.
-pub fn vocabulary(agent_type: &str) -> &'static [Verdict] {
-    match agent_type.to_ascii_lowercase().as_str() {
-        "tester" => &TESTER_WORDS,
-        "reviewer" => &REVIEWER_WORDS,
-        _ => &ANY_WORDS,
+/// The verdict words `agent_type` may use (ignoring case), or `None` for a type that cannot be
+/// required.
+pub fn vocabulary(agent_type: &str) -> Option<&'static [Verdict]> {
+    VOCABULARY
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(agent_type))
+        .map(|(_, words)| words.as_slice())
+}
+
+/// Why `agent_type` cannot be required, or `None` when it can.
+pub fn unrequirable(agent_type: &str) -> Option<String> {
+    if vocabulary(agent_type).is_some() {
+        return None;
     }
+    let names: Vec<&str> = VOCABULARY.iter().map(|(name, _)| *name).collect();
+    Some(format!(
+        "`{agent_type}` cannot be required: it has no verdict words, only {} can be",
+        names.join(" and ")
+    ))
 }
 
 /// What a report says. Each field is `Err` with the reason when its lines cannot be trusted
@@ -119,7 +128,8 @@ fn verdict_of(word: &str, allowed: &[Verdict]) -> Result<Verdict, String> {
 /// tildes and closes only with the same character, at least as many, and nothing else on the
 /// line; one never closed runs to the end. A line right after a `>` line, with no blank line
 /// between, is taken as quoted too. Identical repeats are one line; different ones are
-/// a conflict. The verdict word must belong to `agent_type`'s [`vocabulary`].
+/// a conflict. The verdict word must belong to `agent_type`'s [`vocabulary`]; a type without
+/// one gets an error for any verdict word.
 pub fn parse(text: &str, agent_type: &str) -> Report {
     let mut verdicts = vec![];
     let mut commits = vec![];
@@ -158,8 +168,11 @@ pub fn parse(text: &str, agent_type: &str) -> Report {
     }
     Report {
         verdict: single("VERDICT", &verdicts).and_then(|word| {
-            word.map(|w| verdict_of(w, vocabulary(agent_type)))
-                .transpose()
+            let Some(word) = word else { return Ok(None) };
+            match vocabulary(agent_type) {
+                Some(allowed) => verdict_of(word, allowed).map(Some),
+                None => Err(unrequirable(agent_type).unwrap_or_default()),
+            }
         }),
         commit: single("COMMIT", &commits).map(|sha| sha.map(String::from)),
     }
@@ -212,9 +225,32 @@ mod tests {
         assert!(verdict("VERDICT: PASS", "reviewer").is_err());
         assert!(verdict("VERDICT: MAYBE", "tester").is_err());
         assert!(verdict("VERDICT: approve", "reviewer").is_err());
-        assert_eq!(verdict("VERDICT: PASS", "auditor"), Ok(Some(Verdict::Pass)));
         assert!(Verdict::Approve.clears() && Verdict::Pass.clears());
         assert!(!Verdict::Reject.clears() && !Verdict::Fail.clears());
+    }
+
+    #[test]
+    fn only_tester_and_reviewer_have_a_vocabulary() {
+        assert_eq!(
+            vocabulary("Tester"),
+            Some(&[Verdict::Pass, Verdict::Fail][..])
+        );
+        assert_eq!(
+            vocabulary("REVIEWER"),
+            Some(&[Verdict::Approve, Verdict::Reject][..])
+        );
+        assert!(unrequirable("tester").is_none() && unrequirable("reviewer").is_none());
+        let why = unrequirable("coder").unwrap();
+        assert!(
+            why.contains("`coder`") && why.contains("tester and reviewer"),
+            "{why}"
+        );
+        for word in ["PASS", "FAIL", "APPROVE", "REJECT"] {
+            let text = format!("VERDICT: {word}");
+            assert!(verdict(&text, "coder").is_err(), "{word}");
+            assert!(verdict(&text, "").is_err(), "{word}");
+        }
+        assert_eq!(verdict("no verdict line", "coder"), Ok(None));
     }
 
     #[test]

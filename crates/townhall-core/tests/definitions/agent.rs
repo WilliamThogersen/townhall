@@ -273,6 +273,22 @@ fn requires_defaults_to_nothing_and_is_parsed() {
 }
 
 #[test]
+fn requires_accepts_only_tester_and_reviewer() {
+    for bad in ["[\"coder\"]", "[\"tester\", \"builder\"]", "[\"shipper\"]"] {
+        let errors = agent_errors(&format!("{MINIMAL}requires = {bad}\n"));
+        assert_eq!(errors.len(), 1, "{bad}: {errors:?}");
+        assert!(
+            errors[0].contains("requires") && errors[0].contains("cannot be required"),
+            "{errors:?}"
+        );
+    }
+    for good in ["[\"Tester\"]", "[\"reviewer\", \"TESTER\"]"] {
+        let source = format!("{MINIMAL}requires = {good}\n");
+        assert!(check_agent(&source).is_ok(), "{good}");
+    }
+}
+
+#[test]
 fn requires_must_hold_valid_unique_names() {
     for bad in ["[\"a b\"]", "[\"\"]", "[\"tester\", \"TESTER\"]"] {
         let errors = agent_errors(&format!("{MINIMAL}requires = {bad}\n"));

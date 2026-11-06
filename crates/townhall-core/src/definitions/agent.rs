@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::error::{into_result, invalid_name, DefKind, DefinitionError};
 use super::parse::{parse, Parsed};
 use super::words::{model_problem, tool_problem};
+use crate::scheduler::report::unrequirable;
 
 /// The adapter an agent runs with, matching `AgentAdapter::kind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,7 +109,7 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
     let hand_back = hand_back_problems(def)
         .into_iter()
         .map(|m| error("can_hand_back_to", m));
-    let requires = name_list_problems(&def.requires)
+    let requires = requires_problems(&def.requires)
         .into_iter()
         .map(|m| error("requires", m));
     let command = command_problem(def).map(|m| error("command", m.to_string()));
@@ -140,6 +141,17 @@ fn command_problem(def: &AgentDef) -> Option<&'static str> {
 
 fn hand_back_problems(def: &AgentDef) -> Vec<String> {
     name_list_problems(def.can_hand_back_to.as_deref().unwrap_or_default())
+}
+
+fn requires_problems(names: &[String]) -> Vec<String> {
+    let unusable = names
+        .iter()
+        .filter(|name| invalid_name(name).is_none())
+        .filter_map(|name| unrequirable(name));
+    name_list_problems(names)
+        .into_iter()
+        .chain(unusable)
+        .collect()
 }
 
 fn name_list_problems(names: &[String]) -> Vec<String> {
