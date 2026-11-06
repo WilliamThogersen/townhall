@@ -11,6 +11,7 @@ pub enum Why {
     Ended,
     /// Its task's branch was merged.
     Merged,
+    Settled,
     /// No task has its name: nothing will ever use it.
     Orphan,
 }
@@ -20,6 +21,7 @@ impl Why {
         match self {
             Self::Ended => "ended",
             Self::Merged => "merged",
+            Self::Settled => "settled",
             Self::Orphan => "orphan",
         }
     }
@@ -27,11 +29,17 @@ impl Why {
 
 /// Why the agent `name` goes, `None` while its task is live work. Task names are unique
 /// ignoring case, as worktree folders and branches are on a case-insensitive disk.
-pub fn verdict(name: &str, tasks: &[Task], ended: &HashSet<String>) -> Option<Why> {
+pub fn verdict(
+    name: &str,
+    tasks: &[Task],
+    ended: &HashSet<String>,
+    settled: &HashSet<String>,
+) -> Option<Why> {
     match tasks.iter().find(|t| t.name.eq_ignore_ascii_case(name)) {
         None => Some(Why::Orphan),
         Some(t) if ended.contains(&t.conversation_id) => Some(Why::Ended),
         Some(t) if t.state == TaskState::Merged => Some(Why::Merged),
+        Some(t) if t.state == TaskState::Ended && settled.contains(&t.name) => Some(Why::Settled),
         Some(_) => None,
     }
 }
@@ -66,20 +74,40 @@ mod tests {
             task("old", "closed", TaskState::Working),
         ];
         let ended = HashSet::from(["closed".to_string()]);
-        assert_eq!(verdict("live", &tasks, &ended), None);
+        let none = HashSet::new();
+        assert_eq!(verdict("live", &tasks, &ended, &none), None);
         assert_eq!(
-            verdict("done", &tasks, &ended),
+            verdict("done", &tasks, &ended, &none),
             None,
             "an ended task of an open conversation may still be talked about"
         );
-        assert_eq!(verdict("shipped", &tasks, &ended), Some(Why::Merged));
-        assert_eq!(verdict("old", &tasks, &ended), Some(Why::Ended));
-        assert_eq!(verdict("nobody", &tasks, &ended), Some(Why::Orphan));
+        assert_eq!(verdict("shipped", &tasks, &ended, &none), Some(Why::Merged));
+        assert_eq!(verdict("old", &tasks, &ended, &none), Some(Why::Ended));
+        assert_eq!(verdict("nobody", &tasks, &ended, &none), Some(Why::Orphan));
+    }
+
+    #[test]
+    fn an_ended_task_goes_once_settled() {
+        let tasks = [
+            task("done", "open", TaskState::Ended),
+            task("busy", "open", TaskState::Working),
+        ];
+        let settled = HashSet::from(["done".to_string(), "busy".to_string()]);
+        let none = HashSet::new();
+        assert_eq!(verdict("done", &tasks, &none, &settled), Some(Why::Settled));
+        assert_eq!(
+            verdict("busy", &tasks, &none, &settled),
+            None,
+            "only an ended task settles"
+        );
     }
 
     #[test]
     fn names_match_ignoring_case() {
         let tasks = [task("Fix", "open", TaskState::Working)];
-        assert_eq!(verdict("fix", &tasks, &HashSet::new()), None);
+        assert_eq!(
+            verdict("fix", &tasks, &HashSet::new(), &HashSet::new()),
+            None
+        );
     }
 }
