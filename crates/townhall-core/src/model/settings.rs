@@ -6,7 +6,6 @@ use crate::{Error, Result};
 pub const AGENTS_AT_ONCE_MIN: u32 = 1;
 pub const AGENTS_AT_ONCE_MAX: u32 = 50;
 pub const AGENTS_AT_ONCE_DEFAULT: u32 = 6;
-/// Most gigabytes `minFreeDiskGb` takes; `0` turns the limit off.
 pub const DISK_GB_MAX: u32 = 100_000;
 pub const MIN_FREE_DISK_GB_DEFAULT: u32 = 5;
 
