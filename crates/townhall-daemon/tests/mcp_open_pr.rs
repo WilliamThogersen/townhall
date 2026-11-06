@@ -4,7 +4,7 @@ use std::sync::Once;
 
 use axum::http::StatusCode;
 use serde_json::{json, Value};
-use townhall_core::model::{Checks, NewTask, Task, TaskState};
+use townhall_core::model::{Checks, NewTask, SettingKey, Task, TaskState};
 
 mod common;
 mod mcp_support;
@@ -21,7 +21,7 @@ fn stubs() {
         let dir = std::env::temp_dir().join(format!("townhall-open-pr-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let gh = dir.join("gh");
-        let script = "#!/bin/sh\nif [ \"$2\" = status ]; then exit 0; fi\necho https://github.com/acme/shop/pull/7\n";
+        let script = "#!/bin/sh\nif [ \"$2\" = status ]; then exit 0; fi\nif [ \"$1\" = api ]; then echo 'WilliamThogersen 42'; exit 0; fi\nif [ \"$2\" = switch ]; then echo \"no login for $6\" >&2; exit 1; fi\necho https://github.com/acme/shop/pull/7\n";
         std::fs::write(&gh, script).unwrap();
         std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var("TOWNHALL_GH_BIN", &gh);
@@ -147,6 +147,26 @@ async fn a_github_origin_opens_the_pr_and_stores_it() {
     )
     .await;
     assert!(!pushed.is_empty());
+}
+
+#[tokio::test]
+async fn the_stored_github_account_is_enforced_and_names_itself_in_the_error() {
+    let m = Mcp::new().await;
+    with_worktree(&m, "fix-login").await;
+    let origin = "https://github.com/acme/shop.git";
+    git(&m.env.startup, &["remote", "add", "origin", origin]).await;
+    let set = m
+        .store()
+        .set_setting(SettingKey::GithubAccount, json!("octocat"));
+    set.await.unwrap();
+    let result = open_pr(&m, "fix-login", json!({"title": "Fix login"})).await;
+    assert_eq!(result["isError"], true, "{result}");
+    let message = text(&result);
+    assert!(message.contains("not octocat"), "{message}");
+    assert!(
+        message.contains("gh auth login --hostname github.com"),
+        "{message}"
+    );
 }
 
 #[tokio::test]

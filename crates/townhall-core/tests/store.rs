@@ -25,6 +25,13 @@ fn write_config(dir: &TempDir, value: serde_json::Value) {
     fs::write(h.config_file(), value.to_string()).unwrap();
 }
 
+fn seeded() -> Settings {
+    Settings {
+        github_account: "WilliamThogersen".into(),
+        ..Settings::default()
+    }
+}
+
 #[tokio::test]
 async fn an_empty_home_gets_a_migrated_database() {
     let dir = TempDir::new().unwrap();
@@ -36,7 +43,7 @@ async fn an_empty_home_gets_a_migrated_database() {
         !root.join("config.json").exists(),
         "no config file is ever written"
     );
-    assert_eq!(store.settings().await.unwrap(), Settings::default());
+    assert_eq!(store.settings().await.unwrap(), seeded());
     assert!(store.repos().await.unwrap().is_empty());
     let (mode, fks, version) = store
         .call(|conn| {
@@ -99,7 +106,7 @@ async fn config_json_is_imported_once_and_renamed() {
     assert_eq!(store.desktop_repo().await.unwrap(), Some(repo.clone()));
     assert_eq!(
         store.settings().await.unwrap(),
-        Settings::default(),
+        seeded(),
         "only the repo is imported, never settings"
     );
     let h = home(&dir);

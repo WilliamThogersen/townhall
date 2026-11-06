@@ -72,8 +72,40 @@ impl Env {
             base: "main",
             title: "Fix login",
             body: "the body",
+            account: "",
         };
         publish(&req, programs)
+    }
+
+    fn run_as(&self, programs: &Programs, account: &str) -> townhall_core::Result<Published> {
+        let req = PrRequest {
+            worktree: &self.repo,
+            branch: BRANCH,
+            base: "main",
+            title: "Fix login",
+            body: "the body",
+            account,
+        };
+        publish(&req, programs)
+    }
+
+    fn account_stub(&self, active: &str, others: &[&str]) -> PathBuf {
+        let state = self.dir.path().join("active");
+        std::fs::write(&state, active).unwrap();
+        let known = others.join(" ");
+        let script = format!(
+            "#!/bin/sh\necho \"$@\" >> \"{log}\"\ncase \"$1 $2\" in\n\
+             \"auth status\") exit 0;;\n\
+             \"auth switch\") case \" {known} \" in *\" $6 \"*) printf %s \"$6\" > \"{state}\"; exit 0;; esac; echo \"no account $6\" >&2; exit 1;;\n\
+             \"api --hostname\") echo \"$(cat \"{state}\") 42\";;\n\
+             *) {CREATE_GITHUB};;\nesac\n",
+            log = self.log("gh").display(),
+            state = state.display(),
+        );
+        let path = self.dir.path().join("gh");
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
     }
 
     async fn pushed(&self) -> String {
@@ -256,4 +288,63 @@ async fn a_push_that_fails_is_an_error() {
     );
     let log = read(env.log("gh"));
     assert!(!log.contains("pr create"), "{log}");
+}
+
+const ME: &str = "WilliamThogersen";
+
+#[tokio::test]
+async fn the_active_account_is_kept_and_becomes_the_git_identity() {
+    let env = env().await;
+    env.origin("https://github.com/acme/shop.git").await;
+    let gh = env.account_stub(ME, &[ME]);
+    let got = env.run_as(&programs(&gh, &gh), ME).unwrap();
+    assert!(matches!(got, Published::Opened { .. }), "{got:?}");
+    let log = read(env.log("gh"));
+    assert!(!log.contains("auth switch"), "{log}");
+    let name = git(&env.repo, &["config", "--get", "user.name"]).await;
+    let email = git(&env.repo, &["config", "--get", "user.email"]).await;
+    assert_eq!(name.trim(), ME);
+    assert_eq!(email.trim(), "42+WilliamThogersen@users.noreply.github.com");
+}
+
+#[tokio::test]
+async fn another_active_account_is_switched_before_anything_is_pushed() {
+    let env = env().await;
+    env.origin("https://github.com/acme/shop.git").await;
+    let gh = env.account_stub("someone-else", &[ME, "someone-else"]);
+    env.run_as(&programs(&gh, &gh), ME).unwrap();
+    let log = read(env.log("gh"));
+    assert!(
+        log.contains(&format!("auth switch --hostname github.com --user {ME}")),
+        "{log}"
+    );
+    assert!(!env.pushed().await.is_empty());
+}
+
+#[tokio::test]
+async fn an_account_gh_has_no_login_for_fails_clearly_and_pushes_nothing() {
+    let env = env().await;
+    env.origin("https://github.com/acme/shop.git").await;
+    let gh = env.account_stub("someone-else", &["someone-else"]);
+    let err = env.run_as(&programs(&gh, &gh), ME).unwrap_err().to_string();
+    assert!(
+        err.contains(ME) && err.contains("gh auth login --hostname github.com"),
+        "{err}"
+    );
+    assert!(env.pushed().await.is_empty());
+    let log = read(env.log("gh"));
+    assert!(!log.contains("pr create"), "{log}");
+}
+
+#[tokio::test]
+async fn no_expected_account_means_no_account_calls() {
+    let env = env().await;
+    env.origin("https://github.com/acme/shop.git").await;
+    let gh = env.account_stub("someone-else", &[]);
+    env.run_as(&programs(&gh, &gh), "").unwrap();
+    let log = read(env.log("gh"));
+    assert!(
+        !log.contains("auth switch") && !log.contains("api "),
+        "{log}"
+    );
 }
