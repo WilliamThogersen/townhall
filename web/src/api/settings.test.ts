@@ -11,9 +11,7 @@ const daemon: Settings = {
   sessionPanelOpen: false,
   notifyWhen: "failed",
   townhallModel: "haiku",
-  sharedCargoTarget: false,
   minFreeDiskGb: 10,
-  sharedTargetMaxGb: 80,
 };
 
 function mockFetch(status: number, body: unknown) {
