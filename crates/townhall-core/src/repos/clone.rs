@@ -10,10 +10,10 @@ use crate::{Error, Home, Result};
 /// Never wait for a username or password on a terminal nobody is looking at, and make ssh
 /// fail instead of asking for a passphrase or to trust a host. A `GIT_SSH_COMMAND` the user
 /// already has is kept: it is theirs.
-const CLONE_ENV: [(&str, &str); 1] = [("GIT_TERMINAL_PROMPT", "0")];
-const SSH_NO_PROMPT: &str = "ssh -o BatchMode=yes";
+pub(super) const CLONE_ENV: [(&str, &str); 1] = [("GIT_TERMINAL_PROMPT", "0")];
+pub(super) const SSH_NO_PROMPT: &str = "ssh -o BatchMode=yes";
 
-const AUTH_FAILED: [&str; 5] = [
+pub(super) const AUTH_FAILED: [&str; 5] = [
     "authentication failed",
     "could not read username",
     "could not read password",

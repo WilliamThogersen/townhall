@@ -1,6 +1,12 @@
 //! Pushing a task branch and opening its pull request (GitHub) or merge request (GitLab).
 
+use std::io::ErrorKind;
+use std::path::Path;
+
+use super::clone::{AUTH_FAILED, CLONE_ENV, SSH_NO_PROMPT};
 use super::source::split_remote;
+use crate::cmd::{run_blocking, run_blocking_env};
+use crate::redact::redact;
 use crate::{Error, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,8 +54,176 @@ pub fn detect(origin_url: &str, configured: Option<&str>) -> Result<Origin> {
     Ok(Origin { forge, host })
 }
 
+pub const GH_BIN_ENV: &str = "TOWNHALL_GH_BIN";
+pub const GLAB_BIN_ENV: &str = "TOWNHALL_GLAB_BIN";
+
+#[derive(Debug, Clone)]
+pub struct Programs {
+    pub gh: String,
+    pub glab: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PrRequest<'a> {
+    pub worktree: &'a std::path::Path,
+    pub branch: &'a str,
+    pub base: &'a str,
+    pub title: &'a str,
+    pub body: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Published {
+    NoRemote,
+    Opened { url: String, number: Option<u64> },
+}
+
+impl Programs {
+    pub fn from_env() -> Self {
+        let pick = |var: &str, default: &str| {
+            std::env::var(var)
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| default.to_string())
+        };
+        Self {
+            gh: pick(GH_BIN_ENV, "gh"),
+            glab: pick(GLAB_BIN_ENV, "glab"),
+        }
+    }
+}
+
+fn invalid(message: String) -> Error {
+    Error::InvalidInput(redact(&message).into_owned())
+}
+
+fn link_in(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .rev()
+        .find(|t| t.starts_with("http://") || t.starts_with("https://"))
+        .map(str::to_string)
+}
+
+fn check_login(program: &str, origin: &Origin, dir: &Path) -> Result<()> {
+    let host = origin.host.as_str();
+    let (name, site) = match origin.forge {
+        Forge::GitHub => ("GitHub CLI", "https://cli.github.com"),
+        Forge::GitLab => ("GitLab CLI", "https://gitlab.com/gitlab-org/cli"),
+    };
+    match run_blocking(program, &["auth", "status", "--hostname", host], Some(dir)) {
+        Ok(_) => Ok(()),
+        Err(Error::Spawn { source, .. }) if source.kind() == ErrorKind::NotFound => {
+            Err(invalid(format!(
+                "`{program}` is not installed: install the {name} ({site}), then run `{program} auth login --hostname {host}`"
+            )))
+        }
+        Err(Error::Command { stderr, .. }) => Err(invalid(format!(
+            "`{program}` is not logged in to {host}: run `{program} auth login --hostname {host}` ({})",
+            stderr.trim()
+        ))),
+        Err(e) => Err(e),
+    }
+}
+
+fn push(req: &PrRequest) -> Result<()> {
+    let mut envs = CLONE_ENV.to_vec();
+    if std::env::var_os("GIT_SSH_COMMAND").is_none() {
+        envs.push(("GIT_SSH_COMMAND", SSH_NO_PROMPT));
+    }
+    let args = ["push", "--set-upstream", "origin", req.branch];
+    match run_blocking_env("git", &args, Some(req.worktree), &envs) {
+        Ok(_) => Ok(()),
+        Err(Error::Command { stderr, .. }) => {
+            let lower = stderr.to_ascii_lowercase();
+            let why = if AUTH_FAILED.iter().any(|n| lower.contains(n)) {
+                "authentication failed: check your git credentials or ssh key".to_string()
+            } else {
+                stderr.trim().to_string()
+            };
+            Err(invalid(format!(
+                "could not push {} to origin: {why}",
+                req.branch
+            )))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn create(req: &PrRequest, origin: &Origin, programs: &Programs) -> Result<String> {
+    let (program, shown, args, envs): (&str, &str, Vec<&str>, [(&str, &str); 1]) =
+        match origin.forge {
+            Forge::GitHub => (
+                &programs.gh,
+                "gh pr create",
+                vec![
+                    "pr", "create", "--head", req.branch, "--base", req.base, "--title", req.title,
+                    "--body", req.body,
+                ],
+                [("GH_PROMPT_DISABLED", "1")],
+            ),
+            Forge::GitLab => (
+                &programs.glab,
+                "glab mr create",
+                vec![
+                    "mr",
+                    "create",
+                    "--source-branch",
+                    req.branch,
+                    "--target-branch",
+                    req.base,
+                    "--title",
+                    req.title,
+                    "--description",
+                    req.body,
+                    "--yes",
+                ],
+                [("GITLAB_HOST", origin.host.as_str())],
+            ),
+        };
+    match run_blocking_env(program, &args, Some(req.worktree), &envs) {
+        Ok(out) => link_in(&out)
+            .ok_or_else(|| invalid(format!("`{shown}` printed no link: {}", out.trim()))),
+        Err(Error::Command { stderr, .. }) => {
+            match link_in(&stderr)
+                .filter(|_| stderr.to_ascii_lowercase().contains("already exists"))
+            {
+                Some(url) => Ok(url),
+                None => Err(invalid(format!("`{shown}` failed: {}", stderr.trim()))),
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub fn publish(req: &PrRequest, programs: &Programs) -> Result<Published> {
+    let dir = Some(req.worktree);
+    let url = match run_blocking("git", &["remote", "get-url", "origin"], dir) {
+        Ok(url) => url,
+        Err(Error::Command { .. }) => return Ok(Published::NoRemote),
+        Err(e) => return Err(e),
+    };
+    let configured = run_blocking("git", &["config", "--get", "townhall.forge"], dir).ok();
+    let origin = detect(&url, configured.as_deref())?;
+    let program = match origin.forge {
+        Forge::GitHub => &programs.gh,
+        Forge::GitLab => &programs.glab,
+    };
+    check_login(program, &origin, req.worktree)?;
+    push(req)?;
+    let url = create(req, &origin, programs)?;
+    Ok(Published::Opened {
+        number: number_from_url(&url),
+        url,
+    })
+}
+
 pub fn number_from_url(url: &str) -> Option<u64> {
-    let mut segments = url.split(['?', '#']).next()?.trim_end_matches('/').split('/');
+    let mut segments = url
+        .split(['?', '#'])
+        .next()?
+        .trim_end_matches('/')
+        .split('/');
     segments.find(|s| *s == "pull" || *s == "merge_requests")?;
     segments.next()?.parse().ok()
 }
@@ -109,7 +283,10 @@ mod tests {
     fn local_origins_are_refused() {
         for url in ["/srv/x.git", "file:///srv/x.git"] {
             let err = detect(url, None).unwrap_err();
-            assert!(err.to_string().contains("is a local folder"), "{url}: {err}");
+            assert!(
+                err.to_string().contains("is a local folder"),
+                "{url}: {err}"
+            );
         }
     }
 
