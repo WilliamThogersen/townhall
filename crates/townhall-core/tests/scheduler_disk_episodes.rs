@@ -1,5 +1,5 @@
 use serde_json::json;
-use townhall_core::model::{SettingKey, TaskState};
+use townhall_core::model::{SettingKey, Settings, TaskState};
 use townhall_core::scheduler::run_once;
 
 mod scheduler_support;
@@ -91,4 +91,17 @@ async fn a_retired_worktree_takes_its_own_target_folder_with_it() {
     std::fs::write(target.join("artifact"), "built").unwrap();
     townhall_core::agent::retire(&s.ws, &name).await.unwrap();
     assert!(!s.worktree(&name).exists());
+}
+
+#[tokio::test]
+async fn the_harness_floor_is_off_and_the_production_default_is_not() {
+    assert_eq!(Settings::default().min_free_disk_gb, 5);
+    let s = Sched::new().await;
+    let settings = s.ctx().settings().await.unwrap();
+    assert_eq!(settings.min_free_disk_gb, 0);
+    let name = unique("harness");
+    s.create(&name, &[]).await;
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert_eq!(pass.started, vec![name]);
+    assert!(pass.warnings.is_empty(), "{:?}", pass.warnings);
 }
