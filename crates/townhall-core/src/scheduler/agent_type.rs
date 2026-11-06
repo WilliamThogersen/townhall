@@ -6,7 +6,14 @@ use crate::context::Context;
 use crate::definitions::AdapterKind;
 use crate::mcp;
 use crate::model::Task;
-use crate::{Error, Result};
+use crate::{Error, Result, Workspace};
+
+/// The variable cargo reads for where to build.
+const CARGO_TARGET_DIR_ENV: &str = "CARGO_TARGET_DIR";
+
+async fn workspace_of(ctx: &Context, task: &Task) -> Result<Workspace> {
+    ctx.workspace(&ctx.repo(&task.repo).await?)
+}
 
 /// How a task's agent starts, before the brief, session id and folders are added.
 pub(super) struct Launcher {
@@ -46,6 +53,16 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
         AdapterKind::Claude => (Box::new(ClaudeCodeAdapter::new(ctx.claude_bin())), true),
         AdapterKind::Shell => (Box::new(ShellAdapter), false),
     };
+    if ctx.settings().await?.shared_cargo_target {
+        options.env.push((
+            CARGO_TARGET_DIR_ENV.into(),
+            workspace_of(ctx, task)
+                .await?
+                .cargo_target_dir()
+                .to_string_lossy()
+                .into_owned(),
+        ));
+    }
     if claude && !targets.is_empty() {
         options.mcp_config = Some(mcp::task_config_json(ctx.base_url(), &task.name));
         options.mcp_tools = mcp::task_allowed_tools();

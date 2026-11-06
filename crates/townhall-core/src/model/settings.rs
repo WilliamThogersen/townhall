@@ -139,9 +139,9 @@ impl SettingKey {
             Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::SharedCargoTarget => {
                 value.is_boolean()
             }
-            Self::MinFreeDiskGb | Self::SharedTargetMaxGb => value
-                .as_u64()
-                .is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
+            Self::MinFreeDiskGb | Self::SharedTargetMaxGb => {
+                value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX))
+            }
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
             }),

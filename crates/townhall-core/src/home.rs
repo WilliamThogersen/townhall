@@ -11,6 +11,8 @@ const HOME_DIR: &str = ".townhall";
 pub const WORKTREES_DIR: &str = "worktrees";
 /// Repos townhall cloned from a url live under `<home>/repos/`.
 pub const REPOS_DIR: &str = "repos";
+/// One cargo target folder per repo lives under `<home>/target/<key>`.
+pub const CARGO_TARGETS_DIR: &str = "target";
 const LOGS_DIR: &str = "logs";
 const CONFIG_FILE: &str = "config.json";
 const MAX_BASE_LEN: usize = 32;
@@ -59,6 +61,10 @@ impl Home {
 
     pub fn worktrees_for(&self, key: &str) -> PathBuf {
         self.root.join(WORKTREES_DIR).join(key)
+    }
+
+    pub fn cargo_target_for(&self, key: &str) -> PathBuf {
+        self.root.join(CARGO_TARGETS_DIR).join(key)
     }
 
     /// `<home>/repos`, created (0700) when missing: where `git clone` puts added remotes.
@@ -127,6 +133,11 @@ impl Workspace {
     pub fn worktrees_dir(&self) -> PathBuf {
         self.home.worktrees_for(&self.key)
     }
+
+    /// The cargo target folder every agent of this repo builds into (`CARGO_TARGET_DIR`).
+    pub fn cargo_target_dir(&self) -> PathBuf {
+        self.home.cargo_target_for(&self.key)
+    }
 }
 
 fn fnv1a(bytes: &[u8]) -> u64 {
@@ -188,6 +199,15 @@ mod tests {
         assert!(repo_key(Path::new("/")).starts_with("repo-"));
         let long = format!("/x/{}", "a".repeat(100));
         assert_eq!(repo_key(Path::new(&long)).len(), MAX_BASE_LEN + 9);
+    }
+
+    #[test]
+    fn cargo_targets_are_per_repo_and_outside_the_worktrees() {
+        let home = Home::at("/h");
+        let (a, b) = (home.cargo_target_for("a-1"), home.cargo_target_for("b-2"));
+        assert_eq!(a, Path::new("/h/target/a-1"));
+        assert_ne!(a, b);
+        assert!(!a.starts_with(home.worktrees_for("a-1")));
     }
 
     #[cfg(unix)]

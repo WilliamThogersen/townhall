@@ -283,3 +283,31 @@ async fn a_start_tmux_refuses_keeps_the_reason_before_the_command() {
     );
     assert!(s.agents().await.is_empty());
 }
+
+#[tokio::test]
+async fn agents_of_a_repo_build_into_its_shared_cargo_target() {
+    let s = Sched::new().await;
+    let (first, second) = (unique("share-a"), unique("share-b"));
+    s.create(&first, &[]).await;
+    s.create(&second, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    let shared = s.ws.cargo_target_dir();
+    assert!(shared.starts_with(s.ws.home().root().join("target")));
+    assert!(!shared.starts_with(s.ws.worktrees_dir()));
+    assert_eq!(s.target_dir(&first).await, shared.to_string_lossy());
+    assert_eq!(s.target_dir(&second).await, shared.to_string_lossy());
+}
+
+#[tokio::test]
+async fn the_shared_cargo_target_can_be_turned_off() {
+    let s = Sched::new().await;
+    let put = s
+        .store()
+        .set_setting(SettingKey::SharedCargoTarget, json!(false));
+    put.await.unwrap();
+    let name = unique("own-target");
+    s.create(&name, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    let shared = s.ws.cargo_target_dir();
+    assert_ne!(s.target_dir(&name).await, shared.to_string_lossy());
+}
