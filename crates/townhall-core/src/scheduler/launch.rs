@@ -114,7 +114,7 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     let mut pass = Pass::default();
     let low = low_disk(ctx, settings.min_free_disk_gb, &mut pass);
     if ready.is_empty() {
-        return Ok(Pass::default());
+        return Ok(pass);
     }
     let limit = settings.agents_at_once;
     let fleet = survey(ctx).await?;
