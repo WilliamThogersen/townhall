@@ -34,7 +34,6 @@ function useAnswers(entries: readonly ThreadEntry[]) {
   }, [entries]);
 }
 
-/** What the entry a reply answers said; null when it is gone, hidden, or has nothing to quote. */
 function quoteOf(entries: readonly ThreadEntry[], hidden: ReadonlySet<number>, entry: ThreadEntry): ReplyTarget | null {
   if (entry.kind !== "you" || entry.replyTo === undefined) return null;
   const at = entries.findIndex((other) => other.id === entry.replyTo);

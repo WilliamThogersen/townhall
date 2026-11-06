@@ -14,7 +14,6 @@ export interface ThreadEntryViewProps {
   readonly open: boolean;
   /** For an agent question: the answer the agent got, when there was one. */
   readonly answer?: string;
-  /** For a reply: what the entry it answers said, null when that is gone or not quotable. */
   readonly quote?: ReplyTarget | null;
 }
 

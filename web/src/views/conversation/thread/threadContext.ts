@@ -9,7 +9,6 @@ export interface ThreadContextValue {
   readonly thinking: boolean;
   readonly openTask: string | null;
   readonly onOpenTask: (name: string) => void;
-  /** Make this entry the one the next message answers, and focus the composer. */
   readonly onReply: (target: ReplyTarget) => void;
   readonly sendMessage: (text: string) => Promise<boolean>;
   readonly answerAgent: (agent: string, text: string) => Promise<boolean>;

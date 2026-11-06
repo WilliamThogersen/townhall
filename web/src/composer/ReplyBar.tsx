@@ -5,7 +5,6 @@ export interface ReplyBarProps {
   readonly onCancel: () => void;
 }
 
-/** The entry being answered, shown above the input. */
 export function ReplyBar({ target, onCancel }: ReplyBarProps) {
   return (
     <div className="th-reply-bar" role="group" aria-label="Replying to">

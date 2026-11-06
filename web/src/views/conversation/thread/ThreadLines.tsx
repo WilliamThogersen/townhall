@@ -22,7 +22,6 @@ export function EntryTime({ at }: { readonly at: string }) {
   );
 }
 
-/** Appears on hover or focus; makes the entry the one the next message answers. */
 export function ReplyButton({ entry }: { readonly entry: ThreadEntry }) {
   const { onReply } = useThread();
   const target = replyTarget(entry);
@@ -42,7 +41,6 @@ export interface EventLineProps {
   readonly kind: string;
   readonly event?: string;
   readonly at?: string;
-  /** The thread entry this line shows: makes it findable and answerable. */
   readonly entry?: ThreadEntry;
   readonly children: ReactNode;
 }
@@ -73,7 +71,6 @@ export interface MessageProps {
   readonly answered?: boolean;
   /** False when the content shows the time itself. */
   readonly time?: boolean;
-  /** The thread entry this message shows: makes it findable and answerable. */
   readonly entry?: ThreadEntry;
   readonly children: ReactNode;
 }

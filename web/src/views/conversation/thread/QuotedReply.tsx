@@ -4,7 +4,6 @@ import type { ReplyTarget } from "../../../composer/replies";
 const FLASH_MS = 1500;
 const flashing = new Map<Element, number>();
 
-/** Scroll the entry into view and mark it for a moment. Does nothing when it is not on screen. */
 function showEntry(from: Element, id: number): void {
   const original = from.closest(".th-thread")?.querySelector(`[data-entry-id="${id}"]`);
   if (original === null || original === undefined) return;
@@ -22,7 +21,6 @@ function showEntry(from: Element, id: number): void {
 
 export interface QuotedReplyProps {
   readonly id: number;
-  /** What the replied-to entry said; null when it is gone or has nothing to quote. */
   readonly target: ReplyTarget | null;
 }
 
