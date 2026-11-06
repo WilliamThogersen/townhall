@@ -71,7 +71,18 @@ impl Controller {
         if slot.mode != Mode::Stopped {
             return Err("daemon is already started".into());
         }
-        start_locked(&mut slot, self, repo).await
+        start_locked(&mut slot, self, repo, None).await
+    }
+
+    /// Like `start`, but serves on a listener the caller already holds, so the port cannot be
+    /// taken between choosing it and binding it.
+    #[cfg(test)]
+    async fn start_on(&self, listener: TcpListener, repo: &Path) -> Result<Mode, String> {
+        let mut slot = self.slot.lock().await;
+        if slot.mode != Mode::Stopped {
+            return Err("daemon is already started".into());
+        }
+        start_locked(&mut slot, self, repo, Some(listener)).await
     }
 
     /// Restarts the in-process daemon on a new repo. Refuses when the daemon is external.
@@ -85,8 +96,8 @@ impl Controller {
         }
         let began = Instant::now();
         stop_locked(&mut slot).await;
-        wait_released(self.addr).await;
-        let mode = start_locked(&mut slot, self, repo).await?;
+        let released = wait_released(self.addr).await;
+        let mode = start_locked(&mut slot, self, repo, released).await?;
         tracing::info!(
             target: "townhall::app",
             event = "daemon.restart",
@@ -104,27 +115,36 @@ impl Controller {
 }
 
 /// The OS can keep the port busy for a moment after our own server closed it.
-/// True once the port binds again, false when it stayed busy.
-async fn wait_released(addr: SocketAddr) -> bool {
+/// The listener once the port binds again, so the caller can keep it and nobody else slips in.
+/// `None` when the port stayed busy.
+async fn wait_released(addr: SocketAddr) -> Option<TcpListener> {
     for _ in 0..REBIND_ATTEMPTS {
         match TcpListener::bind(addr).await {
-            Ok(_) => return true,
+            Ok(l) => return Some(l),
             Err(_) => tokio::time::sleep(REBIND_DELAY).await,
         }
     }
-    false
+    None
 }
 
-async fn start_locked(slot: &mut Slot, c: &Controller, repo: &Path) -> Result<Mode, String> {
+async fn start_locked(
+    slot: &mut Slot,
+    c: &Controller,
+    repo: &Path,
+    held: Option<TcpListener>,
+) -> Result<Mode, String> {
     let addr = c.addr;
-    let listener = match TcpListener::bind(addr).await {
-        Ok(l) => l,
-        Err(e) if e.kind() == ErrorKind::AddrInUse => {
-            slot.mode = Mode::External;
-            log_mode(Mode::External);
-            return Ok(Mode::External);
-        }
-        Err(e) => return Err(format!("cannot bind {addr}: {e}")),
+    let listener = match held {
+        Some(l) => l,
+        None => match TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) if e.kind() == ErrorKind::AddrInUse => {
+                slot.mode = Mode::External;
+                log_mode(Mode::External);
+                return Ok(Mode::External);
+            }
+            Err(e) => return Err(format!("cannot bind {addr}: {e}")),
+        },
     };
     let store = c
         .store
@@ -198,49 +218,33 @@ mod tests {
     use super::*;
     use townhall_core::events::EventBus;
 
-    fn free_addr() -> SocketAddr {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap()
-    }
-
-    /// A probed ephemeral port can be grabbed by another process before we bind it, or while
-    /// a restart has it released (seen on macOS), which reads as External. Retry with a
-    /// fresh port until a start and a restart both stay embedded.
-    async fn embedded_through_a_restart(
-        home: &Home,
-        store: &Store,
-        repo: &Path,
-    ) -> (SocketAddr, Controller) {
-        for _ in 0..10 {
-            let addr = free_addr();
-            let c = Controller::new(addr, home.clone(), Some(store.clone()));
-            if c.start(repo).await.unwrap() != Mode::Embedded {
-                continue;
-            }
-            assert!(
-                TcpListener::bind(addr).await.is_err(),
-                "port should be held"
-            );
-            if c.restart(repo).await.unwrap() == Mode::Embedded {
-                return (addr, c);
-            }
-            c.stop().await;
-        }
-        panic!("no port stayed ours through a restart after 10 tries");
-    }
-
-    // One test, in this order: re-binding a port a test just released is unreliable on macOS,
-    // so the adopt scenario runs last and never feeds its port to the lifecycle scenario.
+    // One test, in this order: the adopt scenario runs last and never feeds its port to the
+    // lifecycle scenario. The lifecycle port is bound once by the test and handed over, never
+    // probed and released, so another process cannot take it before the daemon does.
     #[tokio::test(flavor = "multi_thread")]
     async fn lifecycle_then_adopt_existing() {
         let (capture, _guard) = townhall_daemon::logging::test_capture();
         let dir = tempfile::tempdir().unwrap();
         let home = Home::at(dir.path().join(".townhall"));
         let store = Store::open(&home, EventBus::new()).unwrap();
-        let (addr, c) = embedded_through_a_restart(&home, &store, dir.path()).await;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let c = Controller::new(addr, home.clone(), Some(store));
+        assert_eq!(
+            c.start_on(listener, dir.path()).await.unwrap(),
+            Mode::Embedded
+        );
+        assert!(
+            TcpListener::bind(addr).await.is_err(),
+            "port should be held"
+        );
+        assert_eq!(c.restart(dir.path()).await.unwrap(), Mode::Embedded);
         c.stop().await;
         assert_eq!(c.mode().await, Mode::Stopped);
-        assert!(wait_released(addr).await, "port released after stop");
+        assert!(
+            wait_released(addr).await.is_some(),
+            "port released after stop"
+        );
 
         let taken = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let c = Controller::new(taken.local_addr().unwrap(), home, None);

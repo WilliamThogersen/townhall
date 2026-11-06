@@ -18,7 +18,7 @@ export interface StoreAccess {
 
 export interface RepoActions {
   readonly addRepo: (input: AddRepoInput) => Promise<Repo>;
-  readonly removeRepo: (name: string) => Promise<void>;
+  readonly removeRepo: (name: string, deleteClone?: boolean) => Promise<void>;
 }
 
 export function createConversationActions({ update, apply }: StoreAccess): ConversationActions {
@@ -51,8 +51,8 @@ export function createRepoActions({ update }: StoreAccess): RepoActions {
       update((state) => ({ ...state, repos: mapResource(state.repos, (list) => upsertRepo(list, repo)) }));
       return repo;
     },
-    removeRepo: async (name) => {
-      await removeRepo(name);
+    removeRepo: async (name, deleteClone) => {
+      await (deleteClone ? removeRepo(name, true) : removeRepo(name));
       update((state) => ({ ...state, repos: mapResource(state.repos, (list) => withoutRepo(list, name)) }));
     },
   };
