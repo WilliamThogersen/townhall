@@ -4,6 +4,7 @@
 mod clone;
 mod git;
 pub mod names;
+pub mod publish;
 pub mod source;
 
 use std::path::{Path, PathBuf};
