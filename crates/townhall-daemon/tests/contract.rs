@@ -55,6 +55,7 @@ async fn task_agent(state: &AppState) -> (String, String) {
         after: vec![],
         attachments: vec![],
         agent: "builder".into(),
+        pr_base: None,
     };
     store.create_task(&convo.id, task).await.unwrap();
     common::start_shell(state.ctx().startup(), &name, "cat").await;

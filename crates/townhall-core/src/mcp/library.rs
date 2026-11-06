@@ -75,7 +75,7 @@ fn save_schema() -> Value {
         "properties": {
             "source": {
                 "type": "string", "minLength": 1, "maxLength": Store::MAX_AGENT_SOURCE,
-                "description": "The whole type as TOML, in the shape read_agent_type shows: name, description, adapter (claude or shell), model, tools (claude --allowedTools entries), prompt (its personality, appended to claude's system prompt); command for shell."
+                "description": "The whole type as TOML, in the shape read_agent_type shows: name, description, adapter (claude or shell), model, tools (claude --allowedTools entries), prompt (its personality, appended to claude's system prompt); command for shell; requires (agent type names whose tasks must finish with a clearing report first)."
             },
             "confirmed": {
                 "type": "boolean",

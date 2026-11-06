@@ -109,6 +109,7 @@ impl Env {
             after: vec![],
             attachments: vec![],
             agent: "builder".into(),
+            pr_base: None,
         };
         store.create_task(&self.conversation, new).await.unwrap();
         let working = move |t: Task| {

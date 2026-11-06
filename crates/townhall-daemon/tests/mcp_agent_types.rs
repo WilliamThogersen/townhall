@@ -65,6 +65,22 @@ async fn list_and_read_show_the_saved_types() {
 }
 
 #[tokio::test]
+async fn read_agent_type_shows_what_a_type_requires() {
+    let m = Mcp::new().await;
+    let source =
+        "name = \"shipper\"\nadapter = \"claude\"\nrequires = [\"tester\", \"reviewer\"]\n";
+    m.store().save_agent_type(source).await.unwrap();
+    let read = m.ok("read_agent_type", json!({"name": "shipper"})).await;
+    assert_eq!(read["requires"], json!(["tester", "reviewer"]), "{read}");
+    assert!(read["source"].as_str().unwrap().contains("requires = ["));
+    let plain = m.ok("read_agent_type", json!({"name": "builder"})).await;
+    assert_eq!(plain["requires"], json!([]), "{plain}");
+    let bad = "name = \"x\"\nadapter = \"claude\"\nrequires = [\"a b\"]\n";
+    let text = m.refused("save_agent_type", json!({"source": bad})).await;
+    assert!(text.contains("requires"), "{text}");
+}
+
+#[tokio::test]
 async fn an_invalid_type_comes_back_as_its_errors() {
     let m = Mcp::new().await;
     let bad = "name = \"x\"\nadapter = \"claude\"\npermission_mode = \"bypassPermissions\"\n";

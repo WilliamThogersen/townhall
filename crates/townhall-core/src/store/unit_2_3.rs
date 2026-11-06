@@ -33,6 +33,16 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "0203_task_ended_at",
         sql: include_str!("migrations/0203_task_ended_at.sql"),
     },
+    Migration {
+        id: 204,
+        name: "0204_task_blocked",
+        sql: include_str!("migrations/0204_task_blocked.sql"),
+    },
+    Migration {
+        id: 205,
+        name: "0205_task_pr_base",
+        sql: include_str!("migrations/0205_task_pr_base.sql"),
+    },
 ];
 
 const TASKS_CREATED: &str = "tasksCreated";

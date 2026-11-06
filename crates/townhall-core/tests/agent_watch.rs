@@ -114,6 +114,7 @@ impl Env {
             after: vec![],
             attachments: vec![],
             agent: "builder".into(),
+            pr_base: None,
         };
         store.create_task(&self.conversation, new).await.unwrap();
         self.set_state(name, state).await

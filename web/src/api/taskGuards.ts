@@ -38,6 +38,8 @@ export function parseTask(value: unknown): Task {
     createdAt: str(r.createdAt, "task.createdAt"),
     pr: nullable(r.pr, "task.pr", parsePr),
     agent: str(r.agent, "task.agent"),
+    blocked: nullable(r.blocked, "task.blocked", str),
+    prBase: nullable(r.prBase, "task.prBase", str),
   };
 }
 

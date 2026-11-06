@@ -27,7 +27,7 @@ pub(super) struct OpenPrInput {
 pub fn tools() -> Vec<ToolDef> {
     vec![ToolDef {
         name: OPEN_PR,
-        description: "Push this task's branch to origin and open a pull request (GitHub) or merge request (GitLab) into the task's base branch. Returns state `opened` with the url, or `noRemote` when the repo has no origin (nothing is pushed). Commit your work first.",
+        description: "Push this task's branch to origin and open a pull request (GitHub) or merge request (GitLab) into the task's `prBase` when it has one, else its base branch. Returns state `opened` with the url, or `noRemote` when the repo has no origin (nothing is pushed). Commit your work first.",
         input_schema: schema(),
     }]
 }
@@ -71,7 +71,7 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
             task.name
         )
     })?;
-    let (branch, base) = (task.branch(), task.base_branch.clone());
+    let (branch, base) = (task.branch(), task.pr_target().to_string());
     let body = input.body.unwrap_or_default();
     let account = store.settings().await.map_err(text)?.github_account;
     let published = tokio::task::spawn_blocking(move || {
@@ -92,6 +92,7 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
         Published::NoRemote => Ok(json!({
             "state": "noRemote",
             "branch": task.branch(),
+            "base": task.pr_target(),
             "message": format!(
                 "repo `{}` has no origin remote: nothing was pushed and no pull request was opened; the work stays on branch {}",
                 task.repo,
@@ -108,7 +109,7 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
                 let change = move |t: Task| Ok(Task { pr: Some(pr), ..t });
                 store.update_task(&task.name, change).await.map_err(text)?;
             }
-            Ok(json!({"state": "opened", "url": url, "number": number}))
+            Ok(json!({"state": "opened", "url": url, "number": number, "base": task.pr_target()}))
         }
     }
 }

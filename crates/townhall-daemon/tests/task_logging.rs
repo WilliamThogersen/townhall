@@ -24,6 +24,7 @@ fn new_task(name: &str, prompt: &str) -> NewTask {
         after: vec![],
         attachments: vec![],
         agent: "builder".into(),
+        pr_base: None,
     }
 }
 

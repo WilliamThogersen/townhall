@@ -186,6 +186,8 @@ export interface Task {
   readonly createdAt: string;
   readonly pr: Pr | null;
   readonly agent: string;
+  readonly blocked: string | null;
+  readonly prBase: string | null;
 }
 
 export interface CreateTaskInput {
@@ -194,6 +196,7 @@ export interface CreateTaskInput {
   readonly prompt: string;
   readonly repo?: string;
   readonly baseBranch?: string;
+  readonly prBase?: string;
   readonly after?: readonly string[];
   readonly attachments?: readonly string[];
   readonly agent?: string;

@@ -179,3 +179,116 @@ async fn create_task_refuses_a_name_an_agent_has_in_another_case() {
     assert!(text.contains(&named), "{text}");
     assert!(m.store().all_tasks().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn create_task_takes_a_pr_target_that_is_an_existing_branch_and_never_a_sha() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    common::git(&m.env.startup, &["branch", "reviewed"]).await;
+    let head = common::git(&m.env.startup, &["rev-parse", "main"]).await;
+
+    let plain = m.ok("create_task", task(&unique("plain"))).await;
+    assert_eq!(plain["prBase"], json!(null));
+
+    let mut aimed = task(&unique("ship"));
+    aimed["baseBranch"] = json!("reviewed");
+    aimed["prBase"] = json!(" main ");
+    let created = m.ok("create_task", aimed).await;
+    assert_eq!(created["baseBranch"], "reviewed");
+    assert_eq!(created["prBase"], "main");
+    let name = created["name"].as_str().unwrap();
+    let stored = m.store().find_task(name).await.unwrap().unwrap();
+    assert_eq!(stored.pr_base.as_deref(), Some("main"));
+    assert_eq!(stored.pr_target(), "main");
+
+    let refused = [
+        ("no-such-branch", "does not exist"),
+        ("   ", "must not be blank"),
+        ("", "must not be blank"),
+        (head.as_str(), "not a commit id"),
+        ("-main", "not a plain branch name"),
+        ("main^", "not a plain branch name"),
+    ];
+    for (bad, why) in refused {
+        let mut args = task(&unique("bad"));
+        args["prBase"] = json!(bad);
+        let text = m.refused("create_task", args).await;
+        assert!(text.contains(why), "`{bad}`: {text}");
+    }
+    assert_eq!(m.store().all_tasks().await.unwrap().len(), 2);
+}
+
+async fn second_commit(repo: &std::path::Path) {
+    let args = [
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "second",
+    ];
+    common::git(repo, &args).await;
+}
+
+async fn refuses_pr_bases(m: &Mcp, bad: &[&str], why: &str) {
+    for name in bad {
+        let mut args = task(&unique("bad"));
+        args["prBase"] = json!(name);
+        let text = m.refused("create_task", args).await;
+        assert!(text.contains(why), "`{name}`: {text}");
+    }
+}
+
+#[tokio::test]
+async fn a_pr_target_is_a_branch_name_and_never_revision_syntax() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    let repo = &m.env.startup;
+    second_commit(repo).await;
+    common::git(repo, &["branch", "release/1.0"]).await;
+    let head = common::git(repo, &["rev-parse", "main"]).await;
+    assert_eq!(head.trim().len(), 40);
+
+    let plain = [
+        "main^",
+        "main~1",
+        "main@{1}",
+        "main:README",
+        "-x",
+        "HEAD",
+        "a b",
+        "main.lock",
+        "main..release/1.0",
+    ];
+    refuses_pr_bases(&m, &plain, "not a plain branch name").await;
+    refuses_pr_bases(&m, &[head.trim()], "not a commit id").await;
+    refuses_pr_bases(&m, &["nope"], "does not exist").await;
+    for good in ["main", "release/1.0"] {
+        let mut args = task(&unique("good"));
+        args["prBase"] = json!(good);
+        assert_eq!(m.ok("create_task", args).await["prBase"], good);
+    }
+}
+
+#[tokio::test]
+async fn with_an_origin_a_pr_target_must_be_on_origin() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    let repo = &m.env.startup;
+    second_commit(repo).await;
+    common::git(repo, &["branch", "local-only"]).await;
+    common::git(
+        repo,
+        &["remote", "add", "origin", "https://example.com/shop.git"],
+    )
+    .await;
+    common::git(repo, &["update-ref", "refs/remotes/origin/shipped", "main"]).await;
+
+    refuses_pr_bases(&m, &["local-only", "main"], "not on origin: push it first").await;
+    refuses_pr_bases(&m, &["main^", "shipped^"], "not a plain branch name").await;
+    let mut args = task(&unique("good"));
+    args["prBase"] = json!("shipped");
+    assert_eq!(m.ok("create_task", args).await["prBase"], "shipped");
+}
