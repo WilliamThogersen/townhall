@@ -285,6 +285,84 @@ async fn the_limits_are_told_to_the_agent() {
     assert!(full.contains("50"), "{full}");
 }
 
+fn base64_of(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len() / 3 * 4 + 4);
+    for chunk in bytes.as_chunks::<3>().0 {
+        let n = u32::from(chunk[0]) << 16 | u32::from(chunk[1]) << 8 | u32::from(chunk[2]);
+        for shift in [18, 12, 6, 0] {
+            out.push(char::from(ALPHABET[(n >> shift & 63) as usize]));
+        }
+    }
+    out
+}
+
+fn big_png() -> Vec<u8> {
+    let mut bytes = vec![0u8; usize::try_from(MAX_ARTIFACT_BYTES).unwrap() / 3 * 3];
+    bytes[..8].copy_from_slice(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]);
+    bytes
+}
+
+fn screenshot(content: &str) -> Value {
+    json!({"task": "build-it", "name": "big", "kind": "screenshot",
+           "content": content, "encoding": "base64", "author_role": "tester"})
+}
+
+#[tokio::test]
+async fn a_screenshot_just_under_the_cap_is_accepted() {
+    let m = two_tasks().await;
+    let packed = base64_of(&big_png());
+    let added = payload(&agent_tool(&m, "build-it", "add_artifact", screenshot(&packed)).await);
+    assert_eq!(added["mime"], "image/png");
+    assert_eq!(added["size"], big_png().len());
+}
+
+#[tokio::test]
+async fn a_wrapped_screenshot_just_under_the_cap_is_accepted() {
+    let m = two_tasks().await;
+    let packed = base64_of(&big_png());
+    let wrapped: Vec<&str> = packed
+        .as_bytes()
+        .chunks(76)
+        .map(|c| std::str::from_utf8(c).unwrap())
+        .collect();
+    let wrapped = wrapped.join("\n");
+    assert!(wrapped.len() > usize::try_from(MAX_ARTIFACT_BYTES).unwrap() / 3 * 4 + 8);
+    let added = payload(&agent_tool(&m, "build-it", "add_artifact", screenshot(&wrapped)).await);
+    assert_eq!(added["size"], big_png().len());
+}
+
+#[tokio::test]
+async fn a_text_log_full_of_escapes_gets_the_tools_answer_not_a_bare_400() {
+    let m = two_tasks().await;
+    let unit = "line \"quoted\"\t\u{1b}[31mred\u{1b}[0m\r\n";
+    let cap = usize::try_from(MAX_ARTIFACT_BYTES).unwrap();
+    let log = unit.repeat(cap / unit.len());
+    assert!(log.len() <= cap);
+    let added = payload(
+        &agent_tool(
+            &m,
+            "build-it",
+            "add_artifact",
+            note("build-it", "run.log", &log),
+        )
+        .await,
+    );
+    assert_eq!(added["size"], log.len());
+    let over = unit.repeat(cap / unit.len() + 2);
+    assert!(over.len() > cap);
+    let text = refusal(
+        &agent_tool(
+            &m,
+            "build-it",
+            "add_artifact",
+            note("build-it", "over.log", &over),
+        )
+        .await,
+    );
+    assert!(text.contains("at most 5120 KB"), "{text}");
+}
+
 #[tokio::test]
 async fn agents_have_no_way_to_replace_or_delete() {
     let m = two_tasks().await;
