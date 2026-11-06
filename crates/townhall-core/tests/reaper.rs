@@ -142,6 +142,53 @@ async fn a_pass_reaps_what_is_done_or_orphaned_and_keeps_live_work() {
     assert_eq!(again, reaper::Reaped::default(), "nothing is left");
 }
 
+fn fill(worktree: &std::path::Path) {
+    for file in ["target/debug/app", "node_modules/dep/index.js"] {
+        let path = worktree.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "artifact").unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a_finished_agent_loses_its_artifacts_but_keeps_its_worktree() {
+    let s = Sched::new().await;
+    std::fs::write(s.repo.join(".gitignore"), "target\nnode_modules\n").unwrap();
+    git(&s.repo, &["add", ".gitignore"]).await;
+    commit(&s.repo, "ignore artifacts").await;
+    let (live, done, review) = (unique("live"), unique("done"), unique("review"));
+    for name in [&live, &done, &review] {
+        s.create(name, &[]).await;
+    }
+    run_once(s.ctx()).await.unwrap();
+    for name in [&live, &done, &review] {
+        fill(&s.worktree(name));
+    }
+    std::fs::write(s.worktree(&done).join("notes.txt"), "uncommitted").unwrap();
+    s.end(&done).await;
+    s.set_state(&review, TaskState::InReview).await;
+    townhall_core::tmux::kill(s.ws.key(), &review)
+        .await
+        .unwrap();
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+
+    assert!(reaped.warnings.is_empty(), "{reaped:?}");
+    assert!(reaped.removed.is_empty(), "{reaped:?}");
+    assert_eq!(reaped.purged, sorted(&[done.as_str(), review.as_str()]));
+    for name in [&done, &review] {
+        assert!(!s.worktree(name).join("target").exists(), "{name}");
+        assert!(!s.worktree(name).join("node_modules").exists(), "{name}");
+        assert!(s.worktree(name).join(".git").exists(), "{name} is kept");
+    }
+    assert!(s.worktree(&done).join("notes.txt").exists());
+    assert!(s.worktree(&live).join("target").exists(), "live work");
+    assert!(s.worktree(&live).join("node_modules").exists(), "live work");
+
+    let again = reaper::run_once(s.ctx()).await.unwrap();
+    assert_eq!(again, reaper::Reaped::default(), "nothing is left");
+}
+
 #[tokio::test]
 async fn a_session_whose_worktree_is_gone_is_killed() {
     let s = Sched::new().await;

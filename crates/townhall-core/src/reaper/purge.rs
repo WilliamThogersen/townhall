@@ -122,7 +122,13 @@ mod tests {
 
         let freed = purge(root).await.unwrap();
 
-        for gone in ["target", "node_modules", "web/node_modules", "dist", ".venv"] {
+        for gone in [
+            "target",
+            "node_modules",
+            "web/node_modules",
+            "dist",
+            ".venv",
+        ] {
             assert!(!root.join(gone).exists(), "{gone} should be deleted");
         }
         assert!(root.join("vendor/lib/lib.php").exists(), "tracked vendor");

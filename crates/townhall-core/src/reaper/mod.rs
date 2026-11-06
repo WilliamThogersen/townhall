@@ -38,6 +38,7 @@ static PASS: Mutex<()> = Mutex::const_new(());
 pub struct Reaped {
     pub cancelled: Vec<String>,
     pub removed: Vec<String>,
+    pub purged: Vec<String>,
     pub sessions: Vec<String>,
     pub warnings: Vec<String>,
 }
@@ -47,6 +48,7 @@ impl Reaped {
         Reaped {
             cancelled: [self.cancelled, other.cancelled].concat(),
             removed: [self.removed, other.removed].concat(),
+            purged: [self.purged, other.purged].concat(),
             sessions: [self.sessions, other.sessions].concat(),
             warnings: [self.warnings, other.warnings].concat(),
         }
@@ -104,7 +106,7 @@ fn report(when: &'static str, result: Result<Reaped>) {
             if done != Reaped::default() {
                 tracing::info!(
                     target: "townhall::task", event = "reaper.pass", when,
-                    removed = done.removed.len(), sessions = done.sessions.len(),
+                    removed = done.removed.len(), purged = done.purged.len(), sessions = done.sessions.len(),
                     cancelled = done.cancelled.len(), "the reaper cleaned up"
                 );
             }
