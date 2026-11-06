@@ -78,15 +78,17 @@ fn clearing(verdict: &str, commit: &str) -> String {
     format!("Ran everything.\n\nVERDICT: {verdict}\nCOMMIT: {commit}\n")
 }
 
+fn transcript(last: &str) -> String {
+    let line = json!({"type": "assistant", "timestamp": "2026-11-04T10:01:00.000Z",
+        "message": {"id": "end", "role": "assistant", "stop_reason": "end_turn",
+                    "content": [{"type": "text", "text": last}]}});
+    format!("{line}\n")
+}
+
 async fn file_report(s: &Sched, task: &str, text: &str) {
-    let new = NewArtifact {
-        name: "report.md".into(),
-        kind: ArtifactKind::Report,
-        author_role: AuthorRole::Other,
-        caption: None,
-        bytes: text.as_bytes().to_vec(),
-    };
-    s.store().add_artifact(task, new).await.unwrap();
+    let dir = project_dir_for(projects(), &s.worktree(task));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("s.jsonl"), transcript(text)).unwrap();
 }
 
 async fn both_clear(g: &Gated, commit: &str) {
@@ -143,21 +145,68 @@ async fn no_report_keeps_the_task_queued_with_a_reason_and_wakes_the_planner() {
     assert!(g.s.agents().await.is_empty());
 }
 
+async fn assert_rejected(g: &Gated, words: &[&str]) -> String {
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert_eq!(pass.failed, [g.ship.as_str()], "{pass:?}");
+    assert!(pass.started.is_empty(), "{pass:?}");
+    let task = g.s.store().find_task(&g.ship).await.unwrap().unwrap();
+    assert_eq!((task.state, task.blocked), (TaskState::Error, None));
+    let entries = g.s.store().entries(&g.s.conversation).await.unwrap();
+    let text = format!("{entries:?}");
+    let why = text
+        .split("failed, it will not start")
+        .nth(1)
+        .expect("a failed entry");
+    for word in words {
+        assert!(why.contains(word), "`{word}` not in: {why}");
+    }
+    assert!(g.s.ctx().notes().is_waiting(&g.s.conversation));
+    let again = run_once(g.s.ctx()).await.unwrap();
+    assert!(
+        again.failed.is_empty() && again.started.is_empty(),
+        "{again:?}"
+    );
+    why.to_string()
+}
+
 #[tokio::test]
-async fn a_reject_or_fail_blocks_until_a_clearing_report_replaces_it() {
+async fn a_fail_ends_the_task_with_the_reason_instead_of_blocking_forever() {
     let g = gated().await;
     let head = rev(&g.s, "main").await;
     file_report(&g.s, &g.tester, &clearing("FAIL", &head)).await;
     file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
-    assert_blocked(&g, &[&g.tester, "FAIL"]).await;
+    assert_rejected(&g, &[&g.tester, "FAIL", "new task"]).await;
+}
 
+#[tokio::test]
+async fn a_reject_ends_the_task_and_names_only_the_rejecting_type() {
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
     file_report(&g.s, &g.tester, &clearing("PASS", &head)).await;
     file_report(&g.s, &g.reviewer, &clearing("REJECT", &head)).await;
-    let why = assert_blocked(&g, &[&g.reviewer, "REJECT"]).await;
+    let why = assert_rejected(&g, &[&g.reviewer, "REJECT"]).await;
     assert!(!why.contains(&g.tester), "{why}");
+}
 
-    file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
-    assert_starts(&g).await;
+#[tokio::test]
+async fn a_reject_wins_over_a_stale_or_missing_report_of_the_other_type() {
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    file_report(&g.s, &g.reviewer, &clearing("REJECT", &head)).await;
+    assert_rejected(&g, &[&g.reviewer, "REJECT"]).await;
+}
+
+#[tokio::test]
+async fn a_blocked_reason_does_not_change_when_the_base_branch_moves() {
+    let g = gated().await;
+    let first = rev(&g.s, "main").await;
+    both_clear(&g, &first).await;
+    scheduler_support::commit(&g.s.repo, "main moved on").await;
+    let before = assert_blocked(&g, &["stale"]).await;
+    scheduler_support::commit(&g.s.repo, "main moved again").await;
+    let after = assert_blocked(&g, &["stale"]).await;
+    assert_eq!(before, after);
+    assert!(!after.contains(&rev(&g.s, "main").await[..7]), "{after}");
 }
 
 #[tokio::test]
@@ -173,30 +222,52 @@ async fn a_report_without_a_verdict_or_a_commit_blocks() {
     assert_blocked(&g, &[&g.reviewer, "COMMIT"]).await;
 }
 
-fn transcript(last: &str) -> String {
-    let line = json!({"type": "assistant", "timestamp": "2026-11-04T10:01:00.000Z",
-        "message": {"id": "end", "role": "assistant", "stop_reason": "end_turn",
-                    "content": [{"type": "text", "text": last}]}});
-    format!("{line}\n")
-}
+#[tokio::test]
+async fn a_verdict_first_report_clears_and_a_quoted_or_conflicting_one_does_not() {
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    let long = "detail\n".repeat(300);
+    let first = |word: &str| format!("VERDICT: {word}\nCOMMIT: {head}\n{long}");
+    file_report(&g.s, &g.tester, &first("PASS")).await;
+    file_report(&g.s, &g.reviewer, &first("APPROVE")).await;
+    assert_starts(&g).await;
 
-fn said(g: &Gated, task: &str, text: &str) {
-    let dir = project_dir_for(projects(), &g.s.worktree(task));
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("s.jsonl"), transcript(text)).unwrap();
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    let quoted = format!("> VERDICT: PASS\n```\nVERDICT: PASS\nCOMMIT: {head}\n```\n");
+    file_report(&g.s, &g.tester, &quoted).await;
+    file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
+    assert_blocked(&g, &[&g.tester, "no `VERDICT:`"]).await;
+
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    let both = format!("VERDICT: FAIL\nVERDICT: PASS\nCOMMIT: {head}\n");
+    file_report(&g.s, &g.tester, &both).await;
+    file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
+    assert_blocked(&g, &[&g.tester, "conflicting VERDICT lines: FAIL, PASS"]).await;
+
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    file_report(&g.s, &g.tester, &clearing("APPROVE", &head)).await;
+    file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
+    assert_blocked(&g, &[&g.tester, "PASS, FAIL"]).await;
 }
 
 #[tokio::test]
-async fn the_final_message_is_the_report_and_wins_over_an_artifact() {
+async fn an_artifact_is_never_a_report() {
     let g = gated().await;
     let head = rev(&g.s, "main").await;
-    file_report(&g.s, &g.tester, &clearing("PASS", &head)).await;
-    file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
-    said(&g, &g.tester, &clearing("FAIL", &head));
-    assert_blocked(&g, &[&g.tester, "FAIL"]).await;
-
-    said(&g, &g.tester, &clearing("PASS", &head));
-    assert_starts(&g).await;
+    for (task, word) in [(&g.tester, "PASS"), (&g.reviewer, "APPROVE")] {
+        let new = NewArtifact {
+            name: "report.md".into(),
+            kind: ArtifactKind::Report,
+            author_role: AuthorRole::Other,
+            caption: None,
+            bytes: clearing(word, &head).into_bytes(),
+        };
+        g.s.store().add_artifact(task, new).await.unwrap();
+    }
+    assert_blocked(&g, &[&g.tester, &g.reviewer, "no report"]).await;
 }
 
 #[tokio::test]
@@ -373,4 +444,72 @@ async fn a_report_commit_may_be_short_or_full_but_not_upper_case() {
     let tip = rev(&upper.s, "main").await;
     both_clear(&upper, &tip.to_uppercase()).await;
     assert_blocked(&upper, &[&upper.tester, "COMMIT"]).await;
+}
+
+async fn base_gated(base: &str) -> (Gated, String, String) {
+    let g = gated_on(base).await;
+    let old = rev(&g.s, "main").await;
+    scheduler_support::commit(&g.s.repo, "main moved on").await;
+    let tip = rev(&g.s, "main").await;
+    git(&g.s.repo, &["update-ref", "refs/remotes/origin/main", &tip]).await;
+    (g, old, tip)
+}
+
+async fn assert_only_the_tip_clears(base: &str, form: fn(&str) -> String) {
+    let (g, old, tip) = base_gated(base).await;
+    for covered in [form(&old), form(&old[..7])] {
+        both_clear(&g, &covered).await;
+        assert_blocked(&g, &["stale", &g.tester, "tip"]).await;
+    }
+    both_clear(&g, &old.to_uppercase()).await;
+    assert_blocked(&g, &[&g.tester, "COMMIT"]).await;
+    both_clear(&g, &form(&tip[..7])).await;
+    assert_starts(&g).await;
+}
+
+fn same(sha: &str) -> String {
+    sha.to_string()
+}
+
+#[tokio::test]
+async fn a_base_given_as_a_remote_branch_clears_only_for_its_tip() {
+    assert_only_the_tip_clears("origin/main", same).await;
+}
+
+#[tokio::test]
+async fn a_base_given_as_a_full_ref_clears_only_for_its_tip() {
+    assert_only_the_tip_clears("refs/heads/main", same).await;
+}
+
+#[tokio::test]
+async fn a_base_given_as_a_sha_clears_only_for_that_sha() {
+    let g = gated().await;
+    let old = rev(&g.s, "main").await;
+    scheduler_support::commit(&g.s.repo, "main moved on").await;
+    let tip = rev(&g.s, "main").await;
+    let base = tip.clone();
+    let task = move |t: Task| {
+        Ok(Task {
+            base_branch: base,
+            ..t
+        })
+    };
+    g.s.store().update_task(&g.ship, task).await.unwrap();
+    both_clear(&g, &old).await;
+    assert_blocked(&g, &["stale", &g.tester, "tip"]).await;
+    both_clear(&g, &tip).await;
+    assert_starts(&g).await;
+}
+
+#[tokio::test]
+async fn a_branch_with_no_commits_of_its_own_clears_only_for_its_tip() {
+    let g = gated_on("empty").await;
+    let old = rev(&g.s, "main").await;
+    scheduler_support::commit(&g.s.repo, "main moved on").await;
+    git(&g.s.repo, &["branch", "empty"]).await;
+    both_clear(&g, &old).await;
+    assert_blocked(&g, &["stale", &g.tester, "tip"]).await;
+    let tip = rev(&g.s, "empty").await;
+    both_clear(&g, &tip[..7]).await;
+    assert_starts(&g).await;
 }

@@ -2,7 +2,8 @@
 //! types starts only when, for each required type, the newest task of that type in its
 //! `after` chain ended with a report that clears it for the commit the task will start from.
 //!
-//! - The report is that task's final message, else its latest `report` artifact.
+//! - The report is that task's final message. An artifact is never read: `add_artifact` on
+//!   `/api/tasks/{name}/mcp` has no auth, so any local agent could file one for another task.
 //! - Its lines `VERDICT: APPROVE` or `VERDICT: PASS` and `COMMIT: <sha>` may be anywhere in
 //!   it (`report.rs`). A REJECT, a FAIL, a missing or conflicting line blocks.
 //! - The commit is compared with the head the task starts from: its own branch when it has
@@ -15,15 +16,17 @@
 //!   agent resumes; an agent that is already running is adopted, never gated.
 //!
 //! A blocked task stays queued, its reason stored in `blocked`; the planner is told when the
-//! reason first appears or changes.
+//! reason first appears or changes. The reason never holds a head sha, so a base branch that
+//! moves does not tell the planner again. A REJECT or FAIL is final: the task ends in `error`
+//! with that reason and the planner is told once, so a new task is made after the fix.
 
 use crate::agent::state;
 use crate::cmd::run;
 use crate::context::Context;
-use crate::model::{ArtifactKind, Task, TaskState};
+use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::{runner, steps, Error, Result, Workspace};
 
-use super::launch::commit_of;
+use super::launch::{commit_of, MAX_FAILED_TEXT};
 use super::report;
 use super::requires;
 use super::{plan, MOVED};
@@ -31,6 +34,18 @@ use super::{plan, MOVED};
 pub(super) enum Gate {
     Open,
     Blocked(String),
+    Rejected(String),
+}
+
+enum Problem {
+    Waiting(String),
+    Rejected(String),
+}
+
+impl Problem {
+    fn waiting(why: String) -> Option<Self> {
+        Some(Self::Waiting(why))
+    }
 }
 
 /// What the gated task will start from, resolved when a report names a commit.
@@ -82,20 +97,26 @@ impl Head<'_> {
             return Ok(None);
         }
         let behind = format!(
-            "{who} report is stale: it covers {} but `{at}` is at {}",
-            short(&covered),
-            short(&head)
+            "{who} report is stale: it covers {}, not the tip of `{at}`",
+            short(&covered)
         );
-        if at == self.base {
+        let base = commit_of(&self.ws, &self.base).await?;
+        let beyond = [
+            "rev-list",
+            "--max-count=1",
+            head.as_str(),
+            &format!("^{base}"),
+        ];
+        if run("git", &beyond, Some(self.ws.repo())).await?.is_empty() {
             return Ok(Some(format!(
-                "{behind}: a task starting from the repo's base branch needs a report for its tip"
+                "{behind}: a head with no commits beyond the repo's base branch needs a report for its tip"
             )));
         }
         if !self.is_ancestor(&covered, &head).await? {
             return Ok(Some(format!("{behind}, which does not contain it")));
         }
         let range = format!("{covered}..{head}");
-        let not_base = format!("^{}", self.base);
+        let not_base = format!("^{base}");
         let args = ["rev-list", "--no-merges", range.as_str(), not_base.as_str()];
         let own = run("git", &args, Some(self.ws.repo())).await?;
         Ok(match own.is_empty() {
@@ -108,57 +129,53 @@ impl Head<'_> {
     }
 }
 
-/// The task's final message, else its latest `report` artifact.
+/// The task's final message: the only place a report is read from.
 async fn report_of(ctx: &Context, done: &Task) -> Result<Option<String>> {
     let repo = ctx.repo(&done.repo).await?;
     let worktree = ctx.workspace(&repo)?.worktrees_dir().join(&done.name);
     let projects = steps::claude_projects_dir()?;
-    if let Some(said) = state::last_message(&projects, &worktree).await? {
-        return Ok(Some(said));
-    }
-    let store = ctx.store()?;
-    let latest = store
-        .artifacts(&done.name)
-        .await?
-        .into_iter()
-        .rev()
-        .find(|a| a.kind == ArtifactKind::Report);
-    let Some(found) = latest else {
-        return Ok(None);
-    };
-    let (_, path) = store.artifact(&done.name, &found.id).await?;
-    let bytes = tokio::fs::read(&path)
-        .await
-        .map_err(|e| Error::io(format!("read report {}", path.display()), e))?;
-    Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+    state::last_message(&projects, &worktree).await
 }
 
 /// What keeps `done`'s report from clearing the gated task, or `None` when it clears it.
-async fn judge(ctx: &Context, done: &Task, head: &Head<'_>) -> Result<Option<String>> {
+async fn judge(ctx: &Context, done: &Task, head: &Head<'_>) -> Result<Option<Problem>> {
     let who = format!("`{}` ({})", done.name, done.agent);
     if !plan::finished(done.state) {
-        return Ok(Some(format!("{who} did not end (state {:?})", done.state)));
+        let why = format!("{who} did not end (state {:?})", done.state);
+        return Ok(Problem::waiting(why));
     }
     let Some(text) = report_of(ctx, done).await? else {
-        return Ok(Some(format!(
-            "{who} left no report: it must finish with the report as its last message or add a report artifact"
-        )));
+        let why =
+            format!("{who} left no report: it must finish with the report as its final message");
+        return Ok(Problem::waiting(why));
     };
     let parsed = report::parse(&text, &done.agent);
     let verdict = match parsed.verdict {
         Ok(Some(verdict)) => verdict,
-        Ok(None) => return Ok(Some(format!("{who} report has no `VERDICT:` line"))),
-        Err(why) => return Ok(Some(format!("{who} report: {why}"))),
+        Ok(None) => {
+            return Ok(Problem::waiting(format!(
+                "{who} report has no `VERDICT:` line"
+            )))
+        }
+        Err(why) => return Ok(Problem::waiting(format!("{who} report: {why}"))),
     };
     if !verdict.clears() {
-        return Ok(Some(format!("{who} reported {}", verdict.as_str())));
+        let why = format!(
+            "{who} reported {}; create a new task after the fix",
+            verdict.as_str()
+        );
+        return Ok(Some(Problem::Rejected(why)));
     }
     let commit = match parsed.commit {
         Ok(Some(commit)) => commit,
-        Ok(None) => return Ok(Some(format!("{who} report has no `COMMIT:` line"))),
-        Err(why) => return Ok(Some(format!("{who} report: {why}"))),
+        Ok(None) => {
+            return Ok(Problem::waiting(format!(
+                "{who} report has no `COMMIT:` line"
+            )))
+        }
+        Err(why) => return Ok(Problem::waiting(format!("{who} report: {why}"))),
     };
-    head.stale(&who, &commit).await
+    Ok(head.stale(&who, &commit).await?.and_then(Problem::waiting))
 }
 
 /// Whether `task` may start. `tasks` is every task, so the `after` chain can be walked.
@@ -176,7 +193,8 @@ pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task]) -> Result<
         base: repo.base_branch.clone(),
     };
     let chain = requires::chain(tasks, &task.after);
-    let mut problems = vec![];
+    let mut waiting = vec![];
+    let mut rejected = vec![];
     for wanted in &kind.def.requires {
         let newest = chain
             .iter()
@@ -184,13 +202,18 @@ pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task]) -> Result<
             .find(|t| t.agent.eq_ignore_ascii_case(wanted));
         let problem = match newest {
             Some(done) => judge(ctx, done, &head).await?,
-            None => Some(format!("no task of type `{wanted}` in its `after` chain")),
+            None => Problem::waiting(format!("no task of type `{wanted}` in its `after` chain")),
         };
-        problems.extend(problem);
+        match problem {
+            Some(Problem::Waiting(why)) => waiting.push(why),
+            Some(Problem::Rejected(why)) => rejected.push(why),
+            None => {}
+        }
     }
-    Ok(match problems.is_empty() {
-        true => Gate::Open,
-        false => Gate::Blocked(problems.join("; ")),
+    Ok(match (rejected.is_empty(), waiting.is_empty()) {
+        (false, _) => Gate::Rejected(rejected.join("; ")),
+        (true, false) => Gate::Blocked(waiting.join("; ")),
+        (true, true) => Gate::Open,
     })
 }
 
@@ -220,6 +243,34 @@ pub(super) async fn hold(ctx: &Context, task: &Task, why: &str) -> Result<()> {
         runner::notify(ctx, &task.conversation_id, text);
     }
     Ok(())
+}
+
+/// Ends `task` in `error` with the reason, so the planner makes a new task after the fix; a
+/// task that moved on meanwhile is left alone. The planner hears of it once.
+pub(super) async fn reject(ctx: &Context, task: &Task, why: &str) -> Result<bool> {
+    let change = |t: Task| match t.state == TaskState::Queued {
+        true => Ok(Task {
+            state: TaskState::Error,
+            blocked: None,
+            ..t
+        }),
+        false => Err(Error::Conflict(MOVED.into())),
+    };
+    let store = ctx.store()?;
+    match store.update_task(&task.name, change).await {
+        Ok(_) => {}
+        Err(Error::Conflict(m)) if m == MOVED => return Ok(false),
+        Err(e) => return Err(e),
+    }
+    let text = format!("task `{}` failed, it will not start: {why}", task.name);
+    let body = EntryBody::Agent {
+        agent: task.name.clone(),
+        event: AgentEvent::Failed,
+        text: plan::capped(&text, MAX_FAILED_TEXT),
+    };
+    store.append_entry(&task.conversation_id, body).await?;
+    runner::notify(ctx, &task.conversation_id, text);
+    Ok(true)
 }
 
 /// Drops a stored reason that no longer holds.

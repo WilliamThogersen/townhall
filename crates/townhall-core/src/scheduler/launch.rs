@@ -16,7 +16,7 @@ use super::{agent_type, brief, plan, transition, Pass, TaskLaunch};
 /// An `agent` `failed` entry's text stays short: a start error can quote a whole command.
 /// `Error::Command` puts the reason first and the command last, so the cut loses the
 /// command, never the reason.
-const MAX_FAILED_TEXT: usize = 300;
+pub(super) const MAX_FAILED_TEXT: usize = 300;
 
 /// Every agent of every registered repo, by repo name. A repo whose agents cannot be listed
 /// is kept in `unlisted` with the reason, so none of its tasks start on a guess.
@@ -122,6 +122,12 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
         if fleet.agent_of(task).is_none() || handed_back {
             match gate::check(ctx, task, tasks).await {
                 Ok(Gate::Open) => gate::clear(ctx, task).await?,
+                Ok(Gate::Rejected(why)) => {
+                    if gate::reject(ctx, task, &why).await? {
+                        pass.failed.push(task.name.clone());
+                    }
+                    continue;
+                }
                 Ok(Gate::Blocked(why)) => {
                     gate::hold(ctx, task, &why).await?;
                     pass.blocked.push(task.name.clone());
