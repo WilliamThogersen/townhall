@@ -7,11 +7,9 @@
 //! - Its lines `VERDICT: APPROVE` or `VERDICT: PASS` and `COMMIT: <sha>` may be anywhere in
 //!   it (`report.rs`). A REJECT, a FAIL, a missing or conflicting line blocks.
 //! - The commit is compared with the head the task starts from: its own branch when it has
-//!   one (a task handed back), else its base branch. It is stale unless it is that head, or
-//!   an ancestor of it and every commit since is a merge or already on the repo's base
-//!   branch, so merging the base branch in keeps a report fresh and any other change does not.
-//!   When the head is the repo's base branch itself that allowance would excuse any older
-//!   commit, so there the report must name the tip exactly.
+//!   one (a task handed back), else its base branch. It is stale unless it is exactly that
+//!   head. Any later commit, a merge of the base branch included, makes it stale: a merge can
+//!   carry changes of its own, so none is excused.
 //! - The gate runs for a task with no agent yet and for a handed-back task before its new
 //!   agent resumes; an agent that is already running is adopted, never gated.
 //!
@@ -21,7 +19,6 @@
 //! with that reason and the planner is told once, so a new task is made after the fix.
 
 use crate::agent::state;
-use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::{runner, steps, Error, Result, Workspace};
@@ -52,7 +49,6 @@ impl Problem {
 struct Head<'a> {
     ws: Workspace,
     task: &'a Task,
-    base: String,
 }
 
 fn short(sha: &str) -> &str {
@@ -67,15 +63,6 @@ impl Head<'_> {
                 let sha = commit_of(&self.ws, &self.task.base_branch).await?;
                 Ok((self.task.base_branch.clone(), sha))
             }
-            Err(e) => Err(e),
-        }
-    }
-
-    async fn is_ancestor(&self, older: &str, newer: &str) -> Result<bool> {
-        let args = ["merge-base", "--is-ancestor", older, newer];
-        match run("git", &args, Some(self.ws.repo())).await {
-            Ok(_) => Ok(true),
-            Err(Error::Command { code: Some(1), .. }) => Ok(false),
             Err(e) => Err(e),
         }
     }
@@ -96,36 +83,10 @@ impl Head<'_> {
         if covered == head {
             return Ok(None);
         }
-        let behind = format!(
+        Ok(Some(format!(
             "{who} report is stale: it covers {}, not the tip of `{at}`",
             short(&covered)
-        );
-        let base = commit_of(&self.ws, &self.base).await?;
-        let beyond = [
-            "rev-list",
-            "--max-count=1",
-            head.as_str(),
-            &format!("^{base}"),
-        ];
-        if run("git", &beyond, Some(self.ws.repo())).await?.is_empty() {
-            return Ok(Some(format!(
-                "{behind}: a head with no commits beyond the repo's base branch needs a report for its tip"
-            )));
-        }
-        if !self.is_ancestor(&covered, &head).await? {
-            return Ok(Some(format!("{behind}, which does not contain it")));
-        }
-        let range = format!("{covered}..{head}");
-        let not_base = format!("^{base}");
-        let args = ["rev-list", "--no-merges", range.as_str(), not_base.as_str()];
-        let own = run("git", &args, Some(self.ws.repo())).await?;
-        Ok(match own.is_empty() {
-            true => None,
-            false => Some(format!(
-                "{behind}, with changes beyond a merge of `{}`",
-                self.base
-            )),
-        })
+        )))
     }
 }
 
@@ -190,7 +151,6 @@ pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task]) -> Result<
     let head = Head {
         ws: ctx.workspace(&repo)?,
         task,
-        base: repo.base_branch.clone(),
     };
     let chain = requires::chain(tasks, &task.after);
     let mut waiting = vec![];

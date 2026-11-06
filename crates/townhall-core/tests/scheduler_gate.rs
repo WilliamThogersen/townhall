@@ -313,14 +313,8 @@ async fn work_after_the_reported_commit_makes_the_reports_stale() {
     assert_starts(&g).await;
 }
 
-#[tokio::test]
-async fn merging_the_base_branch_in_does_not_make_reports_stale() {
-    let g = gated_on("change").await;
-    change_branch(&g.s).await;
-    let reported = rev(&g.s, "change").await;
-    both_clear(&g, &reported).await;
-    scheduler_support::commit(&g.s.repo, "main moved on").await;
-    git(&g.s.repo, &["checkout", "-q", "change"]).await;
+async fn merge_main_into_change(s: &Sched, extra: bool) {
+    git(&s.repo, &["checkout", "-q", "change"]).await;
     let merge = [
         "-c",
         "user.name=t",
@@ -329,13 +323,45 @@ async fn merging_the_base_branch_in_does_not_make_reports_stale() {
         "merge",
         "-q",
         "--no-ff",
-        "-m",
-        "merge main",
+        "--no-commit",
         "main",
     ];
-    git(&g.s.repo, &merge).await;
-    git(&g.s.repo, &["checkout", "-q", "main"]).await;
+    git(&s.repo, &merge).await;
+    if extra {
+        std::fs::write(s.repo.join("evil.txt"), "smuggled in the merge\n").unwrap();
+        git(&s.repo, &["add", "evil.txt"]).await;
+    }
+    let commit = ["-c", "user.name=t", "-c", "user.email=t@t"];
+    let args = [commit.as_slice(), &["commit", "-q", "-m", "merge main"]].concat();
+    git(&s.repo, &args).await;
+    git(&s.repo, &["checkout", "-q", "main"]).await;
+}
+
+#[tokio::test]
+async fn merging_the_base_branch_in_makes_reports_stale_even_when_pure() {
+    let g = gated_on("change").await;
+    change_branch(&g.s).await;
+    let reported = rev(&g.s, "change").await;
+    both_clear(&g, &reported).await;
+    scheduler_support::commit(&g.s.repo, "main moved on").await;
+    merge_main_into_change(&g.s, false).await;
     assert_ne!(rev(&g.s, "change").await, reported);
+    assert_blocked(&g, &["stale", &g.tester, &g.reviewer]).await;
+}
+
+#[tokio::test]
+async fn an_evil_merge_does_not_keep_a_report_fresh() {
+    let g = gated_on("change").await;
+    change_branch(&g.s).await;
+    let reported = rev(&g.s, "change").await;
+    both_clear(&g, &reported).await;
+    scheduler_support::commit(&g.s.repo, "main moved on").await;
+    merge_main_into_change(&g.s, true).await;
+    let why = assert_blocked(&g, &["stale", &g.tester, &g.reviewer]).await;
+    assert!(why.contains(&reported[..7]), "{why}");
+
+    let merged = rev(&g.s, "change").await;
+    both_clear(&g, &merged).await;
     assert_starts(&g).await;
 }
 
