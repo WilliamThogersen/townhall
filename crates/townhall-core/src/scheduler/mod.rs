@@ -19,6 +19,7 @@ mod brief;
 mod launch;
 mod merged;
 mod plan;
+pub mod report;
 pub mod requires;
 
 use std::time::Duration;
