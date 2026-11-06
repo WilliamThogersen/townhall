@@ -38,7 +38,6 @@ pub fn free_bytes(path: &Path) -> Result<u64> {
     let c_path = std::ffi::CString::new(folder.as_os_str().as_bytes())
         .map_err(|_| Error::InvalidInput(format!("path {} holds a NUL", folder.display())))?;
     let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
-    // `statvfs` reads the NUL-terminated path and fills `stat` when it returns 0.
     let status = unsafe { libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) };
     if status != 0 {
         let cause = std::io::Error::last_os_error();
