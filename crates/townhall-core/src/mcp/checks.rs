@@ -137,8 +137,13 @@ pub(super) async fn base_branch(repo: &Repo, wanted: Option<&str>) -> Checked<St
 }
 
 /// A task of agent type `agent` needs a task of each type its `requires` lists somewhere in
-/// its `after` chain: the refusal names what is missing.
-pub(super) async fn requirements(ctx: &Context, agent: &str, after: &[String]) -> Checked<()> {
+/// its `after` chain: the refusal names what is missing and, as `remedy`, what to do about it.
+pub(super) async fn requirements(
+    ctx: &Context,
+    agent: &str,
+    after: &[String],
+    remedy: &str,
+) -> Checked<()> {
     let store = ctx.store().map_err(|e| e.to_string())?;
     let Some(kind) = store.agent_type(agent).await.map_err(|e| e.to_string())? else {
         return Ok(());
@@ -154,7 +159,7 @@ pub(super) async fn requirements(ctx: &Context, agent: &str, after: &[String]) -
     }
     let listed: Vec<String> = missing.iter().map(|m| format!("`{m}`")).collect();
     Err(format!(
-        "agent type `{}` requires a task of type {} in the `after` chain: create those tasks first and pass them in `after`",
+        "agent type `{}` requires a task of type {} in the `after` chain: {remedy}",
         kind.def.name,
         listed.join(" and ")
     ))

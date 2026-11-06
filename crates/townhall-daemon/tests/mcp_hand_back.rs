@@ -130,6 +130,48 @@ async fn hand_back_refuses_unknown_and_unlisted_types_and_blank_reasons() {
 }
 
 #[tokio::test]
+async fn hand_back_to_a_type_with_requires_needs_those_types_in_the_after_chain() {
+    let m = Mcp::new().await;
+    let gated = "name = \"gated\"\nadapter = \"claude\"\nrequires = [\"tester\"]\n";
+    m.store().save_agent_type(gated).await.unwrap();
+    running(&m, "fix-login", "coder").await;
+    let refused = hand_back(&m, "fix-login", json!({"to": "gated", "reason": "r"})).await;
+    assert_eq!(refused["isError"], true);
+    let said = text(&refused);
+    assert!(
+        said.contains("requires a task of type `tester`") && said.contains("`after` chain"),
+        "{said}"
+    );
+    let task = m.store().find_task("fix-login").await.unwrap().unwrap();
+    assert_eq!(
+        (task.state, task.agent.as_str()),
+        (TaskState::Working, "coder")
+    );
+    assert!(m.store().handoffs("fix-login").await.unwrap().is_empty());
+
+    let tester = NewTask {
+        name: "check".into(),
+        title: "check".into(),
+        prompt: "the brief".into(),
+        repo: "shop".into(),
+        base_branch: "main".into(),
+        after: vec![],
+        attachments: vec![],
+        agent: "tester".into(),
+    };
+    m.store().create_task(&m.id, tester).await.unwrap();
+    let after = |t: Task| {
+        Ok(Task {
+            after: vec!["check".into()],
+            ..t
+        })
+    };
+    m.store().update_task("fix-login", after).await.unwrap();
+    let allowed = hand_back(&m, "fix-login", json!({"to": "gated", "reason": "r"})).await;
+    assert!(allowed.get("isError").is_none(), "{allowed}");
+}
+
+#[tokio::test]
 async fn a_type_without_a_list_may_hand_back_to_any_other_type() {
     let m = Mcp::new().await;
     running(&m, "fix-login", "coder").await;

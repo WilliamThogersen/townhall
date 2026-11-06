@@ -105,7 +105,8 @@ impl TaskTools<'_> {
         let base_branch = checks::base_branch(&repo, input.base_branch.as_deref()).await?;
         let agent = library::resolve(self.ctx, input.agent.as_deref()).await?;
         checks::name_is_free(self.ctx, &repo, &input.name).await?;
-        checks::requirements(self.ctx, &agent, &input.after).await?;
+        let remedy = "create those tasks first and pass them in `after`";
+        checks::requirements(self.ctx, &agent, &input.after, remedy).await?;
         let new = NewTask {
             name: input.name,
             title: input.title,
