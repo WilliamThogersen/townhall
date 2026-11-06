@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aStep, aTask } from "../api/fixtures";
+import { anAgentTypeSummary, aStep, aTask } from "../api/fixtures";
 import type { TaskState } from "../api/types";
 import { LOOP_STAGES, loopSummary, stageOf, stepKind, stepVerb } from "./stage";
 
@@ -70,6 +70,38 @@ describe("stageOf", () => {
     expect(stageOf(at("working"), aStep({ tool: "AskUserQuestion" }))).toBe("review");
   });
 
+  it("keeps a read-only planner in plan while it reads and searches", () => {
+    const planner = anAgentTypeSummary({ name: "planner", permissionMode: "plan" });
+    expect(stageOf(at("working", { agent: "planner" }), aStep({ tool: "Read" }), planner)).toBe("plan");
+    expect(stageOf(at("working", { agent: "planner" }), aStep({ tool: "Grep" }), planner)).toBe("plan");
+    expect(stageOf(at("working", { agent: "planner" }), null, planner)).toBe("plan");
+  });
+
+  it("treats any plan-mode type as planning, whatever its name", () => {
+    const scout = anAgentTypeSummary({ name: "scout", permissionMode: "plan" });
+    expect(stageOf(at("working", { agent: "scout" }), aStep({ tool: "Glob" }), scout)).toBe("plan");
+  });
+
+  it("maps a reviewer type to review and a planner by name when the type is not loaded", () => {
+    const reviewer = anAgentTypeSummary({ name: "reviewer", permissionMode: "default" });
+    expect(stageOf(at("working", { agent: "reviewer" }), aStep({ tool: "Read" }), reviewer)).toBe("review");
+    expect(stageOf(at("working", { agent: "planner" }), aStep({ tool: "Read" }), null)).toBe("plan");
+  });
+
+  it("keeps the step-based stage for builder-like types", () => {
+    const builder = anAgentTypeSummary({ name: "builder", permissionMode: "acceptEdits" });
+    expect(stageOf(at("working"), aStep({ tool: "Read" }), builder)).toBe("code");
+    expect(stageOf(at("working"), bash("npm test"), builder)).toBe("test");
+    expect(stageOf(at("working"), aStep({ tool: "AskUserQuestion" }), builder)).toBe("review");
+  });
+
+  it("lets the task state win over the agent type", () => {
+    const planner = anAgentTypeSummary({ name: "planner", permissionMode: "plan" });
+    expect(stageOf(at("merged", { agent: "planner" }), null, planner)).toBe("ship");
+    expect(stageOf(at("inReview", { agent: "planner" }), null, planner)).toBe("review");
+    expect(stageOf(at("ended", { agent: "planner" }), null, planner)).toBeNull();
+  });
+
   it("puts a failed task where it failed", () => {
     const failedChecks = { pr: { number: 41, url: null, checks: "failed" as const } };
     expect(stageOf(at("error", failedChecks), bash("npm test"))).toBe("review");
@@ -113,6 +145,20 @@ describe("loopSummary", () => {
       ["ship", 1],
     ]);
     expect(summary.needsYou).toBe(1);
+  });
+
+  it("counts a running planner in plan using the agent types it is given", () => {
+    const types = [anAgentTypeSummary({ name: "planner", permissionMode: "plan" })];
+    const tasks = [aTask({ name: "p", state: "working", agent: "planner" }), aTask({ name: "b", state: "working" })];
+    const reading = () => aStep({ tool: "Read" });
+    const summary = loopSummary(tasks, reading, types);
+    expect(summary.stages.map((s) => [s.stage, s.count])).toEqual([
+      ["plan", 1],
+      ["code", 1],
+      ["test", 0],
+      ["review", 0],
+      ["ship", 0],
+    ]);
   });
 
   it("is all zeros for no tasks", () => {

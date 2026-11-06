@@ -1,4 +1,7 @@
-import type { Step, Task, TaskState } from "../api/types";
+import type { AgentTypeSummary, Step, Task, TaskState } from "../api/types";
+import { pipelineStep } from "../views/agents/agentTypes";
+
+export type AgentKind = Pick<AgentTypeSummary, "name" | "permissionMode">;
 
 export type LoopStage = "plan" | "code" | "test" | "review" | "ship";
 
@@ -65,10 +68,23 @@ function stageOfStep(step: Step | null): LoopStage {
   return kind === "ask" ? "review" : "code";
 }
 
-export function stageOf(task: Task, latest: Step | null): LoopStage | null {
+function stageOfAgent(task: Task, agentType: AgentKind | null): LoopStage | null {
+  if (agentType?.permissionMode === "plan") return "plan";
+  const step = pipelineStep(task.agent);
+  return step === "plan" || step === "review" ? step : null;
+}
+
+export function stageOf(task: Task, latest: Step | null, agentType: AgentKind | null = null): LoopStage | null {
   if (task.state === "ended") return null;
   if (task.state === "error" && task.pr?.checks === "failed") return "review";
-  return STATE_STAGES[task.state] ?? stageOfStep(latest);
+  const byState = STATE_STAGES[task.state];
+  if (byState !== undefined) return byState;
+  return stageOfAgent(task, agentType) ?? stageOfStep(latest);
+}
+
+export function agentKindOf(types: readonly AgentKind[], task: Task): AgentKind | null {
+  const name = task.agent.toLowerCase();
+  return types.find((type) => type.name.toLowerCase() === name) ?? null;
 }
 
 export function isFinished(task: Task): boolean {
@@ -87,9 +103,14 @@ export interface LoopSummary {
 }
 
 const NO_STEP = (): Step | null => null;
+const NO_TYPES: readonly AgentKind[] = [];
 
-export function loopSummary(tasks: readonly Task[], latestStep: (name: string) => Step | null = NO_STEP): LoopSummary {
-  const staged = tasks.map((task) => ({ task, stage: stageOf(task, latestStep(task.name)) }));
+export function loopSummary(
+  tasks: readonly Task[],
+  latestStep: (name: string) => Step | null = NO_STEP,
+  types: readonly AgentKind[] = NO_TYPES,
+): LoopSummary {
+  const staged = tasks.map((task) => ({ task, stage: stageOf(task, latestStep(task.name), agentKindOf(types, task)) }));
   const stages = LOOP_STAGES.map((stage) => {
     const here = staged.filter((entry) => entry.stage === stage);
     return { stage, count: here.length, active: here.some((entry) => !isFinished(entry.task)) };

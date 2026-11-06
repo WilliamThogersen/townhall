@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aConversation, anAgentInfo, aStep, aTask } from "../../api/fixtures";
+import { aConversation, anAgentInfo, anAgentTypeSummary, aStep, aTask } from "../../api/fixtures";
 import type { Step, TaskState } from "../../api/types";
 import type { TimeAxis } from "./timeAxis";
 import { conversationBar, slowestStep, stepBar, stepTag, taskBar, taskGlyph, taskMeta, taskTag } from "./traceBars";
@@ -47,6 +47,12 @@ describe("task glyph, meta and tag", () => {
     const task = aTask({ state });
     expect(taskGlyph(task)).toBe(glyph);
     expect(taskMeta(task, null)).toBe(meta);
+  });
+
+  it("shows plan for a running read-only planner", () => {
+    const planner = aTask({ state: "working", agent: "planner" });
+    const type = anAgentTypeSummary({ name: "planner", permissionMode: "plan" });
+    expect(taskMeta(planner, aStep({ tool: "Read" }), type)).toBe("plan");
   });
 
   it("tags needs you and passed checks, nothing else", () => {

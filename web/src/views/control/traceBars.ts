@@ -1,5 +1,5 @@
 import type { AgentInfo, Step, Task, TaskState } from "../../api/types";
-import { stageOf, stepKind } from "../../tasks/stage";
+import { stageOf, stepKind, type AgentKind } from "../../tasks/stage";
 import { durationLabel, spanPercents, type TimeAxis } from "./timeAxis";
 import { conversationEnd, type ScopedConversation } from "./traceScope";
 
@@ -61,9 +61,9 @@ export function taskGlyph(task: Task): GlyphState {
   return TASK_GLYPHS[task.state];
 }
 
-export function taskMeta(task: Task, latest: Step | null): string {
+export function taskMeta(task: Task, latest: Step | null, agentType: AgentKind | null = null): string {
   if (task.state === "queued" || task.state === "ended") return task.state;
-  return stageOf(task, latest) ?? task.state;
+  return stageOf(task, latest, agentType) ?? task.state;
 }
 
 export function taskTag(task: Task): Tag | null {
