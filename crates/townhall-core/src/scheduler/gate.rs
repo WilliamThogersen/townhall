@@ -2,7 +2,8 @@
 //! types starts only when, for each required type, the newest task of that type in its
 //! `after` chain ended with a report that clears it for the commit the task will start from.
 //!
-//! - The report is that task's final message. An artifact is never read: `add_artifact` on
+//! - The report is the final message of the session recorded for that task, never the newest
+//!   transcript of its folder. An artifact is never read: `add_artifact` on
 //!   `/api/tasks/{name}/mcp` has no auth, so any local agent could file one for another task.
 //! - Its lines `VERDICT: APPROVE` or `VERDICT: PASS` and `COMMIT: <sha>` may be anywhere in
 //!   it (`report.rs`). A REJECT, a FAIL, a missing or conflicting line blocks.
