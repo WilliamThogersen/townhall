@@ -10,6 +10,7 @@ use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::redact::redact;
 use crate::{clock, ids, Error, Result, Workspace};
 
+use super::gate::{self, Gate};
 use super::{agent_type, brief, plan, transition, Pass, TaskLaunch};
 
 /// An `agent` `failed` entry's text stays short: a start error can quote a whole command.
@@ -117,6 +118,24 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     let mut free = plan::free_slots(limit, fleet.active(tasks));
     let mut pass = Pass::default();
     for task in ready {
+        if fleet.agent_of(task).is_none() {
+            match gate::check(ctx, task, tasks).await {
+                Ok(Gate::Open) => gate::clear(ctx, task).await?,
+                Ok(Gate::Blocked(why)) => {
+                    gate::hold(ctx, task, &why).await?;
+                    pass.blocked.push(task.name.clone());
+                    continue;
+                }
+                Err(e) => {
+                    let why = format!(
+                        "`{}` waits: its requirements were not checked: {e}",
+                        task.name
+                    );
+                    pass = Done::Warned(why).into_pass(pass, &task.name);
+                    continue;
+                }
+            }
+        }
         let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
         let done = act(ctx, task, decide(&fleet, task, free, handed_back)).await?;
         let alive = fleet.agent_of(task).is_some_and(|a| a.alive);
@@ -201,7 +220,7 @@ async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
 }
 
 /// The commit `base` names in the repo. Never an option, so git cannot read it as one.
-async fn commit_of(ws: &Workspace, base: &str) -> Result<String> {
+pub(super) async fn commit_of(ws: &Workspace, base: &str) -> Result<String> {
     if base.trim().is_empty() || base.starts_with('-') {
         return Err(Error::InvalidInput(format!("invalid base branch `{base}`")));
     }

@@ -63,7 +63,10 @@ mod tests {
         ];
         let names = |after: &[&str]| -> Vec<String> {
             let after: Vec<String> = after.iter().map(|a| a.to_string()).collect();
-            chain(&tasks, &after).iter().map(|t| t.name.clone()).collect()
+            chain(&tasks, &after)
+                .iter()
+                .map(|t| t.name.clone())
+                .collect()
         };
         assert_eq!(names(&["c"]), ["a", "b", "c"]);
         assert_eq!(names(&["d", "ghost"]), ["d"]);
