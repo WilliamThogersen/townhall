@@ -2,6 +2,8 @@
 //! from, so `merged` can be told from a branch that never got a commit) and the one
 //! `tasksCreated` entry per turn. Migrations 0200 to 0299, files `migrations/02xx_<name>.sql`.
 
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection, OptionalExtension, ToSql};
 use serde::Deserialize;
 use serde_json::json;
@@ -25,6 +27,11 @@ pub const MIGRATIONS: &[Migration] = &[
         id: 202,
         name: "0202_task_handoffs",
         sql: include_str!("migrations/0202_task_handoffs.sql"),
+    },
+    Migration {
+        id: 203,
+        name: "0203_task_ended_at",
+        sql: include_str!("migrations/0203_task_ended_at.sql"),
     },
 ];
 
@@ -157,6 +164,16 @@ impl Store {
             Ok(launches(conn, "where name = ?1", &[&name])?
                 .into_iter()
                 .next())
+        })
+        .await
+    }
+
+    pub async fn task_ended_times(&self) -> Result<HashMap<String, String>> {
+        self.call(|conn| {
+            let mut stmt =
+                conn.prepare("select name, ended_at from tasks where ended_at is not null")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            Ok(rows.collect::<rusqlite::Result<HashMap<String, String>>>()?)
         })
         .await
     }

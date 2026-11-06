@@ -163,3 +163,63 @@ async fn a_session_whose_worktree_is_gone_is_killed() {
     assert_eq!(reaped.sessions, [ghost.as_str()]);
     assert!(!has_session().await, "the session is killed");
 }
+
+#[tokio::test]
+async fn an_ended_task_of_an_open_conversation_is_reaped_after_the_grace() {
+    let s = Sched::new().await;
+    let (done, live) = (unique("done"), unique("live"));
+    s.create(&done, &[]).await;
+    s.create(&live, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    commit(&s.worktree(&done), "work that exists nowhere else").await;
+    std::fs::write(s.worktree(&done).join("scratch.txt"), "uncommitted").unwrap();
+    s.set_state(&done, TaskState::Ended).await;
+
+    let early = reaper::run_once(s.ctx()).await.unwrap();
+    assert_eq!(early, reaper::Reaped::default(), "inside the grace period");
+    assert!(s.worktree(&done).exists());
+
+    let late = reaper::run_once_after(s.ctx(), Duration::ZERO)
+        .await
+        .unwrap();
+    assert!(late.warnings.is_empty(), "{late:?}");
+    assert_eq!(late.removed, [done.as_str()]);
+    assert!(!s.worktree(&done).exists(), "a dirty worktree goes too");
+    assert!(
+        has_branch(&s, &done).await,
+        "unmerged commits keep their branch"
+    );
+    assert_eq!(s.agent_names().await, [live.as_str()], "live work is kept");
+}
+
+#[tokio::test]
+async fn folders_git_does_not_know_are_swept_but_live_work_is_kept() {
+    let s = Sched::new().await;
+    let (live, lost, leftover) = (unique("live"), unique("lost"), unique("leftover"));
+    s.create(&live, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    let dir = s.ws.worktrees_dir();
+    std::fs::create_dir_all(dir.join(&leftover).join("node_modules")).unwrap();
+    s.create(&lost, &[]).await;
+    std::fs::create_dir_all(dir.join(&lost)).unwrap();
+    std::fs::write(dir.join(&lost).join("keep.txt"), "mine").unwrap();
+
+    let early = reaper::run_once(s.ctx()).await.unwrap();
+    assert!(early.removed.is_empty(), "{early:?}");
+    assert!(
+        dir.join(&leftover).exists(),
+        "too young to be sure it is stray"
+    );
+
+    let late = reaper::run_once_after(s.ctx(), Duration::ZERO)
+        .await
+        .unwrap();
+    assert!(late.warnings.is_empty(), "{late:?}");
+    assert_eq!(late.removed, [leftover.as_str()]);
+    assert!(!dir.join(&leftover).exists());
+    assert!(
+        dir.join(&lost).join("keep.txt").exists(),
+        "a live task's folder stays"
+    );
+    assert!(s.worktree(&live).exists());
+}
