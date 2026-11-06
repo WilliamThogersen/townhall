@@ -54,7 +54,7 @@ async fn exec(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String
     let mut command = Command::new(program);
     command.args(args);
     if program == "git" {
-        command.env("LC_ALL", "C");
+        command.env("LC_MESSAGES", "C");
     }
     if let Some(dir) = cwd {
         command.current_dir(dir);
@@ -100,7 +100,7 @@ fn exec_blocking(
     let mut command = std::process::Command::new(program);
     command.args(args);
     if program == "git" {
-        command.env("LC_ALL", "C");
+        command.env("LC_MESSAGES", "C");
     }
     command.envs(envs.iter().copied());
     if let Some(dir) = cwd {
