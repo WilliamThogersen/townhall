@@ -214,6 +214,7 @@ Later tasks add to this table as they emit events.
 | `agent.permission_denied` | `townhall::agent` | info | `agent`, `tool` (name only) |
 | `agent.watcher_warning` | `townhall::agent` | warn | `error` (deduped: not repeated while unchanged) |
 | `agent.state_warning` | `townhall::agent` | warn | `error` (deduped: not repeated while unchanged) |
+| `reaper.pressure_removed` | `townhall::task` | info | `agent`, `repo`, `free_before`, `free_after` (bytes free on the data volume around the removal), `floor_gb` (`minFreeDiskGb`). An ended task's agent removed, grace or not, because free space was below the floor; one line per removal, oldest ended first, until space is back above the floor. |
 
 `request_id` is the `x-request-id` request header when it is 1 to 64 printable ASCII chars,
 else a generated id. The response always carries it. Websocket upgrades log `ws.*` instead of
