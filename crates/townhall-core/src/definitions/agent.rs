@@ -82,6 +82,10 @@ pub struct AgentDef {
     /// The agent types this one may hand its task back to. `None`: any type.
     #[serde(default)]
     pub can_hand_back_to: Option<Vec<String>>,
+    /// The agent types whose tasks must have finished with a passing report, somewhere in a
+    /// task's `after` chain, before a task of this type may be created or started.
+    #[serde(default)]
+    pub requires: Vec<String>,
 }
 
 /// Parse an agent definition, keeping `source` as written.
@@ -104,12 +108,16 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
     let hand_back = hand_back_problems(def)
         .into_iter()
         .map(|m| error("can_hand_back_to", m));
+    let requires = name_list_problems(&def.requires)
+        .into_iter()
+        .map(|m| error("requires", m));
     let command = command_problem(def).map(|m| error("command", m.to_string()));
     let errors = name
         .into_iter()
         .chain(model.map(|m| error("model", m)))
         .chain(tools.map(|m| error("tools", m)))
         .chain(hand_back)
+        .chain(requires)
         .chain(command);
     into_result(errors.collect())
 }
@@ -131,7 +139,10 @@ fn command_problem(def: &AgentDef) -> Option<&'static str> {
 }
 
 fn hand_back_problems(def: &AgentDef) -> Vec<String> {
-    let names = def.can_hand_back_to.as_deref().unwrap_or_default();
+    name_list_problems(def.can_hand_back_to.as_deref().unwrap_or_default())
+}
+
+fn name_list_problems(names: &[String]) -> Vec<String> {
     names
         .iter()
         .enumerate()

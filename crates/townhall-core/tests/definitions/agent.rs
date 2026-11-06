@@ -208,6 +208,7 @@ fn launch_fields_drop_empty_text() {
         prompt: Some(String::new()),
         command: Some("cargo test".into()),
         can_hand_back_to: None,
+        requires: Vec::new(),
     };
     let fields = def.launch_fields();
     assert_eq!(fields.model, None);
@@ -258,5 +259,24 @@ fn can_hand_back_to_must_hold_valid_unique_names() {
         let errors = agent_errors(&format!("{MINIMAL}can_hand_back_to = {bad}\n"));
         assert_eq!(errors.len(), 1, "{bad}: {errors:?}");
         assert!(errors[0].contains("can_hand_back_to"), "{errors:?}");
+    }
+}
+
+#[test]
+fn requires_defaults_to_nothing_and_is_parsed() {
+    assert!(parse_agent(MINIMAL).unwrap().def.requires.is_empty());
+    let source = format!("{MINIMAL}requires = [\"tester\", \"Reviewer\"]\n");
+    let def = check_agent(&source).unwrap().def;
+    assert_eq!(def.requires, ["tester", "Reviewer"]);
+    let json = serde_json::to_value(&def).unwrap();
+    assert_eq!(json["requires"][1], "Reviewer");
+}
+
+#[test]
+fn requires_must_hold_valid_unique_names() {
+    for bad in ["[\"a b\"]", "[\"\"]", "[\"tester\", \"TESTER\"]"] {
+        let errors = agent_errors(&format!("{MINIMAL}requires = {bad}\n"));
+        assert_eq!(errors.len(), 1, "{bad}: {errors:?}");
+        assert!(errors[0].contains("requires"), "{errors:?}");
     }
 }
