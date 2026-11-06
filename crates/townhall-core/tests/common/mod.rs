@@ -102,6 +102,7 @@ pub fn new_task(name: &str) -> townhall_core::model::NewTask {
         after: vec![],
         attachments: vec![],
         agent: "builder".into(),
+        pr_base: None,
     }
 }
 

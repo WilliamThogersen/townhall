@@ -261,15 +261,42 @@ pub async fn last_message(projects: &Path, worktree: &Path) -> crate::Result<Opt
         })?
 }
 
+/// What the agent said when its turn ended in the transcript of Claude session `session_id`
+/// for `worktree`, and only that one: another transcript in the folder, however new, is never
+/// read. The outer `None` is no such transcript; the inner one a last turn without text.
+pub async fn last_message_of_session(
+    projects: &Path,
+    worktree: &Path,
+    session_id: &str,
+) -> crate::Result<Option<Option<String>>> {
+    let (projects, worktree) = (projects.to_path_buf(), worktree.to_path_buf());
+    let session_id = session_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        match steps::session_transcript(&projects, &worktree, &session_id)? {
+            Some(path) => read_message(&path).map(Some),
+            None => Ok(None),
+        }
+    })
+    .await
+    .map_err(|e| crate::Error::Io {
+        context: "read an agent's last message".into(),
+        source: std::io::Error::other(e),
+    })?
+}
+
 fn read_last_message(projects: &Path, worktree: &Path) -> crate::Result<Option<String>> {
     let newest = match steps::worktree_made(worktree)? {
         Some(made) => steps::latest_transcript_since(projects, worktree, made)?,
         None => steps::latest_transcript(projects, worktree)?,
     };
-    let Some(path) = newest else {
-        return Ok(None);
-    };
-    let turn = transcript::read(&path).map_err(|source| crate::Error::Io {
+    match newest {
+        Some(path) => read_message(&path),
+        None => Ok(None),
+    }
+}
+
+fn read_message(path: &Path) -> crate::Result<Option<String>> {
+    let turn = transcript::read(path).map_err(|source| crate::Error::Io {
         context: format!("read transcript {}", path.display()),
         source,
     })?;

@@ -54,6 +54,8 @@ export const aTask = (over: Partial<Task> = {}): Task => ({
   createdAt: FIXTURE_TIME,
   pr: null,
   agent: "builder",
+  blocked: null,
+  prBase: null,
   ...over,
 });
 

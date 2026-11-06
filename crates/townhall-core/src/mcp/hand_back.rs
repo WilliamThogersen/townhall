@@ -12,7 +12,7 @@ use crate::context::Context;
 use crate::model::{Task, MAX_HANDOFFS};
 use crate::worktree;
 
-use super::checks::{one_line, Checked};
+use super::checks::{self, one_line, Checked};
 use super::{ToolDef, MAX_NAME_LEN, MAX_PROMPT_LEN, NAME_PATTERN};
 
 pub const HAND_BACK: &str = "hand_back";
@@ -106,6 +106,8 @@ pub(super) async fn hand_back(ctx: &Context, task: &str, input: HandBackInput) -
             listed(&targets)
         ));
     }
+    let remedy = "a handed-back task keeps its own `after` chain, so hand back to a type that does not need them, or ask the planner to create a task of that type after those tasks";
+    checks::requirements(ctx, to, &task.after, remedy).await?;
     let summary = summary_of(ctx, &task, input.summary.as_deref()).await;
     let handoff = store
         .hand_back(&task.name, to, &reason, &summary)

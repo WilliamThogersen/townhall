@@ -216,3 +216,29 @@ async fn detail_has_everything() {
         (1, 1, 0)
     );
 }
+
+#[tokio::test]
+async fn a_block_reason_is_stored_and_cleared() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    let t = env
+        .store
+        .create_task(&c.id, new_task("ship"))
+        .await
+        .unwrap();
+    assert_eq!(t.blocked, None);
+    let why = "reviewer reported REJECT";
+    let set = move |t: Task| {
+        Ok(Task {
+            blocked: Some(why.into()),
+            ..t
+        })
+    };
+    env.store.update_task("ship", set).await.unwrap();
+    let found = env.store.find_task("ship").await.unwrap().unwrap();
+    assert_eq!(found.blocked.as_deref(), Some(why));
+    let clear = |t: Task| Ok(Task { blocked: None, ..t });
+    env.store.update_task("ship", clear).await.unwrap();
+    let cleared = env.store.find_task("ship").await.unwrap().unwrap();
+    assert_eq!(cleared.blocked, None);
+}

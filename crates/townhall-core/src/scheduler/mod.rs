@@ -16,9 +16,12 @@
 
 mod agent_type;
 mod brief;
+mod gate;
 mod launch;
 mod merged;
 mod plan;
+pub mod report;
+pub mod requires;
 
 use std::time::Duration;
 
@@ -53,6 +56,8 @@ pub struct Pass {
     pub started: Vec<String>,
     pub adopted: Vec<String>,
     pub failed: Vec<String>,
+    /// Queued tasks held back by their agent type's `requires` (`gate.rs`).
+    pub blocked: Vec<String>,
     pub merged: Vec<String>,
     pub warnings: Vec<String>,
 }

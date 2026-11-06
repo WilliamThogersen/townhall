@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 
 pub use agent::{claude_projects_dir, worktree_made, CLAUDE_PROJECTS_ENV};
-pub use locate::{latest_transcript, latest_transcript_since, project_dir_for};
+pub use locate::{latest_transcript, latest_transcript_since, project_dir_for, session_transcript};
 pub use parse::{parse_transcript, transcript_tokens};
 
 use crate::{Error, Result};

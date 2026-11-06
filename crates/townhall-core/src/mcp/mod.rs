@@ -153,6 +153,10 @@ fn create_task_schema() -> Value {
                 "type": "string",
                 "description": "Branch the worktree starts from. Default: the repo's base branch."
             },
+            "prBase": {
+                "type": "string", "minLength": 1,
+                "description": "Existing branch of the repo the task's pull request (open_pr) targets. Default: baseBranch. Set it when the task starts from a branch that is not where the work must land, for example a shipper that starts from the reviewed branch and opens its pull request into main."
+            },
             "after": names_array("Names of tasks that must finish before this one starts."),
             "attachments": names_array("Attachment ids of this conversation the agent needs."),
             "agent": {
@@ -185,7 +189,7 @@ fn task_tools() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: CREATE_TASK,
-            description: "Create one task for an agent of a saved agent type (`agent`). It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. Returns the task.",
+            description: "Create one task for an agent of a saved agent type (`agent`). It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. If the agent type has `requires`, the `after` chain must contain a task of each required type or this is refused, and the task starts only once those tasks ended with a report that clears it. `prBase` sets the branch its pull request targets (default: its base branch). Returns the task.",
             input_schema: create_task_schema(),
         },
         ToolDef {
@@ -195,7 +199,7 @@ fn task_tools() -> Vec<ToolDef> {
         },
         ToolDef {
             name: TASK_STATUS,
-            description: "What this conversation's tasks are doing and did. Without `name`: every task with its state, branch, `after`, its last 3 agent and needs-you entries and its proof artifacts (name, kind, author role, url). With `name`: that task plus its agent's last 20 steps and, once it is ended or merged, the agent's last message. Call it whenever you are asked what a task did or how it stands, instead of guessing.",
+            description: "What this conversation's tasks are doing and did. Without `name`: every task with its state, branch, `after`, its last 3 agent and needs-you entries and its proof artifacts (name, kind, author role, url) and `blocked`, why a queued task does not start although its `after` tasks finished. With `name`: that task plus its agent's last 20 steps and, once it is ended or merged, the agent's last message. Call it whenever you are asked what a task did or how it stands, instead of guessing.",
             input_schema: status::schema(),
         },
     ]
@@ -241,6 +245,7 @@ mod tests {
                 "attachments",
                 "baseBranch",
                 "name",
+                "prBase",
                 "prompt",
                 "repo",
                 "title"

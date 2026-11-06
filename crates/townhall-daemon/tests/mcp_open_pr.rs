@@ -21,7 +21,7 @@ fn stubs() {
         let dir = std::env::temp_dir().join(format!("townhall-open-pr-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let gh = dir.join("gh");
-        let script = "#!/bin/sh\nif [ \"$2\" = status ]; then exit 0; fi\nif [ \"$1\" = api ]; then echo 'WilliamThogersen 42'; exit 0; fi\nif [ \"$2\" = switch ]; then echo \"no login for $6\" >&2; exit 1; fi\necho https://github.com/acme/shop/pull/7\n";
+        let script = "#!/bin/sh\nif [ \"$2\" = create ]; then echo \"$@\" >> \"$0.log\"; fi\nif [ \"$2\" = status ]; then exit 0; fi\nif [ \"$1\" = api ]; then echo 'WilliamThogersen 42'; exit 0; fi\nif [ \"$2\" = switch ]; then echo \"no login for $6\" >&2; exit 1; fi\necho https://github.com/acme/shop/pull/7\n";
         std::fs::write(&gh, script).unwrap();
         std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var("TOWNHALL_GH_BIN", &gh);
@@ -41,6 +41,7 @@ async fn running(m: &Mcp, name: &str) {
         after: vec![],
         attachments: vec![],
         agent: "coder".into(),
+        pr_base: None,
     };
     m.store().create_task(&m.id, new).await.unwrap();
     let change = |t: Task| {
@@ -147,6 +148,48 @@ async fn a_github_origin_opens_the_pr_and_stores_it() {
     )
     .await;
     assert!(!pushed.is_empty());
+}
+
+async fn opened_against(m: &Mcp, name: &str, start: &str, pr_base: Option<&str>) -> String {
+    with_worktree(m, name).await;
+    git(&m.env.startup, &["branch", start]).await;
+    let origin = "https://github.com/acme/shop.git";
+    git(&m.env.startup, &["remote", "add", "origin", origin]).await;
+    let bare = m.env.root.path().join("bare.git");
+    let bare = bare.to_string_lossy().into_owned();
+    git(m.env.root.path(), &["init", "-q", "--bare", &bare]).await;
+    git(&m.env.startup, &["config", "remote.origin.pushurl", &bare]).await;
+    let (start, pr_base) = (start.to_string(), pr_base.map(String::from));
+    let aim = move |t: Task| {
+        Ok(Task {
+            base_branch: start,
+            pr_base,
+            ..t
+        })
+    };
+    m.store().update_task(name, aim).await.unwrap();
+    let got = payload(&open_pr(m, name, json!({"title": "Ship it"})).await);
+    assert_eq!(got["state"], "opened", "{got}");
+    let gh = std::env::var("TOWNHALL_GH_BIN").unwrap();
+    let log = std::fs::read_to_string(format!("{gh}.log")).unwrap();
+    let head = format!("--head townhall/{name} ");
+    let line = log.lines().find(|l| l.contains(&head)).unwrap();
+    line.to_string()
+}
+
+#[tokio::test]
+async fn a_shipper_that_starts_from_the_reviewed_branch_opens_its_pr_into_the_pr_target() {
+    let m = Mcp::new().await;
+    let line = opened_against(&m, "ship-it", "reviewed", Some("main")).await;
+    assert!(line.contains("--base main "), "{line}");
+    assert!(!line.contains("--base reviewed"), "{line}");
+}
+
+#[tokio::test]
+async fn without_a_pr_target_the_pr_goes_into_the_base_branch_as_before() {
+    let m = Mcp::new().await;
+    let line = opened_against(&m, "land-it", "reviewed", None).await;
+    assert!(line.contains("--base reviewed "), "{line}");
 }
 
 #[tokio::test]

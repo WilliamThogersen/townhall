@@ -104,8 +104,11 @@ impl TaskTools<'_> {
             .map_err(|e| e.to_string())?;
         let repo = checks::repo(self.ctx, &conversation, input.repo.as_deref()).await?;
         let base_branch = checks::base_branch(&repo, input.base_branch.as_deref()).await?;
+        let pr_base = checks::pr_base(&repo, input.pr_base.as_deref()).await?;
         let agent = library::resolve(self.ctx, input.agent.as_deref()).await?;
         checks::name_is_free(self.ctx, &repo, &input.name).await?;
+        let remedy = "create those tasks first and pass them in `after`";
+        checks::requirements(self.ctx, &agent, &input.after, remedy).await?;
         let new = NewTask {
             name: input.name,
             title: input.title,
@@ -115,6 +118,7 @@ impl TaskTools<'_> {
             after: input.after,
             attachments: input.attachments,
             agent,
+            pr_base,
         };
         let task = store
             .create_task(self.conversation_id, new)

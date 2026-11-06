@@ -63,6 +63,36 @@ pub fn latest_transcript_since(
     newest_transcript(claude_projects, cwd, Some(since))
 }
 
+/// The transcript of the Claude session `session_id` for `cwd`, under `cwd` as given or its
+/// resolved path; never another session's, however new. `None` when it is not there.
+pub fn session_transcript(
+    claude_projects: &Path,
+    cwd: &Path,
+    session_id: &str,
+) -> Result<Option<PathBuf>> {
+    if !crate::ids::is_session_id(session_id) {
+        return Err(Error::InvalidInput(format!(
+            "`{session_id}` is not a session id"
+        )));
+    }
+    let file = format!("{session_id}.{TRANSCRIPT_EXT}");
+    let given = project_dir_for(claude_projects, cwd);
+    let resolved = cwd
+        .canonicalize()
+        .ok()
+        .map(|real| project_dir_for(claude_projects, &real));
+    for dir in [Some(given), resolved].into_iter().flatten() {
+        let io = |source| Error::Io {
+            context: format!("read transcript in {}", dir.display()),
+            source,
+        };
+        if let Some((_, path)) = transcript(dir.join(&file)).map_err(io)? {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
+
 fn newest_transcript(
     claude_projects: &Path,
     cwd: &Path,

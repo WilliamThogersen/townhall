@@ -133,6 +133,7 @@ impl Sched {
             after: after.iter().map(|a| a.to_string()).collect(),
             attachments: vec![],
             agent: "plain".into(),
+            pr_base: None,
         }
     }
 

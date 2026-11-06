@@ -8,6 +8,7 @@ use crate::cmd::{probe, validate_name};
 use crate::context::Context;
 use crate::model::{Conversation, CreateTaskInput, EntryBody, Repo, TASK_BRANCH_PREFIX};
 use crate::repos::{names, verify_branch};
+use crate::scheduler::requires;
 use crate::{fleet, Error};
 
 use super::{MAX_LIST_LEN, MAX_NAME_LEN, MAX_PROMPT_LEN, MAX_TITLE_LEN};
@@ -61,11 +62,15 @@ pub(super) fn input(raw: CreateTaskInput) -> Checked<CreateTaskInput> {
     too_long("prompt", &raw.prompt, MAX_PROMPT_LEN)?;
     too_many("after", &raw.after)?;
     too_many("attachments", &raw.attachments)?;
+    if raw.pr_base.as_deref().is_some_and(|b| b.trim().is_empty()) {
+        return Err("`prBase` must not be blank: leave it out to target `baseBranch`".into());
+    }
     Ok(CreateTaskInput {
         title,
         repo: given(raw.repo.as_deref()),
         base_branch: given(raw.base_branch.as_deref()),
         agent: given(raw.agent.as_deref()),
+        pr_base: given(raw.pr_base.as_deref()),
         ..raw
     })
 }
@@ -133,6 +138,106 @@ pub(super) async fn base_branch(repo: &Repo, wanted: Option<&str>) -> Checked<St
         .map_err(|e| format!("base branch check failed: {e}"))?
         .map_err(|e| format!("{e}: pass a branch of repo `{}` or leave it out", repo.name))?;
     Ok(branch)
+}
+
+fn is_sha(name: &str) -> bool {
+    matches!(name.len(), 40 | 64) && name.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+async fn exits_ok(args: &[&str], repo: &Repo) -> Checked<bool> {
+    match probe("git", args, Some(&repo.path)).await {
+        Ok(_) => Ok(true),
+        Err(Error::Command { .. }) => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub(super) async fn pr_base(repo: &Repo, wanted: Option<&str>) -> Checked<Option<String>> {
+    let Some(branch) = wanted else {
+        return Ok(None);
+    };
+    if is_sha(branch) {
+        return Err(format!(
+            "`prBase` `{branch}` must be a branch name of repo `{}`, not a commit id",
+            repo.name
+        ));
+    }
+    let invalid = || {
+        format!(
+            "`prBase` `{branch}` is not a plain branch name: pass an existing branch of repo `{}` or leave it out",
+            repo.name
+        )
+    };
+    let shaped = !branch.is_empty()
+        && branch != "HEAD"
+        && !branch.starts_with(['-', '@'])
+        && !branch.contains("@{")
+        && !branch.chars().any(|c| c.is_whitespace() || c.is_control());
+    if !shaped {
+        return Err(invalid());
+    }
+    let formatted = probe(
+        "git",
+        &["check-ref-format", "--branch", branch],
+        Some(&repo.path),
+    )
+    .await;
+    match formatted {
+        Ok(out) if out.trim() == branch => {}
+        Ok(_) | Err(Error::Command { .. }) => return Err(invalid()),
+        Err(e) => return Err(e.to_string()),
+    }
+    let has_origin = exits_ok(&["remote", "get-url", "origin"], repo).await?;
+    let (prefix, missing) = match has_origin {
+        true => (
+            "refs/remotes/origin",
+            format!(
+                "`prBase` branch `{branch}` is not on origin: push it first, or pass another branch of repo `{}`",
+                repo.name
+            ),
+        ),
+        false => (
+            "refs/heads",
+            format!(
+                "`prBase` branch `{branch}` does not exist in repo `{}`: pass an existing branch or leave it out",
+                repo.name
+            ),
+        ),
+    };
+    let full = format!("{prefix}/{branch}");
+    match exits_ok(&["show-ref", "--verify", "--quiet", full.as_str()], repo).await? {
+        true => Ok(Some(branch.to_string())),
+        false => Err(missing),
+    }
+}
+
+/// A task of agent type `agent` needs a task of each type its `requires` lists somewhere in
+/// its `after` chain: the refusal names what is missing and, as `remedy`, what to do about it.
+pub(super) async fn requirements(
+    ctx: &Context,
+    agent: &str,
+    after: &[String],
+    remedy: &str,
+) -> Checked<()> {
+    let store = ctx.store().map_err(|e| e.to_string())?;
+    let Some(kind) = store.agent_type(agent).await.map_err(|e| e.to_string())? else {
+        return Ok(());
+    };
+    if kind.def.requires.is_empty() {
+        return Ok(());
+    }
+    let tasks = store.all_tasks().await.map_err(|e| e.to_string())?;
+    let chain = requires::chain(&tasks, after);
+    let missing = requires::missing(&kind.def.requires, &chain);
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let listed: Vec<String> = missing.iter().map(|m| format!("`{m}`")).collect();
+    Err(format!(
+        "agent type `{}` requires a task of type {} in the `after` chain: {remedy}",
+        kind.def.name,
+        listed.join(" and ")
+    ))
 }
 
 /// No agent in any repo (ignoring case) and no branch `townhall/<name>` in this one has the
