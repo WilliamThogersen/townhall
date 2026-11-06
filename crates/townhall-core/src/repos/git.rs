@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::cmd::run_blocking;
+use crate::cmd::{probe_blocking, run_blocking};
 use crate::{Error, Result};
 
 const ORIGIN_PREFIX: &str = "origin/";
@@ -18,7 +18,7 @@ fn not_top(path: &Path) -> Error {
 }
 
 fn git_path(path: &Path, flag: &str) -> Option<PathBuf> {
-    let out = run_blocking("git", &["rev-parse", flag], Some(path)).ok()?;
+    let out = probe_blocking("git", &["rev-parse", flag], Some(path)).ok()?;
     path.join(out).canonicalize().ok()
 }
 
@@ -26,7 +26,7 @@ fn git_path(path: &Path, flag: &str) -> Option<PathBuf> {
 /// townhall's own `worktrees` folder, and is not a linked worktree on a `townhall/*` branch.
 /// A missing `git` is its own error.
 pub fn check_top_folder(path: &Path, worktrees: &Path) -> Result<()> {
-    let top = match run_blocking("git", &["rev-parse", "--show-toplevel"], Some(path)) {
+    let top = match probe_blocking("git", &["rev-parse", "--show-toplevel"], Some(path)) {
         Ok(top) => top,
         Err(Error::Command { .. }) => return Err(not_top(path)),
         Err(e) => return Err(e),
@@ -47,7 +47,7 @@ pub fn check_top_folder(path: &Path, worktrees: &Path) -> Result<()> {
 }
 
 fn symbolic_ref(path: &Path, name: &str) -> Option<String> {
-    run_blocking(
+    probe_blocking(
         "git",
         &["symbolic-ref", "--quiet", "--short", name],
         Some(path),
@@ -58,7 +58,7 @@ fn symbolic_ref(path: &Path, name: &str) -> Option<String> {
 
 fn resolves(path: &Path, rev: &str) -> bool {
     let spec = format!("{rev}^{{commit}}");
-    run_blocking(
+    probe_blocking(
         "git",
         &["rev-parse", "--verify", "--quiet", &spec],
         Some(path),
@@ -104,7 +104,7 @@ const FALLBACK_IDENTITY: [&str; 4] = [
 /// True when `path` is not inside any git repo, bare ones included: the only folders
 /// `init_plain` may touch.
 pub fn is_plain_folder(path: &Path) -> Result<bool> {
-    match run_blocking("git", &["rev-parse", "--git-dir"], Some(path)) {
+    match probe_blocking("git", &["rev-parse", "--git-dir"], Some(path)) {
         Ok(_) => Ok(false),
         Err(Error::Command { .. }) => Ok(true),
         Err(e) => Err(e),
@@ -112,7 +112,7 @@ pub fn is_plain_folder(path: &Path) -> Result<bool> {
 }
 
 fn has_config(path: &Path, key: &str) -> bool {
-    run_blocking("git", &["config", key], Some(path)).is_ok_and(|v| !v.is_empty())
+    probe_blocking("git", &["config", key], Some(path)).is_ok_and(|v| !v.is_empty())
 }
 
 /// Turns a plain folder into a repo: `git init` on `branch`, then one commit of what is

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::cmd::{run_blocking, run_blocking_env};
+use crate::cmd::{probe_blocking, run_blocking, run_blocking_env};
 use crate::home::REPOS_DIR;
 use crate::repos::remote_env;
 use crate::{Result, Workspace};
@@ -23,7 +23,7 @@ pub async fn fresh_base(ws: &Workspace, base: &str) -> String {
 
 fn refresh(ws: &Workspace, base: &str) -> String {
     let repo = ws.repo();
-    if run_blocking("git", &["remote", "get-url", REMOTE], Some(repo)).is_err() {
+    if probe_blocking("git", &["remote", "get-url", REMOTE], Some(repo)).is_err() {
         return base.to_string();
     }
     if let Err(e) = fetch(repo) {
@@ -65,7 +65,7 @@ fn fetch(repo: &Path) -> Result<String> {
 }
 
 fn exists(repo: &Path, full_ref: &str) -> bool {
-    run_blocking(
+    probe_blocking(
         "git",
         &["rev-parse", "--verify", "--quiet", full_ref],
         Some(repo),
@@ -74,7 +74,7 @@ fn exists(repo: &Path, full_ref: &str) -> bool {
 }
 
 fn is_ancestor(repo: &Path, ancestor: &str, descendant: &str) -> bool {
-    run_blocking(
+    probe_blocking(
         "git",
         &["merge-base", "--is-ancestor", ancestor, descendant],
         Some(repo),
