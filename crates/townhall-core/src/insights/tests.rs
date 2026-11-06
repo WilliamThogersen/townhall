@@ -304,3 +304,187 @@ fn old_entries_fall_outside_the_window() {
     };
     assert!(analyze(&data, now(), &bad).unwrap_err().contains("since"));
 }
+
+/// Two copies of every conversation (ids `c<i>` and `c<i>-b`), each with `times` copies of a
+/// distinct long request, so every pattern recurs.
+fn many_requests(n: usize, times: u32) -> InsightData {
+    let word = |mut i: usize| {
+        let mut w = String::new();
+        loop {
+            w.push((b'a' + (i % 26) as u8) as char);
+            i /= 26;
+            if i == 0 {
+                return w;
+            }
+        }
+    };
+    let conversations: Vec<ConversationData> = (0..n)
+        .map(|i| {
+            let entries = (0..times)
+                .map(|t| {
+                    // the digit differs the raw texts at their start; normalizing drops it
+                    let text = format!("{} {} {}", t + 1, word(i), "filler ".repeat(40));
+                    you(u64::from(t) + 1, 2 + t, &text)
+                })
+                .collect();
+            convo(&format!("c{i}"), entries)
+        })
+        .collect();
+    let copies = conversations.iter().map(|c| ConversationData {
+        id: format!("{}-b", c.id),
+        entries: c.entries.clone(),
+    });
+    InsightData {
+        conversations: conversations.iter().cloned().chain(copies).collect(),
+        tasks: vec![],
+    }
+}
+
+#[test]
+fn ranking_is_by_count_then_recency_and_ignores_single_occurrences() {
+    let data = InsightData {
+        conversations: vec![convo(
+            "c1",
+            vec![
+                you(1, 1, "alpha"),
+                you(2, 2, "alpha"),
+                you(3, 3, "beta"),
+                you(4, 4, "beta"),
+                you(5, 5, "gamma"),
+                you(6, 5, "gamma"),
+                you(7, 5, "gamma"),
+                you(8, 5, "single"),
+            ],
+        )],
+        tasks: vec![],
+    };
+    let out = run(&data);
+    let names: Vec<(&str, usize)> = out
+        .patterns
+        .iter()
+        .map(|p| (p.pattern.as_str(), p.count))
+        .collect();
+    assert_eq!(names, [("gamma", 3), ("beta", 2), ("alpha", 2)]);
+    assert!(!out.truncated);
+}
+
+#[test]
+fn top_is_clamped_and_marks_the_output_truncated() {
+    let data = many_requests(12, 1);
+    let default = run(&data);
+    assert_eq!(default.patterns.len(), DEFAULT_TOP);
+    assert!(default.truncated);
+
+    let args = |top| InsightsArgs {
+        since: None,
+        top: Some(top),
+    };
+    assert_eq!(analyze(&data, now(), &args(3)).unwrap().patterns.len(), 3);
+    assert_eq!(analyze(&data, now(), &args(0)).unwrap().patterns.len(), 1);
+    let big = many_requests(40, 1);
+    assert_eq!(
+        analyze(&big, now(), &args(500)).unwrap().patterns.len(),
+        MAX_TOP
+    );
+}
+
+#[test]
+fn snippets_ids_and_total_size_are_capped() {
+    let args = InsightsArgs {
+        since: None,
+        top: Some(MAX_TOP),
+    };
+    let out = analyze(&many_requests(40, 3), now(), &args).unwrap();
+    assert!(out.truncated);
+    assert!(out.patterns.len() < MAX_TOP, "{}", out.patterns.len());
+    assert!(serde_json::to_string(&out).unwrap().len() <= MAX_OUTPUT_BYTES);
+    for p in &out.patterns {
+        assert_eq!(p.samples.len(), MAX_SAMPLES);
+        assert!(p
+            .samples
+            .iter()
+            .all(|s| s.chars().count() <= MAX_SNIPPET_CHARS));
+        assert!(p.pattern.chars().count() <= MAX_SNIPPET_CHARS);
+        assert!(p.conversations.len() <= MAX_IDS && p.tasks.len() <= MAX_IDS);
+    }
+}
+
+#[test]
+fn ids_are_capped_per_pattern() {
+    let conversations = (0..8)
+        .map(|i| convo(&format!("c{i}"), vec![you(1, 2, "same thing")]))
+        .collect();
+    let out = run(&InsightData {
+        conversations,
+        tasks: vec![],
+    });
+    assert_eq!(out.patterns[0].count, 8);
+    assert_eq!(out.patterns[0].conversations.len(), MAX_IDS);
+}
+
+#[test]
+fn secrets_never_reach_the_output() {
+    let leak = |id, day| {
+        you(
+            id,
+            day,
+            "deploy with token=hunter2hunter2 and key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789",
+        )
+    };
+    let failed = |id, day| {
+        agent(
+            id,
+            day,
+            "t-1",
+            AgentEvent::Failed,
+            "auth failed token=hunter2hunter2",
+        )
+    };
+    let mut failing = task("t-1", "builder", TaskState::Error, &[], "c1");
+    failing.handoffs = vec![
+        handoff(
+            "t-1",
+            "builder",
+            "tester",
+            "password=correcthorsebattery",
+            2,
+        ),
+        handoff(
+            "t-1",
+            "builder",
+            "tester",
+            "password=correcthorsebattery",
+            3,
+        ),
+    ];
+    let data = InsightData {
+        conversations: vec![convo(
+            "c1",
+            vec![leak(1, 2), leak(2, 3), failed(3, 2), failed(4, 3)],
+        )],
+        tasks: vec![failing],
+    };
+    let out = run(&data);
+    assert_eq!(out.patterns.len(), 3, "{out:?}");
+    let json = serde_json::to_string(&out).unwrap();
+    for secret in ["hunter2", "sk-ant-api03-abc", "correcthorse"] {
+        assert!(!json.contains(secret), "{secret} leaked: {json}");
+    }
+    assert!(json.contains("REDACTED"), "{json}");
+}
+
+#[test]
+fn fingerprints_ignore_numbers_case_and_conversation() {
+    let at = |conv: &str, texts: [&str; 2]| {
+        run(&InsightData {
+            conversations: vec![convo(conv, vec![you(1, 2, texts[0]), you(2, 3, texts[1])])],
+            tasks: vec![],
+        })
+    };
+    let a = at("c1", ["ship it 1", "ship it 2"]);
+    let b = at("zz", ["Ship it 77", "ship it"]);
+    assert_eq!(a.patterns[0].fingerprint, b.patterns[0].fingerprint);
+    let other = at("c1", ["ship them", "ship them"]);
+    assert_ne!(a.patterns[0].fingerprint, other.patterns[0].fingerprint);
+    assert_eq!(a.patterns[0].fingerprint.len(), 16);
+}
