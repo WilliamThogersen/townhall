@@ -56,6 +56,7 @@ export interface Settings {
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
   readonly learnAboutMe: boolean;
+  readonly githubAccount: string;
 }
 
 export type SettingKey = keyof Settings;

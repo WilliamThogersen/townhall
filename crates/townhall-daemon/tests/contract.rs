@@ -161,7 +161,8 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
         json!({
             "permissionMode": "acceptEdits", "workWithoutAsking": false, "agentsAtOnce": 6,
             "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
-            "townhallModel": "sonnet", "learnAboutMe": false
+            "townhallModel": "sonnet", "learnAboutMe": false,
+            "githubAccount": "WilliamThogersen"
         })
     );
     let (s, v) = call(
@@ -183,7 +184,17 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
         (s, &v["data"]["townhallModel"]),
         (StatusCode::OK, &json!("haiku"))
     );
+    let put = Some(json!({"value": "octocat"}));
+    let (s, v) = call(&app, "PUT", "/api/settings/githubAccount", put).await;
+    assert_eq!(
+        (s, &v["data"]["githubAccount"]),
+        (StatusCode::OK, &json!("octocat"))
+    );
     let bad = [
+        (
+            "/api/settings/githubAccount",
+            json!({"value": "not a login"}),
+        ),
         ("/api/settings/theme", json!({"value": "dark"})),
         ("/api/settings/agentsAtOnce", json!({"value": 51})),
         ("/api/settings/permissionMode", json!({"value": "yolo"})),
