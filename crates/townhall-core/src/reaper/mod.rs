@@ -5,12 +5,16 @@
 //!   was merged, or that is no task's at all (`verdict.rs`);
 //! - kills townhall sessions whose worktree is gone and prunes git's worktree records.
 //!
+//! When free disk space is below the floor, a pass goes on to remove ended tasks' agents
+//! oldest first, grace or not, until space is back (`pressure.rs`).
+//!
 //! A branch is deleted only when git calls it merged, so commits that exist nowhere else
 //! keep theirs. Live work, a task of an open conversation that is not merged, is never
 //! touched. It passes at startup, every `EVERY`, and right after a conversation ends
 //! (`soon`). Passes never overlap.
 
 mod cancel;
+mod pressure;
 mod purge;
 mod repo;
 mod verdict;
@@ -111,13 +115,18 @@ pub async fn run_once_after(ctx: &Context, grace: Duration) -> Result<Reaped> {
         .map(|c| c.id)
         .collect();
     let tasks = store.all_tasks().await?;
-    let settled = settled(&tasks, &store.task_ended_times().await?, grace);
+    let ended_times = store.task_ended_times().await?;
+    let settled = settled(&tasks, &ended_times, grace);
     let of_ended: Vec<_> = tasks
         .iter()
         .filter(|t| ended.contains(&t.conversation_id))
         .cloned()
         .collect();
     reaped.cancelled = cancel_queued(store, &of_ended).await?;
+    let spaces: Vec<_> = surveyed
+        .iter()
+        .map(|(name, ws, _)| (name.clone(), ws.clone()))
+        .collect();
     for (name, ws, found) in surveyed {
         reaped = reaped.and(
             repo::reap(
@@ -134,7 +143,7 @@ pub async fn run_once_after(ctx: &Context, grace: Duration) -> Result<Reaped> {
             .await,
         );
     }
-    Ok(reaped)
+    Ok(reaped.and(pressure::relieve(ctx, &spaces, &tasks, &ended_times).await?))
 }
 
 fn report(when: &'static str, result: Result<Reaped>) {

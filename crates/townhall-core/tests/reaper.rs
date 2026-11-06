@@ -384,7 +384,7 @@ async fn a_launch_blocked_by_the_disk_floor_wakes_the_reaper() {
     let (done, next) = (unique("done"), unique("next"));
     end_in_order(&s, &[&done]).await;
     s.create(&next, &[]).await;
-    set_floor(&s, 5).await;
+    set_floor(&s, 2).await;
     fake_disk(&s, &[&done]);
 
     let pass = run_once(s.ctx()).await.unwrap();
