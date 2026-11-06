@@ -204,11 +204,22 @@ pub fn prune(dir: &Path, max_bytes: u64, max_age_days: u64, now: SystemTime) -> 
         if total <= max_bytes && file_day(path, *modified) >= oldest_kept_day {
             continue;
         }
-        std::fs::remove_file(path)?;
         total -= len;
-        deleted += 1;
+        if remove_if_present(path)? {
+            deleted += 1;
+        }
     }
     Ok(deleted)
+}
+
+/// Deletes `path`. `Ok(false)` when it was already gone (the app and the standalone daemon
+/// prune the same folder, so the other one may have got there first).
+fn remove_if_present(path: &Path) -> io::Result<bool> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 /// Lines captured in memory by [`test_capture`].
@@ -422,6 +433,21 @@ mod tests {
             names(tmp.path()),
             ["a.2024-01-30.jsonl", "a.2024-01-31.jsonl"]
         );
+    }
+
+    #[test]
+    fn remove_if_present_treats_a_missing_file_as_already_deleted() {
+        let tmp = tempfile::tempdir().unwrap();
+        file_at(tmp.path(), "a.jsonl", 10, now());
+        assert!(remove_if_present(&tmp.path().join("a.jsonl")).unwrap());
+        assert!(!remove_if_present(&tmp.path().join("a.jsonl")).unwrap());
+    }
+
+    #[test]
+    fn remove_if_present_still_reports_other_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A directory is not removable with remove_file, and is not NotFound.
+        assert!(remove_if_present(tmp.path()).is_err());
     }
 
     #[test]
