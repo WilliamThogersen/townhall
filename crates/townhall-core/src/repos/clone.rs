@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use super::auth_env::{auth_failure, remote_env};
 use super::source::{classify, Remote, Source};
-use crate::cmd::{run_blocking, run_blocking_env};
+use crate::cmd::{probe_blocking, run_blocking_env};
 use crate::redact::redact;
 use crate::{Error, Home, Result};
 
@@ -47,7 +47,7 @@ fn canonical(path: &Path) -> Result<PathBuf> {
 }
 
 fn is_clone_of(dir: &Path, remote: &Remote) -> bool {
-    let origin = run_blocking("git", &["config", "--get", "remote.origin.url"], Some(dir));
+    let origin = probe_blocking("git", &["config", "--get", "remote.origin.url"], Some(dir));
     match origin.map(|url| classify(&url)) {
         Ok(Ok(Source::Remote(found))) => found.identity == remote.identity,
         _ => false,

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use super::auth_env::{auth_failure, remote_env};
 use super::source::split_remote;
-use crate::cmd::{run_blocking, run_blocking_env};
+use crate::cmd::{probe_blocking, run_blocking_env};
 use crate::redact::redact;
 use crate::{Error, Result};
 
@@ -193,12 +193,12 @@ fn create(req: &PrRequest, origin: &Origin, programs: &Programs) -> Result<Strin
 
 pub fn publish(req: &PrRequest, programs: &Programs) -> Result<Published> {
     let dir = Some(req.worktree);
-    let url = match run_blocking("git", &["remote", "get-url", "origin"], dir) {
+    let url = match probe_blocking("git", &["remote", "get-url", "origin"], dir) {
         Ok(url) => url,
         Err(Error::Command { .. }) => return Ok(Published::NoRemote),
         Err(e) => return Err(e),
     };
-    let configured = run_blocking("git", &["config", "--get", "townhall.forge"], dir).ok();
+    let configured = probe_blocking("git", &["config", "--get", "townhall.forge"], dir).ok();
     let origin = detect(&url, configured.as_deref())?;
     let program = match origin.forge {
         Forge::GitHub => &programs.gh,
