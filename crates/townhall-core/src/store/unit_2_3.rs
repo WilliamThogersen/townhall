@@ -27,9 +27,9 @@ pub const MIGRATIONS: &[Migration] = &[
         sql: include_str!("migrations/0202_task_handoffs.sql"),
     },
     Migration {
-        id: 203,
-        name: "0203_task_blocked",
-        sql: include_str!("migrations/0203_task_blocked.sql"),
+        id: 204,
+        name: "0204_task_blocked",
+        sql: include_str!("migrations/0204_task_blocked.sql"),
     },
 ];
 

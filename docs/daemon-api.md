@@ -407,7 +407,7 @@ create unique index repos_name_nocase on repos (name collate nocase);
 | `conversations` | `id` pk, `session_id` unique, `session_started`, `title`, `status`, `linked_repo`, `ended`, `context_used`, `context_limit`, `last_entry_id`, `created_at`, `updated_at` | `last_entry_id` hands out entry ids; `tasks` is read from `tasks` |
 | `messages` | (`conversation_id`, `id`) pk, `author` (`you` or `townhall`), `text`, `attachments` (JSON ids), `at` | your and townhall's entries, searchable by `text` |
 | `events` | (`conversation_id`, `id`) pk, `kind`, `data` (the entry body as JSON, without `kind`), `at` | every other entry kind |
-| `tasks` | `name` pk `collate nocase`, `conversation_id`, `title`, `prompt`, `repo`, `base_branch`, `after` (JSON names), `state`, `attachments` (JSON ids), `pr_number`, `pr_url`, `pr_checks`, `created_at`, `agent`, `blocked` (migration 0203) | indexed by conversation and by state |
+| `tasks` | `name` pk `collate nocase`, `conversation_id`, `title`, `prompt`, `repo`, `base_branch`, `after` (JSON names), `state`, `attachments` (JSON ids), `pr_number`, `pr_url`, `pr_checks`, `created_at`, `agent`, `blocked` (migration 0204) | indexed by conversation and by state |
 | `attachments` | `id` pk, `conversation_id`, `name`, `mime`, `size`, `kind`, `created_at` | the bytes are files, see the layout |
 
 `0201_task_launches` (2.3): `task_launches (name pk collate nocase references tasks (name) on delete cascade, start_commit, session_id, launched_at)`: what each task's agent started from. `start_commit` tells `merged` from a branch that never got a commit; `session_id` is the agent's `--session-id` (`null` for an agent adopted after a restart).
