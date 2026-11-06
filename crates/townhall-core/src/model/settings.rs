@@ -86,10 +86,12 @@ pub enum SettingKey {
     NotifyWhen,
     TownhallModel,
     MinFreeDiskGb,
+    LearnAboutMe,
+    GithubAccount,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 8] = [
+    pub const ALL: [SettingKey; 10] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
@@ -98,6 +100,8 @@ impl SettingKey {
         Self::NotifyWhen,
         Self::TownhallModel,
         Self::MinFreeDiskGb,
+        Self::LearnAboutMe,
+        Self::GithubAccount,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -110,6 +114,8 @@ impl SettingKey {
             Self::NotifyWhen => "notifyWhen",
             Self::TownhallModel => "townhallModel",
             Self::MinFreeDiskGb => "minFreeDiskGb",
+            Self::LearnAboutMe => "learnAboutMe",
+            Self::GithubAccount => "githubAccount",
         }
     }
 
@@ -128,8 +134,11 @@ impl SettingKey {
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
             Self::TownhallModel => parses::<TownhallModel>(value),
-            Self::WorkWithoutAsking | Self::SessionPanelOpen => value.is_boolean(),
+            Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::LearnAboutMe => {
+                value.is_boolean()
+            }
             Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
+            Self::GithubAccount => value.as_str().is_some_and(is_github_login),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
             }),
@@ -142,13 +151,20 @@ impl SettingKey {
     }
 }
 
+/// A GitHub login, or empty for "no account is enforced".
+fn is_github_login(login: &str) -> bool {
+    login.len() <= 39
+        && !login.starts_with('-')
+        && login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
 fn parses<T: serde::de::DeserializeOwned>(value: &Value) -> bool {
     serde_json::from_value::<T>(value.clone()).is_ok()
 }
 
 /// `GET /api/settings`. Same names, values and defaults as the web UI; `townhallModel`
 /// has no row on the settings page yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub permission_mode: PermissionMode,
@@ -160,6 +176,8 @@ pub struct Settings {
     pub townhall_model: TownhallModel,
     /// A task does not start while the data volume has less free space; `0` is off.
     pub min_free_disk_gb: u32,
+    pub learn_about_me: bool,
+    pub github_account: String,
 }
 
 impl Default for Settings {
@@ -173,6 +191,8 @@ impl Default for Settings {
             notify_when: NotifyWhen::NeedsYou,
             townhall_model: TownhallModel::Sonnet,
             min_free_disk_gb: MIN_FREE_DISK_GB_DEFAULT,
+            learn_about_me: false,
+            github_account: String::new(),
         }
     }
 }
@@ -197,6 +217,8 @@ impl Settings {
             notify_when: field(raw, SettingKey::NotifyWhen, d.notify_when),
             townhall_model: field(raw, SettingKey::TownhallModel, d.townhall_model),
             min_free_disk_gb: field(raw, SettingKey::MinFreeDiskGb, d.min_free_disk_gb),
+            learn_about_me: field(raw, SettingKey::LearnAboutMe, d.learn_about_me),
+            github_account: field(raw, SettingKey::GithubAccount, d.github_account),
         }
     }
 
@@ -209,6 +231,13 @@ impl<'de> Deserialize<'de> for Settings {
     fn deserialize<D: Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
         Value::deserialize(d).map(|raw| Self::from_value(&raw))
     }
+}
+
+/// `PUT /api/profile` body.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutProfile {
+    pub text: String,
 }
 
 /// `PUT /api/settings/{key}` body.
@@ -236,7 +265,9 @@ mod tests {
                 "sessionPanelOpen": true,
                 "notifyWhen": "needsYou",
                 "townhallModel": "sonnet",
-                "minFreeDiskGb": 5
+                "minFreeDiskGb": 5,
+                "learnAboutMe": false,
+                "githubAccount": ""
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -333,6 +364,38 @@ mod tests {
         assert_eq!((s.agents_at_once, s.min_free_disk_gb), (3, 7));
         assert!(SettingKey::parse("sharedCargoTarget").is_err());
         assert!(SettingKey::parse("sharedTargetMaxGb").is_err());
+    }
+
+    #[test]
+    fn learn_about_me_is_off_unless_stored_as_a_boolean() {
+        let old: Settings = serde_json::from_value(json!({"permissionMode": "plan"})).unwrap();
+        assert!(!old.learn_about_me, "a settings file from before the field");
+        let on: Settings = serde_json::from_value(json!({"learnAboutMe": true})).unwrap();
+        assert!(on.learn_about_me);
+        let bad: Settings = serde_json::from_value(json!({"learnAboutMe": "yes"})).unwrap();
+        assert!(!bad.learn_about_me);
+        assert_eq!(
+            SettingKey::parse("learnAboutMe").unwrap(),
+            SettingKey::LearnAboutMe
+        );
+        assert!(SettingKey::LearnAboutMe.check(&json!(true)).is_ok());
+        assert!(SettingKey::LearnAboutMe.check(&json!(1)).is_err());
+    }
+
+    #[test]
+    fn the_github_account_is_a_login_or_empty() {
+        for good in ["WilliamThogersen", "a", "octo-cat-1", ""] {
+            let value = json!(good);
+            assert_eq!(SettingKey::GithubAccount.check(&value).unwrap(), value);
+        }
+        for bad in [json!("-lead"), json!("two words"), json!("a/b"), json!(7)] {
+            assert!(SettingKey::GithubAccount.check(&bad).is_err(), "{bad}");
+        }
+        let s: Settings =
+            serde_json::from_value(json!({"githubAccount": "WilliamThogersen"})).unwrap();
+        assert_eq!(s.github_account, "WilliamThogersen");
+        let bad: Settings = serde_json::from_value(json!({"githubAccount": "no way"})).unwrap();
+        assert_eq!(bad.github_account, "");
     }
 
     #[test]

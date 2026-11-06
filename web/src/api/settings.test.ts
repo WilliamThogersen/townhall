@@ -12,6 +12,8 @@ const daemon: Settings = {
   notifyWhen: "failed",
   townhallModel: "haiku",
   minFreeDiskGb: 10,
+  learnAboutMe: true,
+  githubAccount: "octocat",
 };
 
 function mockFetch(status: number, body: unknown) {

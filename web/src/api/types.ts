@@ -56,12 +56,22 @@ export interface Settings {
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
   readonly minFreeDiskGb: number;
+  readonly learnAboutMe: boolean;
+  readonly githubAccount: string;
 }
 
 export type SettingKey = keyof Settings;
 
 export interface PutSettingInput<K extends SettingKey = SettingKey> {
   readonly value: Settings[K];
+}
+
+export interface Profile {
+  readonly text: string;
+}
+
+export interface PutProfileInput {
+  readonly text: string;
 }
 
 export type ConversationStatus = "thinking" | "yourTurn";
@@ -88,6 +98,7 @@ export interface Conversation {
 export interface NewMessageInput {
   readonly text: string;
   readonly attachments?: readonly string[];
+  readonly replyTo?: number;
 }
 
 export interface ConversationPatch {
@@ -99,7 +110,12 @@ export type RepoRule = "named" | "code" | "only" | "picked" | "linked";
 export type AgentEvent = "sent" | "passed" | "failed" | "ended" | "allowed";
 
 export type EntryBody =
-  | { readonly kind: "you"; readonly text: string; readonly attachments: readonly string[] }
+  | {
+      readonly kind: "you";
+      readonly text: string;
+      readonly attachments: readonly string[];
+      readonly replyTo?: number;
+    }
   | { readonly kind: "townhall"; readonly text: string }
   | {
       readonly kind: "repo";
@@ -234,6 +250,22 @@ export interface Attachment {
   readonly mime: string;
   readonly size: number;
   readonly kind: AttachmentKind;
+  readonly createdAt: string;
+}
+
+export type ArtifactKind = "screenshot" | "log" | "note" | "report";
+export type AuthorRole = "coder" | "tester" | "reviewer" | "other";
+
+export interface Artifact {
+  readonly id: string;
+  readonly conversationId: string;
+  readonly task: string;
+  readonly name: string;
+  readonly kind: ArtifactKind;
+  readonly mime: string;
+  readonly size: number;
+  readonly authorRole: AuthorRole;
+  readonly caption: string | null;
   readonly createdAt: string;
 }
 

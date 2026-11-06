@@ -8,7 +8,7 @@ use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::redact::redact;
-use crate::{clock, disk, ids, runner, Error, Result, Workspace};
+use crate::{clock, disk, ids, runner, worktree, Error, Result, Workspace};
 
 use super::{agent_type, brief, plan, transition, Pass, TaskLaunch};
 
@@ -313,7 +313,8 @@ async fn launch(ctx: &Context, task: &Task) -> Result<TaskLaunch> {
     let launcher = agent_type::launcher(ctx, task).await?;
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
-    let start_commit = commit_of(&ws, &task.base_branch).await?;
+    let base = worktree::fresh_base(&ws, &task.base_branch).await;
+    let start_commit = commit_of(&ws, &base).await?;
     let files = attachment_paths(ctx, task).await?;
     let handoffs = ctx.store()?.handoffs(&task.name).await?;
     let brief = brief::write(ctx.home(), task, &files, &handoffs).await?;

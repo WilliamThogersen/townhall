@@ -1,14 +1,15 @@
 //! One repo's part of a pass: what is there, then what goes.
 
-use std::collections::HashSet;
+use std::time::SystemTime;
 
 use crate::agent::{self, Agent};
 use crate::cmd::run;
-use crate::model::Task;
-use crate::{tmux, Result, Workspace};
+use crate::model::{Task, TaskState};
+use crate::{tmux, worktree, Error, Result, Workspace};
 
+use super::purge::purge;
 use super::verdict::verdict;
-use super::Reaped;
+use super::{Ended, Reaped};
 
 /// What one repo holds. Sessions are listed before worktrees: `agent::start` makes the
 /// worktree first, so a session listed here whose worktree is missing below was not
@@ -43,18 +44,21 @@ pub(super) async fn reap(
     repo: &str,
     found: Survey,
     tasks: &[Task],
-    ended: &HashSet<String>,
+    why: &Ended<'_>,
 ) -> Reaped {
     let mut reaped = Reaped::default();
     for a in found.agents {
-        let Some(why) = verdict(&a.name, tasks, ended) else {
+        let Some(reason) = verdict(&a.name, tasks, why.ended, why.settled) else {
+            if !a.alive && finished(&a.name, tasks) {
+                purge_artifacts(&a, repo, &mut reaped).await;
+            }
             continue;
         };
         match agent::retire(ws, &a.name).await {
             Ok(true) => {
                 tracing::info!(
                     target: "townhall::task", event = "reaper.agent_removed", agent = %a.name,
-                    repo, why = why.as_str(), "agent removed"
+                    repo, why = reason.as_str(), "agent removed"
                 );
                 reaped.removed.push(a.name);
             }
@@ -85,5 +89,78 @@ pub(super) async fn reap(
             .warnings
             .push(format!("worktrees of repo `{repo}` not pruned: {e}"));
     }
+    match sweep(ws, repo, tasks, why).await {
+        Ok(swept) => reaped.removed.extend(swept),
+        Err(e) => reaped
+            .warnings
+            .push(format!("stray folders of repo `{repo}` not swept: {e}")),
+    }
     reaped
+}
+
+async fn sweep(ws: &Workspace, repo: &str, tasks: &[Task], why: &Ended<'_>) -> Result<Vec<String>> {
+    let dir = ws.worktrees_dir();
+    if !dir.is_dir() {
+        return Ok(vec![]);
+    }
+    let known = worktree::list(ws).await?;
+    let mut swept = vec![];
+    for entry in
+        std::fs::read_dir(&dir).map_err(|e| Error::io(format!("read {}", dir.display()), e))?
+    {
+        let entry = entry.map_err(|e| Error::io(format!("read {}", dir.display()), e))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let meta = entry
+            .metadata()
+            .map_err(|e| Error::io(format!("stat {}", entry.path().display()), e))?;
+        let age = meta
+            .modified()
+            .ok()
+            .and_then(|at| SystemTime::now().duration_since(at).ok())
+            .unwrap_or_default();
+        let stray = meta.is_dir()
+            && !known.iter().any(|w| w.name.eq_ignore_ascii_case(&name))
+            && age >= why.grace;
+        if !stray {
+            continue;
+        }
+        let Some(reason) = verdict(&name, tasks, why.ended, why.settled) else {
+            continue;
+        };
+        std::fs::remove_dir_all(entry.path())
+            .map_err(|e| Error::io(format!("remove {}", entry.path().display()), e))?;
+        tracing::info!(
+            target: "townhall::task", event = "reaper.stray_removed", agent = %name,
+            repo, why = reason.as_str(), "stray worktree folder removed"
+        );
+        swept.push(name);
+    }
+    Ok(swept)
+}
+
+fn finished(name: &str, tasks: &[Task]) -> bool {
+    tasks.iter().any(|t| {
+        t.name.eq_ignore_ascii_case(name)
+            && matches!(
+                t.state,
+                TaskState::Ended | TaskState::InReview | TaskState::InCi
+            )
+    })
+}
+
+async fn purge_artifacts(agent: &Agent, repo: &str, reaped: &mut Reaped) {
+    match purge(&agent.worktree).await {
+        Ok(0) => {}
+        Ok(bytes) => {
+            tracing::info!(
+                target: "townhall::task", event = "reaper.artifacts_purged", agent = %agent.name,
+                repo, bytes, "build artifacts deleted"
+            );
+            reaped.purged.push(agent.name.clone());
+        }
+        Err(e) => reaped.warnings.push(format!(
+            "artifacts of agent `{}` of repo `{repo}` not deleted: {e}",
+            agent.name
+        )),
+    }
 }

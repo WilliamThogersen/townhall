@@ -7,6 +7,7 @@
 //! functions over `Store::call`). Every write publishes its `ServerEvent`s on the bus while
 //! it holds the connection, so events arrive in write order.
 
+mod artifacts;
 mod attachments;
 mod codec;
 mod conversations;
@@ -26,6 +27,7 @@ mod unit_2_6;
 mod unit_2_7;
 mod unit_2_8b;
 mod unit_2_8c;
+mod unit_2_9;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -36,6 +38,7 @@ use rusqlite::Connection;
 pub use import::IMPORTED_SUFFIX;
 pub use lock::LOCK_FILE;
 pub use migrate::Migration;
+pub use settings::MAX_PROFILE_CHARS;
 
 use crate::events::EventBus;
 use crate::{Error, Home, Result};

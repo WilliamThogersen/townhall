@@ -26,6 +26,8 @@ pub struct PendingAsk {
     pub candidates: Vec<String>,
     pub text: String,
     pub attachments: Vec<String>,
+    /// The entry that message answered, if it was a reply.
+    pub reply_to: Option<u64>,
 }
 
 /// How a message answered a `repoAsk`.
@@ -73,14 +75,19 @@ pub fn pending_ask(entries: &[ThreadEntry]) -> Option<PendingAsk> {
         _ => return None,
     };
     let asked = back.find_map(|e| match &e.body {
-        EntryBody::You { text, attachments } => Some((text.clone(), attachments.clone())),
+        EntryBody::You {
+            text,
+            attachments,
+            reply_to,
+        } => Some((text.clone(), attachments.clone(), *reply_to)),
         _ => None,
     });
-    let (text, attachments) = asked.unwrap_or_default();
+    let (text, attachments, reply_to) = asked.unwrap_or_default();
     Some(PendingAsk {
         candidates,
         text,
         attachments,
+        reply_to,
     })
 }
 
@@ -146,6 +153,7 @@ mod tests {
         EntryBody::You {
             text: text.into(),
             attachments: vec!["a1".into()],
+            reply_to: None,
         }
     }
 

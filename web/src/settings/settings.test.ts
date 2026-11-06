@@ -18,6 +18,8 @@ const custom: Settings = {
   notifyWhen: "everything",
   townhallModel: "opus",
   minFreeDiskGb: 20,
+  learnAboutMe: true,
+  githubAccount: "octocat",
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -31,6 +33,8 @@ describe("DEFAULT_SETTINGS", () => {
       notifyWhen: "needsYou",
       townhallModel: "sonnet",
       minFreeDiskGb: 5,
+      learnAboutMe: false,
+      githubAccount: "",
     });
   });
 
@@ -130,6 +134,10 @@ describe("isSettingValue", () => {
     expect(isSettingValue("minFreeDiskGb", 0)).toBe(true);
     expect(isSettingValue("minFreeDiskGb", -1)).toBe(false);
     expect(isSettingValue("minFreeDiskGb", 1.5)).toBe(false);
+    expect(isSettingValue("githubAccount", "WilliamThogersen")).toBe(true);
+    expect(isSettingValue("githubAccount", "")).toBe(true);
+    expect(isSettingValue("githubAccount", "two words")).toBe(false);
+    expect(isSettingValue("githubAccount", 7)).toBe(false);
     [0, 51, 2.5, "6", Number.NaN].forEach((value) => {
       expect(isSettingValue("agentsAtOnce", value)).toBe(false);
     });

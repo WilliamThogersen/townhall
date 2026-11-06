@@ -97,6 +97,7 @@ async fn deliver(
     let message = NewMessage {
         text: said,
         attachments: vec![],
+        reply_to: None,
     };
     let entries = texts
         .into_iter()

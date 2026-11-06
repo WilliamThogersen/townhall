@@ -6,13 +6,14 @@ import { StatusGlyph } from "../../ui/StatusGlyph";
 import "../settings/cap.css";
 import "./repos.css";
 
-export function removeQuestion(name: string): string {
-  return `remove ${name}? the folder and its worktrees stay on disk`;
+export function removeQuestion(name: string, managed = false): string {
+  const stay = managed ? "the clone stays on disk unless you tick the box" : "the folder and its worktrees stay on disk";
+  return `remove ${name}? ${stay}`;
 }
 
 export interface RepoRowProps {
   readonly summary: RepoSummary;
-  readonly onRemove: (name: string) => Promise<void>;
+  readonly onRemove: (name: string, deleteClone?: boolean) => Promise<void>;
 }
 
 function RepoName({ summary }: { readonly summary: RepoSummary }) {
@@ -42,13 +43,15 @@ function RepoAgents({ summary }: { readonly summary: RepoSummary }) {
 
 interface ConfirmProps {
   readonly name: string;
+  readonly managed: boolean;
   readonly busy: boolean;
   readonly onCancel: () => void;
-  readonly onConfirm: () => void;
+  readonly onConfirm: (deleteClone: boolean) => void;
 }
 
-function RemoveConfirm({ name, busy, onCancel, onConfirm }: ConfirmProps) {
+function RemoveConfirm({ name, managed, busy, onCancel, onConfirm }: ConfirmProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const [deleteClone, setDeleteClone] = useState(false);
   useEffect(() => cancelRef.current?.focus(), []);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Escape" || busy) return;
@@ -58,12 +61,18 @@ function RemoveConfirm({ name, busy, onCancel, onConfirm }: ConfirmProps) {
   return (
     <div className="th-repo-confirm" role="group" aria-label={`remove ${name}`} onKeyDown={onKeyDown}>
       <span className="th-confirm">
-        <span>{removeQuestion(name)}</span>
+        <span>{removeQuestion(name, managed)}</span>
       </span>
+      {managed ? (
+        <label>
+          <input type="checkbox" checked={deleteClone} disabled={busy} onChange={(e) => setDeleteClone(e.target.checked)} />{" "}
+          also delete the clone
+        </label>
+      ) : null}
       <Button ref={cancelRef} variant="ghost" size="sm" disabled={busy} onClick={onCancel}>
         cancel
       </Button>
-      <Button variant="danger-solid" size="sm" busy={busy} busyLabel="removing…" onClick={onConfirm}>
+      <Button variant="danger-solid" size="sm" busy={busy} busyLabel="removing…" onClick={() => onConfirm(deleteClone)}>
         remove
       </Button>
     </div>
@@ -93,9 +102,9 @@ export function RepoRow({ summary, onRemove }: RepoRowProps) {
     focus.arm();
     setConfirming(false);
   };
-  const confirm = async () => {
+  const confirm = async (deleteClone: boolean) => {
     setBusy(true);
-    await onRemove(name);
+    await onRemove(name, deleteClone);
     focus.arm();
     setBusy(false);
     setConfirming(false);
@@ -104,7 +113,7 @@ export function RepoRow({ summary, onRemove }: RepoRowProps) {
     return (
       <div className="th-repo" data-confirm="true">
         <RepoName summary={summary} />
-        <RemoveConfirm name={name} busy={busy} onCancel={cancel} onConfirm={() => void confirm()} />
+        <RemoveConfirm name={name} managed={summary.managed} busy={busy} onCancel={cancel} onConfirm={(deleteClone) => void confirm(deleteClone)} />
       </div>
     );
   }

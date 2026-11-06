@@ -35,7 +35,7 @@ pub fn classify(input: &str) -> Result<Source> {
 
 /// `(scheme, host, path)` of a URL (`scheme://[user@]host[:port]/path`) or an scp-style
 /// address (`user@host:path`); `None` for anything else, which is a folder.
-fn split_remote(input: &str) -> Option<(&str, &str, &str)> {
+pub(super) fn split_remote(input: &str) -> Option<(&str, &str, &str)> {
     if let Some((scheme, rest)) = input.split_once("://") {
         let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
         let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);

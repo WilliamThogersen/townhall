@@ -12,6 +12,8 @@ export interface Settings {
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
   readonly minFreeDiskGb: number;
+  readonly learnAboutMe: boolean;
+  readonly githubAccount: string;
 }
 
 export const PERMISSION_MODES: readonly PermissionMode[] = [
@@ -38,6 +40,8 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   notifyWhen: "needsYou",
   townhallModel: "sonnet",
   minFreeDiskGb: 5,
+  learnAboutMe: false,
+  githubAccount: "",
 });
 
 export type SettingKey = keyof Settings;
@@ -51,6 +55,8 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "notifyWhen",
   "townhallModel",
   "minFreeDiskGb",
+  "learnAboutMe",
+  "githubAccount",
 ]);
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -74,6 +80,10 @@ const isAgentsAtOnce: Check<number> = (value): value is number =>
 
 const isDiskGb: Check<number> = (value): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= DISK_GB_MAX;
+const GITHUB_LOGIN = /^(?!-)[A-Za-z0-9-]{0,39}$/;
+
+const isGithubAccount: Check<string> = (value): value is string =>
+  typeof value === "string" && GITHUB_LOGIN.test(value);
 
 const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   permissionMode: choiceOf(PERMISSION_MODES),
@@ -84,6 +94,8 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   notifyWhen: choiceOf(NOTIFY_VALUES),
   townhallModel: choiceOf(TOWNHALL_MODELS),
   minFreeDiskGb: isDiskGb,
+  learnAboutMe: isFlag,
+  githubAccount: isGithubAccount,
 };
 
 export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
@@ -111,5 +123,7 @@ export function parseSettings(raw: unknown): Settings {
     notifyWhen: pick(fields, "notifyWhen"),
     townhallModel: pick(fields, "townhallModel"),
     minFreeDiskGb: pick(fields, "minFreeDiskGb"),
+    learnAboutMe: pick(fields, "learnAboutMe"),
+    githubAccount: pick(fields, "githubAccount"),
   });
 }

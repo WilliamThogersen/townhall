@@ -1,6 +1,7 @@
 import type {
   AddRepoInput,
   AgentInfo,
+  Artifact,
   ClaudeUsage,
   Conversation,
   ConversationDetail,
@@ -45,7 +46,7 @@ export interface AgentInfosState extends Loadable {
 export interface ReposState extends Loadable {
   readonly repos: readonly Repo[] | null;
   readonly add: (input: AddRepoInput) => Promise<Repo>;
-  readonly remove: (name: string) => Promise<void>;
+  readonly remove: (name: string, deleteClone?: boolean) => Promise<void>;
 }
 
 export interface StatsState extends Loadable {
@@ -64,6 +65,10 @@ export interface StepsOptions {
 
 export interface StepsState extends Loadable {
   readonly steps: readonly Step[];
+}
+
+export interface ArtifactsState extends Loadable {
+  readonly artifacts: readonly Artifact[];
 }
 
 export interface ConversationActions {

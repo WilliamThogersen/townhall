@@ -18,6 +18,8 @@ import { useUploads, type Uploads } from "../attachments/useUploads";
 import { ACCEPTED_FILES } from "../attachments/validate";
 import { ComposerTools } from "./ComposerTools";
 import { readDraft, writeDraft } from "./drafts";
+import { readReply, useReply, writeReply } from "./replies";
+import { ReplyBar } from "./ReplyBar";
 import { useAutoGrow } from "./useAutoGrow";
 import { useSubmit, type SubmitHandler } from "./useSubmit";
 import { helpText, LOOKS, THINKING_PLACEHOLDER, type ComposerVariant } from "./variants";
@@ -83,16 +85,17 @@ interface InputActions {
   readonly submit: () => Promise<void>;
   readonly setText: (text: string) => void;
   readonly clearError: () => void;
+  readonly cancelReply: () => boolean;
 }
 
-function useInputHandlers({ uploads, submit, setText, clearError }: InputActions) {
+function useInputHandlers({ uploads, submit, setText, clearError, cancelReply }: InputActions) {
   const onChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setText(event.target.value);
     clearError();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Escape") {
-      event.currentTarget.blur();
+      if (!cancelReply()) event.currentTarget.blur();
       return;
     }
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
@@ -126,9 +129,24 @@ function useComposer(props: ComposerProps) {
     [conversationId],
   );
   const uploads = useUploads(conversationId, stageFiles);
-  const clearText = useCallback(() => setText(""), [setText]);
-  const sending = useSubmit({ text, uploads, blocked: disabled || busy, onSubmit: props.onSubmit, onSent: clearText });
-  const handlers = useInputHandlers({ uploads, submit: sending.submit, setText, clearError: sending.clearError });
+  const reply = useReply(conversationId);
+  const cancelReply = useCallback((): boolean => {
+    if (conversationId === null || readReply(conversationId) === null) return false;
+    writeReply(conversationId, null);
+    return true;
+  }, [conversationId]);
+  const onSent = useCallback(() => {
+    setText("");
+    cancelReply();
+  }, [setText, cancelReply]);
+  const sending = useSubmit({ text, uploads, blocked: disabled || busy, onSubmit: props.onSubmit, onSent });
+  const handlers = useInputHandlers({
+    uploads,
+    submit: sending.submit,
+    setText,
+    clearError: sending.clearError,
+    cancelReply,
+  });
   useAutoGrow(inputRef, text);
   useFocusKey(inputRef, props.focusKey);
   useComposerHandle(props.ref, inputRef, setText, uploads);
@@ -136,11 +154,25 @@ function useComposer(props: ComposerProps) {
     event.preventDefault();
     void sending.submit();
   };
-  return { look: LOOKS[variant], disabled, busy, inputRef, fileRef, text, uploads, sending, handlers, onSubmitForm };
+  return {
+    look: LOOKS[variant],
+    disabled,
+    busy,
+    inputRef,
+    fileRef,
+    text,
+    uploads,
+    sending,
+    handlers,
+    onSubmitForm,
+    reply,
+    cancelReply,
+  };
 }
 
 export function Composer(props: ComposerProps) {
-  const { look, disabled, busy, inputRef, fileRef, text, uploads, sending, handlers, onSubmitForm } = useComposer(props);
+  const { look, disabled, busy, inputRef, fileRef, text, uploads, sending, handlers, onSubmitForm, reply, cancelReply } =
+    useComposer(props);
   const submitLabel = props.submitLabel ?? look.submitLabel;
   const restingPlaceholder = props.placeholder ?? (uploads.enabled ? look.attachPlaceholder : look.placeholder);
   return (
@@ -149,6 +181,7 @@ export function Composer(props: ComposerProps) {
         <input ref={fileRef} type="file" multiple hidden tabIndex={-1} accept={ACCEPTED_FILES} onChange={handlers.onPick} />
       )}
       <div className="th-composer-box">
+        {reply === null ? null : <ReplyBar target={reply} onCancel={() => void cancelReply()} />}
         <UploadChips items={uploads.items} onRemove={uploads.remove} />
         <span className="th-composer-sign" aria-hidden="true">
           ›

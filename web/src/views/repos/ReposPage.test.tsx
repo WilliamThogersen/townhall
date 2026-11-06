@@ -95,10 +95,10 @@ describe("ReposPage", () => {
     expect(open).toHaveAttribute("aria-expanded", "false");
     await userEvent.click(open);
     expect(open).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("textbox", { name: "path" })).toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "folder or link" })).toHaveFocus();
     expect(screen.getByRole("button", { name: "add" })).toBeDisabled();
     expect(screen.getByTestId("hints")).toHaveTextContent("⏎=add | esc=cancel");
-    await userEvent.type(screen.getByRole("textbox", { name: "path" }), "~/Developer/data-hub");
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "~/Developer/data-hub");
     await userEvent.type(screen.getByRole("textbox", { name: "base branch" }), "trunk{Enter}");
     expect(add).toHaveBeenCalledWith({ path: "~/Developer/data-hub", baseBranch: "trunk" });
     expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
@@ -112,10 +112,26 @@ describe("ReposPage", () => {
     const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    expect(screen.getByPlaceholderText(/or a github\/gitlab link/)).toBe(screen.getByRole("textbox", { name: "path" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "path" }), `${link}{Enter}`);
+    expect(screen.getByPlaceholderText(/or a github\/gitlab link/)).toBe(screen.getByRole("textbox", { name: "folder or link" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), `${link}{Enter}`);
     expect(add).toHaveBeenCalledWith({ path: link });
     expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
+  });
+
+  it("says cloning while a link is added and initialising while a folder is", async () => {
+    vi.spyOn(reposApi, "addRepo").mockReturnValue(new Promise(() => undefined));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "https://github.com/acme/data-hub{Enter}");
+    expect(await screen.findByRole("status")).toHaveTextContent("cloning…");
+  });
+
+  it("says initialising while a folder is added", async () => {
+    vi.spyOn(reposApi, "addRepo").mockReturnValue(new Promise(() => undefined));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "~/Developer/notes{Enter}");
+    expect(await screen.findByRole("status")).toHaveTextContent("initialising…");
   });
 
   it("shows the daemon's refusal in the form and keeps what you typed", async () => {
@@ -124,9 +140,9 @@ describe("ReposPage", () => {
     );
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "path" }), "~/Developer{Enter}");
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "~/Developer{Enter}");
     expect(await screen.findByRole("alert")).toHaveTextContent("error: /Users/me/Developer is not the top folder of a git repo");
-    expect(screen.getByRole("textbox", { name: "path" })).toHaveValue("~/Developer");
+    expect(screen.getByRole("textbox", { name: "folder or link" })).toHaveValue("~/Developer");
   });
 
   it("opens the form with a and closes it with esc", async () => {
@@ -134,11 +150,11 @@ describe("ReposPage", () => {
     await screen.findByText("shop", { selector: ".th-repo-name b" });
     expect(screen.getByTestId("hints")).toHaveTextContent("a=add repository");
     await userEvent.keyboard("a");
-    const path = screen.getByRole("textbox", { name: "path" });
+    const path = screen.getByRole("textbox", { name: "folder or link" });
     expect(path).toHaveFocus();
     expect(path).toHaveValue("");
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("textbox", { name: "path" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "folder or link" })).not.toBeInTheDocument();
   });
 
   it("asks before removing a repo and can be cancelled", async () => {
@@ -163,6 +179,20 @@ describe("ReposPage", () => {
     expect(remove).toHaveBeenCalledWith("shop");
     expect(screen.queryByText("shop", { selector: ".th-repo-name b" })).not.toBeInTheDocument();
     expect(screen.getByText("1", { selector: ".th-page-head .th-cap" })).toBeInTheDocument();
+  });
+
+  it("offers to delete the clone only for repos cloned into the managed folder", async () => {
+    const clone = aRepo({ name: "hub", path: "/Users/me/.townhall/repos/hub", baseBranch: "main" });
+    vi.mocked(reposApi.listRepos).mockResolvedValue([shop, clone]);
+    const remove = vi.spyOn(reposApi, "removeRepo").mockResolvedValue(clone);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "remove shop" }));
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: "remove hub" }));
+    await userEvent.click(within(rowOf("hub")).getByRole("checkbox", { name: "also delete the clone" }));
+    await userEvent.click(within(rowOf("hub")).getByRole("button", { name: "remove" }));
+    expect(remove).toHaveBeenCalledWith("hub", true);
   });
 
   it("shows the daemon's conflict as is and lets you dismiss it", async () => {

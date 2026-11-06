@@ -27,7 +27,8 @@ pub async fn rpc(
     })
 }
 
-/// `POST /api/tasks/{name}/mcp`: the same for a task's agent, which only gets `hand_back`.
+/// `POST /api/tasks/{name}/mcp`: the same for a task's agent, which gets `hand_back`, `open_pr`
+/// and the proof tools.
 pub async fn task_rpc(
     State(state): State<AppState>,
     Path(name): Path<String>,

@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use super::process::{KILL_WAIT, STOP_GRACE};
-use super::turn;
+use super::{quote, turn};
 use crate::model::{
     Conversation, ConversationDetail, ConversationPatch, ConversationStatus, EntryBody, NewMessage,
     ThreadEntry,
@@ -74,6 +74,11 @@ pub async fn create(ctx: &Context, message: NewMessage) -> Result<ConversationDe
     if let Some(id) = message.attachments.first() {
         return Err(Error::InvalidInput(format!("unknown attachment `{id}`")));
     }
+    if message.reply_to.is_some() {
+        return Err(Error::InvalidInput(
+            "a new conversation has nothing to reply to".into(),
+        ));
+    }
     let store = ctx.store()?;
     let conversation = store.create_conversation().await?;
     send(ctx, &conversation.id, message).await?;
@@ -95,6 +100,7 @@ pub async fn create_with_files(
     let blank = NewMessage {
         text,
         attachments: vec!["0".repeat(12); files.len()],
+        reply_to: None,
     };
     check_message(&blank)?;
     let store = ctx.store()?;
@@ -109,6 +115,7 @@ pub async fn create_with_files(
     let message = NewMessage {
         text: blank.text,
         attachments: ids,
+        reply_to: None,
     };
     send(ctx, &conversation.id, message).await?;
     store.detail(&conversation.id).await
@@ -120,10 +127,14 @@ pub async fn send(ctx: &Context, id: &str, message: NewMessage) -> Result<Thread
     let store = ctx.store()?;
     store.conversation(id).await?;
     check_attachments(store, id, &message.attachments).await?;
+    if let Some(reply_to) = message.reply_to {
+        quote::of_entry(store, id, reply_to).await?;
+    }
     let guard = ctx.turns().begin(id)?;
     let yours = EntryBody::You {
         text: message.text.clone(),
         attachments: message.attachments.clone(),
+        reply_to: message.reply_to,
     };
     open_turn(ctx, id, guard, vec![yours], message, false).await
 }
@@ -282,6 +293,7 @@ mod tests {
         NewMessage {
             text: text.into(),
             attachments: attachments.iter().map(|a| a.to_string()).collect(),
+            reply_to: None,
         }
     }
 

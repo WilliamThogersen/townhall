@@ -116,3 +116,44 @@ async fn a_succeeding_cmd_run_logs_at_debug() {
     assert_eq!(events[0]["target"], "townhall::git");
     assert_eq!(events[0]["args"], "--version");
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_failing_probe_logs_at_debug_with_exit_code_and_stderr() {
+    let (capture, _guard) = test_capture();
+    let err = townhall_core::cmd::probe("sh", &["-c", "echo no-such-ref >&2; exit 1"], None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), "command");
+    let events = capture.events("cmd.run");
+    assert_eq!(events.len(), 1, "{:?}", capture.lines());
+    assert_eq!(events[0]["level"], "DEBUG");
+    assert_eq!(events[0]["exit_code"], 1);
+    assert_eq!(events[0]["stderr"], "no-such-ref");
+}
+
+#[test]
+fn a_failing_blocking_probe_logs_at_debug() {
+    let (capture, _guard) = test_capture();
+    townhall_core::cmd::probe_blocking("sh", &["-c", "echo probe-blocking >&2; exit 2"], None)
+        .unwrap_err();
+    let events = capture.events("cmd.run");
+    assert_eq!(events.len(), 1, "{:?}", capture.lines());
+    assert_eq!(events[0]["level"], "DEBUG");
+    assert_eq!(events[0]["exit_code"], 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn an_identical_failure_warns_once_not_on_every_repeat() {
+    let (capture, _guard) = test_capture();
+    for _ in 0..5 {
+        townhall_core::cmd::run("sh", &["-c", "echo repeat-me >&2; exit 4"], None)
+            .await
+            .unwrap_err();
+    }
+    let warns: Vec<_> = capture
+        .events("cmd.run")
+        .into_iter()
+        .filter(|e| e["level"] == "WARN")
+        .collect();
+    assert_eq!(warns.len(), 1, "{:?}", capture.lines());
+}

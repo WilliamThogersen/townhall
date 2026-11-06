@@ -6,8 +6,8 @@ use axum::http::StatusCode;
 use townhall_core::model::MAX_ATTACHMENT_BYTES;
 use townhall_core::Error;
 
-use super::naming;
 use crate::error::ApiError;
+use townhall_core::files::naming;
 
 const FIELD: &str = "file";
 const TEXT: &str = "text";

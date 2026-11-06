@@ -2,24 +2,18 @@
 
 use std::path::{Path, PathBuf};
 
+use super::auth_env::{auth_failure, remote_env};
 use super::source::{classify, Remote, Source};
-use crate::cmd::{run_blocking, run_blocking_env};
+use crate::cmd::{probe_blocking, run_blocking_env};
 use crate::redact::redact;
 use crate::{Error, Home, Result};
 
 /// Never wait for a username or password on a terminal nobody is looking at, and make ssh
 /// fail instead of asking for a passphrase or to trust a host. A `GIT_SSH_COMMAND` the user
 /// already has is kept: it is theirs.
-const CLONE_ENV: [(&str, &str); 1] = [("GIT_TERMINAL_PROMPT", "0")];
-const SSH_NO_PROMPT: &str = "ssh -o BatchMode=yes";
+pub(super) const CLONE_ENV: [(&str, &str); 1] = [("GIT_TERMINAL_PROMPT", "0")];
+pub(super) const SSH_NO_PROMPT: &str = "ssh -o BatchMode=yes";
 
-const AUTH_FAILED: [&str; 5] = [
-    "authentication failed",
-    "could not read username",
-    "could not read password",
-    "terminal prompts disabled",
-    "permission denied",
-];
 const NOT_FOUND: [&str; 3] = [
     "not found",
     "does not exist",
@@ -53,7 +47,7 @@ fn canonical(path: &Path) -> Result<PathBuf> {
 }
 
 fn is_clone_of(dir: &Path, remote: &Remote) -> bool {
-    let origin = run_blocking("git", &["config", "--get", "remote.origin.url"], Some(dir));
+    let origin = probe_blocking("git", &["config", "--get", "remote.origin.url"], Some(dir));
     match origin.map(|url| classify(&url)) {
         Ok(Ok(Source::Remote(found))) => found.identity == remote.identity,
         _ => false,
@@ -62,11 +56,7 @@ fn is_clone_of(dir: &Path, remote: &Remote) -> bool {
 
 fn clone_into(remote: &Remote, dest: &Path) -> Result<()> {
     let target = dest.to_string_lossy();
-    let ssh = std::env::var_os("GIT_SSH_COMMAND").is_none();
-    let mut envs = CLONE_ENV.to_vec();
-    if ssh {
-        envs.push(("GIT_SSH_COMMAND", SSH_NO_PROMPT));
-    }
+    let envs = remote_env();
     let args = ["clone", "-q", "--", &remote.url, &target];
     match run_blocking_env("git", &args, None, &envs) {
         Ok(_) => Ok(()),
@@ -81,8 +71,8 @@ fn clone_into(remote: &Remote, dest: &Path) -> Result<()> {
 fn clone_failed(url: &str, stderr: &str) -> Error {
     let lower = stderr.to_ascii_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| lower.contains(n));
-    let why = if has(&AUTH_FAILED) {
-        "authentication failed: check your git credentials or ssh key".to_string()
+    let why = if let Some(hint) = auth_failure(stderr) {
+        hint.to_string()
     } else if has(&NOT_FOUND) {
         "repository not found: check the link and your access to it".to_string()
     } else {

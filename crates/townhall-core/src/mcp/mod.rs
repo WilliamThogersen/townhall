@@ -6,11 +6,13 @@
 //! Units 2.8b and 2.8c add their tools in `library.rs` and `runs.rs`, and a match arm for
 //! each in `TaskTools::call`. The agent type tools (2.12) live in `library.rs` and `ask.rs`.
 
+mod artifacts;
 mod ask;
 mod checks;
 mod hand_back;
 mod library;
 mod logs;
+mod open_pr;
 mod rpc;
 mod runs;
 mod status;
@@ -20,8 +22,10 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 
+pub use artifacts::{ADD_ARTIFACT, LIST_ARTIFACTS};
 pub use hand_back::HAND_BACK;
 pub use library::{LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
+pub use open_pr::OPEN_PR;
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
 pub use status::{MAX_MESSAGE_CHARS, MAX_STEPS, RECENT_ENTRIES};
 
@@ -36,7 +40,7 @@ pub async fn handle(ctx: &Context, conversation_id: &str, body: Value) -> Option
 }
 
 /// Answers one JSON-RPC message or batch for the task `task` (which the route checked
-/// exists): the task agent's tools, only `hand_back`.
+/// exists): the task agent's tools, `hand_back` and `open_pr`.
 pub async fn handle_task(ctx: &Context, task: &str, body: Value) -> Option<Value> {
     rpc::answer(body, &task_tools::HandBackTools { ctx, task }).await
 }
@@ -95,9 +99,14 @@ pub fn task_config_json(base_url: &str, task: &str) -> String {
     .to_string()
 }
 
-/// The tool a task's agent may use without asking.
+/// Every tool a task's agent gets, in `tools/list` order.
+pub fn task_tools_list() -> Vec<ToolDef> {
+    [hand_back::tools(), open_pr::tools(), artifacts::tools()].concat()
+}
+
+/// The tools a task's agent may use without asking.
 pub fn task_allowed_tools() -> Vec<String> {
-    hand_back::tools()
+    task_tools_list()
         .iter()
         .map(|t| format!("mcp__{SERVER_NAME}__{}", t.name))
         .collect()
@@ -186,7 +195,7 @@ fn task_tools() -> Vec<ToolDef> {
         },
         ToolDef {
             name: TASK_STATUS,
-            description: "What this conversation's tasks are doing and did. Without `name`: every task with its state, branch, `after` and its last 3 agent and needs-you entries. With `name`: that task plus its agent's last 20 steps and, once it is ended or merged, the agent's last message. Call it whenever you are asked what a task did or how it stands, instead of guessing.",
+            description: "What this conversation's tasks are doing and did. Without `name`: every task with its state, branch, `after`, its last 3 agent and needs-you entries and its proof artifacts (name, kind, author role, url). With `name`: that task plus its agent's last 20 steps and, once it is ended or merged, the agent's last message. Call it whenever you are asked what a task did or how it stands, instead of guessing.",
             input_schema: status::schema(),
         },
     ]

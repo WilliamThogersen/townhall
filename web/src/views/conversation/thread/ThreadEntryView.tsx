@@ -1,8 +1,10 @@
 import type { ThreadEntry } from "../../../api/types";
 import { stripAttachmentMarkers, Thumbs } from "../../../attachments";
+import type { ReplyTarget } from "../../../composer/replies";
 import { NeedsYouBlock, RepoAskBlock } from "./AskBlocks";
 import { AgentEventLine, ErrorEvent, HandoffEvent, RepoEvent, TaskEvent } from "./EventEntries";
 import { Markdown } from "./markdown/Markdown";
+import { QuotedReply } from "./QuotedReply";
 import { TaskBlock } from "./TaskBlock";
 import { useThread } from "./threadContext";
 import { Message, PlainText } from "./ThreadLines";
@@ -12,16 +14,18 @@ export interface ThreadEntryViewProps {
   readonly open: boolean;
   /** For an agent question: the answer the agent got, when there was one. */
   readonly answer?: string;
+  readonly quote?: ReplyTarget | null;
 }
 
 type YouEntry = Extract<ThreadEntry, { kind: "you" }>;
 
-function YouMessage({ entry }: { readonly entry: YouEntry }) {
+function YouMessage({ entry, quote }: { readonly entry: YouEntry; readonly quote: ReplyTarget | null }) {
   const { conversationId, attachments } = useThread();
   const names = attachments.filter((a) => entry.attachments.includes(a.id)).map((a) => a.name);
   return (
-    <Message from="you" at={entry.at}>
+    <Message from="you" at={entry.at} entry={entry}>
       <div className="th-msg-body">
+        {entry.replyTo === undefined ? null : <QuotedReply id={entry.replyTo} target={quote} />}
         <PlainText text={stripAttachmentMarkers(entry.text, names)} />
         <Thumbs conversationId={conversationId} attachmentIds={entry.attachments} attachments={attachments} />
       </div>
@@ -29,13 +33,13 @@ function YouMessage({ entry }: { readonly entry: YouEntry }) {
   );
 }
 
-export function ThreadEntryView({ entry, open, answer }: ThreadEntryViewProps) {
+export function ThreadEntryView({ entry, open, answer, quote = null }: ThreadEntryViewProps) {
   switch (entry.kind) {
     case "you":
-      return <YouMessage entry={entry} />;
+      return <YouMessage entry={entry} quote={quote} />;
     case "townhall":
       return (
-        <Message from="townhall" at={entry.at}>
+        <Message from="townhall" at={entry.at} entry={entry}>
           <div className="th-msg-body">
             <Markdown text={entry.text} />
           </div>
