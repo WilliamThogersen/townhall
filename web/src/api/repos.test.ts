@@ -24,6 +24,12 @@ describe("repos api", () => {
     expect(sent(fn)).toEqual({ url: "/api/repos/shop", method: "DELETE", body: undefined });
   });
 
+  it("asks the daemon to delete the managed clone too", async () => {
+    const fn = mockFetch(200, aRepo());
+    await removeRepo("shop", true);
+    expect(sent(fn)).toEqual({ url: "/api/repos/shop?deleteClone=true", method: "DELETE", body: undefined });
+  });
+
   it("refuses a repo without a base branch", async () => {
     mockFetch(200, [{ name: "shop", path: "/code/shop" }]);
     await expect(listRepos()).rejects.toMatchObject({ kind: "protocol" });
