@@ -183,7 +183,7 @@ fn task_tools() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: CREATE_TASK,
-            description: "Create one task for an agent of a saved agent type (`agent`). It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. Returns the task.",
+            description: "Create one task for an agent of a saved agent type (`agent`). It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. If the agent type has `requires`, the `after` chain must contain a task of each required type or this is refused, and the task starts only once those tasks ended with a report that clears it. Returns the task.",
             input_schema: create_task_schema(),
         },
         ToolDef {
@@ -193,7 +193,7 @@ fn task_tools() -> Vec<ToolDef> {
         },
         ToolDef {
             name: TASK_STATUS,
-            description: "What this conversation's tasks are doing and did. Without `name`: every task with its state, branch, `after`, its last 3 agent and needs-you entries and its proof artifacts (name, kind, author role, url). With `name`: that task plus its agent's last 20 steps and, once it is ended or merged, the agent's last message. Call it whenever you are asked what a task did or how it stands, instead of guessing.",
+            description: "What this conversation's tasks are doing and did. Without `name`: every task with its state, branch, `after`, its last 3 agent and needs-you entries and its proof artifacts (name, kind, author role, url) and `blocked`, why a queued task does not start although its `after` tasks finished. With `name`: that task plus its agent's last 20 steps and, once it is ended or merged, the agent's last message. Call it whenever you are asked what a task did or how it stands, instead of guessing.",
             input_schema: status::schema(),
         },
     ]

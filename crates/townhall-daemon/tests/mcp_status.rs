@@ -239,3 +239,27 @@ async fn every_task_lists_the_names_roles_and_urls_of_its_proof() {
     let one = m.ok("task_status", json!({"name": with})).await;
     assert_eq!(one["artifacts"], expected, "{one}");
 }
+
+#[tokio::test]
+async fn a_held_back_task_shows_why_in_both_shapes() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    let (held, free) = (unique("held"), unique("free"));
+    m.ok("create_task", task(&held)).await;
+    m.ok("create_task", task(&free)).await;
+    let why = "`t1` (reviewer) reported REJECT";
+    let change = move |t: Task| {
+        Ok(Task {
+            blocked: Some(why.into()),
+            ..t
+        })
+    };
+    m.store().update_task(&held, change).await.unwrap();
+
+    let all = m.ok("task_status", json!({})).await;
+    let tasks = all["tasks"].as_array().unwrap();
+    assert_eq!(tasks[0]["blocked"], why, "{all}");
+    assert_eq!(tasks[1]["blocked"], Value::Null, "{all}");
+    let one = m.ok("task_status", json!({"name": held})).await;
+    assert_eq!(one["blocked"], why, "{one}");
+}
