@@ -1,5 +1,9 @@
 use std::path::{Path, PathBuf};
 
+mod fresh;
+
+pub use fresh::fresh_base;
+
 use crate::cmd::{run, validate_name};
 use crate::{Error, Result, Workspace};
 

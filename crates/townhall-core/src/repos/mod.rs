@@ -10,6 +10,7 @@ pub mod source;
 use std::path::{Path, PathBuf};
 
 use clone::clone_or_reuse;
+pub(crate) use clone::no_prompt_env;
 use source::{Remote, Source};
 
 pub use git::{

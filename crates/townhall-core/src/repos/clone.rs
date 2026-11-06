@@ -13,6 +13,15 @@ use crate::{Error, Home, Result};
 pub(super) const CLONE_ENV: [(&str, &str); 1] = [("GIT_TERMINAL_PROMPT", "0")];
 pub(super) const SSH_NO_PROMPT: &str = "ssh -o BatchMode=yes";
 
+/// `CLONE_ENV` plus ssh in batch mode, unless the user set their own `GIT_SSH_COMMAND`.
+pub(crate) fn no_prompt_env() -> Vec<(&'static str, &'static str)> {
+    let mut envs = CLONE_ENV.to_vec();
+    if std::env::var_os("GIT_SSH_COMMAND").is_none() {
+        envs.push(("GIT_SSH_COMMAND", SSH_NO_PROMPT));
+    }
+    envs
+}
+
 pub(super) const AUTH_FAILED: [&str; 5] = [
     "authentication failed",
     "could not read username",
