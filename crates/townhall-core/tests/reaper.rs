@@ -167,7 +167,22 @@ async fn a_session_whose_worktree_is_gone_is_killed() {
 
 const GB: u64 = 1_000_000_000;
 
-/// A file that counts `bytes` towards a folder's size without using the disk.
+/// A file that takes `bytes` of the disk: the reaper measures allocated blocks, so a sparse
+/// file would count as empty.
+fn filled(path: &std::path::Path, bytes: u64) {
+    use std::io::Write;
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut file = std::fs::File::create(path).unwrap();
+    let chunk = vec![1u8; 1 << 20];
+    let mut left = bytes;
+    while left > 0 {
+        let n = left.min(chunk.len() as u64) as usize;
+        file.write_all(&chunk[..n]).unwrap();
+        left -= n as u64;
+    }
+}
+
+/// A file whose length is `bytes` without using the disk.
 fn sparse(path: &std::path::Path, bytes: u64) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::File::create(path).unwrap().set_len(bytes).unwrap();
@@ -183,13 +198,14 @@ async fn cap(s: &Sched, gb: u32) {
 #[tokio::test]
 async fn a_shared_target_over_its_cap_loses_its_incremental_caches_first() {
     let s = Sched::new().await;
-    cap(&s, 2).await;
+    cap(&s, 1).await;
     let target = s.ws.cargo_target_dir();
-    sparse(
+    filled(
         &target.join("debug/incremental/crate-a/dep-graph.bin"),
-        2 * GB,
+        GB / 10 * 11,
     );
-    sparse(&target.join("debug/deps/libserde.rlib"), GB);
+    filled(&target.join("debug/deps/libserde.rlib"), GB / 10);
+    filled(&target.join("debug/.cargo-lock"), 0);
 
     let reaped = reaper::run_once(s.ctx()).await.unwrap();
     assert_eq!(reaped.trimmed, [s.repo_name.as_str()], "{reaped:?}");
@@ -209,9 +225,9 @@ async fn a_shared_target_over_its_cap_loses_its_incremental_caches_first() {
 #[tokio::test]
 async fn a_shared_target_still_over_its_cap_is_emptied_when_nobody_builds() {
     let s = Sched::new().await;
-    cap(&s, 2).await;
+    cap(&s, 1).await;
     let target = s.ws.cargo_target_dir();
-    sparse(&target.join("debug/deps/libbig.rlib"), 3 * GB);
+    filled(&target.join("debug/deps/libbig.rlib"), GB / 10 * 11);
 
     let reaped = reaper::run_once(s.ctx()).await.unwrap();
     assert_eq!(reaped.trimmed, [s.repo_name.as_str()], "{reaped:?}");
@@ -222,12 +238,12 @@ async fn a_shared_target_still_over_its_cap_is_emptied_when_nobody_builds() {
 #[tokio::test]
 async fn a_shared_target_is_left_alone_while_an_agent_of_the_repo_runs() {
     let s = Sched::new().await;
-    cap(&s, 2).await;
+    cap(&s, 1).await;
     s.create(&unique("building"), &[]).await;
     run_once(s.ctx()).await.unwrap();
     let target = s.ws.cargo_target_dir();
     let big = target.join("debug/deps/libbig.rlib");
-    sparse(&big, 3 * GB);
+    filled(&big, GB / 10 * 11);
 
     let reaped = reaper::run_once(s.ctx()).await.unwrap();
     assert!(reaped.trimmed.is_empty(), "{reaped:?}");
