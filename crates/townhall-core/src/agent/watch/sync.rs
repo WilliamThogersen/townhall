@@ -1,8 +1,9 @@
 //! What a task needs when its agent's state is seen. The task follows the agent, except
 //! where another unit owns it: `queued` (the scheduler starts it), `merged` and the pull
-//! request states. A task in `error` stays there: the scheduler's gate ends a rejected task
-//! that way, and its agent session must not carry it on to ended or needsYou. A thread entry
-//! marks each time the agent starts to need you, fails or ends; going back to work adds none.
+//! request states. An `error` task the scheduler's gate rejected (it keeps the reason in
+//! `blocked`) stays there, so its agent session cannot carry it on to ended or needsYou; an
+//! `error` set by a crash still follows the agent when it restarts. A thread entry marks each
+//! time the agent starts to need you, fails or ends; going back to work adds none.
 
 use crate::agent::state::choices;
 use crate::model::{AgentEvent, AgentState, EntryBody, Task, TaskState};
@@ -16,15 +17,12 @@ pub(super) struct Change {
 
 pub(super) const REMOVED: &str = "the agent was removed";
 
-fn hands_off(state: TaskState) -> bool {
-    matches!(
-        state,
-        TaskState::Queued
-            | TaskState::Merged
-            | TaskState::InCi
-            | TaskState::InReview
-            | TaskState::Error
-    )
+fn hands_off(task: &Task) -> bool {
+    match task.state {
+        TaskState::Queued | TaskState::Merged | TaskState::InCi | TaskState::InReview => true,
+        TaskState::Error => task.blocked.is_some(),
+        _ => false,
+    }
 }
 
 fn target(now: &AgentState) -> TaskState {
@@ -79,7 +77,7 @@ fn grew(before: &AgentState, now: &AgentState) -> bool {
 /// memory (`None`) it is taken as already recorded, and a question that only grew by text
 /// typed after it is the same question.
 pub(super) fn plan(task: &Task, now: &AgentState, before: Option<&AgentState>) -> Option<Change> {
-    if hands_off(task.state) {
+    if hands_off(task) {
         return None;
     }
     let state = target(now);
@@ -227,13 +225,26 @@ mod tests {
     }
 
     #[test]
-    fn an_error_task_never_follows_its_agent_on() {
+    fn a_gate_rejected_error_task_never_follows_its_agent_on() {
         let waiting = AgentState::Waiting {
             question: "go? [y/n]".into(),
         };
+        let rejected = Task {
+            blocked: Some("`t1` (tester) reported FAIL".into()),
+            ..task(TaskState::Error)
+        };
         for now in [AgentState::Ended, AgentState::Working, waiting] {
-            assert_eq!(plan(&task(TaskState::Error), &now, None), None, "{now:?}");
+            assert_eq!(plan(&rejected, &now, None), None, "{now:?}");
         }
+    }
+
+    #[test]
+    fn a_crash_set_error_task_still_recovers_when_its_agent_restarts() {
+        let crashed = task(TaskState::Error);
+        let back = plan(&crashed, &AgentState::Working, None).unwrap();
+        assert_eq!(back.state, Some(TaskState::Working));
+        let ended = plan(&crashed, &AgentState::Ended, None).unwrap();
+        assert_eq!(ended.state, Some(TaskState::Ended));
     }
 
     #[test]

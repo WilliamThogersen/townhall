@@ -17,7 +17,11 @@
 //! A blocked task stays queued, its reason stored in `blocked`; the planner is told when the
 //! reason first appears or changes. The reason never holds a head sha, so a base branch that
 //! moves does not tell the planner again. A REJECT or FAIL is final: the task ends in `error`
-//! with that reason and the planner is told once, so a new task is made after the fix.
+//! with that reason kept in `blocked` (the mark the watcher reads to leave it in `error`) and
+//! the planner is told once, so a new task is made after the fix.
+//!
+//! Only `tester` and `reviewer` can be required (`report::vocabulary`); a type that names
+//! another in `requires` blocks its tasks with a reason saying so.
 
 use crate::agent::{self, state};
 use crate::context::Context;
@@ -177,6 +181,10 @@ pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task]) -> Result<
     let mut waiting = vec![];
     let mut rejected = vec![];
     for wanted in &kind.def.requires {
+        if let Some(why) = report::unrequirable(wanted) {
+            waiting.push(format!("agent type `{}`: {why}", task.agent));
+            continue;
+        }
         let newest = chain
             .iter()
             .rev()
@@ -226,15 +234,16 @@ pub(super) async fn hold(ctx: &Context, task: &Task, why: &str) -> Result<()> {
     Ok(())
 }
 
-/// Ends `task` in `error` with the reason, so the planner makes a new task after the fix; a
-/// task that moved on meanwhile is left alone. The session of a handed-back task is killed,
-/// and the watcher leaves an `error` task as it is, so it never reaches ended or needsYou
-/// and no task `after` it starts. The planner hears of it once.
+/// Ends `task` in `error` with the reason in `blocked`, so the planner makes a new task after
+/// the fix; a task that moved on meanwhile is left alone. The session of a handed-back task is
+/// killed, and the watcher leaves an `error` task that has a `blocked` reason as it is, so it
+/// never reaches ended or needsYou and no task `after` it starts. The planner hears of it once.
 pub(super) async fn reject(ctx: &Context, task: &Task, why: &str) -> Result<bool> {
-    let change = |t: Task| match t.state == TaskState::Queued {
+    let reason = why.to_string();
+    let change = move |t: Task| match t.state == TaskState::Queued {
         true => Ok(Task {
             state: TaskState::Error,
-            blocked: None,
+            blocked: Some(reason),
             ..t
         }),
         false => Err(Error::Conflict(MOVED.into())),

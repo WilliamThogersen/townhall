@@ -10,6 +10,7 @@ use townhall_core::agent::watch::Watcher;
 use townhall_core::model::{ArtifactKind, AuthorRole, NewArtifact, NewTask, Task, TaskState};
 use townhall_core::scheduler::{run_once, TaskLaunch};
 use townhall_core::steps::{project_dir_for, CLAUDE_PROJECTS_ENV};
+use townhall_core::store::DB_FILE;
 
 mod scheduler_support;
 use scheduler_support::{git, unique, Sched};
@@ -149,6 +150,33 @@ async fn both_reports_clearing_the_head_let_the_task_start() {
 }
 
 #[tokio::test]
+async fn a_stored_type_requiring_a_custom_type_holds_its_tasks_with_a_reason() {
+    let g = gated().await;
+    let source = "name = \"shipper\"\nadapter = \"claude\"\nrequires = [\"coder\"]\n";
+    let db = g.s.root.path().join(".townhall").join(DB_FILE);
+    let conn = rusqlite::Connection::open(db).unwrap();
+    conn.execute(
+        "update agents set source = ?1 where name = 'shipper'",
+        [source],
+    )
+    .unwrap();
+    let coder = unique("coder");
+    create_as(&g.s, &coder, "plain", &[], "main").await;
+    g.s.set_state(&coder, TaskState::Ended).await;
+    let head = rev(&g.s, "main").await;
+    file_report(&g.s, &coder, &clearing("PASS", &head)).await;
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.started.is_empty(), "{pass:?}");
+    let warning = pass.warnings.join("; ");
+    assert!(
+        warning.contains(&g.ship) && warning.contains("`coder` cannot be required"),
+        "{warning}"
+    );
+    let task = g.s.store().find_task(&g.ship).await.unwrap().unwrap();
+    assert_eq!(task.state, TaskState::Queued);
+}
+
+#[tokio::test]
 async fn a_task_without_requires_is_never_gated() {
     let g = gated().await;
     create_as(&g.s, &unique("plain"), "plain", &[], "main").await;
@@ -171,7 +199,11 @@ async fn assert_rejected(g: &Gated, words: &[&str]) -> String {
     assert_eq!(pass.failed, [g.ship.as_str()], "{pass:?}");
     assert!(pass.started.is_empty(), "{pass:?}");
     let task = g.s.store().find_task(&g.ship).await.unwrap().unwrap();
-    assert_eq!((task.state, task.blocked), (TaskState::Error, None));
+    assert_eq!(task.state, TaskState::Error);
+    let kept = task
+        .blocked
+        .expect("the reason stays as the rejection mark");
+    assert!(words.iter().all(|w| kept.contains(w)), "{kept}");
     let entries = g.s.store().entries(&g.s.conversation).await.unwrap();
     let text = format!("{entries:?}");
     let why = text
