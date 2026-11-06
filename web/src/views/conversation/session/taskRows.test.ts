@@ -108,6 +108,13 @@ describe("taskView", () => {
     expect(view(held, [login, held])).toMatchObject({ words: "after fix-login", blocked: null });
   });
 
+  it("names the branch a pull request targets only when it is not the base branch", () => {
+    const shipper = named("ship", "queued", { baseBranch: "townhall/build", prBase: "main" });
+    expect(view(shipper).prTarget).toBe("main");
+    expect(view(named("ship", "queued", { prBase: "main" })).prTarget).toBeNull();
+    expect(view(named("ship", "queued")).prTarget).toBeNull();
+  });
+
   it("shows no block reason once a task is past the queue", () => {
     const v = view(named("ship", "working", { blocked: "old reason" }));
     expect(v).toMatchObject({ words: "working", blocked: null });

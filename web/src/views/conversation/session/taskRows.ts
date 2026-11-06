@@ -12,6 +12,7 @@ export interface TaskView {
   readonly words: string;
   readonly blocked: string | null;
   readonly prOpen: boolean;
+  readonly prTarget: string | null;
 }
 
 interface StateLook {
@@ -87,6 +88,7 @@ export function taskView(task: Task, siblings: readonly Task[]): TaskView {
     words: wordsOf(task, look, siblings, blocked),
     blocked,
     prOpen: task.pr !== null && !FINISHED.has(task.state),
+    prTarget: task.prBase !== null && task.prBase !== task.baseBranch ? task.prBase : null,
   };
 }
 

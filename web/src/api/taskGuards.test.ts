@@ -17,6 +17,13 @@ describe("task guards", () => {
     expect(parseTask({ ...aTask(), blocked: undefined }).blocked).toBeNull();
   });
 
+  it("reads the branch a pull request targets", () => {
+    expect(parseTask(aTask()).prBase).toBeNull();
+    expect(parseTask(aTask({ prBase: "main" })).prBase).toBe("main");
+    expect(parseTask({ ...aTask(), prBase: undefined }).prBase).toBeNull();
+    expect(() => parseTask({ ...aTask(), prBase: 3 })).toThrow("task.prBase");
+  });
+
   it("refuses broken tasks and prs", () => {
     expect(() => parseTask({ ...aTask(), after: [3] })).toThrow("task.after[0]");
     expect(() => parseTask({ ...aTask(), agent: undefined })).toThrow("task.agent");

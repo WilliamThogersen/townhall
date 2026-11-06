@@ -55,6 +55,7 @@ export const aTask = (over: Partial<Task> = {}): Task => ({
   pr: null,
   agent: "builder",
   blocked: null,
+  prBase: null,
   ...over,
 });
 

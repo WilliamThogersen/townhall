@@ -53,6 +53,7 @@ function TaskRow({ view, open, tabbable, onOpen, onFocus }: TaskRowProps) {
         <span className="th-task-sub">
           <span className="th-task-title">{task.title}</span>
           <span className="th-tag th-tag--agent">{task.agent.toLowerCase()}</span>
+          {view.prTarget !== null && <span className="th-tag">pr to {view.prTarget}</span>}
           {view.prOpen && <span className="th-tag">pr open</span>}
         </span>
         {view.blocked !== null && <span className="th-task-blocked">{view.blocked}</span>}

@@ -75,6 +75,7 @@ const task = {
   pr: { number: 41, url: null, checks: "failed" },
   agent: "builder",
   blocked: null,
+  prBase: null,
 } as const satisfies Task;
 
 const agent = {
