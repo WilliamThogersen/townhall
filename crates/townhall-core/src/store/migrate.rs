@@ -208,6 +208,18 @@ mod tests {
     }
 
     #[test]
+    fn migration_0205_applies_after_the_higher_ranges_and_reruns_safely() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let without: Vec<Migration> = all().into_iter().filter(|m| m.id != 205).collect();
+        apply(&mut conn, &without).unwrap();
+        assert!(user_version(&conn).unwrap() >= 900);
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 1);
+        assert!(conn.prepare("select pr_base from tasks").is_ok());
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 0);
+        assert_eq!(applied(&conn).unwrap().len(), all().len());
+    }
+
+    #[test]
     fn a_failing_migration_changes_nothing() {
         let mut conn = Connection::open_in_memory().unwrap();
         let bad = Migration {

@@ -92,6 +92,7 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
         Published::NoRemote => Ok(json!({
             "state": "noRemote",
             "branch": task.branch(),
+            "base": task.pr_target(),
             "message": format!(
                 "repo `{}` has no origin remote: nothing was pushed and no pull request was opened; the work stays on branch {}",
                 task.repo,
@@ -108,7 +109,7 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
                 let change = move |t: Task| Ok(Task { pr: Some(pr), ..t });
                 store.update_task(&task.name, change).await.map_err(text)?;
             }
-            Ok(json!({"state": "opened", "url": url, "number": number}))
+            Ok(json!({"state": "opened", "url": url, "number": number, "base": task.pr_target()}))
         }
     }
 }

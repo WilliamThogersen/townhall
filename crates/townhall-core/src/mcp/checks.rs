@@ -144,32 +144,71 @@ fn is_sha(name: &str) -> bool {
     matches!(name.len(), 40 | 64) && name.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+async fn exits_ok(args: &[&str], repo: &Repo) -> Checked<bool> {
+    match probe("git", args, Some(&repo.path)).await {
+        Ok(_) => Ok(true),
+        Err(Error::Command { .. }) => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 pub(super) async fn pr_base(repo: &Repo, wanted: Option<&str>) -> Checked<Option<String>> {
     let Some(branch) = wanted else {
         return Ok(None);
     };
-    let shaped = !branch.is_empty()
-        && !branch.starts_with('-')
-        && !branch.chars().any(|c| c.is_whitespace() || c.is_control());
-    if !shaped || is_sha(branch) {
+    if is_sha(branch) {
         return Err(format!(
             "`prBase` `{branch}` must be a branch name of repo `{}`, not a commit id",
             repo.name
         ));
     }
-    for prefix in ["refs/heads", "refs/remotes/origin"] {
-        let full = format!("{prefix}/{branch}");
-        let args = ["rev-parse", "--verify", "--quiet", full.as_str()];
-        match probe("git", &args, Some(&repo.path)).await {
-            Ok(_) => return Ok(Some(branch.to_string())),
-            Err(Error::Command { .. }) => {}
-            Err(e) => return Err(e.to_string()),
-        }
+    let invalid = || {
+        format!(
+            "`prBase` `{branch}` is not a plain branch name: pass an existing branch of repo `{}` or leave it out",
+            repo.name
+        )
+    };
+    let shaped = !branch.is_empty()
+        && branch != "HEAD"
+        && !branch.starts_with(['-', '@'])
+        && !branch.contains("@{")
+        && !branch.chars().any(|c| c.is_whitespace() || c.is_control());
+    if !shaped {
+        return Err(invalid());
     }
-    Err(format!(
-        "`prBase` branch `{branch}` does not exist in repo `{}`: pass an existing branch or leave it out",
-        repo.name
-    ))
+    let formatted = probe(
+        "git",
+        &["check-ref-format", "--branch", branch],
+        Some(&repo.path),
+    )
+    .await;
+    match formatted {
+        Ok(out) if out.trim() == branch => {}
+        Ok(_) | Err(Error::Command { .. }) => return Err(invalid()),
+        Err(e) => return Err(e.to_string()),
+    }
+    let has_origin = exits_ok(&["remote", "get-url", "origin"], repo).await?;
+    let (prefix, missing) = match has_origin {
+        true => (
+            "refs/remotes/origin",
+            format!(
+                "`prBase` branch `{branch}` is not on origin: push it first, or pass another branch of repo `{}`",
+                repo.name
+            ),
+        ),
+        false => (
+            "refs/heads",
+            format!(
+                "`prBase` branch `{branch}` does not exist in repo `{}`: pass an existing branch or leave it out",
+                repo.name
+            ),
+        ),
+    };
+    let full = format!("{prefix}/{branch}");
+    match exits_ok(&["show-ref", "--verify", "--quiet", full.as_str()], repo).await? {
+        true => Ok(Some(branch.to_string())),
+        false => Err(missing),
+    }
 }
 
 /// A task of agent type `agent` needs a task of each type its `requires` lists somewhere in
