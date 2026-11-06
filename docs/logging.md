@@ -180,6 +180,10 @@ Later tasks add to this table as they emit events.
 | `ws.frame_failed`, `ws.close_timeout` | `townhall::http` | warn | `error` |
 | `attach.open_failed`, `attach.resize_failed` | `townhall::http` | warn | `error` |
 | `stats.repo_skipped`, `stats.task_failed` | `townhall::http` | warn | `repo`, `error` |
+| `usage.fetched` | `townhall::usage` | debug | `status`, `duration_ms` |
+| `usage.fetch_failed` | `townhall::usage` | warn | `status` (when the API answered), `error` (redacted; logged again only when it changes) |
+| `usage.keychain_miss` | `townhall::usage` | debug | `error` |
+| `usage.cache_ignored`, `usage.cache_not_saved` | `townhall::usage` | warn | `error` |
 | `agent.send_not_noted` | `townhall::http` | warn | `agent`, `error_kind`, `error` |
 | `task.created` | `townhall::task` | info | `task`, `conversation`, `repo`, `agent_type`, `after`, `prompt_chars` (never the prompt) |
 | `task.state` | `townhall::task` | info | `task`, `conversation`, `from`, `to` (every change through `Store::update_task`) |

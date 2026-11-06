@@ -79,8 +79,7 @@ pub fn detect_base_branch(path: &Path) -> String {
     symbolic_ref(path, "HEAD").unwrap_or_else(|| DETACHED.to_string())
 }
 
-/// A base branch someone typed: no option-like or blank names, and it must resolve to a commit.
-pub fn verify_branch(path: &Path, branch: &str) -> Result<()> {
+fn check_branch_shape(branch: &str) -> Result<()> {
     let bad_shape = branch.is_empty()
         || branch.starts_with('-')
         || branch.chars().any(|c| c.is_whitespace() || c.is_control());
@@ -89,6 +88,64 @@ pub fn verify_branch(path: &Path, branch: &str) -> Result<()> {
             "invalid base branch `{branch}`"
         )));
     }
+    Ok(())
+}
+
+/// The branch `init_plain` creates when none is asked for.
+pub const DEFAULT_BRANCH: &str = "main";
+const INIT_MESSAGE: &str = "Initial commit";
+const FALLBACK_IDENTITY: [&str; 4] = [
+    "-c",
+    "user.name=townhall",
+    "-c",
+    "user.email=townhall@localhost",
+];
+
+/// True when `path` is not inside any git repo, bare ones included: the only folders
+/// `init_plain` may touch.
+pub fn is_plain_folder(path: &Path) -> Result<bool> {
+    match run_blocking("git", &["rev-parse", "--git-dir"], Some(path)) {
+        Ok(_) => Ok(false),
+        Err(Error::Command { .. }) => Ok(true),
+        Err(e) => Err(e),
+    }
+}
+
+fn has_config(path: &Path, key: &str) -> bool {
+    run_blocking("git", &["config", key], Some(path)).is_ok_and(|v| !v.is_empty())
+}
+
+/// Turns a plain folder into a repo: `git init` on `branch`, then one commit of what is
+/// in it (an empty commit for an empty folder), so worktrees can branch from `branch`.
+/// Refuses the filesystem root and `home`. A git identity of townhall's own is used for the
+/// commit only when none is configured. On failure the `.git` it made is removed again.
+pub fn init_plain(path: &Path, branch: &str, home: Option<&Path>) -> Result<()> {
+    if path.parent().is_none() || home == Some(path) {
+        return Err(Error::InvalidInput(format!(
+            "refusing to turn {} into a repo: pick a project folder",
+            path.display()
+        )));
+    }
+    check_branch_shape(branch)?;
+    run_blocking("git", &["init", "-q", "-b", branch], Some(path))?;
+    commit_everything(path).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(path.join(".git"));
+    })
+}
+
+fn commit_everything(path: &Path) -> Result<()> {
+    run_blocking("git", &["add", "-A"], Some(path))?;
+    let configured = has_config(path, "user.name") && has_config(path, "user.email");
+    let identity: &[&str] = if configured { &[] } else { &FALLBACK_IDENTITY };
+    let mut args = vec!["-c", "commit.gpgsign=false"];
+    args.extend(identity);
+    args.extend(["commit", "-q", "--allow-empty", "-m", INIT_MESSAGE]);
+    run_blocking("git", &args, Some(path)).map(|_| ())
+}
+
+/// A base branch someone typed: no option-like or blank names, and it must resolve to a commit.
+pub fn verify_branch(path: &Path, branch: &str) -> Result<()> {
+    check_branch_shape(branch)?;
     if resolves(path, branch) {
         Ok(())
     } else {
@@ -96,5 +153,19 @@ pub fn verify_branch(path: &Path, branch: &str) -> Result<()> {
             "base branch `{branch}` not found in {}",
             path.display()
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_home_folder_and_the_root_are_never_turned_into_repos() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = init_plain(dir.path(), DEFAULT_BRANCH, Some(dir.path())).unwrap_err();
+        assert!(matches!(err, Error::InvalidInput(_)), "{err:?}");
+        assert!(!dir.path().join(".git").exists());
+        assert!(init_plain(Path::new("/"), DEFAULT_BRANCH, None).is_err());
     }
 }

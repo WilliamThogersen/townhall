@@ -5,10 +5,11 @@ import { AgentsProvider } from "../agents/AgentsProvider";
 import * as client from "../api/client";
 import * as conversationsApi from "../api/conversations";
 import { ApiError } from "../api/errors";
-import { aRepo } from "../api/fixtures";
+import { aRepo, aUsage } from "../api/fixtures";
 import * as reposApi from "../api/repos";
 import * as tasksApi from "../api/tasks";
 import type { AgentInfo } from "../api/types";
+import * as usageApi from "../api/usage";
 import { TestDataProvider } from "../data/testing";
 import { navigate } from "../router";
 import { useKeyHints } from "./keyHints";
@@ -31,6 +32,7 @@ beforeEach(() => {
   listRepos = vi.spyOn(reposApi, "listRepos").mockResolvedValue([aRepo({ name: "shop" }), aRepo({ name: "site" })]);
   vi.spyOn(conversationsApi, "listConversations").mockResolvedValue([]);
   vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
+  vi.spyOn(usageApi, "getUsage").mockResolvedValue(aUsage({ session: null, weekly: null, error: "Sign in to Claude Code to see usage" }));
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -135,6 +137,24 @@ describe("Shell", () => {
     expect(foot).toHaveClass("th-sidebar-foot");
     expect(foot?.lastElementChild).toHaveTextContent("settings");
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("puts the usage meter at the start of the foot, next to settings", async () => {
+    vi.spyOn(usageApi, "getUsage").mockResolvedValue(aUsage());
+    renderShell(<span>repo control</span>);
+    const meter = await screen.findByRole("button", { name: "Claude plan usage" });
+    const foot = meter.closest(".th-sidebar-foot");
+    expect(foot?.firstElementChild).toContainElement(meter);
+    expect(foot?.lastElementChild).toHaveTextContent("settings");
+    expect(foot).toHaveTextContent("repo control");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("leaves the foot as it was when there is no usage to show", async () => {
+    renderShell();
+    await waitFor(() => expect(usageApi.getUsage).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "Claude plan usage" })).not.toBeInTheDocument();
+    expect(sidebar().querySelector(".th-sidebar-foot")?.children).toHaveLength(1);
   });
 
   it("shows the screen's key hints", async () => {

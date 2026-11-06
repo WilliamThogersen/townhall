@@ -8,6 +8,7 @@ export { useRepos } from "./useRepos";
 export { useStats } from "./useStats";
 export { STEPS_POLL_MS, useSteps } from "./useSteps";
 export { useTasks } from "./useTasks";
+export { USAGE_POLL_MS, useUsage } from "./useUsage";
 export type {
   AgentInfosState,
   ConnectionStatus,
@@ -21,4 +22,5 @@ export type {
   StepsState,
   TaskFilter,
   TasksState,
+  UsageState,
 } from "./types";

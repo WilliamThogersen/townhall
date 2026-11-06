@@ -285,3 +285,16 @@ export interface ShippedDay {
 export interface Stats {
   readonly days: readonly ShippedDay[];
 }
+
+export interface UsageWindow {
+  readonly usedPercent: number;
+  readonly resetsAt: number | null;
+  readonly ratePerHour: number | null;
+}
+
+export interface ClaudeUsage {
+  readonly session: UsageWindow | null;
+  readonly weekly: UsageWindow | null;
+  readonly updatedAt: number;
+  readonly error: string | null;
+}

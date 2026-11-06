@@ -18,6 +18,7 @@ pub struct Repo {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AddRepo {
+    /// A folder (`~` allowed) or a git link; the daemon tells them apart.
     pub path: String,
     #[serde(default)]
     pub name: Option<String>,

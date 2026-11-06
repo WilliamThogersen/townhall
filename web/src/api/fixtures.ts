@@ -3,6 +3,7 @@ import type {
   AgentType,
   AgentTypeSummary,
   Attachment,
+  ClaudeUsage,
   Conversation,
   ConversationDetail,
   EntryBody,
@@ -104,6 +105,14 @@ export const aStep = (over: Partial<Step> = {}): Step => ({
 
 export const someStats = (): Stats => ({
   days: [{ date: "2026-11-04", fixes: 2, features: 1, lines: 120, agents: 3 }],
+});
+
+export const aUsage = (over: Partial<ClaudeUsage> = {}): ClaudeUsage => ({
+  session: { usedPercent: 30, resetsAt: Date.UTC(2026, 10, 5, 14, 10), ratePerHour: 12 },
+  weekly: { usedPercent: 54, resetsAt: Date.UTC(2026, 10, 11, 7, 0), ratePerHour: 1.125 },
+  updatedAt: Date.UTC(2026, 10, 5, 11, 39),
+  error: null,
+  ...over,
 });
 
 export const anAgentTypeSummary = (over: Partial<AgentTypeSummary> = {}): AgentTypeSummary => ({
