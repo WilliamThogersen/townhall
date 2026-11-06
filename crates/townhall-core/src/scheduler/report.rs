@@ -1,5 +1,5 @@
 //! What a tester's or reviewer's report says: `VERDICT: APPROVE|REJECT` (reviewer),
-//! `VERDICT: PASS|FAIL` (tester) and `COMMIT: <sha>`, each on a line of its own anywhere in
+//! `VERDICT: PASS|FAIL` (tester) and `COMMIT: <sha>` (the full 40 hex characters), each on a line of its own anywhere in
 //! the final message.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +52,7 @@ pub struct Report {
 }
 
 fn is_sha(word: &str) -> bool {
-    (7..=40).contains(&word.len()) && word.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
+    word.len() == 40 && word.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 fn is_fence(line: &str) -> bool {
@@ -136,6 +136,9 @@ pub fn parse(text: &str, agent_type: &str) -> Report {
 mod tests {
     use super::*;
 
+    const A: &str = "3f573aa3f573aa3f573aa3f573aa3f573aa3f573";
+    const B: &str = "abc1234abc1234abc1234abc1234abc1234abc12";
+
     fn verdict(text: &str, agent: &str) -> Result<Option<Verdict>, String> {
         parse(text, agent).verdict
     }
@@ -147,15 +150,15 @@ mod tests {
     #[test]
     fn the_verdict_and_the_commit_may_come_first_or_last() {
         let last = parse(
-            "All checks ran.\n\nVERDICT: APPROVE\nCOMMIT: 3f573aa\n",
+            &format!("All checks ran.\n\nVERDICT: APPROVE\nCOMMIT: {A}\n"),
             "reviewer",
         );
         assert_eq!(last.verdict, Ok(Some(Verdict::Approve)));
-        assert_eq!(last.commit, Ok(Some("3f573aa".into())));
+        assert_eq!(last.commit, Ok(Some(A.into())));
         let long = "line\n".repeat(200);
-        let first = parse(&format!("VERDICT: FAIL\nCOMMIT: abc1234\n{long}"), "tester");
+        let first = parse(&format!("VERDICT: FAIL\nCOMMIT: {B}\n{long}"), "tester");
         assert_eq!(first.verdict, Ok(Some(Verdict::Fail)));
-        assert_eq!(first.commit, Ok(Some("abc1234".into())));
+        assert_eq!(first.commit, Ok(Some(B.into())));
         let middle = parse(&format!("{long}VERDICT: PASS\n{long}"), "tester");
         assert_eq!(middle.verdict, Ok(Some(Verdict::Pass)));
     }
@@ -204,14 +207,14 @@ mod tests {
 
     #[test]
     fn fenced_and_quoted_lines_do_not_count() {
-        let fenced = "```\nVERDICT: PASS\nCOMMIT: aaaaaaa\n```\n";
-        assert_eq!(parse(fenced, "tester").verdict, Ok(None));
-        assert_eq!(commit(fenced), Ok(None));
+        let fenced = format!("```\nVERDICT: PASS\nCOMMIT: {A}\n```\n");
+        assert_eq!(parse(&fenced, "tester").verdict, Ok(None));
+        assert_eq!(commit(&fenced), Ok(None));
         let tilde = "~~~text\nVERDICT: PASS\n~~~\nVERDICT: FAIL\n";
         assert_eq!(verdict(tilde, "tester"), Ok(Some(Verdict::Fail)));
-        let quoted = "> VERDICT: PASS\n>COMMIT: aaaaaaa\n  > VERDICT: PASS\n";
-        assert_eq!(parse(quoted, "tester").verdict, Ok(None));
-        assert_eq!(commit(quoted), Ok(None));
+        let quoted = format!("> VERDICT: PASS\n>COMMIT: {A}\n  > VERDICT: PASS\n");
+        assert_eq!(parse(&quoted, "tester").verdict, Ok(None));
+        assert_eq!(commit(&quoted), Ok(None));
         let after = "```\nVERDICT: FAIL\n```\nVERDICT: PASS\n";
         assert_eq!(verdict(after, "tester"), Ok(Some(Verdict::Pass)));
     }
@@ -220,11 +223,11 @@ mod tests {
     fn different_lines_conflict_and_identical_repeats_do_not() {
         let conflict = verdict("VERDICT: FAIL\nnote\nVERDICT: PASS\n", "tester").unwrap_err();
         assert_eq!(conflict, "conflicting VERDICT lines: FAIL, PASS");
-        let same = "VERDICT: PASS\nCOMMIT: aaaaaaa\nVERDICT: PASS\nCOMMIT: aaaaaaa\n";
-        assert_eq!(verdict(same, "tester"), Ok(Some(Verdict::Pass)));
-        assert_eq!(commit(same), Ok(Some("aaaaaaa".into())));
-        let commits = commit("COMMIT: aaaaaaa\nCOMMIT: bbbbbbb\n").unwrap_err();
-        assert_eq!(commits, "conflicting COMMIT lines: aaaaaaa, bbbbbbb");
+        let same = format!("VERDICT: PASS\nCOMMIT: {A}\nVERDICT: PASS\nCOMMIT: {A}\n");
+        assert_eq!(verdict(&same, "tester"), Ok(Some(Verdict::Pass)));
+        assert_eq!(commit(&same), Ok(Some(A.into())));
+        let commits = commit(&format!("COMMIT: {A}\nCOMMIT: {B}\n")).unwrap_err();
+        assert_eq!(commits, format!("conflicting COMMIT lines: {A}, {B}"));
     }
 
     #[test]
@@ -233,8 +236,13 @@ mod tests {
         assert_eq!(commit("looks fine to me"), Ok(None));
         assert_eq!(commit("COMMIT: not a sha"), Ok(None));
         assert_eq!(commit("COMMIT: HEAD"), Ok(None));
-        assert_eq!(commit("COMMIT: ABCDEF1"), Ok(None));
         assert_eq!(commit("COMMIT: abc123"), Ok(None));
+        assert_eq!(commit("COMMIT: 3f573aa"), Ok(None));
+        assert_eq!(commit(&format!("COMMIT: {}", &A[..39])), Ok(None));
+        assert_eq!(commit(&format!("COMMIT: {A}0")), Ok(None));
+        assert_eq!(commit(&format!("COMMIT: {}", "z".repeat(40))), Ok(None));
+        let upper = A.to_uppercase();
+        assert_eq!(commit(&format!("COMMIT: {upper}")), Ok(Some(upper)));
         assert_eq!(commit(""), Ok(None));
     }
 }

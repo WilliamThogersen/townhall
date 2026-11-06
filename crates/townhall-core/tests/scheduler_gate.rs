@@ -455,12 +455,7 @@ async fn from_the_base_branch_only_its_tip_clears() {
 }
 
 #[tokio::test]
-async fn a_report_commit_may_be_short_or_full_but_not_upper_case() {
-    let short = gated().await;
-    let tip = rev(&short.s, "main").await;
-    both_clear(&short, &tip[..7]).await;
-    assert_starts(&short).await;
-
+async fn a_report_commit_must_be_the_full_sha_in_either_case() {
     let full = gated().await;
     let tip = rev(&full.s, "main").await;
     both_clear(&full, &tip).await;
@@ -469,7 +464,25 @@ async fn a_report_commit_may_be_short_or_full_but_not_upper_case() {
     let upper = gated().await;
     let tip = rev(&upper.s, "main").await;
     both_clear(&upper, &tip.to_uppercase()).await;
-    assert_blocked(&upper, &[&upper.tester, "COMMIT"]).await;
+    assert_starts(&upper).await;
+
+    let short = gated().await;
+    let tip = rev(&short.s, "main").await;
+    both_clear(&short, &tip[..7]).await;
+    assert_blocked(&short, &[&short.tester, "COMMIT"]).await;
+}
+
+#[tokio::test]
+async fn a_branch_named_like_a_short_sha_cannot_stand_in_for_the_head() {
+    let g = gated().await;
+    let old = rev(&g.s, "main").await;
+    scheduler_support::commit(&g.s.repo, "main moved on").await;
+    let tip = rev(&g.s, "main").await;
+    git(&g.s.repo, &["branch", &old[..7], &tip]).await;
+    both_clear(&g, &old[..7]).await;
+    assert_blocked(&g, &[&g.tester, "COMMIT"]).await;
+    both_clear(&g, &old).await;
+    assert_blocked(&g, &["stale", &g.tester, "tip"]).await;
 }
 
 async fn base_gated(base: &str) -> (Gated, String, String) {
@@ -483,13 +496,13 @@ async fn base_gated(base: &str) -> (Gated, String, String) {
 
 async fn assert_only_the_tip_clears(base: &str, form: fn(&str) -> String) {
     let (g, old, tip) = base_gated(base).await;
-    for covered in [form(&old), form(&old[..7])] {
+    for covered in [form(&old), form(&old.to_uppercase())] {
         both_clear(&g, &covered).await;
         assert_blocked(&g, &["stale", &g.tester, "tip"]).await;
     }
-    both_clear(&g, &old.to_uppercase()).await;
+    both_clear(&g, &old[..7]).await;
     assert_blocked(&g, &[&g.tester, "COMMIT"]).await;
-    both_clear(&g, &form(&tip[..7])).await;
+    both_clear(&g, &form(&tip)).await;
     assert_starts(&g).await;
 }
 
@@ -536,6 +549,6 @@ async fn a_branch_with_no_commits_of_its_own_clears_only_for_its_tip() {
     both_clear(&g, &old).await;
     assert_blocked(&g, &["stale", &g.tester, "tip"]).await;
     let tip = rev(&g.s, "empty").await;
-    both_clear(&g, &tip[..7]).await;
+    both_clear(&g, &tip).await;
     assert_starts(&g).await;
 }
