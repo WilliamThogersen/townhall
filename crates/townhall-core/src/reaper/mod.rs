@@ -5,9 +5,6 @@
 //!   was merged, or that is no task's at all (`verdict.rs`);
 //! - kills townhall sessions whose worktree is gone and prunes git's worktree records.
 //!
-//! - trims each repo's shared cargo target folder to `sharedTargetMaxGb`, never while an
-//!   agent of the repo runs (`target.rs`).
-//!
 //! A branch is deleted only when git calls it merged, so commits that exist nowhere else
 //! keep theirs. Live work, a task of an open conversation that is not merged, is never
 //! touched. It passes at startup, every `EVERY`, and right after a conversation ends
@@ -15,7 +12,6 @@
 
 mod cancel;
 mod repo;
-mod target;
 mod verdict;
 
 use std::collections::HashSet;
@@ -26,9 +22,7 @@ use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 
 use crate::redact::redact;
-use crate::{Context, Result, Workspace};
-
-use target::Trim;
+use crate::{Context, Result};
 
 pub use cancel::{cancel_queued, CANCELLED};
 pub use verdict::{verdict, Why};
@@ -44,8 +38,6 @@ pub struct Reaped {
     pub cancelled: Vec<String>,
     pub removed: Vec<String>,
     pub sessions: Vec<String>,
-    /// Repos whose shared cargo target folder was trimmed.
-    pub trimmed: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -55,7 +47,6 @@ impl Reaped {
             cancelled: [self.cancelled, other.cancelled].concat(),
             removed: [self.removed, other.removed].concat(),
             sessions: [self.sessions, other.sessions].concat(),
-            trimmed: [self.trimmed, other.trimmed].concat(),
             warnings: [self.warnings, other.warnings].concat(),
         }
     }
@@ -94,43 +85,10 @@ pub async fn run_once(ctx: &Context) -> Result<Reaped> {
         .cloned()
         .collect();
     reaped.cancelled = cancel_queued(store, &of_ended).await?;
-    let max_gb = ctx.settings().await?.shared_target_max_gb;
     for (name, ws, found) in surveyed {
-        let running: Vec<String> = found
-            .agents
-            .iter()
-            .filter(|a| a.alive)
-            .map(|a| a.name.clone())
-            .collect();
-        let done = repo::reap(&ws, &name, found, &tasks, &ended).await;
-        let busy = running.iter().any(|a| !done.removed.contains(a));
-        let trimmed = trim_target(&ws, &name, max_gb, busy).await;
-        reaped = reaped.and(done).and(trimmed);
+        reaped = reaped.and(repo::reap(&ws, &name, found, &tasks, &ended).await);
     }
     Ok(reaped)
-}
-
-/// One repo's shared target folder, trimmed to the cap. A failure is a warning.
-async fn trim_target(ws: &Workspace, repo: &str, max_gb: u32, busy: bool) -> Reaped {
-    let mut reaped = Reaped::default();
-    match target::trim(ws, max_gb, busy).await {
-        Ok(Trim::Within) => {}
-        Ok(Trim::Trimmed) => {
-            tracing::info!(
-                target: "townhall::task", event = "reaper.target_trimmed", repo,
-                max_gb, "shared cargo target trimmed"
-            );
-            reaped.trimmed.push(repo.to_string());
-        }
-        Ok(Trim::Busy(size)) => reaped.warnings.push(format!(
-            "shared target of repo `{repo}` is {} over its cap of {max_gb} GB, kept while its agents run",
-            target::gb(size)
-        )),
-        Err(e) => reaped
-            .warnings
-            .push(format!("shared target of repo `{repo}` not trimmed: {e}")),
-    }
-    reaped
 }
 
 fn report(when: &'static str, result: Result<Reaped>) {
