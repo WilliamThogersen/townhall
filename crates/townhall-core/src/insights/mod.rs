@@ -456,22 +456,34 @@ fn finish(g: &Group) -> Pattern {
     }
 }
 
-/// The agent types a leaf task went through: its `after` lineage (first parent each step),
-/// its own type, then the types it was handed to.
+/// The agent types a task went through: the type it began as, then each type it was handed
+/// to. A hand back sets `task.agent` to the new type, so the first `from` is the start.
+fn stages(t: &TaskData) -> Vec<String> {
+    let start = t
+        .handoffs
+        .first()
+        .map_or(&t.task.agent, |h| &h.from)
+        .clone();
+    std::iter::once(start)
+        .chain(t.handoffs.iter().map(|h| h.to.clone()))
+        .collect()
+}
+
+/// The agent types a leaf task went through: the stages of its `after` lineage (first parent
+/// each step), oldest first, then its own.
 fn chain_of(leaf: &TaskData, by_name: &HashMap<&str, &TaskData>) -> Vec<String> {
-    let mut types = vec![];
+    let mut lineage = vec![];
     let mut seen = HashSet::new();
     let mut at = Some(leaf);
     while let Some(t) = at.filter(|t| seen.insert(t.task.name.clone())) {
-        types.push(t.task.agent.clone());
+        lineage.push(t);
         at = t
             .task
             .after
             .first()
             .and_then(|name| by_name.get(name.as_str()).copied());
     }
-    types.reverse();
-    types.extend(leaf.handoffs.iter().map(|h| h.to.clone()));
+    let mut types: Vec<String> = lineage.into_iter().rev().flat_map(stages).collect();
     types.truncate(MAX_CHAIN);
     types
 }

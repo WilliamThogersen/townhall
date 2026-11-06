@@ -305,6 +305,25 @@ fn old_entries_fall_outside_the_window() {
     assert!(analyze(&data, now(), &bad).unwrap_err().contains("since"));
 }
 
+#[test]
+fn a_handed_back_task_chain_starts_at_the_type_it_began_as() {
+    // The store sets `task.agent` to the type handed to, so it is the last stage.
+    let handed = |name: &str| {
+        let mut t = task(name, "tester", TaskState::Queued, &[], "c1");
+        t.handoffs = vec![handoff(name, "coder", "tester", "", 2)];
+        t
+    };
+    let data = InsightData {
+        conversations: vec![],
+        tasks: vec![handed("a-1"), handed("a-2")],
+    };
+    let out = run(&data);
+    let chains = find(&out, "task_chain");
+    assert_eq!(chains.len(), 1, "{out:?}");
+    assert_eq!(chains[0].pattern, "coder -> tester");
+    assert_eq!(chains[0].count, 2);
+}
+
 /// Two copies of every conversation (ids `c<i>` and `c<i>-b`), each with `times` copies of a
 /// distinct long request, so every pattern recurs.
 fn many_requests(n: usize, times: u32) -> InsightData {
