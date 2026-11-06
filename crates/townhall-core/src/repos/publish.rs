@@ -5,7 +5,7 @@ use std::path::Path;
 
 use super::auth_env::{auth_failure, remote_env};
 use super::source::split_remote;
-use crate::cmd::{probe_blocking, run_blocking_env};
+use crate::cmd::{probe_blocking, run_blocking, run_blocking_env};
 use crate::redact::redact;
 use crate::{Error, Result};
 
@@ -70,6 +70,8 @@ pub struct PrRequest<'a> {
     pub base: &'a str,
     pub title: &'a str,
     pub body: &'a str,
+    /// The GitHub login every push and PR must be made as; empty enforces nothing.
+    pub account: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +127,62 @@ fn check_login(program: &str, origin: &Origin, dir: &Path) -> Result<()> {
         ))),
         Err(e) => Err(e),
     }
+}
+
+fn gh_output(program: &str, args: &[&str], dir: &Path) -> Result<String> {
+    run_blocking_env(program, args, Some(dir), &remote_env())
+}
+
+fn active_login(program: &str, host: &str, dir: &Path) -> Result<(String, String)> {
+    let args = [
+        "api",
+        "--hostname",
+        host,
+        "user",
+        "--jq",
+        r#".login + " " + (.id | tostring)"#,
+    ];
+    let out = gh_output(program, &args, dir).map_err(|e| {
+        invalid(format!(
+            "could not ask `{program}` who is logged in to {host}: {e}"
+        ))
+    })?;
+    let mut parts = out.split_whitespace();
+    match (parts.next(), parts.next()) {
+        (Some(login), Some(id)) => Ok((login.to_string(), id.to_string())),
+        _ => Err(invalid(format!(
+            "`{program} api user` printed no login: {}",
+            out.trim()
+        ))),
+    }
+}
+
+fn set_git_identity(worktree: &Path, login: &str, id: &str) -> Result<()> {
+    let email = format!("{id}+{login}@users.noreply.github.com");
+    for (key, value) in [("user.name", login), ("user.email", email.as_str())] {
+        run_blocking("git", &["config", key, value], Some(worktree))?;
+    }
+    Ok(())
+}
+
+fn ensure_account(program: &str, origin: &Origin, req: &PrRequest) -> Result<()> {
+    let (host, want) = (origin.host.as_str(), req.account);
+    let (mut login, mut id) = active_login(program, host, req.worktree)?;
+    if !login.eq_ignore_ascii_case(want) {
+        let args = ["auth", "switch", "--hostname", host, "--user", want];
+        gh_output(program, &args, req.worktree).map_err(|e| {
+            invalid(format!(
+                "`{program}` is logged in as {login} on {host}, not {want}, and cannot switch: run `{program} auth login --hostname {host}` as {want} ({e})"
+            ))
+        })?;
+        (login, id) = active_login(program, host, req.worktree)?;
+        if !login.eq_ignore_ascii_case(want) {
+            return Err(invalid(format!(
+                "`{program} auth switch` left {login} active on {host}, not {want}"
+            )));
+        }
+    }
+    set_git_identity(req.worktree, &login, &id)
 }
 
 fn push(req: &PrRequest) -> Result<()> {
@@ -205,6 +263,9 @@ pub fn publish(req: &PrRequest, programs: &Programs) -> Result<Published> {
         Forge::GitLab => &programs.glab,
     };
     check_login(program, &origin, req.worktree)?;
+    if origin.forge == Forge::GitHub && !req.account.trim().is_empty() {
+        ensure_account(program, &origin, req)?;
+    }
     push(req)?;
     let url = create(req, &origin, programs)?;
     Ok(Published::Opened {

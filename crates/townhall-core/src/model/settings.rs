@@ -84,10 +84,11 @@ pub enum SettingKey {
     NotifyWhen,
     TownhallModel,
     LearnAboutMe,
+    GithubAccount,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 8] = [
+    pub const ALL: [SettingKey; 9] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
@@ -96,6 +97,7 @@ impl SettingKey {
         Self::NotifyWhen,
         Self::TownhallModel,
         Self::LearnAboutMe,
+        Self::GithubAccount,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -108,6 +110,7 @@ impl SettingKey {
             Self::NotifyWhen => "notifyWhen",
             Self::TownhallModel => "townhallModel",
             Self::LearnAboutMe => "learnAboutMe",
+            Self::GithubAccount => "githubAccount",
         }
     }
 
@@ -129,6 +132,7 @@ impl SettingKey {
             Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::LearnAboutMe => {
                 value.is_boolean()
             }
+            Self::GithubAccount => value.as_str().is_some_and(is_github_login),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
             }),
@@ -141,13 +145,20 @@ impl SettingKey {
     }
 }
 
+/// A GitHub login, or empty for "no account is enforced".
+fn is_github_login(login: &str) -> bool {
+    login.len() <= 39
+        && !login.starts_with('-')
+        && login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
 fn parses<T: serde::de::DeserializeOwned>(value: &Value) -> bool {
     serde_json::from_value::<T>(value.clone()).is_ok()
 }
 
 /// `GET /api/settings`. Same names, values and defaults as the web UI; `townhallModel`
 /// has no row on the settings page yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub permission_mode: PermissionMode,
@@ -158,6 +169,7 @@ pub struct Settings {
     pub notify_when: NotifyWhen,
     pub townhall_model: TownhallModel,
     pub learn_about_me: bool,
+    pub github_account: String,
 }
 
 impl Default for Settings {
@@ -171,6 +183,7 @@ impl Default for Settings {
             notify_when: NotifyWhen::NeedsYou,
             townhall_model: TownhallModel::Sonnet,
             learn_about_me: false,
+            github_account: String::new(),
         }
     }
 }
@@ -195,6 +208,7 @@ impl Settings {
             notify_when: field(raw, SettingKey::NotifyWhen, d.notify_when),
             townhall_model: field(raw, SettingKey::TownhallModel, d.townhall_model),
             learn_about_me: field(raw, SettingKey::LearnAboutMe, d.learn_about_me),
+            github_account: field(raw, SettingKey::GithubAccount, d.github_account),
         }
     }
 
@@ -241,7 +255,8 @@ mod tests {
                 "sessionPanelOpen": true,
                 "notifyWhen": "needsYou",
                 "townhallModel": "sonnet",
-                "learnAboutMe": false
+                "learnAboutMe": false,
+                "githubAccount": ""
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -321,6 +336,22 @@ mod tests {
         );
         assert!(SettingKey::LearnAboutMe.check(&json!(true)).is_ok());
         assert!(SettingKey::LearnAboutMe.check(&json!(1)).is_err());
+    }
+
+    #[test]
+    fn the_github_account_is_a_login_or_empty() {
+        for good in ["WilliamThogersen", "a", "octo-cat-1", ""] {
+            let value = json!(good);
+            assert_eq!(SettingKey::GithubAccount.check(&value).unwrap(), value);
+        }
+        for bad in [json!("-lead"), json!("two words"), json!("a/b"), json!(7)] {
+            assert!(SettingKey::GithubAccount.check(&bad).is_err(), "{bad}");
+        }
+        let s: Settings =
+            serde_json::from_value(json!({"githubAccount": "WilliamThogersen"})).unwrap();
+        assert_eq!(s.github_account, "WilliamThogersen");
+        let bad: Settings = serde_json::from_value(json!({"githubAccount": "no way"})).unwrap();
+        assert_eq!(bad.github_account, "");
     }
 
     #[test]
