@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import type { Task, ThreadEntry } from "../../../api/types";
+import type { ReplyTarget } from "../../../composer/replies";
 import { EndedNote, ThinkingRow } from "./EventEntries";
 import { useThread } from "./threadContext";
 import { ThreadEntryView } from "./ThreadEntryView";
-import { askAnswers, isNeedsYouOpen, isRepoAskOpen } from "./threadModel";
+import { askAnswers, isNeedsYouOpen, isRepoAskOpen, replyTarget } from "./threadModel";
 import { useStickToBottom } from "./useStickToBottom";
 
 export interface ThreadProps {
@@ -33,6 +34,14 @@ function useAnswers(entries: readonly ThreadEntry[]) {
   }, [entries]);
 }
 
+/** What the entry a reply answers said; null when it is gone, hidden, or has nothing to quote. */
+function quoteOf(entries: readonly ThreadEntry[], hidden: ReadonlySet<number>, entry: ThreadEntry): ReplyTarget | null {
+  if (entry.kind !== "you" || entry.replyTo === undefined) return null;
+  const at = entries.findIndex((other) => other.id === entry.replyTo);
+  const original = entries[at];
+  return original === undefined || hidden.has(at) ? null : replyTarget(original);
+}
+
 export function Thread({ entries, ended }: ThreadProps) {
   const { tasks, thinking } = useThread();
   const open = useMemo(() => openAsks(entries, tasks), [entries, tasks]);
@@ -44,7 +53,13 @@ export function Thread({ entries, ended }: ThreadProps) {
       <div className="th-thread-inner" ref={contentRef}>
         {entries.map((entry, i) =>
           answers.hidden.has(i) ? null : (
-            <ThreadEntryView key={entry.id} entry={entry} open={open[i] ?? false} answer={answers.textOf(i)} />
+            <ThreadEntryView
+              key={entry.id}
+              entry={entry}
+              open={open[i] ?? false}
+              answer={answers.textOf(i)}
+              quote={quoteOf(entries, answers.hidden, entry)}
+            />
           ),
         )}
         {thinking ? <ThinkingRow /> : null}

@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { AgentKey, Attachment, Task } from "../../../api/types";
+import type { ReplyTarget } from "../../../composer/replies";
 
 export interface ThreadContextValue {
   readonly conversationId: string;
@@ -8,6 +9,8 @@ export interface ThreadContextValue {
   readonly thinking: boolean;
   readonly openTask: string | null;
   readonly onOpenTask: (name: string) => void;
+  /** Make this entry the one the next message answers, and focus the composer. */
+  readonly onReply: (target: ReplyTarget) => void;
   readonly sendMessage: (text: string) => Promise<boolean>;
   readonly answerAgent: (agent: string, text: string) => Promise<boolean>;
   readonly allowTool: (agent: string, tool: string) => Promise<boolean>;

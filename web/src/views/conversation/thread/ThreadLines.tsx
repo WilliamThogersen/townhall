@@ -1,8 +1,9 @@
 import { Fragment, type ReactNode } from "react";
-import type { TaskState } from "../../../api/types";
+import type { TaskState, ThreadEntry } from "../../../api/types";
 import { Spinner } from "../../../ui/Spinner";
 import { taskGlyph } from "./taskView";
-import { clockTime } from "./threadModel";
+import { useThread } from "./threadContext";
+import { clockTime, replyTarget } from "./threadModel";
 
 export function TaskGlyph({ state }: { readonly state: TaskState }) {
   const glyph = taskGlyph(state);
@@ -21,22 +22,40 @@ export function EntryTime({ at }: { readonly at: string }) {
   );
 }
 
+/** Appears on hover or focus; makes the entry the one the next message answers. */
+export function ReplyButton({ entry }: { readonly entry: ThreadEntry }) {
+  const { onReply } = useThread();
+  const target = replyTarget(entry);
+  if (target === null) return null;
+  return (
+    <button
+      type="button"
+      className="th-reply-btn"
+      aria-label={`Reply to ${target.author}: ${target.excerpt}`}
+      onClick={() => onReply(target)}
+    />
+  );
+}
+
 export interface EventLineProps {
   readonly sign: ReactNode;
   readonly kind: string;
   readonly event?: string;
   readonly at?: string;
+  /** The thread entry this line shows: makes it findable and answerable. */
+  readonly entry?: ThreadEntry;
   readonly children: ReactNode;
 }
 
-export function EventLine({ sign, kind, event, at, children }: EventLineProps) {
+export function EventLine({ sign, kind, event, at, entry, children }: EventLineProps) {
   return (
-    <div className="th-event" data-kind={kind} data-event={event}>
+    <div className="th-event" data-kind={kind} data-event={event} data-entry-id={entry?.id}>
       <span className="th-msg-sign" aria-hidden="true">
         {sign}
       </span>
       <span>{children}</span>
       {at === undefined ? <span className="th-msg-time" /> : <EntryTime at={at} />}
+      {entry === undefined ? null : <ReplyButton entry={entry} />}
     </div>
   );
 }
@@ -54,6 +73,8 @@ export interface MessageProps {
   readonly answered?: boolean;
   /** False when the content shows the time itself. */
   readonly time?: boolean;
+  /** The thread entry this message shows: makes it findable and answerable. */
+  readonly entry?: ThreadEntry;
   readonly children: ReactNode;
 }
 
@@ -66,14 +87,19 @@ const MESSAGE_CLASS: Readonly<Record<MessageFrom, string>> = {
 
 const SIGN: Readonly<Record<MessageFrom, string>> = { you: "›", townhall: "", ask: "◆", block: "" };
 
-export function Message({ from, at, answered = false, time = true, children }: MessageProps) {
+export function Message({ from, at, answered = false, time = true, entry, children }: MessageProps) {
   return (
-    <div className={from === undefined ? "th-msg" : MESSAGE_CLASS[from]} data-answered={answered ? "true" : undefined}>
+    <div
+      className={from === undefined ? "th-msg" : MESSAGE_CLASS[from]}
+      data-answered={answered ? "true" : undefined}
+      data-entry-id={entry?.id}
+    >
       <span className="th-msg-sign" aria-hidden="true">
         {from === undefined ? "" : answered ? "◇" : SIGN[from]}
       </span>
       {children}
       {time ? <EntryTime at={at} /> : null}
+      {entry === undefined ? null : <ReplyButton entry={entry} />}
     </div>
   );
 }

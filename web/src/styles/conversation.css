@@ -246,6 +246,79 @@
   font-size: var(--th-text-sm);
 }
 
+/* reply: a hover button on every entry, and the quoted snippet on a reply */
+
+.th-msg,
+.th-event {
+  position: relative;
+}
+
+.th-reply-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0 var(--th-space-2);
+  border: var(--th-border) solid var(--th-line-control);
+  background: var(--th-bg);
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-xs);
+  cursor: pointer;
+  opacity: 0;
+}
+
+/* the words are drawn, not text, so a line's own text stays what it says */
+.th-reply-btn::before {
+  content: "↩ reply";
+}
+
+:is(.th-msg, .th-event):hover > .th-reply-btn,
+.th-reply-btn:focus-visible {
+  opacity: 1;
+}
+
+.th-reply-btn:hover {
+  color: var(--th-fg);
+}
+
+.th-msg-quote {
+  display: flex;
+  gap: var(--th-space-2);
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 var(--th-space-2);
+  padding: 0 0 0 var(--th-space-2);
+  border: 0;
+  border-left: 2px solid var(--th-fg-faint);
+  background: transparent;
+  color: var(--th-fg-faint);
+  font: inherit;
+  font-size: var(--th-text-sm);
+  text-align: left;
+}
+
+button.th-msg-quote {
+  cursor: pointer;
+}
+
+button.th-msg-quote:hover,
+button.th-msg-quote:focus-visible {
+  color: var(--th-fg);
+}
+
+.th-msg-quote--gone {
+  font-style: italic;
+}
+
+[data-flash="true"] {
+  animation: th-flash 1.5s ease-out;
+}
+
+@keyframes th-flash {
+  from {
+    background: var(--th-accent-tint);
+  }
+}
+
 .th-event b {
   color: var(--th-fg-muted);
   font-weight: var(--th-weight-normal);

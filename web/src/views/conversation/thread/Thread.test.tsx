@@ -14,6 +14,7 @@ function context(over: Partial<ThreadContextValue> = {}): ThreadContextValue {
     thinking: false,
     openTask: null,
     onOpenTask: vi.fn(),
+    onReply: vi.fn(),
     sendMessage: vi.fn(async () => true),
     answerAgent: vi.fn(async () => true),
     answerKeys: vi.fn(async () => true),

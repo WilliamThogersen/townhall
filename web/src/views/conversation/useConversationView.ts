@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { allowTool, sendText } from "../../api/client";
 import { toMessage } from "../../api/errors";
 import type { AgentKey, ConversationDetail, Task } from "../../api/types";
+import { readReply, type ReplyTarget } from "../../composer/replies";
 import { useConversationActions } from "../../data";
 import { navigate, PATHS, useRoute } from "../../router";
 import { useSettings } from "../../settings/useSettings";
@@ -106,14 +107,25 @@ export function useCommands(id: string): Commands {
       answerAgent: (agent: string, text: string) => attempt(() => sendText(agent, text)),
       answerKeys: (agent: string, keys: readonly AgentKey[]) => attempt(() => pressKeys(agent, keys)),
       allowTool: (agent: string, tool: string) => attempt(() => allowTool(agent, tool)),
-      submit: (text: string, attachmentIds: readonly string[]) =>
-        actions.send(id, attachmentIds.length > 0 ? { text, attachments: attachmentIds } : { text }),
+      submit: (text: string, attachmentIds: readonly string[]) => {
+        const replyTo = readReply(id)?.id;
+        return actions.send(id, {
+          text,
+          ...(attachmentIds.length > 0 ? { attachments: attachmentIds } : {}),
+          ...(replyTo === undefined ? {} : { replyTo }),
+        });
+      },
     };
   }, [actions, id]);
   return { ...calls, problem };
 }
 
-export function useThreadValue(detail: ConversationDetail, pane: PaneRoute, commands: Commands): ThreadContextValue {
+export function useThreadValue(
+  detail: ConversationDetail,
+  pane: PaneRoute,
+  commands: Commands,
+  onReply: (target: ReplyTarget) => void,
+): ThreadContextValue {
   const { tasks, attachments, conversation } = detail;
   const { sendMessage, answerAgent, answerKeys, allowTool } = commands;
   return useMemo(
@@ -124,11 +136,12 @@ export function useThreadValue(detail: ConversationDetail, pane: PaneRoute, comm
       thinking: conversation.status === "thinking",
       openTask: pane.task?.name ?? null,
       onOpenTask: pane.open,
+      onReply,
       sendMessage,
       answerAgent,
       answerKeys,
       allowTool,
     }),
-    [conversation.id, tasks, attachments, conversation.status, pane.task, pane.open, sendMessage, answerAgent, answerKeys, allowTool],
+    [conversation.id, tasks, attachments, conversation.status, pane.task, pane.open, onReply, sendMessage, answerAgent, answerKeys, allowTool],
   );
 }

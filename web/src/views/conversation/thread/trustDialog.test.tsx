@@ -37,6 +37,7 @@ function Harness({ entries }: { readonly entries: readonly ThreadEntry[] }) {
     thinking: false,
     openTask: null,
     onOpenTask: () => undefined,
+    onReply: () => undefined,
     sendMessage: commands.sendMessage,
     answerAgent: commands.answerAgent,
     answerKeys: commands.answerKeys,
