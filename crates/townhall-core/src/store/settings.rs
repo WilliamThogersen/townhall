@@ -93,3 +93,28 @@ impl Store {
         self.call(move |conn| put(conn, DESKTOP_REPO, &value)).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use crate::events::EventBus;
+    use crate::model::SettingKey;
+    use crate::store::Store;
+    use crate::Home;
+
+    #[tokio::test]
+    async fn a_new_database_expects_the_owners_github_account() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&Home::at(dir.path().join(".townhall")), EventBus::new()).unwrap();
+        assert_eq!(
+            store.settings().await.unwrap().github_account,
+            "WilliamThogersen"
+        );
+        let cleared = store
+            .set_setting(SettingKey::GithubAccount, json!(""))
+            .await
+            .unwrap();
+        assert_eq!(cleared.github_account, "");
+    }
+}

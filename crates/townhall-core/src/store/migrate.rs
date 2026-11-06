@@ -30,6 +30,11 @@ const BASE: &[Migration] = &[
         name: "0002_conversations",
         sql: include_str!("migrations/0002_conversations.sql"),
     },
+    Migration {
+        id: 3,
+        name: "0003_github_account",
+        sql: include_str!("migrations/0003_github_account.sql"),
+    },
 ];
 
 /// Who owns which numbers. Ask the orchestrator for a range before adding a unit.
