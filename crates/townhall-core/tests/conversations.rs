@@ -156,6 +156,7 @@ async fn a_message_only_names_attachments_of_its_conversation() {
     let body = EntryBody::You {
         text: "see".into(),
         attachments: vec![file.id.clone()],
+        reply_to: None,
     };
     let err = env
         .store
@@ -165,6 +166,28 @@ async fn a_message_only_names_attachments_of_its_conversation() {
     assert!(matches!(err, Error::InvalidInput(_)), "{err:?}");
     assert!(env.store.entries(&a.id).await.unwrap().is_empty());
     assert_eq!(env.store.append_entry(&b.id, body).await.unwrap().id, 1);
+}
+
+#[tokio::test]
+async fn a_reply_keeps_the_entry_it_answers() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    env.store.append_entry(&c.id, you("first")).await.unwrap();
+    let reply = EntryBody::You {
+        text: "about that".into(),
+        attachments: vec![],
+        reply_to: Some(1),
+    };
+    env.store.append_entry(&c.id, reply.clone()).await.unwrap();
+    let got: Vec<EntryBody> = env
+        .store
+        .entries(&c.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|e| e.body)
+        .collect();
+    assert_eq!(got, vec![you("first"), reply]);
 }
 
 #[tokio::test]

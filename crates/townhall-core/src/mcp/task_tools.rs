@@ -16,6 +16,7 @@ use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
 use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 use super::logs::{self as log_tools, LOG_SUMMARY, READ_LOGS};
+use super::open_pr::{self, OPEN_PR};
 use super::rpc::ToolRunner;
 use super::{
     status, task_tools_list, tools, ToolDef, CREATE_TASK, INSTRUCTIONS, MAX_TITLE_LEN, SET_TITLE,
@@ -177,6 +178,7 @@ impl ToolRunner for HandBackTools<'_> {
             HAND_BACK => hand_back::hand_back(self.ctx, self.task, parse(arguments)?).await,
             ADD_ARTIFACT => artifacts::add(self.ctx, self.task, parse(arguments)?).await,
             LIST_ARTIFACTS => artifacts::list(self.ctx, self.task, parse(arguments)?).await,
+            OPEN_PR => open_pr::open_pr(self.ctx, self.task, parse(arguments)?).await,
             other => {
                 let names: Vec<&str> = task_tools_list().iter().map(|t| t.name).collect();
                 Err(format!(

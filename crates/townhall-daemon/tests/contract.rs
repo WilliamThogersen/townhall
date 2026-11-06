@@ -161,7 +161,7 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
         json!({
             "permissionMode": "acceptEdits", "workWithoutAsking": false, "agentsAtOnce": 6,
             "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
-            "townhallModel": "sonnet"
+            "townhallModel": "sonnet", "learnAboutMe": false
         })
     );
     let (s, v) = call(

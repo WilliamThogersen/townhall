@@ -106,6 +106,7 @@ impl Mcp {
         let body = EntryBody::You {
             text: text.into(),
             attachments: vec![],
+            reply_to: None,
         };
         self.store().append_entry(&self.id, body).await.unwrap();
     }

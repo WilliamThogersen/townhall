@@ -71,7 +71,10 @@ Output lands under `target/`. How it behaves:
 
 - **First launch** with no repo opens home on `add your first repository`. `add repository…`
   there and on the repos page opens a native folder picker; the folder must be the top
-  folder of a git repo and is added through `POST /api/repos`, so the daemon keeps running.
+  folder of a git repo, or a plain folder (townhall runs `git init` and commits what is in
+  it), and is added through `POST /api/repos`, so the daemon keeps running. In a browser the
+  same field also takes a GitHub or GitLab link, which townhall clones into
+  `~/.townhall/repos/`.
   A repo chosen by an older version (saved in `~/.townhall/townhall.db`, or imported from an
   old `settings.json` or `config.json`) stays the daemon's startup repo.
 - **Port 7777 taken** (a daemon running separately): the app uses that daemon, and
@@ -83,6 +86,26 @@ Output lands under `target/`. How it behaves:
 - **Network**: the UI talks to `http://127.0.0.1:7777/api` and `ws://127.0.0.1:7777/api`
   inside the app and to same-origin `/api` in a browser. The daemon allows CORS only
   for the desktop and Vite dev origins.
+
+### private repos
+
+An app started from Finder does not get your shell's environment. For every `git`, `ssh`,
+`gh` and `glab` it runs (clone, fetch, push, pull request), townhall asks your login shell
+(`$SHELL -l -i -c`, given up after 5 seconds) for `PATH`, `SSH_AUTH_SOCK` and
+`GIT_SSH_COMMAND`, once per start. Then:
+
+- `PATH` is your shell's, then the app's, then `/opt/homebrew/bin` and `/usr/local/bin`.
+- `SSH_AUTH_SOCK` is the app's own if set, else your shell's, else (macOS) launchd's
+  (`launchctl getenv SSH_AUTH_SOCK`). Load your key with `ssh-add` so the agent holds it.
+- Nothing ever waits for input: `GIT_TERMINAL_PROMPT=0`, and ssh runs with
+  `-o BatchMode=yes` unless you set `GIT_SSH_COMMAND` (in the app's environment or your
+  shell), which is used as it is.
+- https remotes need a credential helper or token that works without a prompt (for
+  example `gh auth setup-git`); `gh` and `glab` must be logged in (`gh auth login`).
+
+A refused login shows as `authentication failed: ...` with what to check: an ssh key that
+is not loaded (`ssh-add -l`), a host key that is not trusted yet (run `ssh -T git@<host>`
+once in a terminal), or missing https credentials.
 
 ## where things live
 

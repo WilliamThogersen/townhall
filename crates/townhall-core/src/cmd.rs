@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::path::Path;
-use std::time::Instant;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use tokio::process::Command;
 
@@ -13,7 +15,13 @@ fn head_args(args: &[&str]) -> String {
 
 /// One `cmd.run` line, on `townhall::tmux` for tmux and `townhall::git` for the rest:
 /// debug on success, warn with the exit code and redacted stderr on failure.
-fn log_run(program: &str, args: &[&str], started: Instant, result: &Result<String>) {
+fn log_run(
+    program: &str,
+    args: &[&str],
+    started: Instant,
+    result: &Result<String>,
+    expected: bool,
+) {
     macro_rules! emit {
         ($target:literal) => {{
             let duration_ms = started.elapsed().as_millis() as u64;
@@ -23,11 +31,20 @@ fn log_run(program: &str, args: &[&str], started: Instant, result: &Result<Strin
                     target: $target, event = "cmd.run", program, args = %args,
                     duration_ms, exit_code = 0, "command finished"
                 ),
-                Err(Error::Command { code, stderr, .. }) => tracing::warn!(
+                Err(Error::Command { code, stderr, .. }) if expected => tracing::debug!(
                     target: $target, event = "cmd.run", program, args = %args,
                     duration_ms, exit_code = code.unwrap_or(-1), stderr = %redact(stderr),
-                    error_kind = "command", "command failed"
+                    error_kind = "command", "probe answered no"
                 ),
+                Err(Error::Command { code, stderr, .. }) => {
+                    if first_in_window(program, &args, *code, stderr) {
+                        tracing::warn!(
+                            target: $target, event = "cmd.run", program, args = %args,
+                            duration_ms, exit_code = code.unwrap_or(-1),
+                            stderr = %redact(stderr), error_kind = "command", "command failed"
+                        )
+                    }
+                }
                 Err(e) => tracing::warn!(
                     target: $target, event = "cmd.run", program, args = %args,
                     duration_ms, error_kind = e.kind(), error = %redact(&e.to_string()),
@@ -42,11 +59,46 @@ fn log_run(program: &str, args: &[&str], started: Instant, result: &Result<Strin
     }
 }
 
+const REPEAT_WINDOW: Duration = Duration::from_secs(60);
+const MAX_SEEN: usize = 256;
+
+static SEEN: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+
+/// True when this exact failure was not warned about in the last minute, so a tick that
+/// fails the same way every 2s logs once.
+fn first_in_window(program: &str, args: &str, code: Option<i32>, stderr: &str) -> bool {
+    let key = format!("{program}\0{args}\0{code:?}\0{stderr}");
+    let now = Instant::now();
+    let mut guard = SEEN.lock().unwrap_or_else(|p| p.into_inner());
+    let seen = guard.get_or_insert_with(HashMap::new);
+    if seen.len() >= MAX_SEEN {
+        seen.retain(|_, at| now.duration_since(*at) < REPEAT_WINDOW);
+        if seen.len() >= MAX_SEEN {
+            seen.clear();
+        }
+    }
+    match seen.get(&key) {
+        Some(at) if now.duration_since(*at) < REPEAT_WINDOW => false,
+        _ => {
+            seen.insert(key, now);
+            true
+        }
+    }
+}
+
 /// Run `program args...` (optionally in `cwd`) and return trimmed stdout.
 pub async fn run(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
     let started = Instant::now();
     let result = exec(program, args, cwd).await;
-    log_run(program, args, started, &result);
+    log_run(program, args, started, &result, false);
+    result
+}
+
+/// `run` for a question: a non-zero exit is a normal answer, so it logs at debug, not warn.
+pub async fn probe(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    let started = Instant::now();
+    let result = exec(program, args, cwd).await;
+    log_run(program, args, started, &result, true);
     result
 }
 
@@ -72,15 +124,38 @@ async fn exec(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String
 
 /// `run` for code that is not async (the store's import, `spawn_blocking` closures).
 pub fn run_blocking(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    run_blocking_env(program, args, cwd, &[])
+}
+
+/// `run_blocking` with extra environment variables for the child.
+pub fn run_blocking_env(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    envs: &[(&str, &str)],
+) -> Result<String> {
     let started = Instant::now();
-    let result = exec_blocking(program, args, cwd);
-    log_run(program, args, started, &result);
+    let result = exec_blocking(program, args, cwd, envs);
+    log_run(program, args, started, &result, false);
     result
 }
 
-fn exec_blocking(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+/// `run_blocking` for a question: a non-zero exit logs at debug, not warn.
+pub fn probe_blocking(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    let started = Instant::now();
+    let result = exec_blocking(program, args, cwd, &[]);
+    log_run(program, args, started, &result, true);
+    result
+}
+
+fn exec_blocking(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    envs: &[(&str, &str)],
+) -> Result<String> {
     let mut command = std::process::Command::new(program);
-    command.args(args);
+    command.args(args).envs(envs.iter().copied());
     if let Some(dir) = cwd {
         command.current_dir(dir);
     }

@@ -1,3 +1,41 @@
 .th-composer-tools .th-help[data-tone="error"] {
   color: var(--th-danger);
 }
+
+.th-reply-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--th-space-2);
+  min-width: 0;
+  padding: 4px var(--th-space-3);
+  border-bottom: var(--th-border) solid var(--th-line-control);
+  color: var(--th-fg-faint);
+}
+
+.th-reply-author {
+  flex: none;
+  color: var(--th-accent);
+}
+
+.th-reply-excerpt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-reply-cancel {
+  flex: none;
+  padding: 0 var(--th-space-1);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.th-reply-cancel:hover,
+.th-reply-cancel:focus-visible {
+  color: var(--th-fg);
+}

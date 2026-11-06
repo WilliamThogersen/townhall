@@ -65,6 +65,7 @@ const BODY_PARSERS: Readonly<Record<EntryBody["kind"], BodyParser>> = {
     kind: "you",
     text: str(r.text, "entry.text"),
     attachments: strings(r.attachments, "entry.attachments"),
+    ...(r.replyTo === undefined || r.replyTo === null ? {} : { replyTo: num(r.replyTo, "entry.replyTo") }),
   }),
   townhall: (r) => ({ kind: "townhall", text: str(r.text, "entry.text") }),
   repo: (r) => ({

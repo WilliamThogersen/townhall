@@ -2,6 +2,8 @@
 //! (`/api/tasks/{name}/mcp`). It ends the agent's run and queues the same task, in the same
 //! worktree and branch, for another agent type with the reason as part of its brief.
 
+use std::path::PathBuf;
+
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -15,7 +17,7 @@ use super::{ToolDef, MAX_NAME_LEN, MAX_PROMPT_LEN, NAME_PATTERN};
 
 pub const HAND_BACK: &str = "hand_back";
 
-pub const INSTRUCTIONS: &str = "townhall tools: hand_back sends your task to another agent type with the reason, then ends your run. Use it when the work needs another type, for example a failing check that the type that wrote the code must fix. add_artifact attaches proof (a screenshot, log, note or report) to your own task outside the repo, and list_artifacts reads the proof of any task of this conversation; proof can be added but never changed or deleted.";
+pub const INSTRUCTIONS: &str = "townhall tools: hand_back sends your task to another agent type with the reason, then ends your run. Use it when the work needs another type, for example a failing check that the type that wrote the code must fix. add_artifact attaches proof (a screenshot, log, note or report) to your own task outside the repo, and list_artifacts reads the proof of any task of this conversation; proof can be added but never changed or deleted. open_pr pushes your branch and opens its pull or merge request.";
 
 const MAX_REASON_LEN: u64 = 2_000;
 const MAX_COMMITS: usize = 30;
@@ -148,9 +150,7 @@ async fn summary_of(ctx: &Context, task: &Task, told: Option<&str>) -> String {
         .join("\n\n")
 }
 
-async fn commits(ctx: &Context, task: &Task) -> Option<Vec<String>> {
-    let store = ctx.store().ok()?;
-    let start = store.task_launch(&task.name).await.ok()??.start_commit;
+pub(super) async fn worktree_of(ctx: &Context, task: &Task) -> Option<PathBuf> {
     let repo = ctx.repo(&task.repo).await.ok()?;
     let ws = ctx.workspace(&repo).ok()?;
     let tree = worktree::list(&ws)
@@ -158,9 +158,16 @@ async fn commits(ctx: &Context, task: &Task) -> Option<Vec<String>> {
         .ok()?
         .into_iter()
         .find(|w| w.name == task.name)?;
+    Some(tree.path)
+}
+
+async fn commits(ctx: &Context, task: &Task) -> Option<Vec<String>> {
+    let store = ctx.store().ok()?;
+    let start = store.task_launch(&task.name).await.ok()??.start_commit;
+    let path = worktree_of(ctx, task).await?;
     let range = format!("{start}..HEAD");
     let max = format!("--max-count={MAX_COMMITS}");
     let args = ["log", "--format=%s", max.as_str(), range.as_str()];
-    let out = run("git", &args, Some(&tree.path)).await.ok()?;
+    let out = run("git", &args, Some(&path)).await.ok()?;
     Some(out.lines().map(str::to_string).collect())
 }

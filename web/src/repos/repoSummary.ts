@@ -1,6 +1,6 @@
 import type { AgentInfo, Conversation, Repo, Task } from "../api/types";
 import { AGENT_STATE_ORDER, AGENT_STATE_WORDS, type AgentState } from "../ui/StatusGlyph";
-import { conversationCount, shortRepoPath } from "./repoPath";
+import { conversationCount, isManagedClone, shortRepoPath } from "./repoPath";
 
 export const MAX_AGENT_GLYPHS = 5;
 
@@ -11,10 +11,12 @@ export interface RepoSummary {
   readonly glyphs: readonly AgentState[];
   readonly agents: string;
   readonly spokenAgents: string;
+  readonly managed: boolean;
 }
 
 export interface RepoSummaryInput {
   readonly home: string | null;
+  readonly clonesDir?: string | null;
   readonly conversations: readonly Conversation[];
   readonly tasks: readonly Task[];
   readonly agents: readonly AgentInfo[];
@@ -91,6 +93,7 @@ export function summarizeRepos(repos: readonly Repo[], input: RepoSummaryInput):
       glyphs: glyphs.slice(0, MAX_AGENT_GLYPHS),
       agents: agentsLabel(glyphs.length),
       spokenAgents: spoken(glyphs),
+      managed: isManagedClone(repo.path, input.clonesDir ?? null),
     };
   });
 }

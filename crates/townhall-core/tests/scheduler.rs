@@ -69,7 +69,7 @@ async fn the_agent_reads_its_brief_with_the_settings_permission_mode() {
         .collect();
     assert_eq!(
         lines[3],
-        "--allowedTools=mcp__townhall__hand_back,mcp__townhall__add_artifact,mcp__townhall__list_artifacts"
+        "--allowedTools=mcp__townhall__hand_back,mcp__townhall__open_pr,mcp__townhall__add_artifact,mcp__townhall__list_artifacts"
     );
     assert_eq!(lines[4..], rest);
     let text = std::fs::read_to_string(&brief).unwrap();

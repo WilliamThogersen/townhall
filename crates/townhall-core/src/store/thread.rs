@@ -47,27 +47,33 @@ pub(super) fn insert(
     conversation_id: &str,
     entry: &ThreadEntry,
 ) -> Result<()> {
-    let message = |author: &str, text: &str, attachments: &[String]| -> Result<()> {
-        tx.execute(
-            "insert into messages (conversation_id, id, author, text, attachments, at)
-             values (?1, ?2, ?3, ?4, ?5, ?6)",
+    let message =
+        |author: &str, text: &str, attachments: &[String], reply_to: Option<u64>| -> Result<()> {
+            tx.execute(
+            "insert into messages (conversation_id, id, author, text, attachments, reply_to, at)
+             values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 conversation_id,
                 entry.id,
                 author,
                 text,
                 to_json(&attachments)?,
+                reply_to,
                 entry.at
             ],
         )?;
-        Ok(())
-    };
+            Ok(())
+        };
     match &entry.body {
-        EntryBody::You { text, attachments } => {
+        EntryBody::You {
+            text,
+            attachments,
+            reply_to,
+        } => {
             check_attachments(tx, conversation_id, attachments)?;
-            message(YOU, text, attachments)
+            message(YOU, text, attachments, *reply_to)
         }
-        EntryBody::Townhall { text } => message(TOWNHALL, text, &[]),
+        EntryBody::Townhall { text } => message(TOWNHALL, text, &[], None),
         other => {
             let mut data =
                 serde_json::to_value(other).map_err(|e| Error::InvalidInput(e.to_string()))?;
@@ -86,7 +92,7 @@ pub(super) fn insert(
 
 fn messages(conn: &Connection, conversation_id: &str) -> Result<Vec<ThreadEntry>> {
     let mut stmt = conn.prepare(
-        "select id, author, text, attachments, at from messages where conversation_id = ?1",
+        "select id, author, text, attachments, at, reply_to from messages where conversation_id = ?1",
     )?;
     let rows = stmt.query_map([conversation_id], |r| {
         Ok((
@@ -95,15 +101,17 @@ fn messages(conn: &Connection, conversation_id: &str) -> Result<Vec<ThreadEntry>
             r.get::<_, String>(2)?,
             r.get::<_, String>(3)?,
             r.get::<_, String>(4)?,
+            r.get::<_, Option<u64>>(5)?,
         ))
     })?;
     let mut out = vec![];
     for row in rows {
-        let (id, author, text, attachments, at) = row?;
+        let (id, author, text, attachments, at, reply_to) = row?;
         let body = match author.as_str() {
             YOU => EntryBody::You {
                 text,
                 attachments: from_json("messages.attachments", &attachments)?,
+                reply_to,
             },
             _ => EntryBody::Townhall { text },
         };

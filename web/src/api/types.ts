@@ -55,12 +55,21 @@ export interface Settings {
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
   readonly townhallModel: TownhallModel;
+  readonly learnAboutMe: boolean;
 }
 
 export type SettingKey = keyof Settings;
 
 export interface PutSettingInput<K extends SettingKey = SettingKey> {
   readonly value: Settings[K];
+}
+
+export interface Profile {
+  readonly text: string;
+}
+
+export interface PutProfileInput {
+  readonly text: string;
 }
 
 export type ConversationStatus = "thinking" | "yourTurn";
@@ -87,6 +96,7 @@ export interface Conversation {
 export interface NewMessageInput {
   readonly text: string;
   readonly attachments?: readonly string[];
+  readonly replyTo?: number;
 }
 
 export interface ConversationPatch {
@@ -98,7 +108,12 @@ export type RepoRule = "named" | "code" | "only" | "picked" | "linked";
 export type AgentEvent = "sent" | "passed" | "failed" | "ended" | "allowed";
 
 export type EntryBody =
-  | { readonly kind: "you"; readonly text: string; readonly attachments: readonly string[] }
+  | {
+      readonly kind: "you";
+      readonly text: string;
+      readonly attachments: readonly string[];
+      readonly replyTo?: number;
+    }
   | { readonly kind: "townhall"; readonly text: string }
   | {
       readonly kind: "repo";

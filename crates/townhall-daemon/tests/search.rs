@@ -16,6 +16,7 @@ fn you(text: &str) -> EntryBody {
     EntryBody::You {
         text: text.into(),
         attachments: vec![],
+        reply_to: None,
     }
 }
 
