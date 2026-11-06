@@ -58,6 +58,18 @@ impl ContextOptions {
     }
 }
 
+type FreeSpace = Arc<dyn Fn() -> Result<u64> + Send + Sync>;
+
+/// Replaces the read of the data volume's free space; tests fake a filling disk with it.
+#[derive(Default)]
+struct FreeSource(Mutex<Option<FreeSpace>>);
+
+impl std::fmt::Debug for FreeSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FreeSource")
+    }
+}
+
 #[derive(Debug)]
 struct Inner {
     startup: Workspace,
@@ -69,6 +81,7 @@ struct Inner {
     turns: Turns,
     notes: Notes,
     disk_told: Mutex<HashSet<String>>,
+    free_source: FreeSource,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +145,7 @@ impl Context {
             turns: Turns::default(),
             notes: Notes::default(),
             disk_told: Mutex::default(),
+            free_source: FreeSource::default(),
         };
         Self {
             inner: Arc::new(inner),
@@ -199,6 +213,32 @@ impl Context {
             .lock()
             .unwrap_or_else(|p| p.into_inner());
         told.clear();
+    }
+
+    /// Bytes free on the volume townhall writes to: the real read, unless `set_free_space`
+    /// replaced it.
+    pub fn free_bytes(&self) -> Result<u64> {
+        let fake = self
+            .inner
+            .free_source
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        match fake {
+            Some(read) => read(),
+            None => crate::disk::free_bytes(self.home().root()),
+        }
+    }
+
+    /// Reads the free space from `read` from now on, instead of the volume (for tests).
+    pub fn set_free_space(&self, read: impl Fn() -> Result<u64> + Send + Sync + 'static) {
+        *self
+            .inner
+            .free_source
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(read));
     }
 
     pub fn notify_delay(&self) -> Duration {

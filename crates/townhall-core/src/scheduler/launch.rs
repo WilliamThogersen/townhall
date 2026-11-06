@@ -8,7 +8,7 @@ use crate::cmd::{probe, run};
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::redact::redact;
-use crate::{clock, disk, ids, runner, Error, Result, Workspace};
+use crate::{clock, disk, ids, reaper, runner, Error, Result, Workspace};
 
 use super::gate::{self, Gate};
 use super::{agent_type, brief, plan, transition, Pass, TaskLaunch, MOVED};
@@ -119,11 +119,17 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     let limit = settings.agents_at_once;
     let fleet = survey(ctx).await?;
     let mut free = plan::free_slots(limit, fleet.active(tasks));
+    let mut reaper_woken = false;
     for task in ready {
         let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
         let step = decide(&fleet, task, free, handed_back);
         if let (Some(bytes), Step::Start | Step::Resume) = (low, &step) {
             wait_for_space(ctx, task, bytes, settings.min_free_disk_gb, &mut pass);
+            if !reaper_woken {
+                // Ended tasks hold disk: do not wait for the reaper's next tick.
+                reaper::soon(ctx);
+                reaper_woken = true;
+            }
             continue;
         }
         let done = act(ctx, task, tasks, step, handed_back).await?;
@@ -143,7 +149,7 @@ fn low_disk(ctx: &Context, floor_gb: u32, pass: &mut Pass) -> Option<u64> {
         ctx.clear_disk_told();
         return None;
     }
-    match disk::free_bytes(ctx.home().root()) {
+    match ctx.free_bytes() {
         Ok(bytes) => judge(ctx, bytes, floor_gb),
         Err(e) => {
             pass.warnings
