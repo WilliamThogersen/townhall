@@ -3,12 +3,15 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use std::collections::HashSet;
+use std::sync::Mutex;
+
 use crate::agent::{self, Agent, LaunchOptions};
 use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
 use crate::redact::redact;
-use crate::{clock, ids, Error, Result, Workspace};
+use crate::{clock, disk, ids, runner, Error, Result, Workspace};
 
 use super::{agent_type, brief, plan, transition, Pass, TaskLaunch};
 
@@ -23,6 +26,24 @@ const MAX_FAILED_TEXT: usize = 300;
 struct Fleet {
     agents: Vec<(String, Agent)>,
     unlisted: Vec<(String, String)>,
+}
+
+/// The conversations whose planner was told the disk is too full to start their tasks, so
+/// the slow tick does not tell it again until a start was possible in between.
+static DISK_TOLD: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn told_before(conversation: &str) -> bool {
+    let mut told = DISK_TOLD.lock().unwrap_or_else(|p| p.into_inner());
+    let known = told.iter().any(|c| c == conversation);
+    if !known {
+        told.push(conversation.to_string());
+    }
+    known
+}
+
+fn forget_told(conversations: &HashSet<&str>) {
+    let mut told = DISK_TOLD.lock().unwrap_or_else(|p| p.into_inner());
+    told.retain(|c| !conversations.contains(c.as_str()));
 }
 
 /// What to do with one ready task.
@@ -112,13 +133,23 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
     if ready.is_empty() {
         return Ok(Pass::default());
     }
-    let limit = ctx.settings().await?.agents_at_once;
+    let settings = ctx.settings().await?;
+    let limit = settings.agents_at_once;
     let fleet = survey(ctx).await?;
     let mut free = plan::free_slots(limit, fleet.active(tasks));
     let mut pass = Pass::default();
+    let low = low_disk(ctx, settings.min_free_disk_gb, &mut pass);
+    if low.is_none() {
+        forget_told(&ready.iter().map(|t| t.conversation_id.as_str()).collect());
+    }
     for task in ready {
         let handed_back = !ctx.store()?.handoffs(&task.name).await?.is_empty();
-        let done = act(ctx, task, decide(&fleet, task, free, handed_back)).await?;
+        let step = decide(&fleet, task, free, handed_back);
+        if let (Some(bytes), Step::Start | Step::Resume) = (low, &step) {
+            wait_for_space(ctx, task, bytes, settings.min_free_disk_gb, &mut pass);
+            continue;
+        }
+        let done = act(ctx, task, step).await?;
         let alive = fleet.agent_of(task).is_some_and(|a| a.alive);
         if matches!(done, Done::Started(_)) || (matches!(done, Done::Adopted(_)) && alive) {
             free = free.saturating_sub(1);
@@ -126,6 +157,43 @@ pub(super) async fn start_ready(ctx: &Context, tasks: &[Task]) -> Result<Pass> {
         pass = done.into_pass(pass, &task.name);
     }
     Ok(pass)
+}
+
+/// The free bytes when they are below the floor. A volume that cannot be measured is a
+/// warning, and tasks start as they did before the check.
+fn low_disk(ctx: &Context, floor_gb: u32, pass: &mut Pass) -> Option<u64> {
+    if floor_gb == 0 {
+        return None;
+    }
+    match disk::free_bytes(ctx.home().root()) {
+        Ok(bytes) => disk::below_floor(bytes, floor_gb).then_some(bytes),
+        Err(e) => {
+            pass.warnings
+                .push(format!("free disk space not checked: {e}"));
+            None
+        }
+    }
+}
+
+/// The task stays queued. Its conversation's planner is told once, and the warning of the
+/// pass says it for the log.
+fn wait_for_space(ctx: &Context, task: &Task, bytes: u64, floor_gb: u32, pass: &mut Pass) {
+    let said = disk::low_message(bytes);
+    let why = format!(
+        "{said} (needs {floor_gb} GB): `{}` waits in the queue",
+        task.name
+    );
+    if !told_before(&task.conversation_id) {
+        runner::notify(ctx, &task.conversation_id, why.clone());
+    }
+    pass.warnings.push(why);
+}
+
+/// Why a start failed, as the task's `failed` entry says it: a full disk reads as the disk
+/// message, never as the os error.
+pub async fn start_failure(ctx: &Context, e: &Error) -> String {
+    let free = disk::free_bytes(ctx.home().root()).ok();
+    disk::explain(e, free).unwrap_or_else(|| e.to_string())
 }
 
 /// What happened to one ready task.
@@ -181,7 +249,7 @@ async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
         Step::Resume => match resume(ctx, task).await {
             Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
             Err(e) => {
-                fail(ctx, task, &e.to_string()).await?;
+                fail(ctx, task, &start_failure(ctx, &e).await).await?;
                 Ok(Done::Failed)
             }
         },
@@ -193,7 +261,7 @@ async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
                     repo = %task.repo, error_kind = e.kind(),
                     error = %redact(&e.to_string()), "task launch failed"
                 );
-                fail(ctx, task, &e.to_string()).await?;
+                fail(ctx, task, &start_failure(ctx, &e).await).await?;
                 Ok(Done::Failed)
             }
         },

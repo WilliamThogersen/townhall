@@ -33,6 +33,7 @@ use crate::store::Store;
 use crate::{Error, Result};
 
 pub use brief::brief_file;
+pub use launch::start_failure;
 
 /// The slow tick: merges and freed slots are noticed at least this often.
 pub const TICK: Duration = Duration::from_secs(2);
