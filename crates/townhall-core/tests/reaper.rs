@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use townhall_core::model::{AgentEvent, Conversation, EntryBody, TaskState};
+use serde_json::json;
+use townhall_core::model::{AgentEvent, Conversation, EntryBody, SettingKey, TaskState};
 use townhall_core::reaper::{self, CANCELLED};
 use townhall_core::runner;
 use townhall_core::scheduler::run_once;
@@ -162,4 +163,103 @@ async fn a_session_whose_worktree_is_gone_is_killed() {
     let reaped = reaper::run_once(s.ctx()).await.unwrap();
     assert_eq!(reaped.sessions, [ghost.as_str()]);
     assert!(!has_session().await, "the session is killed");
+}
+
+const GB: u64 = 1_000_000_000;
+
+/// A file that counts `bytes` towards a folder's size without using the disk.
+fn sparse(path: &std::path::Path, bytes: u64) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::File::create(path).unwrap().set_len(bytes).unwrap();
+}
+
+async fn cap(s: &Sched, gb: u32) {
+    let put = s
+        .store()
+        .set_setting(SettingKey::SharedTargetMaxGb, json!(gb));
+    put.await.unwrap();
+}
+
+#[tokio::test]
+async fn a_shared_target_over_its_cap_loses_its_incremental_caches_first() {
+    let s = Sched::new().await;
+    cap(&s, 2).await;
+    let target = s.ws.cargo_target_dir();
+    sparse(
+        &target.join("debug/incremental/crate-a/dep-graph.bin"),
+        2 * GB,
+    );
+    sparse(&target.join("debug/deps/libserde.rlib"), GB);
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+    assert_eq!(reaped.trimmed, [s.repo_name.as_str()], "{reaped:?}");
+    assert!(!target.join("debug/incremental").exists());
+    assert!(
+        target.join("debug/deps/libserde.rlib").exists(),
+        "the compiled dependencies are what worktrees share"
+    );
+    let again = reaper::run_once(s.ctx()).await.unwrap();
+    assert_eq!(
+        again,
+        reaper::Reaped::default(),
+        "under the cap, nothing goes"
+    );
+}
+
+#[tokio::test]
+async fn a_shared_target_still_over_its_cap_is_emptied_when_nobody_builds() {
+    let s = Sched::new().await;
+    cap(&s, 2).await;
+    let target = s.ws.cargo_target_dir();
+    sparse(&target.join("debug/deps/libbig.rlib"), 3 * GB);
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+    assert_eq!(reaped.trimmed, [s.repo_name.as_str()], "{reaped:?}");
+    assert!(target.exists(), "the folder stays for the next build");
+    assert_eq!(std::fs::read_dir(&target).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn a_shared_target_is_left_alone_while_an_agent_of_the_repo_runs() {
+    let s = Sched::new().await;
+    cap(&s, 2).await;
+    s.create(&unique("building"), &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    let target = s.ws.cargo_target_dir();
+    let big = target.join("debug/deps/libbig.rlib");
+    sparse(&big, 3 * GB);
+
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+    assert!(reaped.trimmed.is_empty(), "{reaped:?}");
+    assert!(big.exists());
+    let warned = reaped.warnings.join("; ");
+    assert!(
+        warned.contains("shared target") && warned.contains(&s.repo_name),
+        "{warned}"
+    );
+}
+
+#[tokio::test]
+async fn a_cap_of_zero_never_trims_the_shared_target() {
+    let s = Sched::new().await;
+    cap(&s, 0).await;
+    let big = s.ws.cargo_target_dir().join("debug/deps/libbig.rlib");
+    sparse(&big, 60 * GB);
+    let reaped = reaper::run_once(s.ctx()).await.unwrap();
+    assert_eq!(reaped, reaper::Reaped::default());
+    assert!(big.exists());
+}
+
+#[tokio::test]
+async fn a_worktrees_own_target_goes_with_the_worktree() {
+    let s = Sched::new().await;
+    let name = unique("leftovers");
+    s.create(&name, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    let own = s.worktree(&name).join("target/debug/deps/libold.rlib");
+    sparse(&own, 1_000_000);
+    runner::end(s.ctx(), &s.conversation).await.unwrap();
+    wait_gone(&s, &[name.as_str()]).await;
+    assert!(!s.worktree(&name).join("target").exists());
+    assert!(!s.worktree(&name).exists());
 }
