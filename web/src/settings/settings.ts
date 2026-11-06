@@ -39,7 +39,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   sessionPanelOpen: true,
   notifyWhen: "needsYou",
   townhallModel: "sonnet",
-  sharedCargoTarget: true,
+  sharedCargoTarget: false,
   minFreeDiskGb: 5,
   sharedTargetMaxGb: 50,
 });

@@ -287,6 +287,10 @@ async fn a_start_tmux_refuses_keeps_the_reason_before_the_command() {
 #[tokio::test]
 async fn agents_of_a_repo_build_into_its_shared_cargo_target() {
     let s = Sched::new().await;
+    let on = s
+        .store()
+        .set_setting(SettingKey::SharedCargoTarget, json!(true));
+    on.await.unwrap();
     let (first, second) = (unique("share-a"), unique("share-b"));
     s.create(&first, &[]).await;
     s.create(&second, &[]).await;
@@ -356,12 +360,8 @@ async fn a_start_that_runs_out_of_space_says_the_disk_is_full() {
 }
 
 #[tokio::test]
-async fn the_shared_cargo_target_can_be_turned_off() {
+async fn the_shared_cargo_target_is_off_by_default() {
     let s = Sched::new().await;
-    let put = s
-        .store()
-        .set_setting(SettingKey::SharedCargoTarget, json!(false));
-    put.await.unwrap();
     let name = unique("own-target");
     s.create(&name, &[]).await;
     run_once(s.ctx()).await.unwrap();

@@ -188,7 +188,7 @@ impl Default for Settings {
             session_panel_open: true,
             notify_when: NotifyWhen::NeedsYou,
             townhall_model: TownhallModel::Sonnet,
-            shared_cargo_target: true,
+            shared_cargo_target: false,
             min_free_disk_gb: MIN_FREE_DISK_GB_DEFAULT,
             shared_target_max_gb: SHARED_TARGET_MAX_GB_DEFAULT,
         }
@@ -256,7 +256,7 @@ mod tests {
                 "sessionPanelOpen": true,
                 "notifyWhen": "needsYou",
                 "townhallModel": "sonnet",
-                "sharedCargoTarget": true,
+                "sharedCargoTarget": false,
                 "minFreeDiskGb": 5,
                 "sharedTargetMaxGb": 50
             })
