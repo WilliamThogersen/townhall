@@ -90,12 +90,33 @@ impl Head<'_> {
     }
 }
 
-/// The task's final message: the only place a report is read from.
-async fn report_of(ctx: &Context, done: &Task) -> Result<Option<String>> {
+/// The final message of the Claude session recorded for the task: the only place a report is
+/// read from. `Err` is why there is none to read.
+async fn report_of(
+    ctx: &Context,
+    done: &Task,
+    who: &str,
+) -> Result<std::result::Result<String, String>> {
+    let launch = ctx.store()?.task_launch(&done.name).await?;
+    let Some(session) = launch.and_then(|l| l.session_id) else {
+        return Ok(Err(format!(
+            "{who} has no recorded session to read its report from"
+        )));
+    };
     let repo = ctx.repo(&done.repo).await?;
     let worktree = ctx.workspace(&repo)?.worktrees_dir().join(&done.name);
     let projects = steps::claude_projects_dir()?;
-    state::last_message(&projects, &worktree).await
+    Ok(
+        match state::last_message_of_session(&projects, &worktree, &session).await? {
+            None => Err(format!(
+                "{who} session transcript was not found: its report cannot be read"
+            )),
+            Some(None) => Err(format!(
+                "{who} left no report: it must finish with the report as its final message"
+            )),
+            Some(Some(text)) => Ok(text),
+        },
+    )
 }
 
 /// What keeps `done`'s report from clearing the gated task, or `None` when it clears it.
@@ -105,10 +126,9 @@ async fn judge(ctx: &Context, done: &Task, head: &Head<'_>) -> Result<Option<Pro
         let why = format!("{who} did not end (state {:?})", done.state);
         return Ok(Problem::waiting(why));
     }
-    let Some(text) = report_of(ctx, done).await? else {
-        let why =
-            format!("{who} left no report: it must finish with the report as its final message");
-        return Ok(Problem::waiting(why));
+    let text = match report_of(ctx, done, &who).await? {
+        Ok(text) => text,
+        Err(why) => return Ok(Problem::waiting(why)),
     };
     let parsed = report::parse(&text, &done.agent);
     let verdict = match parsed.verdict {

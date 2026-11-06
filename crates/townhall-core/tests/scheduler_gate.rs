@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use serde_json::json;
 use tempfile::TempDir;
 use townhall_core::model::{ArtifactKind, AuthorRole, NewArtifact, NewTask, Task, TaskState};
-use townhall_core::scheduler::run_once;
+use townhall_core::scheduler::{run_once, TaskLaunch};
 use townhall_core::steps::{project_dir_for, CLAUDE_PROJECTS_ENV};
 
 mod scheduler_support;
@@ -85,10 +85,30 @@ fn transcript(last: &str) -> String {
     format!("{line}\n")
 }
 
-async fn file_report(s: &Sched, task: &str, text: &str) {
+async fn session_of(s: &Sched, task: &str) -> String {
+    if let Some(id) = s.store().task_launch(task).await.unwrap() {
+        return id.session_id.unwrap();
+    }
+    let session_id = townhall_core::ids::new_session_id();
+    let launch = TaskLaunch {
+        name: task.into(),
+        start_commit: "0".repeat(40),
+        session_id: Some(session_id.clone()),
+        launched_at: "2026-11-04T10:00:00.000Z".into(),
+    };
+    s.store().record_launch(launch).await.unwrap();
+    session_id
+}
+
+fn write_transcript(s: &Sched, task: &str, session_id: &str, text: &str) {
     let dir = project_dir_for(projects(), &s.worktree(task));
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("s.jsonl"), transcript(text)).unwrap();
+    std::fs::write(dir.join(format!("{session_id}.jsonl")), transcript(text)).unwrap();
+}
+
+async fn file_report(s: &Sched, task: &str, text: &str) {
+    let session_id = session_of(s, task).await;
+    write_transcript(s, task, &session_id, text);
 }
 
 async fn both_clear(g: &Gated, commit: &str) {
@@ -139,7 +159,7 @@ async fn a_task_without_requires_is_never_gated() {
 #[tokio::test]
 async fn no_report_keeps_the_task_queued_with_a_reason_and_wakes_the_planner() {
     let g = gated().await;
-    let why = assert_blocked(&g, &[&g.tester, &g.reviewer, "no report"]).await;
+    let why = assert_blocked(&g, &[&g.tester, &g.reviewer, "no recorded session"]).await;
     assert!(!why.contains('\n'), "{why}");
     assert!(g.s.ctx().notes().is_waiting(&g.s.conversation));
     assert!(g.s.agents().await.is_empty());
@@ -254,6 +274,50 @@ async fn a_verdict_first_report_clears_and_a_quoted_or_conflicting_one_does_not(
 }
 
 #[tokio::test]
+async fn a_newer_unrelated_transcript_in_the_project_folder_is_not_the_report() {
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    both_clear(&g, &head).await;
+    let other = townhall_core::ids::new_session_id();
+    write_transcript(&g.s, &g.tester, &other, &clearing("FAIL", &head));
+    assert_starts(&g).await;
+
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    file_report(&g.s, &g.tester, "Still working.\n").await;
+    file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
+    let other = townhall_core::ids::new_session_id();
+    write_transcript(&g.s, &g.tester, &other, &clearing("PASS", &head));
+    assert_blocked(&g, &[&g.tester, "VERDICT"]).await;
+}
+
+#[tokio::test]
+async fn a_session_that_cannot_be_found_blocks_with_a_reason() {
+    let g = gated().await;
+    let head = rev(&g.s, "main").await;
+    file_report(&g.s, &g.reviewer, &clearing("APPROVE", &head)).await;
+    let launch = TaskLaunch {
+        name: g.tester.clone(),
+        start_commit: head.clone(),
+        session_id: Some(townhall_core::ids::new_session_id()),
+        launched_at: "2026-11-04T10:00:00.000Z".into(),
+    };
+    g.s.store().record_launch(launch).await.unwrap();
+    let other = townhall_core::ids::new_session_id();
+    write_transcript(&g.s, &g.tester, &other, &clearing("PASS", &head));
+    assert_blocked(&g, &[&g.tester, "transcript was not found"]).await;
+
+    let launch = TaskLaunch {
+        name: g.tester.clone(),
+        start_commit: head.clone(),
+        session_id: None,
+        launched_at: "2026-11-04T10:00:00.000Z".into(),
+    };
+    g.s.store().record_launch(launch).await.unwrap();
+    assert_blocked(&g, &[&g.tester, "no recorded session"]).await;
+}
+
+#[tokio::test]
 async fn an_artifact_is_never_a_report() {
     let g = gated().await;
     let head = rev(&g.s, "main").await;
@@ -267,7 +331,7 @@ async fn an_artifact_is_never_a_report() {
         };
         g.s.store().add_artifact(task, new).await.unwrap();
     }
-    assert_blocked(&g, &[&g.tester, &g.reviewer, "no report"]).await;
+    assert_blocked(&g, &[&g.tester, &g.reviewer, "no recorded session"]).await;
 }
 
 #[tokio::test]
@@ -400,7 +464,7 @@ async fn a_hand_back_to_a_gated_type_waits_for_the_reports() {
     assert_eq!(task.state, TaskState::Queued);
     let why = task.blocked.expect("a block reason");
     assert!(
-        why.contains(&g.tester) && why.contains("no report"),
+        why.contains(&g.tester) && why.contains("no recorded session"),
         "{why}"
     );
     assert_eq!(g.s.agents().await.len(), before);
