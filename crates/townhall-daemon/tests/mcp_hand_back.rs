@@ -57,15 +57,18 @@ fn text(result: &Value) -> String {
 }
 
 #[tokio::test]
-async fn a_task_agent_sees_hand_back_and_open_pr() {
+async fn a_task_agent_sees_hand_back_open_pr_and_the_proof_tools() {
     let m = Mcp::new().await;
     running(&m, "fix-login", "shipper").await;
     let body = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"});
     let (status, answer) = rpc(&m, "fix-login", body).await;
     assert_eq!(status, StatusCode::OK);
     let tools = answer["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 2);
-    assert_eq!(tools[0]["name"], "hand_back");
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(
+        names,
+        ["hand_back", "open_pr", "add_artifact", "list_artifacts"]
+    );
     assert_eq!(tools[0]["inputSchema"]["required"], json!(["to", "reason"]));
     assert_eq!(tools[1]["name"], "open_pr");
     assert_eq!(tools[1]["inputSchema"]["required"], json!(["title"]));

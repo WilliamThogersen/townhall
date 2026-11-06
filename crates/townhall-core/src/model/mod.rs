@@ -3,6 +3,7 @@
 //! An `Option` is always present on the wire, as `null` when empty.
 
 mod agent;
+mod artifact;
 mod attachment;
 mod conversation;
 mod event;
@@ -13,6 +14,10 @@ mod task;
 mod thread;
 
 pub use agent::{AgentInfo, AgentKey, AgentState};
+pub use artifact::{
+    Artifact, ArtifactKind, AuthorRole, NewArtifact, LOG_MIME, MAX_ARTIFACTS_PER_TASK,
+    MAX_ARTIFACT_BYTES, MAX_CAPTION_CHARS, NOTE_MIME,
+};
 pub use attachment::{Attachment, AttachmentKind, MAX_ATTACHMENT_BYTES};
 pub use conversation::{
     ContextUsage, Conversation, ConversationDetail, ConversationPatch, ConversationStatus,

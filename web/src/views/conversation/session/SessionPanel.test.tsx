@@ -1,7 +1,8 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import { aConversation, aDetail, anAttachment, anEntry, aTask } from "../../../api/fixtures";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import * as artifactsApi from "../../../api/artifacts";
+import { aConversation, aDetail, anArtifact, anAttachment, anEntry, aTask } from "../../../api/fixtures";
 import type { ConversationDetail } from "../../../api/types";
 import { renderWithHints } from "../../../test/renderWithHints";
 import { SessionPanel } from "./index";
@@ -26,6 +27,13 @@ const fullDetail = (over: Partial<ConversationDetail> = {}): ConversationDetail 
     ],
     ...over,
   });
+
+let listArtifacts: MockInstance<typeof artifactsApi.listArtifacts>;
+
+beforeEach(() => {
+  listArtifacts = vi.spyOn(artifactsApi, "listArtifacts").mockResolvedValue([]);
+});
+afterEach(() => vi.restoreAllMocks());
 
 function renderPanel(detail = fullDetail(), openTask: string | null = null) {
   const onOpenTask = vi.fn();
@@ -165,6 +173,35 @@ describe("SessionPanel tasks", () => {
     renderPanel(fullDetail({ tasks: [] }));
     expect(screen.getByRole("heading", { name: "tasks 0" })).toBeInTheDocument();
     expect(lineAfter(/^tasks/)).toHaveTextContent("no tasks yet");
+  });
+});
+
+describe("SessionPanel proof", () => {
+  it("shows no proof section while no task is open", () => {
+    renderPanel();
+    expect(screen.queryByRole("heading", { name: /^proof/ })).toBeNull();
+    expect(listArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("shows the proof of the open task, matched ignoring case", async () => {
+    listArtifacts.mockResolvedValue([anArtifact({ task: "auth-tests", name: "run.log", authorRole: "tester" })]);
+    renderPanel(fullDetail(), "Auth-Tests");
+    expect(await screen.findByRole("heading", { name: "proof 1" })).toBeInTheDocument();
+    expect(listArtifacts.mock.calls[0]?.[0]).toBe("auth-tests");
+    expect(await screen.findByRole("region", { name: "tester proof" })).toBeInTheDocument();
+  });
+
+  it("shows nothing for a task this conversation does not have", () => {
+    renderPanel(fullDetail(), "elsewhere");
+    expect(screen.queryByRole("heading", { name: /^proof/ })).toBeNull();
+    expect(listArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("follows the open task", async () => {
+    const view = renderPanel(fullDetail(), "auth-tests");
+    await screen.findByRole("heading", { name: "proof 0" });
+    view.rerender(<SessionPanel detail={fullDetail()} openTask="fix-login" onOpenTask={vi.fn()} />);
+    await waitFor(() => expect(listArtifacts.mock.calls.map((call) => call[0])).toContain("fix-login"));
   });
 });
 

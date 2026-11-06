@@ -2,6 +2,7 @@ import type {
   AgentInfo,
   AgentType,
   AgentTypeSummary,
+  Artifact,
   Attachment,
   ClaudeUsage,
   Conversation,
@@ -63,6 +64,20 @@ export const anAttachment = (over: Partial<Attachment> = {}): Attachment => ({
   mime: "image/png",
   size: 1024,
   kind: "image",
+  createdAt: FIXTURE_TIME,
+  ...over,
+});
+
+export const anArtifact = (over: Partial<Artifact> = {}): Artifact => ({
+  id: "r1",
+  conversationId: "c1",
+  task: "fix-login",
+  name: "run.log",
+  kind: "log",
+  mime: "text/plain; charset=utf-8",
+  size: 120,
+  authorRole: "tester",
+  caption: null,
   createdAt: FIXTURE_TIME,
   ...over,
 });

@@ -8,7 +8,7 @@ use std::ops::RangeInclusive;
 
 use rusqlite::{params, Connection};
 
-use super::{unit_2_2, unit_2_3, unit_2_5, unit_2_6, unit_2_7, unit_2_8b, unit_2_8c};
+use super::{unit_2_2, unit_2_3, unit_2_5, unit_2_6, unit_2_7, unit_2_8b, unit_2_8c, unit_2_9};
 use crate::{clock, Error, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +38,7 @@ const BASE: &[Migration] = &[
 ];
 
 /// Who owns which numbers. Ask the orchestrator for a range before adding a unit.
-pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 8] = [
+pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 9] = [
     ("2.0 storage, 2.1 contract", 1..=99, BASE),
     ("2.2 conversations", 100..=199, unit_2_2::MIGRATIONS),
     ("2.3 tasks", 200..=299, unit_2_3::MIGRATIONS),
@@ -47,6 +47,7 @@ pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 8] = [
     ("2.7 steps and stats", 700..=799, unit_2_7::MIGRATIONS),
     ("2.8b library", 800..=849, unit_2_8b::MIGRATIONS),
     ("2.8c runs", 850..=899, unit_2_8c::MIGRATIONS),
+    ("2.9 artifacts", 900..=949, unit_2_9::MIGRATIONS),
 ];
 
 pub const NEWER: &str = "townhall.db is from a newer townhall";

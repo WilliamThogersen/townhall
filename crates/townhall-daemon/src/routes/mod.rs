@@ -2,6 +2,7 @@
 //! file and does not edit this one (ownership map: `docs/daemon-api.md`).
 
 mod agents;
+mod artifacts;
 mod attach;
 mod attach_frames;
 mod attachments;
@@ -25,7 +26,7 @@ mod usage;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
 use axum::Router;
-use townhall_core::model::MAX_ATTACHMENT_BYTES;
+use townhall_core::model::{MAX_ARTIFACT_BYTES, MAX_ATTACHMENT_BYTES};
 
 use crate::state::AppState;
 
@@ -33,6 +34,9 @@ use crate::state::AppState;
 pub const UPLOAD_BODY_LIMIT: usize = MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
 
 pub const START_BODY_LIMIT: usize = 5 * MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
+
+/// One artifact inside a JSON-RPC call, JSON-escaped at up to six bytes per byte.
+pub const TASK_MCP_BODY_LIMIT: usize = 6 * MAX_ARTIFACT_BYTES as usize + 64 * 1024;
 
 fn agent_routes() -> Router<AppState> {
     Router::new()
@@ -105,7 +109,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/tasks", get(tasks::list))
         .route("/tasks/{name}", get(tasks::get))
-        .route("/tasks/{name}/mcp", post(mcp::task_rpc))
+        .route(
+            "/tasks/{name}/mcp",
+            post(mcp::task_rpc).layer(DefaultBodyLimit::max(TASK_MCP_BODY_LIMIT)),
+        )
+        .route("/tasks/{name}/artifacts", get(artifacts::list))
+        .route("/tasks/{name}/artifacts/{id}", get(artifacts::download))
         .route("/stats", get(stats::get))
         .route("/usage", get(usage::get))
         .route("/search", get(search::search))

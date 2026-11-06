@@ -56,6 +56,8 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | POST | `/conversations/{id}/attachments` | multipart, one field `file` per request | `201 Attachment` | 400, 403 origin, 404, 413 | 2.6 |
 | GET | `/conversations/{id}/attachments` | | `Attachment[]` | 404 | 2.6 |
 | GET | `/conversations/{id}/attachments/{attachment}` | | the bytes with their `content-type` (not the envelope) | 404 | 2.6 |
+| GET | `/tasks/{name}/artifacts` | | `Artifact[]` of the task, oldest first | 404 | 2.9 |
+| GET | `/tasks/{name}/artifacts/{id}` | | the bytes with the stored `content-type` (not the envelope); `inline` for a raster image or text, a download otherwise; `nosniff` and `sandbox; default-src 'none'` | 400 bad id, 404 | 2.9 |
 | GET | `/library/agents` | | `AgentTypeSummary[]` by name, ignoring case | | 2.12 |
 | GET | `/library/agents/{name}` | | `AgentType` (ignoring case) | 404 | 2.12 |
 | PUT | `/library/agents/{name}` | the TOML text, `content-type: text/plain` or `application/toml` | `201 AgentType` new, `200 AgentType` replaced (ignoring case, the new spelling wins) | 400 wrong content type, not UTF-8, the error list (below), its `name` is not the path's | 2.12 |
@@ -310,11 +312,23 @@ Workflow tools (`list_workflows`, `save_workflow`) wait for 2.8c, which also add
 
 ## Task agent MCP: `POST /api/tasks/{name}/mcp`
 
-Same JSON-RPC handling as the conversation endpoint (`mcp::handle_task`), for the agent of one task, which gets two tools, `hand_back` and `open_pr`. A `claude` task whose type can hand back to at least one other type starts with `--mcp-config=` (`mcp::task_config_json(base_url, name)`), `mcp::task_allowed_tools()` (`mcp__townhall__hand_back,mcp__townhall__open_pr`) and, in its system prompt, ``you can hand back to: <types>``. A `shell` type, or a type with `can_hand_back_to = []`, gets none of it.
+Same JSON-RPC handling as the conversation endpoint (`mcp::handle_task`), for the agent of one task, which gets `hand_back`, `open_pr` and the proof tools `add_artifact` and `list_artifacts` (below). A `claude` task whose type can hand back to at least one other type starts with `--mcp-config=` (`mcp::task_config_json(base_url, name)`), `mcp::task_allowed_tools()` (`mcp__townhall__hand_back`, `mcp__townhall__open_pr`, `mcp__townhall__add_artifact`, `mcp__townhall__list_artifacts`) and, in its system prompt, ``you can hand back to: <types>``. A `shell` type, or a type with `can_hand_back_to = []`, gets none of it.
+
+The route accepts bodies up to about 30 MB before a tool's own cap applies (`open_pr` and `hand_back` share it).
 
 `open_pr { title, body? }`: pushes `townhall/<name>` to `origin` and opens a pull request with `gh pr create` (GitHub) or a merge request with `glab mr create` (GitLab) into the task's base branch (`repos::publish::publish`). The host comes from the origin URL (https, `ssh://` and scp forms); a host that is neither `github.com`/`gitlab.com` nor contains `github` or `gitlab` needs `git config townhall.forge github|gitlab` in the repo, else it fails before pushing. A repo with no `origin` answers state `noRemote` (nothing pushed, `pr` unchanged); a local-folder origin, a missing or logged-out CLI and a failed push are errors with the command to run. On success it answers state `opened` with `url` and `number`, sets the task's `pr` (`checks` `pending`) and publishes `taskUpdated`; an already open request is returned as is. The programs are `gh` and `glab`, or `TOWNHALL_GH_BIN` and `TOWNHALL_GLAB_BIN`.
 
 `hand_back { to, reason, summary? }`: `to` is a saved agent type (never the task's own, and one of `can_hand_back_to` when the type sets it), `reason` is required, `summary` is what the agent did. Refusals are texts that name the types it can hand back to. It writes once (`Store::hand_back`): a `task_handoffs` row (`reason`, and `summary` plus the branch's commit subjects since its first start), the task `queued` again with `agent` = `to`, and a `handoff` entry in its conversation. Only a `working` or `needsYou` task can be handed back, and at most `MAX_HANDOFFS` (5) times per task, then `Conflict`.
+
+### Proof artifacts (2.9)
+
+Proof a task's agents attach outside the repo: a row in `artifacts` (migration 0900) and the bytes in `<home>/artifacts/<conversation id>/<task>/<artifact id>-<name>`. Append only: there is no tool or route to replace or delete one.
+
+`add_artifact { task, name, kind, content, encoding?, author_role, caption? }`: `kind` is `screenshot`, `log`, `note` or `report`; `encoding` is `text` (default) or `base64`; `author_role` is `coder`, `tester`, `reviewer` or `other`. An agent adds only to its own task (`task` must be it). It returns `{ id, name, kind, mime, size, url }`. The type is decided from the kind and the bytes, never from the agent: a `screenshot` must be a png, jpeg, gif or webp by its first bytes (the name gets that extension); the other kinds must be UTF-8 text, stored as `text/plain` (`log`) or `text/markdown` (`note`, `report`), so nothing is ever served as HTML. The name goes through `files::naming::file_name` (folders, invisible characters and edge dots dropped). Limits: `MAX_ARTIFACT_BYTES` (5 MB) per artifact, `MAX_ARTIFACTS_PER_TASK` (50), a caption of at most `MAX_CAPTION_CHARS` (300); `/tasks/{name}/mcp` takes a body up to that size as base64.
+
+`list_artifacts { task }`: `{ task, artifacts: [{ id, name, kind, author_role, caption, created, url }] }`, oldest first, for the agent's own task or any other task of the same conversation. A task of another conversation answers as if it did not exist (`no task named ... in this conversation`). `url` is `<base_url>/api/tasks/<task>/artifacts/<id>`.
+
+`task_status` lists each task's `artifacts` (`name`, `kind`, `authorRole`, `url`).
 
 The next scheduler pass resumes it: the brief gains a `This task was handed back` section with each hand back's `Why` and `What was done so far`, and `agent::restart` kills the old session and runs the target type in the same worktree and branch. The commit its merge is told from stays the first one; the task takes a slot like a start.
 
@@ -377,7 +391,8 @@ Each unit owns a number range and lists its migrations in its own file, so no tw
 | 0700 to 0799 | 2.7 steps and stats | `store/unit_2_7.rs` |
 | 0800 to 0849 | 2.8b library | `store/unit_2_8b.rs` |
 | 0850 to 0899 | 2.8c runs | `store/unit_2_8c.rs` |
-| 0300 to 0499, 0900 and up | free | ask the orchestrator |
+| 0900 to 0949 | 2.9 artifacts | `store/unit_2_9.rs` |
+| 0300 to 0499, 0950 and up | free | ask the orchestrator |
 
 To add one: write `store/migrations/0201_scheduler.sql`, then in your unit file `pub const MIGRATIONS: &[Migration] = &[Migration { id: 201, name: "0201_scheduler", sql: include_str!("migrations/0201_scheduler.sql") }];`.
 

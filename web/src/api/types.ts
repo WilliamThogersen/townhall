@@ -252,6 +252,22 @@ export interface Attachment {
   readonly createdAt: string;
 }
 
+export type ArtifactKind = "screenshot" | "log" | "note" | "report";
+export type AuthorRole = "coder" | "tester" | "reviewer" | "other";
+
+export interface Artifact {
+  readonly id: string;
+  readonly conversationId: string;
+  readonly task: string;
+  readonly name: string;
+  readonly kind: ArtifactKind;
+  readonly mime: string;
+  readonly size: number;
+  readonly authorRole: AuthorRole;
+  readonly caption: string | null;
+  readonly createdAt: string;
+}
+
 export interface ConversationDetail {
   readonly conversation: Conversation;
   readonly entries: readonly ThreadEntry[];

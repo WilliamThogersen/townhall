@@ -10,10 +10,11 @@ use serde_json::{json, Value};
 
 use crate::agent::state;
 use crate::context::Context;
-use crate::model::{EntryBody, Task, TaskState, ThreadEntry};
+use crate::model::{ArtifactKind, AuthorRole, EntryBody, Task, TaskState, ThreadEntry};
 use crate::redact::redact;
 use crate::steps::{self, Step};
 
+use super::artifacts;
 use super::checks::Checked;
 use super::{MAX_NAME_LEN, NAME_PATTERN};
 
@@ -43,6 +44,35 @@ struct TaskStatus {
     /// The agent type it runs as.
     agent: String,
     entries: Vec<ThreadEntry>,
+    /// Its proof artifacts, oldest first.
+    artifacts: Vec<ArtifactRef>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArtifactRef {
+    name: String,
+    kind: ArtifactKind,
+    author_role: AuthorRole,
+    url: String,
+}
+
+async fn proof(ctx: &Context, task: &Task) -> Checked<Vec<ArtifactRef>> {
+    let found = ctx
+        .store()
+        .map_err(text)?
+        .artifacts(&task.name)
+        .await
+        .map_err(text)?;
+    Ok(found
+        .into_iter()
+        .map(|a| ArtifactRef {
+            url: artifacts::url(ctx.base_url(), &a),
+            name: a.name,
+            kind: a.kind,
+            author_role: a.author_role,
+        })
+        .collect())
 }
 
 #[derive(Debug, Serialize)]
@@ -81,7 +111,10 @@ pub(super) async fn task_status(
     let tasks = store.tasks(conversation_id).await.map_err(text)?;
     let entries = store.entries(conversation_id).await.map_err(text)?;
     let Some(name) = input.name else {
-        let all: Vec<TaskStatus> = tasks.iter().map(|t| status(t, &entries)).collect();
+        let mut all = Vec::with_capacity(tasks.len());
+        for task in &tasks {
+            all.push(status(task, &entries, proof(ctx, task).await?));
+        }
         return Ok(json!({ "tasks": all }));
     };
     let name = name.trim();
@@ -92,7 +125,7 @@ pub(super) async fn task_status(
         let elsewhere = store.find_task(name).await.map_err(text)?.is_some();
         return Err(not_here(name, elsewhere, &tasks));
     };
-    let detail = detail(ctx, task, &entries).await;
+    let detail = detail(ctx, task, &entries, proof(ctx, task).await?).await;
     serde_json::to_value(detail).map_err(|e| e.to_string())
 }
 
@@ -108,7 +141,7 @@ fn not_here(name: &str, elsewhere: bool, tasks: &[Task]) -> String {
     }
 }
 
-fn status(task: &Task, entries: &[ThreadEntry]) -> TaskStatus {
+fn status(task: &Task, entries: &[ThreadEntry], artifacts: Vec<ArtifactRef>) -> TaskStatus {
     let mine: Vec<&ThreadEntry> = entries
         .iter()
         .filter(|e| match &e.body {
@@ -128,10 +161,16 @@ fn status(task: &Task, entries: &[ThreadEntry]) -> TaskStatus {
         after: task.after.clone(),
         agent: task.agent.clone(),
         entries: mine.into_iter().skip(recent).cloned().collect(),
+        artifacts,
     }
 }
 
-async fn detail(ctx: &Context, task: &Task, entries: &[ThreadEntry]) -> TaskDetail {
+async fn detail(
+    ctx: &Context,
+    task: &Task,
+    entries: &[ThreadEntry],
+    artifacts: Vec<ArtifactRef>,
+) -> TaskDetail {
     let found = match transcripts_of(ctx, task).await {
         Ok(found) => Some(found),
         Err(e) => {
@@ -151,7 +190,7 @@ async fn detail(ctx: &Context, task: &Task, entries: &[ThreadEntry]) -> TaskDeta
         None => (vec![], None),
     };
     TaskDetail {
-        task: status(task, entries),
+        task: status(task, entries, artifacts),
         steps,
         last_message,
     }

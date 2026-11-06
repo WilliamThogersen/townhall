@@ -11,6 +11,7 @@ use crate::context::Context;
 use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
 use crate::redact::redact;
 
+use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
 use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
 use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
@@ -18,7 +19,8 @@ use super::logs::{self as log_tools, LOG_SUMMARY, READ_LOGS};
 use super::open_pr::{self, OPEN_PR};
 use super::rpc::ToolRunner;
 use super::{
-    status, tools, ToolDef, CREATE_TASK, INSTRUCTIONS, MAX_TITLE_LEN, SET_TITLE, TASK_STATUS,
+    status, task_tools_list, tools, ToolDef, CREATE_TASK, INSTRUCTIONS, MAX_TITLE_LEN, SET_TITLE,
+    TASK_STATUS,
 };
 
 /// The tools of the conversation `conversation_id`.
@@ -39,8 +41,8 @@ fn as_json<T: serde::Serialize>(value: &T) -> Checked<Value> {
     serde_json::to_value(value).map_err(|e| e.to_string())
 }
 
-fn unknown_tool(name: &str) -> String {
-    let names: Vec<&str> = tools().iter().map(|t| t.name).collect();
+fn unknown_tool(name: &str, list: &[ToolDef]) -> String {
+    let names: Vec<&str> = list.iter().map(|t| t.name).collect();
     format!("unknown tool `{name}`: use one of {}", names.join(", "))
 }
 
@@ -71,7 +73,7 @@ impl ToolRunner for TaskTools<'_> {
             }
             READ_LOGS => log_tools::read(self.ctx, parse(arguments)?).await,
             LOG_SUMMARY => log_tools::summary(self.ctx, parse(arguments)?).await,
-            other => Err(unknown_tool(other)),
+            other => Err(unknown_tool(other, &tools())),
         }
     }
 }
@@ -164,7 +166,7 @@ impl ToolRunner for HandBackTools<'_> {
     }
 
     fn tools(&self) -> Vec<ToolDef> {
-        [hand_back::tools(), open_pr::tools()].concat()
+        task_tools_list()
     }
 
     fn instructions(&self) -> &'static str {
@@ -174,8 +176,10 @@ impl ToolRunner for HandBackTools<'_> {
     async fn call(&self, name: &str, arguments: Value) -> Checked<Value> {
         match name {
             HAND_BACK => hand_back::hand_back(self.ctx, self.task, parse(arguments)?).await,
+            ADD_ARTIFACT => artifacts::add(self.ctx, self.task, parse(arguments)?).await,
+            LIST_ARTIFACTS => artifacts::list(self.ctx, self.task, parse(arguments)?).await,
             OPEN_PR => open_pr::open_pr(self.ctx, self.task, parse(arguments)?).await,
-            other => Err(format!("unknown tool `{other}`: use hand_back or open_pr")),
+            other => Err(unknown_tool(other, &task_tools_list())),
         }
     }
 }
