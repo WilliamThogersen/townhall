@@ -51,7 +51,6 @@ impl Problem {
     }
 }
 
-/// The one commit a task starts from, resolved once before the gate and used by the start.
 pub(super) struct At {
     ws: Workspace,
     label: String,
@@ -63,8 +62,6 @@ fn short(sha: &str) -> &str {
     sha.get(..7).unwrap_or(sha)
 }
 
-/// The commit `task` will start from. A new task: its base branch after `fresh_base`. A
-/// handed-back task: its own branch, never the base, and any git error fails closed.
 pub(super) async fn head_of(ctx: &Context, task: &Task, handed_back: bool) -> Result<At> {
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
@@ -116,7 +113,6 @@ impl At {
         )))
     }
 
-    /// Why the worktree of a handed-back task cannot be resumed as it is, or `None`.
     async fn uncommitted(&self, task: &Task) -> Result<Option<String>> {
         let dir = self.ws.worktrees_dir().join(&task.name);
         let status = run("git", &["status", "--porcelain"], Some(&dir)).await?;
@@ -199,8 +195,7 @@ async fn judge(ctx: &Context, done: &Task, head: &At) -> Result<Option<Problem>>
     Ok(head.stale(&who, &commit).await?.and_then(Problem::waiting))
 }
 
-/// Whether `task` may start from `at`. `tasks` is every task, so the `after` chain can be
-/// walked. `Open` carries the sha that was checked: the start must use exactly it.
+/// Whether `task` may start. `tasks` is every task, so the `after` chain can be walked.
 pub(super) async fn check(ctx: &Context, task: &Task, tasks: &[Task], at: &At) -> Result<Gate> {
     let Some(kind) = ctx.store()?.agent_type(&task.agent).await? else {
         return Ok(Gate::Open(at.sha.clone()));

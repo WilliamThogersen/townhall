@@ -74,6 +74,23 @@ fn applied(conn: &Connection) -> Result<Vec<u32>> {
     Ok(ids.collect::<rusqlite::Result<Vec<u32>>>()?)
 }
 
+fn check_names(conn: &Connection, known: &[Migration]) -> Result<()> {
+    let mut stmt = conn.prepare("select id, name from schema_migrations order by id")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, u32>(0)?, r.get::<_, String>(1)?)))?;
+    for row in rows {
+        let (id, recorded) = row?;
+        if let Some(m) = known.iter().find(|m| m.id == id && m.name != recorded) {
+            return Err(Error::Database(format!(
+                "townhall.db recorded migration {id} as `{recorded}`, but this build's {id} is `{}`: \
+                 the database came from a build with a different migration {id} and cannot be \
+                 upgraded; restore a backup or start from a new database",
+                m.name
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn user_version(conn: &Connection) -> Result<u32> {
     Ok(conn.pragma_query_value(None, "user_version", |r| r.get(0))?)
 }
@@ -88,6 +105,7 @@ pub fn apply(conn: &mut Connection, known: &[Migration]) -> Result<usize> {
     if unknown || top > max_known {
         return Err(Error::Unavailable(NEWER.into()));
     }
+    check_names(conn, known)?;
     let pending: Vec<&Migration> = known.iter().filter(|m| !done.contains(&m.id)).collect();
     for m in &pending {
         top = top.max(m.id);
@@ -167,6 +185,26 @@ mod tests {
             apply(&mut other, &[BASE[0]]),
             Err(Error::Unavailable(_))
         ));
+    }
+
+    #[test]
+    fn a_database_that_ran_the_old_0203_task_blocked_is_refused_with_both_names() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let before: Vec<Migration> = all().into_iter().filter(|m| m.id < 203).collect();
+        apply(&mut conn, &before).unwrap();
+        conn.execute_batch(
+            "alter table tasks add column blocked text;
+             insert into schema_migrations (id, name, applied_at)
+             values (203, '0203_task_blocked', 'then');
+             pragma user_version = 203;",
+        )
+        .unwrap();
+        let err = apply(&mut conn, &all()).unwrap_err().to_string();
+        assert!(
+            err.contains("0203_task_blocked") && err.contains("0203_task_ended_at"),
+            "{err}"
+        );
+        assert_eq!(applied(&conn).unwrap().last(), Some(&203));
     }
 
     #[test]

@@ -520,6 +520,58 @@ async fn a_hand_back_to_a_gated_type_resumes_once_the_reports_clear_its_branch()
 }
 
 #[tokio::test]
+async fn a_handed_back_worktree_with_uncommitted_changes_blocks_until_it_is_clean() {
+    let g = gated().await;
+    let work = start_work(&g).await;
+    g.s.store()
+        .hand_back(&work, "shipper", "ship it", "")
+        .await
+        .unwrap();
+    let head = rev(&g.s, &format!("townhall/{work}")).await;
+    both_clear(&g, &head).await;
+    let stray = g.s.worktree(&work).join("stray.txt");
+    std::fs::write(&stray, "not committed\n").unwrap();
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.blocked.contains(&work), "{pass:?}");
+    let task = g.s.store().find_task(&work).await.unwrap().unwrap();
+    assert_eq!(task.state, TaskState::Queued);
+    let why = task.blocked.expect("a block reason");
+    assert!(why.contains("uncommitted changes"), "{why}");
+
+    std::fs::remove_file(&stray).unwrap();
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(pass.started.contains(&work), "{pass:?}");
+}
+
+#[tokio::test]
+async fn a_handed_back_task_whose_branch_is_gone_waits_instead_of_using_the_base() {
+    let g = gated().await;
+    let work = start_work(&g).await;
+    g.s.store()
+        .hand_back(&work, "shipper", "ship it", "")
+        .await
+        .unwrap();
+    let base = rev(&g.s, "main").await;
+    both_clear(&g, &base).await;
+    let tree = g.s.worktree(&work);
+    git(
+        &g.s.repo,
+        &["worktree", "remove", "--force", tree.to_str().unwrap()],
+    )
+    .await;
+    git(&g.s.repo, &["branch", "-D", &format!("townhall/{work}")]).await;
+    let pass = run_once(g.s.ctx()).await.unwrap();
+    assert!(!pass.started.contains(&work), "{pass:?}");
+    let warning = pass.warnings.join("; ");
+    assert!(
+        warning.contains(&work) && warning.contains("branch"),
+        "{warning}"
+    );
+    let task = g.s.store().find_task(&work).await.unwrap().unwrap();
+    assert_eq!(task.state, TaskState::Queued);
+}
+
+#[tokio::test]
 async fn a_rejected_hand_back_never_reaches_ended_and_its_dependents_stay_blocked() {
     let g = gated().await;
     let work = start_work(&g).await;
@@ -664,6 +716,38 @@ async fn a_base_given_as_a_sha_clears_only_for_that_sha() {
     assert_blocked(&g, &["stale", &g.tester, "tip"]).await;
     both_clear(&g, &tip).await;
     assert_starts(&g).await;
+}
+
+async fn remote_ahead(s: &Sched) -> (String, String) {
+    let remote = s.root.path().join("origin.git");
+    let url = remote.to_str().unwrap();
+    git(s.root.path(), &["init", "-q", "--bare", url]).await;
+    git(&s.repo, &["remote", "add", "origin", url]).await;
+    git(&s.repo, &["push", "-q", "origin", "main"]).await;
+    let local = rev(s, "main").await;
+    scheduler_support::commit(&s.repo, "origin moved on").await;
+    git(&s.repo, &["push", "-q", "origin", "main"]).await;
+    let ahead = rev(s, "main").await;
+    git(&s.repo, &["reset", "-q", "--hard", &local]).await;
+    (local, ahead)
+}
+
+#[tokio::test]
+async fn a_remote_ahead_of_the_base_is_the_commit_the_gate_checks_and_the_task_starts_from() {
+    let g = gated().await;
+    let (local, ahead) = remote_ahead(&g.s).await;
+    both_clear(&g, &local).await;
+    let why = assert_blocked(&g, &["stale", &g.tester, "tip"]).await;
+    assert!(why.contains(&local[..7]), "{why}");
+    assert!(g.s.agents().await.is_empty());
+
+    both_clear(&g, &ahead).await;
+    assert_starts(&g).await;
+    assert_eq!(rev(&g.s, "HEAD").await, local);
+    let started = git(&g.s.worktree(&g.ship), &["rev-parse", "HEAD"]).await;
+    assert_eq!(started, ahead);
+    let launch = g.s.store().task_launch(&g.ship).await.unwrap().unwrap();
+    assert_eq!(launch.start_commit, ahead);
 }
 
 #[tokio::test]
