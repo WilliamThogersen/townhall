@@ -11,6 +11,7 @@ const NO_SPACE_TEXT: &str = "No space left on device";
 /// Bytes a normal user can still write on the volume of `path`, or of its nearest folder
 /// that exists (the home is created on first use).
 #[cfg(unix)]
+#[allow(clippy::unnecessary_cast)]
 pub fn free_bytes(path: &Path) -> Result<u64> {
     use std::os::unix::ffi::OsStrExt;
     let folder = path

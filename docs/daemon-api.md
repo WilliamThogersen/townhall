@@ -104,7 +104,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 - `Repo { name, path, baseBranch }`. `name`: `[A-Za-z0-9._-]`, starts with a letter or digit, at most 64, unique ignoring case, the folder name by default. `path`: canonical, the top folder of a git work tree, never one of townhall's own worktrees. `baseBranch`: origin's HEAD branch (the local branch when it exists, else `origin/x`), else the current branch, else `HEAD`.
 - `AgentInfo { name, repo, kind, branch, worktree, alive, state }`: phase 1's `Agent` plus `repo` and `state`. `AgentState`: `{ kind: "working" }`, `{ kind: "waiting", question }`, `{ kind: "error", exitCode: number | null }`, `{ kind: "ended" }`.
 - `AgentKey`: `up`, `down`, `enter`, `escape`, `tab`, the `key` of `POST /agents/{name}/send` (`AgentKey::symbol` is how a `sent` entry shows it).
-- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) has no row on the settings page yet.
+- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel, sharedCargoTarget, minFreeDiskGb, sharedTargetMaxGb }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) has no row on the settings page yet.
 - `Conversation { id, sessionId, sessionStarted, title, status: "thinking" | "yourTurn", tasks: string[] (task names, oldest first), linkedRepo: string | null, ended, context: { used, limit } | null, createdAt, updatedAt }`. `title` starts as `new conversation`. `sessionStarted` is false until the first turn went through (that turn uses `--session-id`, later ones `--resume`).
 - `ThreadEntry { id, at } & EntryBody`. `id` counts 1, 2, 3 ... per conversation. `EntryBody` is tagged by `kind`:
 
@@ -154,12 +154,26 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | `sessionPanelOpen` | boolean | `true` |
 | `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
 | `townhallModel` | `sonnet`, `opus`, `haiku`: the model of townhall's own session, `--model=<value>` (2.11) | `sonnet` |
+| `sharedCargoTarget` | boolean: agents of one repo build into one cargo target folder (see Disk use) | `true` |
+| `minFreeDiskGb` | integer 0 to 100000: a task does not start with less free space on the data volume; `0` is off | `5` |
+| `sharedTargetMaxGb` | integer 0 to 100000: the reaper trims a repo's shared target folder above this size; `0` is no cap | `50` |
 
 A missing or invalid stored value reads as its default. The store also keeps `desktop.repo` (the desktop app's chosen repo, a path); it is not a setting and not in the API.
 
+## Disk use
+
+Every task runs in its own worktree, and a Rust repo builds a target folder of several GB in each. Three settings keep that in check (`scheduler/`, `reaper/target.rs`, `disk.rs`).
+
+- **Shared target folder.** With `sharedCargoTarget` on, every agent of a repo starts with `CARGO_TARGET_DIR=<home>/target/<repo key>` (`Workspace::cargo_target_dir`; the key is the one of the worktrees folder), also when a handed-back task resumes. Off, agents build in their own worktree as before. The variable is set in the tmux session, so it applies to `claude` and to a `shell` type alike, and a task that is already running keeps what it started with.
+- **Parallel builds.** Cargo locks the target folder while it builds, so two agents that build at once take turns; nothing is corrupted. The cost is waiting for the other build.
+- **Decision: one folder per repo, not per branch or per agent type.** The compiled registry dependencies are what a second worktree reuses, and they do not depend on the branch. The repo's own crates sit at a different path in every worktree, so cargo rebuilds those per worktree whichever folder is used, and switching branches costs no more in a shared folder than in a separate one. A folder per agent type or per branch family would give up most of the saving (a build per type) for less waiting; the lock wait is the cheaper price. Two things do invalidate the shared cache: a different toolchain or different `RUSTFLAGS` between agents, and the incremental caches, which pile up one per worktree path. Turning the setting off is the way out for a repo where that hurts.
+- **Reaper.** A worktree's own `target/` goes with the worktree when its agent is retired, as before. Each pass also measures every repo's shared folder. Above `sharedTargetMaxGb` it deletes the `incremental` caches of every profile first, and only if the folder is still over the cap, everything in it (the folder stays). Nothing is deleted while an agent of the repo is alive, since it may be building: the pass warns instead and tries again at the next one. `0` never trims.
+- **Disk floor.** Before a task starts (or resumes) the scheduler reads the free space of the volume under the home. Below `minFreeDiskGb` the task stays `queued`, no worktree is made, and the conversation's planner gets one `event` entry, `disk almost full: 3.2 GB free (needs 5 GB): \`<task>\` waits in the queue`, which the UI shows like any task event. It is told once until a start was possible again; the scheduler's own tick starts the task once there is room. A volume that cannot be measured is a warning, and tasks start as before.
+- **A full disk anyway.** A start that fails with `ENOSPC` (or git's `No space left on device`) sets the task to `error` with `could not start: disk almost full: 0.1 GB free`, never the os error, and the conversation's planner gets an `event` entry with the same text.
+
 ## Permission mode
 
-`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt, add_dirs, mcp_config, mcp_tools`. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
+`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt, add_dirs, mcp_config, mcp_tools, env`. `env` is set in the agent's tmux session (`tmux new-session -e`) for any adapter, so it never reaches the argv. `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
 
 ```
 claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]

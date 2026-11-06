@@ -196,6 +196,18 @@ pub async fn start_failure(ctx: &Context, e: &Error) -> String {
     disk::explain(e, free).unwrap_or_else(|| e.to_string())
 }
 
+/// A start that failed: the task's `failed` entry, and for a full disk the planner is woken
+/// too, since nothing it plans can start until space is freed.
+async fn fail_start(ctx: &Context, task: &Task, e: &Error) -> Result<()> {
+    let why = start_failure(ctx, e).await;
+    fail(ctx, task, &why).await?;
+    if disk::out_of_space(e) {
+        let said = format!("{why}: `{}` could not start", task.name);
+        runner::notify(ctx, &task.conversation_id, said);
+    }
+    Ok(())
+}
+
 /// What happened to one ready task.
 enum Done {
     Nothing,
@@ -249,7 +261,7 @@ async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
         Step::Resume => match resume(ctx, task).await {
             Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
             Err(e) => {
-                fail(ctx, task, &start_failure(ctx, &e).await).await?;
+                fail_start(ctx, task, &e).await?;
                 Ok(Done::Failed)
             }
         },
@@ -261,7 +273,7 @@ async fn act(ctx: &Context, task: &Task, step: Step) -> Result<Done> {
                     repo = %task.repo, error_kind = e.kind(),
                     error = %redact(&e.to_string()), "task launch failed"
                 );
-                fail(ctx, task, &start_failure(ctx, &e).await).await?;
+                fail_start(ctx, task, &e).await?;
                 Ok(Done::Failed)
             }
         },
