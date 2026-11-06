@@ -7,6 +7,7 @@ use std::time::Instant;
 use super::args::{self, TurnArgs};
 use super::content::user_content;
 use super::prompt::{self, RepoNote};
+use super::quote::{self, with_quote};
 use super::repo::{self, Message, Resolved};
 use super::session::{talk, TurnEnd};
 use super::turns::TurnGuard;
@@ -79,12 +80,14 @@ async fn drive(
     let asked = Message {
         text: &message.text,
         attachments: &message.attachments,
+        reply_to: message.reply_to,
     };
     let resolved = match event {
         true => Resolved::Run {
             note: repo::for_event(ctx, &conversation).await?,
             text: message.text.clone(),
             attachments: vec![],
+            reply_to: None,
         },
         false => repo::resolve(ctx, &conversation, asked).await?,
     };
@@ -92,9 +95,17 @@ async fn drive(
         note,
         text,
         attachments,
+        reply_to,
     } = resolved
     else {
         return Ok(TurnEnd::default());
+    };
+    let text = match reply_to {
+        Some(reply_to) => {
+            let store = ctx.store()?;
+            with_quote(&quote::of_entry(store, id, reply_to).await?, &text)
+        }
+        None => text,
     };
     let attempt = Attempt {
         note: &note,

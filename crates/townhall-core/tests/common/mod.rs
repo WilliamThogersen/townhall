@@ -109,5 +109,6 @@ pub fn you(text: &str) -> townhall_core::model::EntryBody {
     townhall_core::model::EntryBody::You {
         text: text.into(),
         attachments: vec![],
+        reply_to: None,
     }
 }
