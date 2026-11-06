@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type Ref } from "react";
 import type { AddRepoInput } from "../../api/types";
-import { canSubmit, draftToInput, EMPTY_DRAFT, type AddRepoDraft } from "../../repos/addRepoDraft";
+import { addProgress, canSubmit, draftToInput, EMPTY_DRAFT, type AddRepoDraft } from "../../repos/addRepoDraft";
 import { Button } from "../../ui/Button";
 import "./repos.css";
 
@@ -65,7 +65,7 @@ export function AddRepoForm({ busy, error, focusToken, layout = "row", onSubmit,
   };
   return (
     <form className="th-repo-add" data-layout={layout} aria-label="add repository" onSubmit={submit} onKeyDown={onKeyDown}>
-      <Field label="path" className="th-repo-field--path" value={draft.path} placeholder="~/Developer/shop or a github/gitlab link" inputRef={pathRef} onChange={set("path")} />
+      <Field label="folder or link" className="th-repo-field--path" value={draft.path} placeholder="~/Developer/shop or a github/gitlab link" inputRef={pathRef} onChange={set("path")} />
       <Field label="name" value={draft.name} placeholder="folder name" onChange={set("name")} />
       <Field label="base branch" value={draft.baseBranch} placeholder="auto" onChange={set("baseBranch")} />
       <div className="th-repo-add-actions">
@@ -76,6 +76,11 @@ export function AddRepoForm({ busy, error, focusToken, layout = "row", onSubmit,
           cancel
         </Button>
       </div>
+      {busy ? (
+        <p className="th-cap th-repo-add-error" role="status">
+          {addProgress(draft)}
+        </p>
+      ) : null}
       {error ? (
         <p className="th-field-error th-repo-add-error" role="alert">
           error: {error}
