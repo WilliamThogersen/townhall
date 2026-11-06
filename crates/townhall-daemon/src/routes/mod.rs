@@ -34,8 +34,8 @@ pub const UPLOAD_BODY_LIMIT: usize = MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
 
 pub const START_BODY_LIMIT: usize = 5 * MAX_ATTACHMENT_BYTES as usize + 64 * 1024;
 
-/// One artifact as base64 inside a JSON-RPC call, plus room for the rest of the call.
-pub const TASK_MCP_BODY_LIMIT: usize = MAX_ARTIFACT_BYTES as usize / 3 * 4 + 64 * 1024;
+/// One artifact inside a JSON-RPC call, JSON-escaped at up to six bytes per byte.
+pub const TASK_MCP_BODY_LIMIT: usize = 6 * MAX_ARTIFACT_BYTES as usize + 64 * 1024;
 
 fn agent_routes() -> Router<AppState> {
     Router::new()
