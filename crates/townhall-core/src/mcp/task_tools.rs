@@ -15,6 +15,7 @@ use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
 use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 use super::logs::{self as log_tools, LOG_SUMMARY, READ_LOGS};
+use super::open_pr::{self, OPEN_PR};
 use super::rpc::ToolRunner;
 use super::{
     status, tools, ToolDef, CREATE_TASK, INSTRUCTIONS, MAX_TITLE_LEN, SET_TITLE, TASK_STATUS,
@@ -163,7 +164,7 @@ impl ToolRunner for HandBackTools<'_> {
     }
 
     fn tools(&self) -> Vec<ToolDef> {
-        hand_back::tools()
+        [hand_back::tools(), open_pr::tools()].concat()
     }
 
     fn instructions(&self) -> &'static str {
@@ -173,7 +174,8 @@ impl ToolRunner for HandBackTools<'_> {
     async fn call(&self, name: &str, arguments: Value) -> Checked<Value> {
         match name {
             HAND_BACK => hand_back::hand_back(self.ctx, self.task, parse(arguments)?).await,
-            other => Err(format!("unknown tool `{other}`: use hand_back")),
+            OPEN_PR => open_pr::open_pr(self.ctx, self.task, parse(arguments)?).await,
+            other => Err(format!("unknown tool `{other}`: use hand_back or open_pr")),
         }
     }
 }

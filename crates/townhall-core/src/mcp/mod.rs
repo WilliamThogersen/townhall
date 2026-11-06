@@ -11,6 +11,7 @@ mod checks;
 mod hand_back;
 mod library;
 mod logs;
+mod open_pr;
 mod rpc;
 mod runs;
 mod status;
@@ -22,6 +23,7 @@ use crate::context::Context;
 
 pub use hand_back::HAND_BACK;
 pub use library::{LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
+pub use open_pr::OPEN_PR;
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
 pub use status::{MAX_MESSAGE_CHARS, MAX_STEPS, RECENT_ENTRIES};
 
@@ -36,7 +38,7 @@ pub async fn handle(ctx: &Context, conversation_id: &str, body: Value) -> Option
 }
 
 /// Answers one JSON-RPC message or batch for the task `task` (which the route checked
-/// exists): the task agent's tools, only `hand_back`.
+/// exists): the task agent's tools, `hand_back` and `open_pr`.
 pub async fn handle_task(ctx: &Context, task: &str, body: Value) -> Option<Value> {
     rpc::answer(body, &task_tools::HandBackTools { ctx, task }).await
 }
@@ -95,9 +97,10 @@ pub fn task_config_json(base_url: &str, task: &str) -> String {
     .to_string()
 }
 
-/// The tool a task's agent may use without asking.
+/// The tools a task's agent may use without asking.
 pub fn task_allowed_tools() -> Vec<String> {
-    hand_back::tools()
+    [hand_back::tools(), open_pr::tools()]
+        .concat()
         .iter()
         .map(|t| format!("mcp__{SERVER_NAME}__{}", t.name))
         .collect()

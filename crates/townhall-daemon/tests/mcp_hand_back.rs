@@ -57,16 +57,18 @@ fn text(result: &Value) -> String {
 }
 
 #[tokio::test]
-async fn a_task_agent_sees_only_hand_back() {
+async fn a_task_agent_sees_hand_back_and_open_pr() {
     let m = Mcp::new().await;
     running(&m, "fix-login", "shipper").await;
     let body = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"});
     let (status, answer) = rpc(&m, "fix-login", body).await;
     assert_eq!(status, StatusCode::OK);
     let tools = answer["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 1);
+    assert_eq!(tools.len(), 2);
     assert_eq!(tools[0]["name"], "hand_back");
     assert_eq!(tools[0]["inputSchema"]["required"], json!(["to", "reason"]));
+    assert_eq!(tools[1]["name"], "open_pr");
+    assert_eq!(tools[1]["inputSchema"]["required"], json!(["title"]));
     let (status, _) = rpc(
         &m,
         "ghost",
