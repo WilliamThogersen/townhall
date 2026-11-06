@@ -41,8 +41,8 @@ fn as_json<T: serde::Serialize>(value: &T) -> Checked<Value> {
     serde_json::to_value(value).map_err(|e| e.to_string())
 }
 
-fn unknown_tool(name: &str) -> String {
-    let names: Vec<&str> = tools().iter().map(|t| t.name).collect();
+fn unknown_tool(name: &str, list: &[ToolDef]) -> String {
+    let names: Vec<&str> = list.iter().map(|t| t.name).collect();
     format!("unknown tool `{name}`: use one of {}", names.join(", "))
 }
 
@@ -73,7 +73,7 @@ impl ToolRunner for TaskTools<'_> {
             }
             READ_LOGS => log_tools::read(self.ctx, parse(arguments)?).await,
             LOG_SUMMARY => log_tools::summary(self.ctx, parse(arguments)?).await,
-            other => Err(unknown_tool(other)),
+            other => Err(unknown_tool(other, &tools())),
         }
     }
 }
@@ -179,13 +179,7 @@ impl ToolRunner for HandBackTools<'_> {
             ADD_ARTIFACT => artifacts::add(self.ctx, self.task, parse(arguments)?).await,
             LIST_ARTIFACTS => artifacts::list(self.ctx, self.task, parse(arguments)?).await,
             OPEN_PR => open_pr::open_pr(self.ctx, self.task, parse(arguments)?).await,
-            other => {
-                let names: Vec<&str> = task_tools_list().iter().map(|t| t.name).collect();
-                Err(format!(
-                    "unknown tool `{other}`: use one of {}",
-                    names.join(", ")
-                ))
-            }
+            other => Err(unknown_tool(other, &task_tools_list())),
         }
     }
 }

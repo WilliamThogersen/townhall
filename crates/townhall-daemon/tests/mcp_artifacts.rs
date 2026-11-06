@@ -60,7 +60,7 @@ async fn two_tasks() -> Mcp {
 }
 
 #[tokio::test]
-async fn a_task_agent_gets_the_artifact_tools_beside_hand_back() {
+async fn a_task_agent_gets_the_task_tools_with_the_artifact_tools() {
     let m = two_tasks().await;
     let body = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"});
     let (_, answer) = call(&m.app, "POST", "/api/tasks/build-it/mcp", Some(body)).await;
@@ -70,7 +70,10 @@ async fn a_task_agent_gets_the_artifact_tools_beside_hand_back() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["hand_back", "add_artifact", "list_artifacts"]);
+    assert_eq!(
+        names,
+        ["hand_back", "open_pr", "add_artifact", "list_artifacts"]
+    );
     let allowed = townhall_core::mcp::task_allowed_tools();
     assert!(allowed.contains(&"mcp__townhall__add_artifact".to_string()));
     assert!(allowed.contains(&"mcp__townhall__list_artifacts".to_string()));
