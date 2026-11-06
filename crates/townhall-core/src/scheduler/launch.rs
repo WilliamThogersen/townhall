@@ -441,7 +441,11 @@ mod tests {
 
     fn context(dir: &Path) -> Context {
         let ws = Workspace::new(Home::at(dir.join("home")), dir).unwrap();
-        Context::open(ws, ContextOptions::default()).unwrap()
+        let options = ContextOptions {
+            notify_delay: std::time::Duration::from_secs(3600),
+            ..ContextOptions::default()
+        };
+        Context::open(ws, options).unwrap()
     }
 
     async fn queued(dir: &Path) -> (Context, Task) {
@@ -497,8 +501,8 @@ mod tests {
     async fn a_full_disk_start_fails_with_the_disk_message_and_tells_the_planner_once() {
         let tmp = tempfile::tempdir().unwrap();
         let (ctx, task) = queued(tmp.path()).await;
-        let done = act_failing(&ctx, &task, &full()).await;
-        assert!(done);
+        assert!(act_failing(&ctx, &task, &full()).await);
+        assert!(!act_failing(&ctx, &task, &full()).await);
         let entries = ctx.store().unwrap().entries(&task.conversation_id).await;
         let text = format!("{:?}", entries.unwrap().last().unwrap().body);
         assert!(

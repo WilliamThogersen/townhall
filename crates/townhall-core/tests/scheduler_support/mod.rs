@@ -264,6 +264,7 @@ pub fn kill_sessions(ws: &Workspace) {
 fn open(ws: &Workspace, claude: &str) -> Context {
     let options = ContextOptions {
         claude_bin: claude.to_string(),
+        notify_delay: Duration::from_secs(3600),
         ..ContextOptions::default()
     };
     Context::open(ws.clone(), options).unwrap()
