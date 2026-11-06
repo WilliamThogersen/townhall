@@ -591,6 +591,7 @@ mod tests {
             prompt: "the brief".into(),
             repo: repos[0].name.clone(),
             base_branch: "main".into(),
+            pr_base: None,
             after: vec![],
             attachments: vec![],
             agent: "plain".into(),
