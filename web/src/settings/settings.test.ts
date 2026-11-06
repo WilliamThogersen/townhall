@@ -17,6 +17,7 @@ const custom: Settings = {
   sessionPanelOpen: false,
   notifyWhen: "everything",
   townhallModel: "opus",
+  githubAccount: "octocat",
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -29,6 +30,7 @@ describe("DEFAULT_SETTINGS", () => {
       sessionPanelOpen: true,
       notifyWhen: "needsYou",
       townhallModel: "sonnet",
+      githubAccount: "",
     });
   });
 
@@ -119,6 +121,10 @@ describe("isSettingValue", () => {
     expect(isSettingValue("notifyWhen", null)).toBe(false);
     expect(isSettingValue("townhallModel", "fable")).toBe(false);
     expect(isSettingValue("townhallModel", "Sonnet")).toBe(false);
+    expect(isSettingValue("githubAccount", "WilliamThogersen")).toBe(true);
+    expect(isSettingValue("githubAccount", "")).toBe(true);
+    expect(isSettingValue("githubAccount", "two words")).toBe(false);
+    expect(isSettingValue("githubAccount", 7)).toBe(false);
     [0, 51, 2.5, "6", Number.NaN].forEach((value) => {
       expect(isSettingValue("agentsAtOnce", value)).toBe(false);
     });
