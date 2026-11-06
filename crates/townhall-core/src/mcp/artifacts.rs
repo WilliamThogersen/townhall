@@ -148,9 +148,11 @@ fn bytes_of(input: &AddInput) -> Checked<Vec<u8>> {
     match input.encoding {
         Encoding::Text if input.content.len() > limit => Err(too_big()),
         Encoding::Text => Ok(input.content.clone().into_bytes()),
-        Encoding::Base64 if input.content.len() > limit / 3 * 4 + 8 => Err(too_big()),
         Encoding::Base64 => {
             let packed: String = input.content.split_whitespace().collect();
+            if packed.len() > limit / 3 * 4 + 8 {
+                return Err(too_big());
+            }
             STANDARD
                 .decode(packed)
                 .map_err(|e| format!("`content` is not valid base64: {e}"))
