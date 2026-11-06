@@ -8,5 +8,5 @@ export const listRepos = (signal?: AbortSignal): Promise<readonly Repo[]> =>
 export const addRepo = (input: AddRepoInput): Promise<Repo> =>
   request("POST", "/repos", parseRepo, input);
 
-export const removeRepo = (name: string): Promise<Repo> =>
-  request("DELETE", `/repos/${encodeURIComponent(name)}`, parseRepo);
+export const removeRepo = (name: string, deleteClone = false): Promise<Repo> =>
+  request("DELETE", `/repos/${encodeURIComponent(name)}${deleteClone ? "?deleteClone=true" : ""}`, parseRepo);

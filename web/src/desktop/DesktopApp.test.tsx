@@ -63,6 +63,6 @@ describe("DesktopApp", () => {
     expect(await screen.findByText("shop", { selector: ".th-repo-name b" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
     expect(await screen.findByText("townhall", { selector: ".th-repo-name b" })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "path" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "folder or link" })).not.toBeInTheDocument();
   });
 });

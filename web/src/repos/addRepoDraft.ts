@@ -12,6 +12,12 @@ export function canSubmit(draft: AddRepoDraft): boolean {
   return draft.path.trim() !== "";
 }
 
+const LINK = /^(https?:\/\/|ssh:\/\/|git@)/i;
+
+export function addProgress(draft: AddRepoDraft): string {
+  return LINK.test(draft.path.trim()) ? "cloning…" : "initialising…";
+}
+
 export function draftToInput(draft: AddRepoDraft): AddRepoInput {
   const name = draft.name.trim();
   const baseBranch = draft.baseBranch.trim();

@@ -72,15 +72,30 @@ async fn exec(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String
 
 /// `run` for code that is not async (the store's import, `spawn_blocking` closures).
 pub fn run_blocking(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    run_blocking_env(program, args, cwd, &[])
+}
+
+/// `run_blocking` with extra environment variables for the child.
+pub fn run_blocking_env(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    envs: &[(&str, &str)],
+) -> Result<String> {
     let started = Instant::now();
-    let result = exec_blocking(program, args, cwd);
+    let result = exec_blocking(program, args, cwd, envs);
     log_run(program, args, started, &result);
     result
 }
 
-fn exec_blocking(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+fn exec_blocking(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    envs: &[(&str, &str)],
+) -> Result<String> {
     let mut command = std::process::Command::new(program);
-    command.args(args);
+    command.args(args).envs(envs.iter().copied());
     if let Some(dir) = cwd {
         command.current_dir(dir);
     }
