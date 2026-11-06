@@ -14,7 +14,9 @@ the standalone daemon both call `logging::init` once at startup.
 | `app.YYYY-MM-DD.jsonl` | the desktop app, including its embedded daemon |
 
 Two processes never share a file. Files rotate daily, at most 14 are kept, and the folder is
-pruned to 200 MB (oldest first, never the newest file) at startup and then hourly.
+pruned at startup and then hourly: files more than 30 days old are deleted, then the oldest
+files until the folder is under 200 MB. A file's age comes from the date in its name; a `.jsonl`
+file with no valid `YYYY-MM-DD` date falls back to its mtime. The newest file is never deleted.
 
 Stderr also gets a human-readable layer at `warn` and above.
 
