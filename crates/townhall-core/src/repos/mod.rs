@@ -3,6 +3,7 @@
 
 mod auth_env;
 mod clone;
+mod discard;
 mod git;
 pub mod names;
 pub mod publish;
@@ -199,6 +200,23 @@ impl RepoRegistry {
     /// Unregisters `name`. Never touches the folder, its worktrees or its branches.
     pub async fn remove(&self, name: &str) -> Result<Repo> {
         self.store.remove_repo(name).await
+    }
+
+    /// Refuses unless `name` is a clean clone townhall made (see `discard::check_deletable`).
+    pub async fn check_deletable(&self, name: &str) -> Result<()> {
+        let repo = self.get(name).await?;
+        let home = self.store.home().clone();
+        blocking(move || discard::check_deletable(&home, &repo)).await
+    }
+
+    /// Unregisters `name` and deletes its clone in `<home>/repos`. Every check runs first, so a
+    /// refusal leaves the repo registered and the folder untouched.
+    pub async fn remove_with_clone(&self, name: &str) -> Result<Repo> {
+        self.check_deletable(name).await?;
+        let repo = self.store.remove_repo(name).await?;
+        let (home, gone) = (self.store.home().clone(), repo.clone());
+        blocking(move || discard::delete_clone(&home, &gone)).await?;
+        Ok(repo)
     }
 }
 
