@@ -170,7 +170,10 @@ fn a_claude_manifest_keeps_its_own_fields() {
         "../../../tests/fixtures/plugins/plugins/ddev.json"
     ))
     .unwrap();
-    assert_eq!(ddev.author.unwrap().email.as_deref(), Some("dev@example.com"));
+    assert_eq!(
+        ddev.author.unwrap().email.as_deref(),
+        Some("dev@example.com")
+    );
 }
 
 #[test]
