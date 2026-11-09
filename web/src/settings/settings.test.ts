@@ -17,7 +17,6 @@ const custom: Settings = {
   repoUnclear: "guess",
   sessionPanelOpen: false,
   notifyWhen: "everything",
-  townhallModel: "opus",
   minFreeDiskGb: 20,
   learnAboutMe: true,
   githubAccount: "octocat",
@@ -38,7 +37,6 @@ describe("DEFAULT_SETTINGS", () => {
       repoUnclear: "ask",
       sessionPanelOpen: true,
       notifyWhen: "needsYou",
-      townhallModel: "sonnet",
       minFreeDiskGb: 5,
       learnAboutMe: false,
       githubAccount: "",
@@ -106,7 +104,7 @@ describe("parseSettings", () => {
   });
 
   it("drops the keys of removed settings", () => {
-    expect(parseSettings({ ...custom, sharedCargoTarget: true, sharedTargetMaxGb: 50 })).toEqual(
+    expect(parseSettings({ ...custom, sharedCargoTarget: true, sharedTargetMaxGb: 50, townhallModel: "opus" })).toEqual(
       custom,
     );
   });
@@ -145,8 +143,6 @@ describe("isSettingValue", () => {
     expect(isSettingValue("sessionPanelOpen", 1)).toBe(false);
     expect(isSettingValue("repoUnclear", "always")).toBe(false);
     expect(isSettingValue("notifyWhen", null)).toBe(false);
-    expect(isSettingValue("townhallModel", "fable")).toBe(false);
-    expect(isSettingValue("townhallModel", "Sonnet")).toBe(false);
     expect(isSettingValue("minFreeDiskGb", 0)).toBe(true);
     expect(isSettingValue("minFreeDiskGb", -1)).toBe(false);
     expect(isSettingValue("minFreeDiskGb", 1.5)).toBe(false);
