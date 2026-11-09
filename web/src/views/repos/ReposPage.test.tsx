@@ -8,6 +8,9 @@ import { aConversation, anAgentInfo, aRepo, aTask } from "../../api/fixtures";
 import * as reposApi from "../../api/repos";
 import * as tasksApi from "../../api/tasks";
 import { createFakeEvents, TestDataProvider, type FakeEvents } from "../../data/testing";
+import { DEFAULT_SETTINGS, type ForgeAccount } from "../../settings/settings";
+import { createSettingsStore } from "../../settings/settingsStore";
+import { SettingsStoreContext } from "../../settings/useSettings";
 import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
 import { ReposPage } from "./ReposPage";
 
@@ -19,14 +22,21 @@ function HintsProbe() {
   return <p data-testid="hints">{hints.map((hint) => `${hint.keys}=${hint.label}`).join(" | ")}</p>;
 }
 
-function renderPage(events: FakeEvents = createFakeEvents()) {
+function renderPage(events: FakeEvents = createFakeEvents(), forgeAccounts: readonly ForgeAccount[] = []) {
+  const settings = createSettingsStore({
+    load: async () => ({ ...DEFAULT_SETTINGS, forgeAccounts }),
+    put: async () => DEFAULT_SETTINGS,
+    storage: () => null,
+  });
   return render(
-    <TestDataProvider events={events}>
-      <KeyHintsProvider>
-        <ReposPage />
-        <HintsProbe />
-      </KeyHintsProvider>
-    </TestDataProvider>,
+    <SettingsStoreContext value={settings}>
+      <TestDataProvider events={events}>
+        <KeyHintsProvider>
+          <ReposPage />
+          <HintsProbe />
+        </KeyHintsProvider>
+      </TestDataProvider>
+    </SettingsStoreContext>,
   );
 }
 
@@ -215,5 +225,69 @@ describe("ReposPage", () => {
     expect(await townhallRow.findByText("no agents")).toBeInTheDocument();
     act(() => events.emit({ type: "agentUpdated", agent: anAgentInfo({ name: "docs", repo: "townhall", state: { kind: "working" } }) }));
     expect(await townhallRow.findByText(/1 agent/)).toHaveTextContent("1 agent: 1 working");
+  });
+});
+
+describe("repo accounts", () => {
+  const work: ForgeAccount = { forge: "github", login: "work-me", host: "github.com", label: "work" };
+  const mine: ForgeAccount = { forge: "github", login: "private-me", host: "github.com", label: "private" };
+  const glab: ForgeAccount = { forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "corp gitlab" };
+  const pick = (name: string, forge: "GitHub" | "GitLab") =>
+    within(within(rowOf(name)).getByRole("radiogroup", { name: `${forge} account for ${name}` }));
+
+  it("shows no account choice while no account is registered", async () => {
+    renderPage();
+    await screen.findByText("shop", { selector: ".th-repo-name b" });
+    expect(screen.queryByRole("radiogroup", { name: /account for/ })).not.toBeInTheDocument();
+  });
+
+  it("offers auto and each registered account, only for the forges that have one", async () => {
+    renderPage(createFakeEvents(), [work, mine]);
+    await screen.findByText("shop", { selector: ".th-repo-name b" });
+    await within(rowOf("shop")).findByRole("radiogroup", { name: "GitHub account for shop" });
+    const labels = pick("shop", "GitHub").getAllByRole("radio").map((radio) => radio.closest("label")?.textContent);
+    expect(labels).toEqual(["auto", "work", "private"]);
+    expect(pick("shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
+    expect(within(rowOf("shop")).queryByRole("radiogroup", { name: /GitLab/ })).not.toBeInTheDocument();
+    expect(within(rowOf("townhall")).getByRole("radiogroup", { name: "GitHub account for townhall" })).toBeInTheDocument();
+  });
+
+  it("shows the account a repo already uses and the gitlab choice when one is registered", async () => {
+    vi.mocked(reposApi.listRepos).mockResolvedValue([aRepo({ ...shop, githubAccount: "private-me", gitlabAccount: "me" })]);
+    renderPage(createFakeEvents(), [work, mine, glab]);
+    await within(await screen.findByText("shop", { selector: ".th-repo-name b" }).then(() => rowOf("shop"))).findByRole("radiogroup", {
+      name: "GitHub account for shop",
+    });
+    expect(pick("shop", "GitHub").getByRole("radio", { name: "private" })).toBeChecked();
+    expect(pick("shop", "GitLab").getByRole("radio", { name: "corp gitlab" })).toBeChecked();
+  });
+
+  it("picks an account for the repo, and auto clears the pick", async () => {
+    const put = vi
+      .spyOn(reposApi, "putRepoAccounts")
+      .mockResolvedValueOnce(aRepo({ ...shop, githubAccount: "private-me" }))
+      .mockResolvedValueOnce(aRepo({ ...shop, githubAccount: null }));
+    renderPage(createFakeEvents(), [work, mine]);
+    await within(await screen.findByText("shop", { selector: ".th-repo-name b" }).then(() => rowOf("shop"))).findByRole("radiogroup", {
+      name: "GitHub account for shop",
+    });
+    await userEvent.click(pick("shop", "GitHub").getByRole("radio", { name: "private" }));
+    expect(put).toHaveBeenLastCalledWith("shop", { githubAccount: "private-me" });
+    await screen.findByRole("radio", { name: "private", checked: true });
+    await userEvent.click(pick("shop", "GitHub").getByRole("radio", { name: "auto" }));
+    expect(put).toHaveBeenLastCalledWith("shop", { githubAccount: null });
+    await screen.findAllByRole("radio", { name: "auto", checked: true });
+    expect(pick("shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
+  });
+
+  it("shows the daemon's refusal and keeps the old pick", async () => {
+    vi.spyOn(reposApi, "putRepoAccounts").mockRejectedValue(new ApiError("http", "no github account `private-me` is registered", 400));
+    renderPage(createFakeEvents(), [work, mine]);
+    await within(await screen.findByText("shop", { selector: ".th-repo-name b" }).then(() => rowOf("shop"))).findByRole("radiogroup", {
+      name: "GitHub account for shop",
+    });
+    await userEvent.click(pick("shop", "GitHub").getByRole("radio", { name: "private" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("error: no github account `private-me` is registered");
+    expect(pick("shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
   });
 });

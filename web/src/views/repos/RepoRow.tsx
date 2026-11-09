@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { RepoSummary } from "../../repos/repoSummary";
+import type { ForgeAccount } from "../../settings/settings";
 import { Link, PATHS } from "../../router";
 import { Button } from "../../ui/Button";
 import { StatusGlyph } from "../../ui/StatusGlyph";
 import "../settings/cap.css";
+import { RepoAccounts, type PickAccount } from "./RepoAccounts";
 import "./repos.css";
 
 export function removeQuestion(name: string, managed = false): string {
@@ -14,6 +16,8 @@ export function removeQuestion(name: string, managed = false): string {
 export interface RepoRowProps {
   readonly summary: RepoSummary;
   readonly onRemove: (name: string, deleteClone?: boolean) => Promise<void>;
+  readonly accounts?: readonly ForgeAccount[];
+  readonly onPickAccount?: PickAccount;
 }
 
 function RepoName({ summary }: { readonly summary: RepoSummary }) {
@@ -93,7 +97,7 @@ function useReturnFocus(confirming: boolean) {
   return { target, arm };
 }
 
-export function RepoRow({ summary, onRemove }: RepoRowProps) {
+export function RepoRow({ summary, onRemove, accounts = [], onPickAccount }: RepoRowProps) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const focus = useReturnFocus(confirming);
@@ -117,8 +121,9 @@ export function RepoRow({ summary, onRemove }: RepoRowProps) {
       </div>
     );
   }
+  const choose = onPickAccount !== undefined && accounts.length > 0;
   return (
-    <div className="th-repo">
+    <div className="th-repo" data-accounts={choose ? "true" : undefined}>
       <RepoName summary={summary} />
       <div className="th-repo-meta">
         <span title={summary.repo.baseBranch}>{summary.repo.baseBranch}</span>
@@ -133,6 +138,7 @@ export function RepoRow({ summary, onRemove }: RepoRowProps) {
           remove
         </Button>
       </div>
+      {choose ? <RepoAccounts repo={summary.repo} accounts={accounts} onPick={onPickAccount} /> : null}
     </div>
   );
 }

@@ -1,23 +1,27 @@
 import { useCallback, useMemo, useState } from "react";
 import { toMessage } from "../../api/errors";
-import type { Repo } from "../../api/types";
+import type { PutRepoAccountsInput, Repo } from "../../api/types";
 import { useAgentInfos, useConversations, useRepos, useTasks } from "../../data";
 import { NO_REPOS_TEXT } from "../../repos/copy";
 import { clonesDirOf, userHomeOf } from "../../repos/repoPath";
 import { summarizeRepos, type RepoSummary } from "../../repos/repoSummary";
 import { useAddRepo, type AddRepoFlow } from "../../repos/useAddRepo";
 import { useInfo } from "../../repos/useInfo";
+import type { ForgeAccount } from "../../settings/settings";
+import { useSettings } from "../../settings/useSettings";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { DRAG_REGION } from "../../ui/dragRegion";
 import { EmptyState } from "../../ui/EmptyState";
 import { Loading } from "../../ui/Loading";
 import { AddRepoForm } from "./AddRepoForm";
+import type { PickAccount } from "./RepoAccounts";
 import { RepoRow } from "./RepoRow";
 import { useRepoKeys } from "./useRepoKeys";
 import "../settings/cap.css";
 
 type RemoveRepo = (name: string, deleteClone?: boolean) => Promise<void>;
+type SetAccounts = (name: string, input: PutRepoAccountsInput) => Promise<Repo>;
 
 interface Problem {
   readonly message: string;
@@ -77,9 +81,11 @@ interface BodyProps {
   readonly loading: boolean;
   readonly flow: AddRepoFlow;
   readonly onRemove: RemoveRepo;
+  readonly onPickAccount: PickAccount;
+  readonly accounts: readonly ForgeAccount[];
 }
 
-function ReposBody({ summaries, loading, flow, onRemove }: BodyProps) {
+function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, accounts }: BodyProps) {
   const form = flow.formOpen ? (
     <AddRepoForm busy={flow.busy} error={flow.error} focusToken={flow.focusToken} onSubmit={(input) => void flow.submit(input)} onCancel={flow.cancel} />
   ) : null;
@@ -95,13 +101,13 @@ function ReposBody({ summaries, loading, flow, onRemove }: BodyProps) {
       {form}
       {summaries.length === 0 && !flow.formOpen ? <EmptyState title="no repos yet">{NO_REPOS_TEXT}</EmptyState> : null}
       {summaries.map((summary) => (
-        <RepoRow key={summary.repo.name} summary={summary} onRemove={onRemove} />
+        <RepoRow key={summary.repo.name} summary={summary} onRemove={onRemove} accounts={accounts} onPickAccount={onPickAccount} />
       ))}
     </>
   );
 }
 
-function useRemove(remove: RemoveRepo) {
+function useRemove(remove: RemoveRepo, setAccounts: SetAccounts) {
   const [error, setError] = useState<string | null>(null);
   const run = useCallback<RemoveRepo>(
     async (name, deleteClone) => {
@@ -114,8 +120,19 @@ function useRemove(remove: RemoveRepo) {
     },
     [remove],
   );
+  const pick = useCallback<PickAccount>(
+    async (name, input) => {
+      setError(null);
+      try {
+        await setAccounts(name, input);
+      } catch (e) {
+        setError(toMessage(e));
+      }
+    },
+    [setAccounts],
+  );
   const dismiss = useCallback(() => setError(null), []);
-  return { error, run, dismiss };
+  return { error, run, pick, dismiss };
 }
 
 function pickProblem(removal: ReturnType<typeof useRemove>, flow: AddRepoFlow, loadError: string | null): Problem | null {
@@ -125,9 +142,10 @@ function pickProblem(removal: ReturnType<typeof useRemove>, flow: AddRepoFlow, l
 }
 
 export function ReposPage() {
-  const { repos, loading, error, remove } = useRepos();
+  const { repos, loading, error, remove, setAccounts } = useRepos();
+  const { settings } = useSettings();
   const flow = useAddRepo();
-  const removal = useRemove(remove);
+  const removal = useRemove(remove, setAccounts);
   const summaries = useSummaries(repos);
   useRepoKeys(flow.formOpen, flow.begin);
   const problem = pickProblem(removal, flow, repos === null ? error : null);
@@ -136,7 +154,14 @@ export function ReposPage() {
       <ReposHead count={repos === null ? null : repos.length} flow={flow} />
       <div className="th-page-body">
         <ProblemBanner problem={problem} />
-        <ReposBody summaries={summaries} loading={loading} flow={flow} onRemove={removal.run} />
+        <ReposBody
+          summaries={summaries}
+          loading={loading}
+          flow={flow}
+          onRemove={removal.run}
+          onPickAccount={removal.pick}
+          accounts={settings.forgeAccounts}
+        />
       </div>
     </div>
   );
