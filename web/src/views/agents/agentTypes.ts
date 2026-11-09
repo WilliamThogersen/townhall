@@ -32,6 +32,29 @@ export interface Usage {
 
 const NO_USAGE: Usage = { runs: 0, tokens: 0 };
 
+export function sortTypes(
+  types: readonly AgentTypeSummary[],
+  defaultName: string | null,
+  usage: readonly AgentUsage[] | null,
+): readonly AgentTypeSummary[] {
+  const runsOf = (type: AgentTypeSummary) => usageOf(usage, type.name)?.runs ?? 0;
+  return [...types].sort((a, b) => {
+    if (a.name === defaultName) return b.name === defaultName ? 0 : -1;
+    if (b.name === defaultName) return 1;
+    return runsOf(b) - runsOf(a) || byName(a, b);
+  });
+}
+
+export function filterTypes(types: readonly AgentTypeSummary[], query: string): readonly AgentTypeSummary[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") return types;
+  return types.filter((type) =>
+    [type.name, type.description, type.adapter, type.model, type.permissionMode].some((field) =>
+      field?.toLowerCase().includes(needle),
+    ),
+  );
+}
+
 export function usageOf(rows: readonly AgentUsage[] | null, name: string): Usage | null {
   if (rows === null) return null;
   const found = rows.find((row) => row.agent.toLowerCase() === name.toLowerCase());
