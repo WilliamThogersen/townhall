@@ -30,7 +30,7 @@ export type CloneProtocol = "ssh" | "https";
 export const DEFAULT_PROTOCOL: CloneProtocol = "ssh";
 
 function linkHost(link: string): string {
-  const authority = link.includes("://") ? link.slice(link.indexOf("://") + 3).split("/")[0] : link.split(":")[0];
+  const authority = link.includes("://") ? link.slice(link.indexOf("://") + 3).split("/")[0] ?? "" : link.split(":")[0] ?? "";
   return authority.slice(authority.lastIndexOf("@") + 1);
 }
 
