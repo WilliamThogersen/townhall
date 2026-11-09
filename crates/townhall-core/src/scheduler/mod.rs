@@ -9,6 +9,9 @@
 //!   sets. The agent watcher (2.5) owns `needsYou`, `error` and `ended`.
 //! - An `ended` task whose branch has commits of its own and is merged into its base
 //!   branch becomes `merged`, with an `agent` `passed` entry. It never merges or deletes.
+//! - A task whose agent ended under a `check` is verified (`verify.rs`): the check runs in its
+//!   worktree, a failure queues it again with the output in its brief (up to `maxRetries`),
+//!   then it needs the user.
 //! - Safe across restarts: it never starts an agent for a name that has a worktree or a
 //!   session. A queued task whose agent exists (a start cut short) is adopted as `working`.
 //!
