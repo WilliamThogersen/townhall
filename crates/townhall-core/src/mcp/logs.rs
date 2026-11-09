@@ -26,11 +26,13 @@ pub fn tools() -> Vec<ToolDef> {
             name: READ_LOGS,
             description: "Read townhall's own log lines (daemon and desktop app), newest first, as `ts level target event message {ids}`. Default: warnings and errors of the last 24h. Filter by level, component (target prefix such as `git` or `townhall::runner`), event, task or a substring. Output is capped; `truncated: true` says more matched.",
             input_schema: read_schema(),
+            read_only: true,
         },
         ToolDef {
             name: LOG_SUMMARY,
             description: "A digest of townhall's own logs: counts per level and component, every panic and the top recurring groups (same target, event and message once numbers, ids, paths and names are ignored) with count, first and last seen, up to 5 tasks touched, one sample and a stable `fingerprint` to cite in a task brief. Start here when asked what is going wrong in townhall or to improve it.",
             input_schema: summary_schema(),
+            read_only: true,
         },
     ]
 }

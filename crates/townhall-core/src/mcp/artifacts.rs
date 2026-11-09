@@ -60,11 +60,13 @@ pub fn tools() -> Vec<ToolDef> {
             name: ADD_ARTIFACT,
             description: "Attach one piece of proof to your own task: a screenshot (png, jpeg, gif or webp as base64), a log, a note or a report (text). It is stored outside the repo, shown in townhall's Proof section grouped by your role, and cannot be changed or deleted afterwards. Returns the artifact id and its URL.",
             input_schema: add_schema(),
+            read_only: true,
         },
         ToolDef {
             name: LIST_ARTIFACTS,
             description: "The proof on a task of this conversation, oldest first: id, name, kind, author_role, caption, created and url. Name the task whose proof you want to read, for example the builder's.",
             input_schema: list_schema(),
+            read_only: true,
         },
     ]
 }
