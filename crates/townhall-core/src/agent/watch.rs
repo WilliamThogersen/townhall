@@ -250,8 +250,16 @@ impl Watcher {
         }
         .await;
         let saved = match (found, self.ctx.store()) {
-            (Ok(usage), _) if usage.tokens == 0 => Ok(()),
-            (Ok(usage), Ok(store)) => store.set_task_tokens(&task.name, usage.tokens).await,
+            (Ok(usage), Ok(store)) => {
+                let tokens = match usage.tokens {
+                    0 => Ok(()),
+                    n => store.set_task_tokens(&task.name, n).await,
+                };
+                match (tokens, usage.model) {
+                    (Ok(()), Some(model)) => store.set_task_model(&task.name, &model).await,
+                    (done, _) => done,
+                }
+            }
             (Err(e), _) | (_, Err(e)) => Err(e),
         };
         if let Err(e) = saved {
