@@ -90,6 +90,41 @@ async fn only_a_running_task_can_be_handed_back_to_a_saved_type() {
 }
 
 #[tokio::test]
+async fn an_ended_task_is_handed_on_and_a_running_one_is_not() {
+    let env = store_env();
+    let (_, name) = running(&env, "fix-login", "shipper").await;
+    let running = env
+        .store
+        .hand_on(&name, "coder", "why", "")
+        .await
+        .unwrap_err();
+    assert!(matches!(running, Error::Conflict(_)), "{running:?}");
+    env.store
+        .update_task(&name, |t| {
+            Ok(townhall_core::model::Task {
+                state: TaskState::Ended,
+                ..t
+            })
+        })
+        .await
+        .unwrap();
+    let handoff = env
+        .store
+        .hand_on(&name, "coder", "why", "done")
+        .await
+        .unwrap();
+    assert_eq!(
+        (handoff.from.as_str(), handoff.to.as_str()),
+        ("shipper", "coder")
+    );
+    let task = env.store.find_task(&name).await.unwrap().unwrap();
+    assert_eq!(
+        (task.state, task.agent.as_str()),
+        (TaskState::Queued, "coder")
+    );
+}
+
+#[tokio::test]
 async fn a_chain_stops_after_the_most_handoffs() {
     let env = store_env();
     let (_, name) = running(&env, "fix-login", "shipper").await;

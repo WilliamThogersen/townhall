@@ -26,6 +26,7 @@ use crate::model::MAX_HANDOFFS;
 
 pub use artifacts::{ADD_ARTIFACT, LIST_ARTIFACTS};
 pub use hand_back::HAND_BACK;
+pub(crate) use hand_back::{summary_of, worktree_of};
 pub use library::{LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 pub use open_pr::OPEN_PR;
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};

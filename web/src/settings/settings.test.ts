@@ -25,6 +25,7 @@ const custom: Settings = {
     { forge: "github", login: "work-me", host: "github.com", label: "work" },
     { forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "me" },
   ],
+  reflectAfterTasks: true,
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -41,6 +42,7 @@ describe("DEFAULT_SETTINGS", () => {
       learnAboutMe: false,
       githubAccount: "",
       forgeAccounts: [],
+      reflectAfterTasks: false,
     });
   });
 
