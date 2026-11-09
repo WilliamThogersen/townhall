@@ -164,9 +164,21 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
             "permissionMode": "acceptEdits", "workWithoutAsking": false, "agentsAtOnce": 6,
             "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
             "townhallModel": "sonnet", "minFreeDiskGb": 5, "learnAboutMe": false,
-            "githubAccount": "WilliamThogersen"
+            "githubAccount": "WilliamThogersen", "forgeAccounts": []
         })
     );
+    let put = Some(json!({"value": [{"forge": "gitlab", "login": "me"}]}));
+    let (s, v) = call(&app, "PUT", "/api/settings/forgeAccounts", put).await;
+    assert_eq!(
+        (s, &v["data"]["forgeAccounts"]),
+        (
+            StatusCode::OK,
+            &json!([{"forge": "gitlab", "login": "me", "host": "gitlab.com", "label": "me"}])
+        )
+    );
+    let put = Some(json!({"value": [{"forge": "gitlab", "login": "a b"}]}));
+    let (s, _) = call(&app, "PUT", "/api/settings/forgeAccounts", put).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
     let put = Some(json!({"value": 0}));
     let (s, v) = call(&app, "PUT", "/api/settings/minFreeDiskGb", put).await;
     assert_eq!(

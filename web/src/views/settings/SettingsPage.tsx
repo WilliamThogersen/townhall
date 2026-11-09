@@ -3,7 +3,7 @@ import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { DRAG_REGION } from "../../ui/dragRegion";
-import { AboutYouGroup, AgentsGroup, AppearanceGroup, ConversationsGroup } from "./SettingGroups";
+import { AboutYouGroup, AccountsGroup, AgentsGroup, AppearanceGroup, ConversationsGroup } from "./SettingGroups";
 import "./cap.css";
 
 export const SETTINGS_HINTS: readonly KeyHint[] = [
@@ -46,6 +46,7 @@ export function SettingsPage() {
         <div className="th-settings" aria-busy={loading}>
           <AgentsGroup />
           <ConversationsGroup />
+          <AccountsGroup />
           <AppearanceGroup />
           <AboutYouGroup />
         </div>

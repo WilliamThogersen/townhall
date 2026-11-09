@@ -48,6 +48,13 @@ describe("readStoredSettings", () => {
     expect(readStoredSettings(raw)).toEqual([]);
   });
 
+  it("never reads forge accounts, which a browser never held", () => {
+    const account = { forge: "github", login: "me", host: "github.com", label: "me" };
+    expect(readStoredSettings(JSON.stringify({ forgeAccounts: [account], agentsAtOnce: 9 }))).toEqual([
+      { key: "agentsAtOnce", value: 9 },
+    ]);
+  });
+
   it.each(["{not json", "null", "[1,2]", "\"plan\""])("reads nothing from %s", (raw) => {
     expect(readStoredSettings(raw)).toEqual([]);
   });

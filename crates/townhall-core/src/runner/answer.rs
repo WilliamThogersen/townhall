@@ -170,6 +170,8 @@ mod tests {
             name: name.into(),
             path: format!("/nowhere/{name}").into(),
             base_branch: "main".into(),
+            github_account: None,
+            gitlab_account: None,
         }
     }
 

@@ -42,10 +42,12 @@ function parseJson(raw: string): unknown {
   }
 }
 
+const BROWSER_KEYS: readonly SettingKey[] = SETTING_KEYS.filter((key) => key !== "forgeAccounts");
+
 export function readStoredSettings(raw: string): readonly StoredSetting[] {
   const fields = parseJson(raw);
   if (!isFields(fields)) return [];
-  return SETTING_KEYS.flatMap((key) => {
+  return BROWSER_KEYS.flatMap((key) => {
     const value = fields[key];
     return isSettingValue(key, value) ? [{ key, value }] : [];
   });

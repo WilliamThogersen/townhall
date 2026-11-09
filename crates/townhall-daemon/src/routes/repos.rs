@@ -4,7 +4,7 @@ use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use townhall_core::fleet;
-use townhall_core::model::AddRepo;
+use townhall_core::model::{AddRepo, PutRepoAccounts};
 
 use crate::envelope::{created, ok};
 use crate::error::ApiError;
@@ -22,6 +22,18 @@ pub async fn add(
     let ctx = state.ctx();
     ctx.ensure_startup_repo().await;
     Ok(created(ctx.registry()?.add(&req).await?))
+}
+
+/// Body `{"githubAccount"?: login | null, "gitlabAccount"?: login | null}`: the registered
+/// account this repo uses on each forge. A missing key leaves its pick, `null` clears it.
+pub async fn put_accounts(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    JsonBody(body): JsonBody<PutRepoAccounts>,
+) -> Result<Response, ApiError> {
+    let ctx = state.ctx();
+    ctx.ensure_startup_repo().await;
+    Ok(ok(ctx.store()?.set_repo_accounts(&name, body).await?))
 }
 
 #[derive(Debug, Default, Deserialize)]
