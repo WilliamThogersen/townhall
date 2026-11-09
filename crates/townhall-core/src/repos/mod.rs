@@ -75,6 +75,8 @@ pub fn inspect(home: &Home, path: &Path, name: String, base_branch: Option<&str>
         name,
         path: path.to_path_buf(),
         base_branch,
+        github_account: None,
+        gitlab_account: None,
     })
 }
 

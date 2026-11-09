@@ -27,7 +27,7 @@ pub use conversation::{
 };
 pub use event::ServerEvent;
 pub use library::{AgentType, AgentTypeSummary, AgentUsage, DEFAULT_AGENT_TYPE};
-pub use repo::{AddRepo, Repo};
+pub use repo::{AddRepo, PutRepoAccounts, Repo};
 pub use settings::{
     NotifyWhen, PermissionMode, PutProfile, PutSetting, RepoUnclear, SettingKey, Settings,
     TownhallModel, AGENTS_AT_ONCE_DEFAULT, AGENTS_AT_ONCE_MAX, AGENTS_AT_ONCE_MIN,

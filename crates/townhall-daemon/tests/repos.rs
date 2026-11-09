@@ -14,7 +14,10 @@ async fn the_startup_repo_is_listed_and_registered() {
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(
         v["data"],
-        json!([{"name": "alpha", "path": env.startup, "baseBranch": "main"}])
+        json!([{
+            "name": "alpha", "path": env.startup, "baseBranch": "main",
+            "githubAccount": null, "gitlabAccount": null
+        }])
     );
     let stored = state.ctx().store().unwrap().repos().await.unwrap();
     assert_eq!(stored[0].name, "alpha");
@@ -43,7 +46,10 @@ async fn add_and_remove_a_repo() {
     assert_eq!(s, StatusCode::CREATED, "{v}");
     assert_eq!(
         v["data"],
-        json!({"name": "beta", "path": beta, "baseBranch": "main"})
+        json!({
+            "name": "beta", "path": beta, "baseBranch": "main",
+            "githubAccount": null, "gitlabAccount": null
+        })
     );
     let (_, v) = call(&app, "GET", "/api/repos", None).await;
     assert_eq!(v["data"].as_array().unwrap().len(), 2);
@@ -59,6 +65,43 @@ async fn add_and_remove_a_repo() {
         (s, v["error"].as_str()),
         (StatusCode::NOT_FOUND, Some("repo `beta` not found"))
     );
+}
+
+#[tokio::test]
+async fn a_repo_picks_its_accounts_from_the_registered_ones() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let accounts = json!({"value": [
+        {"forge": "github", "login": "work-me"},
+        {"forge": "gitlab", "login": "me", "host": "gitlab.corp.io"}
+    ]});
+    let (s, _) = call(&app, "PUT", "/api/settings/forgeAccounts", Some(accounts)).await;
+    assert_eq!(s, StatusCode::OK);
+    let uri = "/api/repos/alpha/accounts";
+    let pick = json!({"githubAccount": "work-me", "gitlabAccount": "me"});
+    let (s, v) = call(&app, "PUT", uri, Some(pick)).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["data"]["githubAccount"], "work-me");
+    assert_eq!(v["data"]["gitlabAccount"], "me");
+    let (_, v) = call(&app, "GET", "/api/repos", None).await;
+    assert_eq!(v["data"][0]["githubAccount"], "work-me");
+    let (s, v) = call(&app, "PUT", uri, Some(json!({"githubAccount": null}))).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["data"]["githubAccount"], json!(null));
+    assert_eq!(v["data"]["gitlabAccount"], "me", "a missing key is left alone");
+}
+
+#[tokio::test]
+async fn an_unregistered_account_or_repo_is_refused() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let put = |body| call(&app, "PUT", "/api/repos/alpha/accounts", Some(body));
+    let (s, _) = put(json!({"githubAccount": "stranger"})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let (s, _) = put(json!({"token": "ghp_x"})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let ghost = call(&app, "PUT", "/api/repos/ghost/accounts", Some(json!({}))).await;
+    assert_eq!(ghost.0, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

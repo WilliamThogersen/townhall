@@ -101,6 +101,7 @@ pub fn router(state: AppState) -> Router {
         .route("/info", get(info::info))
         .route("/repos", get(repos::list).post(repos::add))
         .route("/repos/{name}", delete(repos::remove))
+        .route("/repos/{name}/accounts", put(repos::put_accounts))
         .route("/settings", get(settings::get))
         .route("/settings/{key}", put(settings::put))
         .route(
