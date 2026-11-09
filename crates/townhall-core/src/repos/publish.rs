@@ -86,7 +86,7 @@ pub struct PrRequest<'a> {
 }
 
 /// Environment variables for one child, token included: fetched per spawn, never stored.
-type Session = Vec<(String, String)>;
+pub(super) type Session = Vec<(String, String)>;
 
 fn with_session(session: &Session) -> Vec<(&str, &str)> {
     let mut envs = remote_env();
@@ -207,7 +207,7 @@ fn token_of(program: &str, args: &[&str], picked: &Picked, dir: &Path) -> Result
 }
 
 /// `gh` on github.com reads `GH_TOKEN`, on any other host `GH_ENTERPRISE_TOKEN`.
-fn github_session(program: &str, picked: &Picked, dir: &Path) -> Result<Session> {
+pub(super) fn github_session(program: &str, picked: &Picked, dir: &Path) -> Result<Session> {
     let args = [
         "auth",
         "token",
@@ -228,7 +228,7 @@ fn github_session(program: &str, picked: &Picked, dir: &Path) -> Result<Session>
     ])
 }
 
-fn gitlab_session(program: &str, picked: &Picked, dir: &Path) -> Result<Session> {
+pub(super) fn gitlab_session(program: &str, picked: &Picked, dir: &Path) -> Result<Session> {
     let args = ["config", "get", "token", "--host", picked.host.as_str()];
     let token = token_of(program, &args, picked, dir)?;
     Ok(vec![
