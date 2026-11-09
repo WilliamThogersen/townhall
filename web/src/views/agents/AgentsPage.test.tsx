@@ -72,6 +72,34 @@ describe("AgentsPage", () => {
     expect(within(await rowOf("dev-server")).getByText("shell")).toBeInTheDocument();
   });
 
+  it("shows effort in the row and the setup only when the type sets it", async () => {
+    const lowPlanner = { ...planner, effort: "low" as const };
+    vi.spyOn(library, "listAgentTypes").mockResolvedValue([builder, lowPlanner]);
+    vi.mocked(library.getAgentType).mockImplementation((name) =>
+      Promise.resolve(name === "planner" ? anAgentType({ ...lowPlanner }) : anAgentType({ name })),
+    );
+    render(<AgentsPage />);
+    expect(within(await rowOf("planner")).getByText("low")).toBeInTheDocument();
+    expect(within(await rowOf("builder")).queryByText(/^(low|medium|high|xhigh|max)$/)).not.toBeInTheDocument();
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    expect(await detail.findByText("effort")).toBeInTheDocument();
+    expect(detail.getByText("low", { selector: "dd" })).toBeInTheDocument();
+    await userEvent.click(await rowOf("builder"));
+    const builderDetail = within(await screen.findByRole("region", { name: "builder" }));
+    await builderDetail.findByText("permission mode");
+    expect(builderDetail.queryByText("effort")).not.toBeInTheDocument();
+  });
+
+  it("filters by effort", async () => {
+    vi.spyOn(library, "listAgentTypes").mockResolvedValue([builder, { ...planner, effort: "xhigh" }]);
+    render(<AgentsPage />);
+    await rowOf("builder");
+    await userEvent.type(screen.getByRole("searchbox", { name: "filter agent types" }), "xhigh");
+    expect(screen.getByRole("button", { name: /planner/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /builder/ })).not.toBeInTheDocument();
+  });
+
   it("marks the type tasks default to", async () => {
     render(<AgentsPage />);
     expect(within(await rowOf("builder")).getByText("task default")).toBeInTheDocument();

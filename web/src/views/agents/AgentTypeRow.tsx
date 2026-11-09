@@ -30,6 +30,7 @@ export function AgentTypeRow({ type, isDefault, selected, usage, onSelect }: Age
         <span className="th-cap th-agent-row-meta">
           <span>{type.adapter}</span>
           {type.model ? <span>{type.model}</span> : null}
+          {type.effort ? <span>{type.effort}</span> : null}
           {type.permissionMode ? <span className="th-agent-mode">{type.permissionMode}</span> : null}
           {usage === null ? null : <span>{usage.runs === 1 ? "1 run" : `${usage.runs} runs`}</span>}
         </span>

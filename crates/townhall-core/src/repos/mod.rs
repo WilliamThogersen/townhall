@@ -6,6 +6,7 @@ mod auth_env;
 mod clone;
 pub mod detect;
 mod discard;
+pub mod edit;
 mod git;
 pub mod names;
 pub mod publish;
@@ -14,7 +15,7 @@ pub mod source;
 use std::path::{Path, PathBuf};
 
 pub(crate) use auth_env::remote_env;
-use clone::clone_or_reuse;
+use clone::{clone_into_base, clone_or_reuse};
 use source::{Remote, Source};
 
 pub use git::{
@@ -23,7 +24,7 @@ pub use git::{
 };
 
 use crate::home::WORKTREES_DIR;
-use crate::model::{AddRepo, Repo};
+use crate::model::{AddRepo, PatchRepo, Repo};
 use crate::store::Store;
 use crate::{Error, Home, Result};
 
@@ -163,14 +164,38 @@ impl RepoRegistry {
                 "a repo named `{name}` already exists"
             )));
         }
+        let clone_base = self.clone_base(req.clone_dir.as_deref()).await?;
         let (remote, base) = (remote.clone(), req.base_branch.clone());
         let home = self.store.home().clone();
         let repo = blocking(move || {
-            let path = clone_or_reuse(&home, &remote)?;
+            let path = match clone_base {
+                Some(dir) => clone_into_base(&dir, &remote)?,
+                None => clone_or_reuse(&home, &remote)?,
+            };
             inspect(&home, &path, name, base.as_deref())
         })
         .await?;
         self.store.add_repo(repo).await
+    }
+
+    /// The folder to clone into: the request's, else the `clonesDir` setting; `None` means
+    /// townhall's own `<home>/repos`. `~` is expanded and the result must be absolute.
+    async fn clone_base(&self, given: Option<&str>) -> Result<Option<PathBuf>> {
+        let given = given.map(str::trim).filter(|d| !d.is_empty());
+        let dir = match given {
+            Some(dir) => dir.to_string(),
+            None => self.store.settings().await?.clones_dir,
+        };
+        if dir.is_empty() {
+            return Ok(None);
+        }
+        let expanded = expand_tilde(&dir);
+        if !expanded.is_absolute() {
+            return Err(Error::InvalidInput(format!(
+                "clone folder must be absolute: {dir}"
+            )));
+        }
+        Ok(Some(expanded))
     }
 
     async fn add_folder(&self, input: &str, req: &AddRepo) -> Result<Repo> {
@@ -186,6 +211,45 @@ impl RepoRegistry {
         })
         .await?;
         self.store.add_repo(repo).await
+    }
+
+    /// `PATCH /api/repos/{name}`: renames, changes the base branch, points the repo at a new
+    /// path or moves its folder (see `edit`). Every check runs before anything changes; the
+    /// registry row is saved last, and a folder move is undone when that save fails.
+    pub async fn edit(&self, name: &str, patch: &PatchRepo) -> Result<Repo> {
+        let known = self.list().await?;
+        let current = known
+            .iter()
+            .find(|r| names::same(&r.name, name))
+            .cloned()
+            .ok_or_else(|| Error::missing("repo", name))?;
+        let home_dir = std::env::var_os("HOME").map(PathBuf::from);
+        let plan = edit::plan(&known, &current, patch, home_dir.as_deref())?;
+        let others: Vec<Repo> = known
+            .into_iter()
+            .filter(|r| !names::same(&r.name, &current.name))
+            .collect();
+        let (home, old, wanted) = (self.store.home().clone(), current.clone(), plan.clone());
+        let applied = blocking(move || edit::apply_disk(&home, &old, &wanted, &others)).await?;
+        let next = Repo {
+            name: plan.name.clone(),
+            path: applied.path.clone(),
+            base_branch: applied.base_branch,
+            ..current.clone()
+        };
+        match self.store.update_repo(&current.name, next).await {
+            Ok(saved) => Ok(saved),
+            Err(saved_err) if plan.move_folder && applied.path != current.path => {
+                match std::fs::rename(&applied.path, &current.path) {
+                    Ok(()) => Err(saved_err),
+                    Err(undo) => Err(Error::InvalidInput(format!(
+                        "{saved_err}; the folder is now at {} and could not be moved back: {undo}",
+                        applied.path.display()
+                    ))),
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// The entry for `path`, registering it under a free name when it is missing.

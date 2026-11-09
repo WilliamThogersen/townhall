@@ -55,7 +55,7 @@ export function filterTypes(types: readonly AgentTypeSummary[], query: string): 
   const needle = query.trim().toLowerCase();
   if (needle === "") return types;
   return types.filter((type) =>
-    [type.name, type.description, type.adapter, type.model].some((field) =>
+    [type.name, type.description, type.adapter, type.model, type.effort].some((field) =>
       field?.toLowerCase().includes(needle),
     ),
   );

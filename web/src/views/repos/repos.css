@@ -37,6 +37,17 @@
   background: var(--th-surface);
 }
 
+.th-repo-default-dir {
+  display: grid;
+  gap: var(--th-space-1);
+  padding: var(--th-space-3) var(--th-space-4);
+  border-bottom: var(--th-border) solid var(--th-line);
+}
+
+.th-repo-default-dir p {
+  margin: 0;
+}
+
 .th-repo-field {
   display: grid;
   gap: var(--th-space-1);
@@ -60,22 +71,51 @@
   white-space: pre-wrap;
 }
 
+.th-repo-field--wide {
+  grid-column: 1 / -1;
+}
+
+.th-repo-add-check {
+  display: block;
+  cursor: pointer;
+}
+
 .th-repo-add[data-layout="stack"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: min(56ch, 100%);
+  width: 100%;
   padding: 0;
   border: 0;
   background: none;
   text-align: left;
 }
 
+.th-repo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--th-space-4);
+  background: color-mix(in srgb, var(--th-bg) 70%, transparent);
+}
+
+.th-repo-modal-box {
+  width: min(60ch, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: var(--th-space-4);
+  border: var(--th-border) solid var(--th-line);
+  background: var(--th-surface);
+}
+
 .th-repo-add[data-layout="stack"] .th-repo-field--path,
-.th-repo-add[data-layout="stack"] .th-repo-add-actions {
+.th-repo-add[data-layout="stack"] .th-repo-add-actions,
+.th-repo-add[data-layout="stack"] .th-segmented {
   grid-column: 1 / -1;
 }
 
 .th-repo-add[data-layout="stack"] .th-repo-add-actions {
-  justify-content: center;
+  justify-content: flex-end;
 }
 
 .th-repo-add[data-layout="stack"] .th-repo-add-error {

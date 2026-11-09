@@ -145,6 +145,7 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
         <dl className="th-agent-fields">
           <Field label="adapter">{data.adapter}</Field>
           <Field label="model">{data.model ?? "default"}</Field>
+          {data.effort ? <Field label="effort">{data.effort}</Field> : null}
           <Field label="permission mode">{data.permissionMode ?? "default"}</Field>
           <Field label="tools">{data.tools.length > 0 ? <Chips items={data.tools} /> : "claude defaults"}</Field>
           <Field label="hands back to">

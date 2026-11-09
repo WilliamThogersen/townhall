@@ -45,6 +45,7 @@ async fn the_list_starts_with_builder() {
             "adapter",
             "avatar",
             "description",
+            "effort",
             "model",
             "name",
             "permissionMode",

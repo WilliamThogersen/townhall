@@ -1,7 +1,7 @@
 use serde_json::json;
 use townhall_core::agent::{AgentAdapter, ClaudeCodeAdapter, ShellAdapter};
 use townhall_core::definitions::{
-    check_agent, parse_agent, validate_agent, AdapterKind, AgentDef, DefKind, LaunchFields,
+    check_agent, parse_agent, validate_agent, AdapterKind, AgentDef, DefKind, Effort, LaunchFields,
     PermissionMode,
 };
 
@@ -126,6 +126,32 @@ fn unknown_permission_mode_is_an_error() {
 }
 
 #[test]
+fn effort_levels_parse_and_are_optional() {
+    assert_eq!(parse_agent(MINIMAL).unwrap().def.effort, None);
+    for (text, effort) in [
+        ("low", Effort::Low),
+        ("medium", Effort::Medium),
+        ("high", Effort::High),
+        ("xhigh", Effort::Xhigh),
+        ("max", Effort::Max),
+    ] {
+        let source = format!("name = \"a\"\nadapter = \"claude\"\neffort = \"{text}\"\n");
+        let def = parse_agent(&source).unwrap().def;
+        assert_eq!(def.effort, Some(effort));
+        assert_eq!(effort.as_str(), text);
+        assert!(agent_errors(&source).is_empty());
+    }
+}
+
+#[test]
+fn unknown_effort_is_an_error() {
+    assert_eq!(
+        agent_errors("name = \"a\"\nadapter = \"claude\"\neffort = \"extreme\"\n"),
+        ["error: agent \"a\": line 3: effort \"extreme\" is not one of low, medium, high, xhigh, max"]
+    );
+}
+
+#[test]
 fn shell_needs_a_command() {
     assert!(
         agent_errors("name = \"s\"\nadapter = \"shell\"\ncommand = \"cargo test\"\n").is_empty()
@@ -188,6 +214,7 @@ fn launch_fields_carry_the_definition() {
         def.launch_fields(),
         LaunchFields {
             model: Some("sonnet".into()),
+            effort: None,
             permission_mode: Some(PermissionMode::AcceptEdits),
             allowed_tools: vec!["Read".into(), "Edit".into(), "Write".into(), "Bash".into()],
             system_prompt: def.prompt.clone(),
@@ -204,6 +231,7 @@ fn launch_fields_drop_empty_text() {
         description: String::new(),
         adapter: AdapterKind::Shell,
         model: Some(" ".into()),
+        effort: None,
         permission_mode: None,
         tools: Vec::new(),
         prompt: Some(String::new()),

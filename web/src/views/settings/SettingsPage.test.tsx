@@ -141,6 +141,12 @@ describe("SettingsPage", () => {
     ]);
   });
 
+  it("has no clone folder setting, that lives on the repos page", async () => {
+    await renderLoaded();
+    expect(screen.queryByRole("textbox", { name: /clone folder/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2, name: "repos" })).not.toBeInTheDocument();
+  });
+
   it("shows a profile problem in the profile row, not as the settings banner", async () => {
     daemon.failing.add("profile");
     await renderLoaded();
