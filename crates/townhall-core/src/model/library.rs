@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-use crate::definitions::{AdapterKind, AgentDef, PermissionMode};
+use crate::definitions::{AdapterKind, AgentDef, AvatarDef, PermissionMode};
 
 /// The type `create_task` picks when it is given none and a type of this name exists.
 pub const DEFAULT_AGENT_TYPE: &str = "builder";
@@ -27,6 +27,7 @@ pub struct AgentTypeSummary {
     pub adapter: AdapterKind,
     pub model: Option<String>,
     pub permission_mode: Option<PermissionMode>,
+    pub avatar: Option<AvatarDef>,
     pub updated_at: String,
 }
 
@@ -38,6 +39,7 @@ impl AgentType {
             adapter: self.def.adapter,
             model: self.def.model.clone(),
             permission_mode: self.def.permission_mode,
+            avatar: self.def.avatar.clone(),
             updated_at: self.updated_at.clone(),
         }
     }
@@ -61,7 +63,7 @@ mod tests {
             serde_json::to_value(&t).unwrap(),
             json!({"name": "b", "description": "", "adapter": "claude", "model": null,
                    "permissionMode": "acceptEdits", "tools": [], "prompt": null, "command": null,
-                   "canHandBackTo": null, "requires": [], "env": {}, "source": source, "updatedAt": "2026-11-05T10:00:00.000Z"})
+                   "canHandBackTo": null, "requires": [], "avatar": null, "env": {}, "source": source, "updatedAt": "2026-11-05T10:00:00.000Z"})
         );
         let keys: Vec<String> = serde_json::to_value(t.summary())
             .unwrap()
@@ -74,6 +76,7 @@ mod tests {
             keys,
             [
                 "adapter",
+                "avatar",
                 "description",
                 "model",
                 "name",

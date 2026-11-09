@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use super::avatar::AvatarDef;
 use super::error::{into_result, invalid_name, DefKind, DefinitionError};
 use super::parse::{parse, Parsed};
 use super::words::{model_problem, tool_problem};
@@ -89,6 +90,9 @@ pub struct AgentDef {
     /// task's `after` chain, before a task of this type may be created or started.
     #[serde(default)]
     pub requires: Vec<String>,
+    /// The `[avatar]` table. `None`: the face derived from the name.
+    #[serde(default)]
+    pub avatar: Option<AvatarDef>,
     /// Environment variables the launched process gets, on top of the daemon's. Values are
     /// never logged. Townhall gives no name a meaning: they are the user's to choose.
     #[serde(default)]
@@ -119,6 +123,11 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
         .into_iter()
         .map(|m| error("requires", m));
     let command = command_problem(def).map(|m| error("command", m.to_string()));
+    let grid = def
+        .avatar
+        .iter()
+        .flat_map(AvatarDef::grid_problems)
+        .map(|m| error("avatar.grid", m));
     let env = env_problems(&def.env).into_iter().map(|m| error("env", m));
     let errors = name
         .into_iter()
@@ -127,6 +136,7 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
         .chain(hand_back)
         .chain(requires)
         .chain(command)
+        .chain(grid)
         .chain(env);
     into_result(errors.collect())
 }

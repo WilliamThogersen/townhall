@@ -11,6 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::migrate::Migration;
 use super::Store;
+use crate::agent_usage::{aggregate, AgentUsageSeries, UsageRange, UsageRun};
 use crate::definitions::{check_agent, AgentDef, DefKind, DefinitionError, Parsed};
 use crate::model::{AgentType, AgentUsage, TaskRun};
 use crate::{clock, Error, Result};
@@ -224,6 +225,58 @@ impl Store {
             }
         })
         .await
+    }
+
+    /// Runs and tokens of the agent type `agent` (ignoring case) over `range`, ending at
+    /// `now_ms`, with the top tasks, repos and conversations. Echoes `agent` as saved when
+    /// the type exists.
+    pub async fn agent_usage_series(
+        &self,
+        agent: &str,
+        range: UsageRange,
+        now_ms: i64,
+    ) -> Result<AgentUsageSeries> {
+        let name = match self.agent_type(agent).await? {
+            Some(saved) => saved.def.name,
+            None => agent.to_string(),
+        };
+        let wanted = name.clone();
+        let runs = self
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "select name, repo, conversation_id, created_at, tokens from tasks
+                     where agent = ?1 collate nocase",
+                )?;
+                let rows = stmt
+                    .query_map([wanted], |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                            r.get::<_, String>(3)?,
+                            r.get::<_, i64>(4)?,
+                        ))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                rows.into_iter()
+                    .map(|(name, repo, conversation_id, created_at, tokens)| {
+                        let at_ms = clock::parse_rfc3339(&created_at).ok_or_else(|| {
+                            Error::Database(format!(
+                                "task `{name}` has an unreadable created_at `{created_at}`"
+                            ))
+                        })?;
+                        Ok(UsageRun {
+                            name,
+                            repo,
+                            conversation_id,
+                            at_ms,
+                            tokens: u64::try_from(tokens).unwrap_or(0),
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .await?;
+        Ok(aggregate(&name, range, now_ms, &runs))
     }
 
     pub async fn set_task_model(&self, task: &str, model: &str) -> Result<()> {

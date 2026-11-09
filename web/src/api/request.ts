@@ -11,6 +11,21 @@ async function readJson(res: Response): Promise<unknown> {
   }
 }
 
+export class TomlBody {
+  readonly text: string;
+
+  constructor(text: string) {
+    this.text = text;
+  }
+}
+
+function encode(body: unknown): { readonly type: string | null; readonly payload: BodyInit | undefined } {
+  if (body === undefined) return { type: null, payload: undefined };
+  if (body instanceof FormData) return { type: null, payload: body };
+  if (body instanceof TomlBody) return { type: "application/toml", payload: body.text };
+  return { type: "application/json", payload: JSON.stringify(body) };
+}
+
 export async function request<T>(
   method: string,
   path: string,
@@ -30,6 +45,7 @@ export async function request<T>(
     }
     throw err;
   };
+  const { type, payload } = encode(body);
   let res: Response;
   try {
     res = await fetch(`${httpBase()}${path}`, {
@@ -37,9 +53,9 @@ export async function request<T>(
       signal,
       headers: {
         "x-request-id": requestId,
-        ...(body === undefined || body instanceof FormData ? {} : { "content-type": "application/json" }),
+        ...(type === null ? {} : { "content-type": type }),
       },
-      body: body instanceof FormData || body === undefined ? body : JSON.stringify(body),
+      body: payload,
     });
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;

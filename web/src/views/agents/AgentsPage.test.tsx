@@ -22,6 +22,24 @@ const plannerFull = anAgentType({
 });
 
 beforeEach(() => {
+  vi.spyOn(library, "getAgentUsageSeries").mockImplementation((name, range) =>
+    Promise.resolve({
+      agent: name,
+      range,
+      bucketMs: 3_600_000,
+      since: "2026-11-05T00:00:00.000Z",
+      until: "2026-11-05T02:00:00.000Z",
+      runs: 3,
+      tokens: 12_400,
+      buckets: [
+        { start: "2026-11-05T00:00:00.000Z", runs: 1, tokens: 400 },
+        { start: "2026-11-05T01:00:00.000Z", runs: 2, tokens: 12_000 },
+      ],
+      byTask: [],
+      byRepo: [],
+      byConversation: [],
+    }),
+  );
   vi.spyOn(library, "listAgentUsage").mockResolvedValue([
     { agent: "builder", runs: 3, tokens: 12_400 },
     { agent: "planner", runs: 1, tokens: 800 },
@@ -33,7 +51,10 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
 
 const rowOf = async (name: string) => (await screen.findByRole("button", { name: new RegExp(name) })) as HTMLElement;
 
@@ -71,7 +92,8 @@ describe("AgentsPage", () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
     const detail = within(await screen.findByRole("region", { name: "planner" }));
-    expect(await detail.findByText("Read, Grep")).toBeInTheDocument();
+    expect(await detail.findByText("Read", { selector: ".th-tag" })).toBeInTheDocument();
+    expect(detail.getByText("Grep", { selector: ".th-tag" })).toBeInTheDocument();
     expect(detail.getByText("opus")).toBeInTheDocument();
     expect(detail.getByText("plan", { selector: "dd" })).toBeInTheDocument();
     expect(detail.getByText("claude")).toBeInTheDocument();
@@ -98,7 +120,7 @@ describe("AgentsPage", () => {
     );
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
-    expect(await screen.findByText("builder", { selector: "dd" })).toBeInTheDocument();
+    expect(await screen.findByText("builder", { selector: "dd .th-tag" })).toBeInTheDocument();
     await userEvent.click(await rowOf("builder"));
     expect(await screen.findByText("nobody", { selector: "dd" })).toBeInTheDocument();
     await userEvent.click(await rowOf("dev-server"));
@@ -175,11 +197,12 @@ describe("AgentsPage", () => {
     expect(await screen.findByRole("button", { name: "copied" })).toHaveAttribute("data-copied", "true");
   });
 
-  it("offers no edit or delete", async () => {
+  it("offers no edit or delete of the type itself, only a save for its avatar", async () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
     await screen.findByRole("region", { name: "planner" });
-    expect(screen.queryByRole("button", { name: /^(edit|delete|save|remove)/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(edit|delete|remove)/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^save(?! avatar)/i })).not.toBeInTheDocument();
   });
 
   it("shows loading, then an empty state", async () => {
@@ -201,23 +224,125 @@ describe("AgentsPage", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("agent type gone"));
   });
 
-  it("shows runs and compact tokens on each row, zero for a type never run", async () => {
+  it("shows a compact run count on each row and no token counts anywhere in the list", async () => {
     render(<AgentsPage />);
     const builderRow = within(await rowOf("builder"));
     expect(await builderRow.findByText("3 runs")).toBeInTheDocument();
-    expect(builderRow.getByText("12.4K tokens")).toBeInTheDocument();
     expect(within(await rowOf("planner")).getByText("1 run")).toBeInTheDocument();
-    expect(within(await rowOf("planner")).getByText("800 tokens")).toBeInTheDocument();
     expect(within(await rowOf("dev-server")).getByText("0 runs")).toBeInTheDocument();
-    expect(within(await rowOf("dev-server")).getByText("0 tokens")).toBeInTheDocument();
+    expect(screen.queryByText(/tokens/)).not.toBeInTheDocument();
   });
 
-  it("shows runs and tokens in the detail", async () => {
+  it("shows usage in the detail as a graph for the selected type", async () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("builder"));
     const detail = within(await screen.findByRole("region", { name: "builder" }));
-    expect(await detail.findByText("12.4K")).toBeInTheDocument();
-    expect(detail.getByText("3", { selector: "dd" })).toBeInTheDocument();
+    expect(await detail.findByRole("group", { name: "usage range" })).toBeInTheDocument();
+    expect(await detail.findByRole("group", { name: "runs over time" })).toBeInTheDocument();
+    expect(await detail.findByRole("group", { name: "tokens over time" })).toBeInTheDocument();
+    expect(library.getAgentUsageSeries).toHaveBeenCalledWith("builder", "7d", expect.anything());
+    expect(detail.queryByText("12.4K")).not.toBeInTheDocument();
+  });
+
+  it("lists the default first, then the busiest types", async () => {
+    vi.spyOn(library, "listAgentTypes").mockResolvedValue([shellType, planner, builder]);
+    render(<AgentsPage />);
+    await rowOf("builder");
+    const names = screen.getAllByRole("button", { name: /builder|planner|dev-server/ }).filter((b) => b.classList.contains("th-agent-row"));
+    expect(names.map((b) => b.querySelector("b")?.textContent)).toEqual(["builder", "planner", "dev-server"]);
+  });
+
+  it("shows an avatar on every row", async () => {
+    render(<AgentsPage />);
+    for (const name of ["builder", "planner", "dev-server"]) {
+      expect((await rowOf(name)).querySelector("svg.th-avatar")).not.toBeNull();
+    }
+  });
+
+  it("filters the list as you type and says when nothing matches", async () => {
+    render(<AgentsPage />);
+    await rowOf("builder");
+    const filter = screen.getByRole("searchbox", { name: "filter agent types" });
+    await userEvent.type(filter, "plans");
+    expect(screen.getByRole("button", { name: /planner/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /builder/ })).not.toBeInTheDocument();
+    await userEvent.clear(filter);
+    await userEvent.type(filter, "zzz");
+    expect(screen.getByText('no agent types match "zzz"')).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(filter).toHaveValue("");
+    expect(await rowOf("builder")).toBeInTheDocument();
+  });
+
+  it("moves the selection with the arrow keys from a row", async () => {
+    render(<AgentsPage />);
+    const first = await rowOf("builder");
+    first.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(await rowOf("planner")).toHaveAttribute("aria-pressed", "true");
+    expect(await rowOf("planner")).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+    expect(await rowOf("dev-server")).toHaveAttribute("aria-pressed", "true");
+    await userEvent.keyboard("{ArrowUp}");
+    expect(await rowOf("planner")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("moves from the filter box into the list with the down arrow", async () => {
+    render(<AgentsPage />);
+    await rowOf("builder");
+    await userEvent.click(screen.getByRole("searchbox", { name: "filter agent types" }));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(await rowOf("builder")).toHaveFocus();
+  });
+
+  it("shows tools and hand-back targets as chips and keeps the TOML collapsible", async () => {
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    expect(await detail.findByText("Read", { selector: ".th-tag" })).toBeInTheDocument();
+    expect(detail.getByText("Grep", { selector: ".th-tag" })).toBeInTheDocument();
+    const toggle = detail.getByText("toml");
+    const fold = toggle.closest("details");
+    expect(fold).not.toBeNull();
+    expect(fold).not.toHaveAttribute("open");
+    await userEvent.click(toggle);
+    expect(fold).toHaveAttribute("open");
+    expect(detail.getByRole("button", { name: "copy" })).toBeInTheDocument();
+  });
+
+  it("draws the avatar a type's TOML defines, in the row and the detail", async () => {
+    vi.spyOn(library, "listAgentTypes").mockResolvedValue([builder, { ...planner, avatar: { color: "fg-muted" } }]);
+    vi.spyOn(library, "getAgentType").mockResolvedValue({ ...plannerFull, avatar: { color: "fg-muted" } });
+    render(<AgentsPage />);
+    expect((await rowOf("planner")).querySelector("svg")).toHaveClass("th-avatar--fg-muted");
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    expect(await detail.findByRole("img", { name: "planner avatar preview" })).toHaveClass("th-avatar--fg-muted");
+    expect(detail.getByRole("textbox", { name: "avatar spec" })).toHaveValue('[avatar]\ncolor = "fg-muted"\n');
+  });
+
+  it("saves an avatar through the type's TOML and shows it in the list row", async () => {
+    const saved = { ...plannerFull, avatar: { color: "fg-muted" as const }, source: `${plannerFull.source}\n[avatar]\ncolor = "fg-muted"\n` };
+    vi.spyOn(library, "saveAgentType").mockResolvedValue(saved);
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    const box = await detail.findByRole("textbox", { name: "avatar spec" });
+    await userEvent.click(box);
+    await userEvent.paste('[avatar]\ncolor = "fg-muted"');
+    vi.mocked(library.listAgentTypes).mockResolvedValue([builder, { ...planner, avatar: { color: "fg-muted" } }, shellType]);
+    vi.mocked(library.getAgentType).mockResolvedValue(saved);
+    await userEvent.click(detail.getByRole("button", { name: "save avatar" }));
+    expect(library.saveAgentType).toHaveBeenCalledWith("planner", saved.source);
+    await waitFor(async () => expect((await rowOf("planner")).querySelector("svg")).toHaveClass("th-avatar--fg-muted"));
+    await waitFor(() => expect(detail.getByRole("textbox", { name: "avatar spec" })).toHaveValue('[avatar]\ncolor = "fg-muted"\n'));
+  });
+
+  it("removes the browser-only avatar choices an older version stored", async () => {
+    localStorage.setItem("th-agent-avatars", "{}");
+    render(<AgentsPage />);
+    await rowOf("builder");
+    expect(localStorage.getItem("th-agent-avatars")).toBeNull();
   });
 
   it("still lists the types when usage fails to load", async () => {

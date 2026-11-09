@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch, sent } from "../test/fetchMock";
 import { anAgentType, anAgentTypeSummary } from "./fixtures";
-import { getAgentType, listAgentRuns, listAgentTypes, listAgentUsage } from "./library";
+import {
+  getAgentType,
+  getAgentUsageSeries,
+  listAgentRuns,
+  listAgentTypes,
+  listAgentUsage,
+  saveAgentType,
+} from "./library";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -80,5 +87,99 @@ describe("library api", () => {
   it("refuses a run without a token count", async () => {
     mockFetch(200, [{ task: "one", repo: "alpha", state: "ended", model: null, createdAt: "x", endedAt: null }]);
     await expect(listAgentRuns("builder")).rejects.toMatchObject({ kind: "protocol" });
+  });
+});
+
+const wireAvatar = (over: Record<string, unknown> = {}) => ({
+  head: null,
+  eyes: null,
+  mouth: null,
+  accessory: null,
+  color: null,
+  grid: null,
+  ...over,
+});
+
+describe("library api avatar", () => {
+  it("reads no avatar as null", async () => {
+    mockFetch(200, [{ ...anAgentTypeSummary(), avatar: null }]);
+    expect((await listAgentTypes())[0]?.avatar).toBeNull();
+  });
+
+  it("reads the keys that are set and drops the null ones", async () => {
+    mockFetch(200, [{ ...anAgentTypeSummary(), avatar: wireAvatar({ head: "round", color: "fg-muted" }) }]);
+    expect((await listAgentTypes())[0]?.avatar).toEqual({ head: "round", color: "fg-muted" });
+  });
+
+  it("reads a grid", async () => {
+    const grid = Array.from({ length: 9 }, () => "#########");
+    mockFetch(200, { ...anAgentType(), avatar: wireAvatar({ grid }) });
+    expect((await getAgentType("builder")).avatar).toEqual({ grid });
+  });
+
+  it("refuses an avatar value the app does not know", async () => {
+    mockFetch(200, [{ ...anAgentTypeSummary(), avatar: wireAvatar({ head: "cube" }) }]);
+    await expect(listAgentTypes()).rejects.toMatchObject({ kind: "protocol" });
+    mockFetch(200, { ...anAgentType(), avatar: wireAvatar({ grid: "#########" }) });
+    await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
+  });
+});
+
+describe("saveAgentType", () => {
+  it("puts the TOML text as application/toml and reads the saved type back", async () => {
+    const source = 'name = "my type"\nadapter = "claude"\n';
+    const fn = mockFetch(200, anAgentType({ name: "my type", source }));
+    const saved = await saveAgentType("my type", source);
+    expect(saved.source).toBe(source);
+    const [url, init] = fn.mock.calls[0] ?? [];
+    expect(url).toBe("/api/library/agents/my%20type");
+    expect(init?.method).toBe("PUT");
+    expect(init?.body).toBe(source);
+    expect(new Headers(init?.headers).get("content-type")).toBe("application/toml");
+  });
+
+  it("surfaces the daemon's list of definition errors", async () => {
+    mockFetch(400, null, 'avatar.grid must have 9 rows, found 1');
+    await expect(saveAgentType("builder", "x")).rejects.toMatchObject({
+      kind: "http",
+      status: 400,
+      message: "avatar.grid must have 9 rows, found 1",
+    });
+  });
+});
+
+const wireSeries = (over: Record<string, unknown> = {}) => ({
+  agent: "builder",
+  range: "24h",
+  bucketMs: 3_600_000,
+  since: "2026-11-04T00:00:00.000Z",
+  until: "2026-11-05T00:00:00.000Z",
+  runs: 2,
+  tokens: 150,
+  buckets: [
+    { start: "2026-11-04T00:00:00.000Z", runs: 1, tokens: 100 },
+    { start: "2026-11-04T01:00:00.000Z", runs: 1, tokens: 50 },
+  ],
+  byTask: [{ key: "a", runs: 1, tokens: 100 }],
+  byRepo: [{ key: "shop", runs: 2, tokens: 150 }],
+  byConversation: [{ key: "c1", runs: 2, tokens: 150 }],
+  ...over,
+});
+
+describe("getAgentUsageSeries", () => {
+  it("asks for one type and range and reads the series", async () => {
+    const fn = mockFetch(200, wireSeries({ range: "7d" }));
+    const series = await getAgentUsageSeries("my type", "7d");
+    expect(sent(fn)).toEqual({ url: "/api/library/agents/my%20type/usage?range=7d", method: "GET", body: undefined });
+    expect(series.range).toBe("7d");
+    expect(series.buckets).toHaveLength(2);
+    expect(series.byRepo).toEqual([{ key: "shop", runs: 2, tokens: 150 }]);
+  });
+
+  it("refuses a range the app does not know and a bucket without tokens", async () => {
+    mockFetch(200, wireSeries({ range: "1y" }));
+    await expect(getAgentUsageSeries("builder", "24h")).rejects.toMatchObject({ kind: "protocol" });
+    mockFetch(200, wireSeries({ buckets: [{ start: "x", runs: 1 }] }));
+    await expect(getAgentUsageSeries("builder", "24h")).rejects.toMatchObject({ kind: "protocol" });
   });
 });

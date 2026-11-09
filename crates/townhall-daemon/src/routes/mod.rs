@@ -80,6 +80,10 @@ fn library_routes() -> Router<AppState> {
         .route("/library/agents/usage", get(library::agent_usage))
         .route("/library/agents/{name}/runs", get(library::agent_runs))
         .route(
+            "/library/agents/{name}/usage",
+            get(library::agent_usage_series),
+        )
+        .route(
             "/library/agents/{name}",
             get(library::get_agent)
                 .put(library::put_agent)

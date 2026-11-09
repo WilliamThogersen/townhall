@@ -1,0 +1,28 @@
+.th-avatar {
+  display: block;
+  flex: none;
+}
+
+.th-avatar--accent {
+  color: var(--th-accent);
+}
+
+.th-avatar--ok {
+  color: var(--th-ok);
+}
+
+.th-avatar--info {
+  color: var(--th-info);
+}
+
+.th-avatar--fg {
+  color: var(--th-fg);
+}
+
+.th-avatar--fg-muted {
+  color: var(--th-fg-muted);
+}
+
+.th-avatar-face {
+  fill: var(--th-bg);
+}

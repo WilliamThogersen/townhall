@@ -1,4 +1,5 @@
 mod agent;
+mod avatar;
 mod launch;
 mod limits;
 mod names;

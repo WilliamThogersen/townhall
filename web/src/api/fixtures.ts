@@ -144,6 +144,7 @@ export const anAgentTypeSummary = (over: Partial<AgentTypeSummary> = {}): AgentT
   adapter: "claude",
   model: "sonnet",
   permissionMode: "acceptEdits",
+  avatar: null,
   updatedAt: "2026-01-01T00:00:00Z",
   ...over,
 });

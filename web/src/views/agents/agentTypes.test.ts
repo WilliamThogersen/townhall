@@ -1,6 +1,59 @@
 import { describe, expect, it } from "vitest";
 import { anAgentTypeSummary } from "../../api/fixtures";
-import { defaultTypeName, pipelineStep } from "./agentTypes";
+import { defaultTypeName, filterTypes, pipelineStep, sortTypes } from "./agentTypes";
+
+describe("sortTypes", () => {
+  const named = (...names: string[]) => names.map((name) => anAgentTypeSummary({ name }));
+  const order = (types: readonly { name: string }[]) => types.map((t) => t.name);
+
+  it("puts the default first, then the busiest, then by name", () => {
+    const usage = [
+      { agent: "zed", runs: 9, tokens: 1 },
+      { agent: "mid", runs: 4, tokens: 1 },
+      { agent: "Alpha", runs: 4, tokens: 1 },
+    ];
+    expect(order(sortTypes(named("alpha", "mid", "zed", "builder", "idle"), "builder", usage))).toEqual([
+      "builder",
+      "zed",
+      "alpha",
+      "mid",
+      "idle",
+    ]);
+  });
+
+  it("sorts by name alone without usage", () => {
+    expect(order(sortTypes(named("b", "a", "c"), null, null))).toEqual(["a", "b", "c"]);
+  });
+
+  it("does not change the input", () => {
+    const input = named("b", "a");
+    sortTypes(input, null, null);
+    expect(order(input)).toEqual(["b", "a"]);
+  });
+});
+
+describe("filterTypes", () => {
+  const types = [
+    anAgentTypeSummary({ name: "builder", description: "writes code", model: "sonnet" }),
+    anAgentTypeSummary({ name: "dev-server", description: "runs the dev server", adapter: "shell", model: null }),
+  ];
+
+  it("keeps everything for an empty or blank query", () => {
+    expect(filterTypes(types, "")).toEqual(types);
+    expect(filterTypes(types, "   ")).toEqual(types);
+  });
+
+  it("matches name, description, adapter and model ignoring case", () => {
+    expect(filterTypes(types, "BUILD").map((t) => t.name)).toEqual(["builder"]);
+    expect(filterTypes(types, "runs the").map((t) => t.name)).toEqual(["dev-server"]);
+    expect(filterTypes(types, "shell").map((t) => t.name)).toEqual(["dev-server"]);
+    expect(filterTypes(types, "sonnet").map((t) => t.name)).toEqual(["builder"]);
+  });
+
+  it("finds nothing for an unknown word", () => {
+    expect(filterTypes(types, "zzz")).toEqual([]);
+  });
+});
 
 describe("pipelineStep", () => {
   it.each([

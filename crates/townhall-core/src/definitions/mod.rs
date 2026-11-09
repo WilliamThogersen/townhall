@@ -2,6 +2,7 @@
 //! TOML is only the text format; later units store the source text as written.
 
 mod agent;
+mod avatar;
 mod error;
 mod graph;
 mod launch;
@@ -15,6 +16,7 @@ mod words;
 mod workflow;
 
 pub use agent::{check_agent, parse_agent, validate_agent, AdapterKind, AgentDef, PermissionMode};
+pub use avatar::{Accessory, AvatarColor, AvatarDef, Eyes, Head, Mouth, GRID_SIZE};
 pub use error::{DefKind, DefinitionError};
 pub use launch::LaunchFields;
 pub use names::{step_agent_name, MAX_STEP_ID_LEN, SHORT_RUN_ID_LEN};
