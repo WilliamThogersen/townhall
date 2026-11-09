@@ -1,0 +1,20 @@
+.th-detected {
+  display: grid;
+  gap: var(--th-space-2);
+}
+
+.th-detected > p {
+  margin: 0;
+}
+
+.th-detected[data-prominent="true"] {
+  padding: var(--th-space-3);
+  border: var(--th-border) solid var(--th-line-strong);
+  background: var(--th-surface-2);
+}
+
+.th-detected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--th-space-2);
+}

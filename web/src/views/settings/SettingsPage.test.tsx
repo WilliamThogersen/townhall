@@ -20,12 +20,26 @@ function reply(status: number, data: unknown, error: string | null): Response {
   return Response.json({ success: status < 400, data, error }, { status });
 }
 
-function fakeDaemon(initial: Partial<Settings> = {}) {
+interface Found {
+  readonly forge: "github" | "gitlab";
+  readonly login: string;
+  readonly host: string;
+}
+
+function fakeDaemon(initial: Partial<Settings> = {}, found: readonly Found[] = []) {
   let settings: Settings = { ...DEFAULT_SETTINGS, ...initial };
   let calls: readonly Call[] = [];
   let profile = "";
   const failing = new Set<string>();
   const answer = (method: string, url: string, body: { value?: unknown; text?: string } | undefined): Response => {
+    if (url === "/api/forge-accounts/detected") {
+      if (failing.has("detected")) return reply(400, null, "`gh` did not answer within 15 seconds");
+      const registered = (f: Found) =>
+        settings.forgeAccounts.some(
+          (a) => a.forge === f.forge && a.host === f.host && a.login.toLowerCase() === f.login.toLowerCase(),
+        );
+      return reply(200, found.map((f) => ({ ...f, registered: registered(f) })), null);
+    }
     if (url === "/api/profile") {
       if (failing.has("profile")) return reply(503, null, HELD);
       if (method === "PUT") profile = body?.text ?? "";
@@ -438,5 +452,88 @@ describe("forge accounts", () => {
     await userEvent.click(screen.getByRole("button", { name: "add account" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(`error: settings not saved: ${HELD}`);
     await waitFor(() => expect(screen.queryByRole("list", { name: "Registered accounts" })).not.toBeInTheDocument());
+  });
+});
+
+describe("detected forge accounts", () => {
+  const work = { forge: "github", login: "work-me", host: "github.com", label: "work" } as const;
+  const found = [
+    { forge: "github", login: "work-me", host: "github.com" },
+    { forge: "github", login: "private-me", host: "github.com" },
+    { forge: "github", login: "corp-me", host: "github.corp.io" },
+    { forge: "gitlab", login: "gl-me", host: "gitlab.com" },
+  ] as const;
+  const entry = (f: (typeof found)[number]) => ({ ...f, label: f.login });
+
+  const start = async (registered: Settings["forgeAccounts"], seen: readonly Found[] = found) => {
+    daemon = fakeDaemon({ forgeAccounts: registered }, seen);
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+  };
+  const detected = () => within(screen.getByRole("group", { name: "Detected accounts" }));
+
+  it("offers the logged-in accounts that are not registered yet as chips, and none of the registered ones", async () => {
+    await start([work]);
+    await detected().findByRole("button", { name: "add private-me@github.com" });
+    expect(detected().getByRole("button", { name: "add corp-me@github.corp.io" })).toBeInTheDocument();
+    expect(detected().getByRole("button", { name: "add gl-me@gitlab.com" })).toBeInTheDocument();
+    expect(detected().queryByRole("button", { name: "add work-me@github.com" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Detected accounts" })).not.toHaveAttribute("data-prominent");
+  });
+
+  it("adds one account with one click, the login as its label, and the chip goes away", async () => {
+    await start([work]);
+    await userEvent.click(await detected().findByRole("button", { name: "add gl-me@gitlab.com" }));
+    const gitlab = entry(found[3]);
+    await waitFor(() => expect(daemon.settings().forgeAccounts).toEqual([work, gitlab]));
+    expect(lastPut()).toEqual(["/api/settings/forgeAccounts", { value: [work, gitlab] }]);
+    expect(detected().queryByRole("button", { name: "add gl-me@gitlab.com" })).not.toBeInTheDocument();
+    expect(detected().getByRole("button", { name: "add private-me@github.com" })).toBeInTheDocument();
+  });
+
+  it("adds every detected account at once with one save", async () => {
+    await start([work]);
+    await userEvent.click(await detected().findByRole("button", { name: "add all" }));
+    const rest = [entry(found[1]), entry(found[2]), entry(found[3])];
+    await waitFor(() => expect(daemon.settings().forgeAccounts).toEqual([work, ...rest]));
+    expect(daemon.puts()).toEqual([["/api/settings/forgeAccounts", { value: [work, ...rest] }]]);
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Detected accounts" })).not.toBeInTheDocument());
+  });
+
+  it("offers them prominently on the first visit, when no account is registered", async () => {
+    await start([]);
+    await detected().findByRole("button", { name: "add all" });
+    const offer = screen.getByRole("group", { name: "Detected accounts" });
+    expect(offer).toHaveAttribute("data-prominent", "true");
+    expect(offer).toHaveTextContent("found 4 accounts logged in with gh and glab");
+    expect(within(offer).getAllByRole("button", { name: /^add \w/ })).toHaveLength(5);
+    await userEvent.click(within(offer).getByRole("button", { name: "add all" }));
+    await waitFor(() => expect(daemon.settings().forgeAccounts).toEqual(found.map(entry)));
+  });
+
+  it("shows nothing when nobody is logged in, or everyone is registered already", async () => {
+    await start([], []);
+    await waitFor(() => expect(daemon.fetch).toHaveBeenCalledWith("/api/forge-accounts/detected", expect.anything()));
+    expect(screen.getByText(/no accounts yet/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Detected accounts" })).not.toBeInTheDocument();
+  });
+
+  it("hides the offer once every detected account is registered", async () => {
+    await start(found.map(entry));
+    await waitFor(() => expect(daemon.fetch).toHaveBeenCalledWith("/api/forge-accounts/detected", expect.anything()));
+    expect(screen.queryByRole("group", { name: "Detected accounts" })).not.toBeInTheDocument();
+  });
+
+  it("says why detection failed and keeps the manual form working", async () => {
+    daemon = fakeDaemon({}, found);
+    daemon.failing.add("detected");
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+    expect(await screen.findByText(/could not look for logged-in accounts/)).toHaveTextContent(
+      "`gh` did not answer within 15 seconds",
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Login" }), "me");
+    expect(screen.getByRole("button", { name: "add account" })).toBeEnabled();
   });
 });
