@@ -1,6 +1,6 @@
 import { fail, listOf, nullable, num, oneOf, record, str, strings, type Guard } from "./guardKit";
 import { request } from "./request";
-import type { AgentAdapterKind, AgentType, AgentTypeMode, AgentTypeSummary, AgentUsage } from "./types";
+import type { AgentAdapterKind, AgentRun, AgentType, AgentTypeMode, AgentTypeSummary, AgentUsage } from "./types";
 
 const adapter = oneOf<AgentAdapterKind>(["claude", "shell"]);
 const mode = oneOf<AgentTypeMode>(["default", "acceptEdits", "plan"]);
@@ -51,5 +51,21 @@ const parseUsage: Guard<AgentUsage> = (value) => {
   };
 };
 
-export const listAgentUsage = (signal?: AbortSignal): Promise<readonly AgentUsage[]> =>
+const parseRun: Guard<AgentRun> = (value) => {
+  const r = record(value, "agent run");
+  return {
+    task: str(r.task, "agentRun.task"),
+    repo: str(r.repo, "agentRun.repo"),
+    state: str(r.state, "agentRun.state"),
+    model: nullable(r.model, "agentRun.model", str),
+    tokens: num(r.tokens, "agentRun.tokens"),
+    createdAt: str(r.createdAt, "agentRun.createdAt"),
+    endedAt: nullable(r.endedAt, "agentRun.endedAt", str),
+  };
+};
+
+export const listAgentRuns = (name: string, signal?: AbortSignal): Promise<readonly AgentRun[]> =>
+  request("GET", `/library/agents/${encodeURIComponent(name)}/runs`, listOf(parseRun, "agent runs"), undefined, signal);
+
+export const listAgentUsage =(signal?: AbortSignal): Promise<readonly AgentUsage[]> =>
   request("GET", "/library/agents/usage", listOf(parseUsage, "agent usage"), undefined, signal);

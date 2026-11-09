@@ -221,6 +221,16 @@ export interface AgentUsage {
   readonly tokens: number;
 }
 
+export interface AgentRun {
+  readonly task: string;
+  readonly repo: string;
+  readonly state: string;
+  readonly model: string | null;
+  readonly tokens: number;
+  readonly createdAt: string;
+  readonly endedAt: string | null;
+}
+
 export interface AgentType {
   readonly name: string;
   readonly description: string;

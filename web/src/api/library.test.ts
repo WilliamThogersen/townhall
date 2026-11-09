@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch, sent } from "../test/fetchMock";
 import { anAgentType, anAgentTypeSummary } from "./fixtures";
-import { getAgentType, listAgentTypes, listAgentUsage } from "./library";
+import { getAgentType, listAgentRuns, listAgentTypes, listAgentUsage } from "./library";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -64,5 +64,21 @@ describe("library api", () => {
   it("refuses usage without a token count", async () => {
     mockFetch(200, [{ agent: "builder", runs: 2 }]);
     await expect(listAgentUsage()).rejects.toMatchObject({ kind: "protocol" });
+  });
+
+  it("lists the recent runs of an agent type", async () => {
+    const run = { task: "one", repo: "alpha", state: "ended", model: null, tokens: 12, createdAt: "2026-11-09T10:00:00Z", endedAt: null };
+    const fn = mockFetch(200, [run, { ...run, task: "two", model: "claude-x", endedAt: "2026-11-09T11:00:00Z" }]);
+    const runs = await listAgentRuns("my type");
+    expect(runs.map((r) => [r.task, r.model, r.endedAt])).toEqual([
+      ["one", null, null],
+      ["two", "claude-x", "2026-11-09T11:00:00Z"],
+    ]);
+    expect(sent(fn)).toEqual({ url: "/api/library/agents/my%20type/runs", method: "GET", body: undefined });
+  });
+
+  it("refuses a run without a token count", async () => {
+    mockFetch(200, [{ task: "one", repo: "alpha", state: "ended", model: null, createdAt: "x", endedAt: null }]);
+    await expect(listAgentRuns("builder")).rejects.toMatchObject({ kind: "protocol" });
   });
 });
