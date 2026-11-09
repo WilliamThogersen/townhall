@@ -43,12 +43,15 @@ fn hands_off(task: &Task) -> bool {
 fn verifying(task: &Task, now: &AgentState) -> Option<Change> {
     let ends = matches!(now, AgentState::Ended);
     let running = matches!(task.state, TaskState::Working | TaskState::NeedsYou);
+    if !(ends && running && task.done.check.is_some()) {
+        return None;
+    }
     let retried = task.done.verify.clone().unwrap_or(Verify {
         phase: VerifyPhase::Verifying,
         retries: 0,
         output: None,
     });
-    (ends && running && task.done.check.is_some()).then(|| Change {
+    Some(Change {
         state: None,
         entry: None,
         verify: Some(Verify {
