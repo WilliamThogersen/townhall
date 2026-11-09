@@ -429,7 +429,7 @@ textarea {
 /* the meter may shrink when narrow, never over settings */
 .th-sidebar-foot > .th-usage {
   display: flex;
-  align-self: stretch;
+  align-self: center;
   min-width: 0;
 }
 
@@ -444,6 +444,7 @@ textarea {
   color: var(--th-fg-faint);
   font: inherit;
   font-size: var(--th-text-xs);
+  line-height: 1;
   cursor: default;
 }
 
@@ -453,6 +454,8 @@ textarea {
 
 .th-usage-icon {
   flex: none;
+  /* the asterisk glyph sits high in its em box; nudge it onto the text midline */
+  transform: translateY(0.18em);
   color: var(--th-accent);
 }
 
