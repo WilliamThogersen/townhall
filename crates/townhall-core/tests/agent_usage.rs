@@ -109,3 +109,37 @@ async fn usage_for_agent_reads_the_worktrees_newest_transcript() {
         TranscriptUsage::default()
     );
 }
+
+#[tokio::test]
+async fn agent_runs_list_one_types_tasks_newest_first() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    let coder = townhall_core::model::NewTask {
+        agent: "coder".into(),
+        ..new_task("x")
+    };
+    for task in [new_task("a"), coder, new_task("b"), new_task("c")] {
+        env.store.create_task(&c.id, task).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let runs = env.store.agent_runs("BUILDER", 10).await.unwrap();
+    let names: Vec<&str> = runs.iter().map(|r| r.task.as_str()).collect();
+    assert_eq!(names, ["c", "b", "a"]);
+    assert_eq!(runs[0].model, None);
+    assert_eq!(runs[0].tokens, 0);
+    assert_eq!(env.store.agent_runs("builder", 2).await.unwrap().len(), 2);
+    assert!(env.store.agent_runs("nobody", 10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn task_model_and_tokens_are_stored_on_the_run() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    env.store.create_task(&c.id, new_task("a")).await.unwrap();
+    env.store.set_task_model("A", "claude-x").await.unwrap();
+    env.store.set_task_tokens("a", 12).await.unwrap();
+    let runs = env.store.agent_runs("builder", 10).await.unwrap();
+    assert_eq!(runs[0].model.as_deref(), Some("claude-x"));
+    assert_eq!(runs[0].tokens, 12);
+    assert!(env.store.set_task_model("nope", "m").await.is_err());
+}

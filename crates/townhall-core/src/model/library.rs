@@ -91,3 +91,15 @@ pub struct AgentUsage {
     pub runs: u64,
     pub tokens: u64,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRun {
+    pub task: String,
+    pub repo: String,
+    pub state: String,
+    pub model: Option<String>,
+    pub tokens: u64,
+    pub created_at: String,
+    pub ended_at: Option<String>,
+}
