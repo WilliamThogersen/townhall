@@ -31,7 +31,6 @@ describe("skip all", () => {
   });
 
   it("is only read from an agent type, never chosen on the settings screen", () => {
-    // the agent library shows a type's own mode, read-only; the loop stage reads it to tell planners apart
     expect(filesWith(/\bpermissionMode\b/)).toEqual([
       "/src/api/fixtures.ts",
       "/src/api/library.ts",

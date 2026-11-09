@@ -105,7 +105,6 @@ function RecentRuns({ name, typeModel }: { readonly name: string; readonly typeM
   );
 }
 
-/** A type with no mode runs in acceptEdits; bypassPermissions is skip all, so it says so. */
 function modeText(mode: AgentTypeMode | null): string {
   if (mode === null) return "acceptEdits";
   return mode === "bypassPermissions" ? "bypassPermissions (skip all: never asks)" : mode;
