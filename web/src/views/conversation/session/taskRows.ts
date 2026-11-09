@@ -1,4 +1,5 @@
 import type { Task, TaskState } from "../../../api/types";
+import { verifyWords } from "../../../tasks/verify";
 import type { AgentState } from "../../../ui/StatusGlyph";
 
 export type TaskGlyphState = AgentState | "queued" | "ci" | "merged";
@@ -72,6 +73,8 @@ function blockedOf(task: Task, siblings: readonly Task[]): string | null {
 }
 
 function wordsOf(task: Task, look: StateLook, siblings: readonly Task[], blocked: string | null): string {
+  const checked = verifyWords(task);
+  if (checked !== null) return checked;
   if (task.state !== "queued") return look.words;
   const waiting = pendingAfter(task, siblings);
   if (waiting.length > 0) return `after ${waiting.join(", ")}`;

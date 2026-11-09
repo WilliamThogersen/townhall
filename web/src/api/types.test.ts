@@ -76,6 +76,10 @@ const task = {
   agent: "builder",
   blocked: null,
   prBase: null,
+  doneWhen: "all tests pass",
+  check: "npm test",
+  maxRetries: 2,
+  verify: { phase: "failed", retries: 2, output: "1 failed" },
 } as const satisfies Task;
 
 const agent = {

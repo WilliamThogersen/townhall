@@ -1,5 +1,5 @@
 import { listOf, nullable, num, oneOf, record, str, strings, type Guard } from "./guardKit";
-import type { Checks, Pr, Task, TaskState } from "./types";
+import type { Checks, Pr, Task, TaskState, Verify, VerifyPhase } from "./types";
 
 const TASK_STATES = [
   "queued",
@@ -23,6 +23,19 @@ export function parsePr(value: unknown): Pr {
   };
 }
 
+const DEFAULT_MAX_RETRIES = 2;
+
+const VERIFY_PHASES = ["verifying", "retrying", "passed", "failed"] as const satisfies readonly VerifyPhase[];
+
+function parseVerify(value: unknown): Verify {
+  const r = record(value, "task.verify");
+  return {
+    phase: oneOf(VERIFY_PHASES)(r.phase, "task.verify.phase"),
+    retries: num(r.retries, "task.verify.retries"),
+    output: nullable(r.output, "task.verify.output", str),
+  };
+}
+
 export function parseTask(value: unknown): Task {
   const r = record(value, "task");
   return {
@@ -40,6 +53,10 @@ export function parseTask(value: unknown): Task {
     agent: str(r.agent, "task.agent"),
     blocked: nullable(r.blocked, "task.blocked", str),
     prBase: nullable(r.prBase, "task.prBase", str),
+    doneWhen: nullable(r.doneWhen, "task.doneWhen", str),
+    check: nullable(r.check, "task.check", str),
+    maxRetries: r.maxRetries === undefined ? DEFAULT_MAX_RETRIES : num(r.maxRetries, "task.maxRetries"),
+    verify: nullable(r.verify, "task.verify", parseVerify),
   };
 }
 

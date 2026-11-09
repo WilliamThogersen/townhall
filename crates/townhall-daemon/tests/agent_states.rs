@@ -87,6 +87,7 @@ async fn start_background_runs_the_watcher_and_it_publishes_states() {
         attachments: vec![],
         agent: "builder".into(),
         pr_base: None,
+        done: Default::default(),
     };
     store.create_task(&conversation, task).await.unwrap();
     store

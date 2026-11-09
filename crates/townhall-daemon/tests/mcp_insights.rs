@@ -38,6 +38,7 @@ async fn handed_to_tester(m: &Mcp, name: &str, conversation: &str, reason: &str)
         attachments: vec![],
         agent: "coder".into(),
         pr_base: None,
+        done: Default::default(),
     };
     m.store().create_task(conversation, new).await.unwrap();
     let working = |t: Task| {

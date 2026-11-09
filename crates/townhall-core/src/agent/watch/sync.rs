@@ -6,23 +6,59 @@
 //! time the agent starts to need you, fails or ends; going back to work adds none.
 
 use crate::agent::state::choices;
-use crate::model::{AgentEvent, AgentState, EntryBody, Task, TaskState};
+use crate::model::{AgentEvent, AgentState, EntryBody, Task, TaskState, Verify, VerifyPhase};
 
-/// A new task state, an entry for its conversation, or both.
+/// A new task state, an entry for its conversation, a new verify state, or any of them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Change {
     pub state: Option<TaskState>,
     pub entry: Option<EntryBody>,
+    pub verify: Option<Verify>,
 }
 
 pub(super) const REMOVED: &str = "the agent was removed";
 
+fn phase(task: &Task) -> Option<VerifyPhase> {
+    task.done.verify.as_ref().map(|v| v.phase)
+}
+
+/// A task whose check runs, or that failed it for the last time, is owned by the scheduler's
+/// verification (`scheduler/verify.rs`): its agent having ended must not end the task.
 fn hands_off(task: &Task) -> bool {
+    if matches!(
+        phase(task),
+        Some(VerifyPhase::Verifying | VerifyPhase::Failed)
+    ) {
+        return true;
+    }
     match task.state {
         TaskState::Queued | TaskState::Merged | TaskState::InCi | TaskState::InReview => true,
         TaskState::Error => task.blocked.is_some(),
         _ => false,
     }
+}
+
+/// An agent that ended under a check is not done yet: the task stays as it is and is marked
+/// `verifying`, keeping the retries and the last failing output it already has.
+fn verifying(task: &Task, now: &AgentState) -> Option<Change> {
+    let ends = matches!(now, AgentState::Ended);
+    let running = matches!(task.state, TaskState::Working | TaskState::NeedsYou);
+    if !(ends && running && task.done.check.is_some()) {
+        return None;
+    }
+    let retried = task.done.verify.clone().unwrap_or(Verify {
+        phase: VerifyPhase::Verifying,
+        retries: 0,
+        output: None,
+    });
+    Some(Change {
+        state: None,
+        entry: None,
+        verify: Some(Verify {
+            phase: VerifyPhase::Verifying,
+            ..retried
+        }),
+    })
 }
 
 fn target(now: &AgentState) -> TaskState {
@@ -80,11 +116,15 @@ pub(super) fn plan(task: &Task, now: &AgentState, before: Option<&AgentState>) -
     if hands_off(task) {
         return None;
     }
+    if let Some(change) = verifying(task, now) {
+        return Some(change);
+    }
     let state = target(now);
     if task.state != state {
         return Some(Change {
             state: Some(state),
             entry: entry_for(&task.name, now),
+            verify: None,
         });
     }
     let fresh = before.is_some_and(|b| b != now && !grew(b, now));
@@ -92,6 +132,7 @@ pub(super) fn plan(task: &Task, now: &AgentState, before: Option<&AgentState>) -
     Some(Change {
         state: None,
         entry: Some(entry),
+        verify: None,
     })
 }
 
@@ -100,12 +141,14 @@ pub(super) fn removed(task: &Task) -> Option<Change> {
     matches!(task.state, TaskState::Working | TaskState::NeedsYou).then(|| Change {
         state: Some(TaskState::Ended),
         entry: Some(agent_line(&task.name, AgentEvent::Ended, REMOVED.into())),
+        verify: None,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Done, Verify, VerifyPhase};
 
     fn task(state: TaskState) -> Task {
         Task {
@@ -123,6 +166,7 @@ mod tests {
             agent: "builder".into(),
             blocked: None,
             pr_base: None,
+            done: Default::default(),
         }
     }
 
@@ -148,7 +192,8 @@ mod tests {
             back,
             Change {
                 state: Some(TaskState::Working),
-                entry: None
+                entry: None,
+                verify: None
             }
         );
         let failed = plan(&working, &AgentState::Error { exit_code: Some(3) }, None).unwrap();
@@ -246,6 +291,87 @@ mod tests {
         assert_eq!(back.state, Some(TaskState::Working));
         let ended = plan(&crashed, &AgentState::Ended, None).unwrap();
         assert_eq!(ended.state, Some(TaskState::Ended));
+    }
+
+    fn checked(state: TaskState, verify: Option<Verify>) -> Task {
+        let base = task(state);
+        Task {
+            done: Done {
+                check: Some("npm test".into()),
+                verify,
+                ..base.done.clone()
+            },
+            ..base
+        }
+    }
+
+    fn verify(phase: VerifyPhase, retries: u32, output: Option<&str>) -> Verify {
+        Verify {
+            phase,
+            retries,
+            output: output.map(String::from),
+        }
+    }
+
+    #[test]
+    fn an_agent_that_ends_under_a_check_is_verified_before_its_task_ends() {
+        for state in [TaskState::Working, TaskState::NeedsYou] {
+            let change = plan(&checked(state, None), &AgentState::Ended, None).unwrap();
+            assert_eq!(
+                change,
+                Change {
+                    state: None,
+                    entry: None,
+                    verify: Some(verify(VerifyPhase::Verifying, 0, None)),
+                },
+                "{state:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_retry_that_ends_is_verified_again_keeping_the_count_and_the_last_output() {
+        let retrying = checked(
+            TaskState::Working,
+            Some(verify(VerifyPhase::Retrying, 1, Some("1 failed"))),
+        );
+        let change = plan(&retrying, &AgentState::Ended, None).unwrap();
+        assert_eq!(
+            change.verify,
+            Some(verify(VerifyPhase::Verifying, 1, Some("1 failed")))
+        );
+        assert_eq!(change.state, None);
+    }
+
+    #[test]
+    fn a_task_under_verification_or_given_up_on_stays_where_it_is() {
+        let held = [
+            checked(
+                TaskState::Working,
+                Some(verify(VerifyPhase::Verifying, 0, None)),
+            ),
+            checked(
+                TaskState::NeedsYou,
+                Some(verify(VerifyPhase::Failed, 2, Some("boom"))),
+            ),
+        ];
+        for t in held {
+            for now in [AgentState::Ended, AgentState::Working, asking("go? [y/n]")] {
+                assert_eq!(plan(&t, &now, None), None, "{:?} {now:?}", t.state);
+            }
+        }
+    }
+
+    #[test]
+    fn a_check_does_not_hold_back_a_crash_or_a_question() {
+        let t = checked(TaskState::Working, None);
+        let crashed = plan(&t, &AgentState::Error { exit_code: Some(1) }, None).unwrap();
+        assert_eq!(crashed.state, Some(TaskState::Error));
+        assert_eq!(crashed.verify, None);
+        let asked = plan(&t, &asking("go? [y/n]"), None).unwrap();
+        assert_eq!(asked.state, Some(TaskState::NeedsYou));
+        let passed = checked(TaskState::Ended, Some(verify(VerifyPhase::Passed, 0, None)));
+        assert_eq!(plan(&passed, &AgentState::Ended, None), None);
     }
 
     #[test]
