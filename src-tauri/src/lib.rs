@@ -45,7 +45,7 @@ fn init_logging() -> Option<townhall_daemon::logging::Guard> {
     tracing::info!(
         target: "townhall::app",
         event = "app.start",
-        version = env!("CARGO_PKG_VERSION"),
+        version = townhall_core::version::VERSION,
         "app started"
     );
     Some(guard)

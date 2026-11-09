@@ -48,7 +48,7 @@ fn initialize(params: &Map<String, Value>, instructions: &str) -> Value {
     json!({
         "protocolVersion": version,
         "capabilities": { "tools": {} },
-        "serverInfo": { "name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
+        "serverInfo": { "name": SERVER_NAME, "version": crate::version::VERSION },
         "instructions": instructions
     })
 }

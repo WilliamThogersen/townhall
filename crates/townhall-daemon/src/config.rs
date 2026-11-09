@@ -4,7 +4,11 @@ use std::path::PathBuf;
 use clap::Parser;
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "townhall-daemon", about = "Townhall agent daemon")]
+#[command(
+    name = "townhall-daemon",
+    about = "Townhall agent daemon",
+    version = townhall_core::version::VERSION
+)]
 pub struct Config {
     /// Git repository agents work in (default: current directory).
     #[arg(long, env = "TOWNHALL_REPO", default_value = ".")]

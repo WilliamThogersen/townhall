@@ -14,6 +14,8 @@ pub struct InfoView {
     repo_key: String,
     /// `git config user.name`, for home's greeting; `null` when unset.
     user_name: Option<String>,
+    /// The build's version, with `+<sha>` on dev builds.
+    version: &'static str,
 }
 
 /// Where townhall keeps things for the startup repo, and who you are.
@@ -28,5 +30,6 @@ pub async fn info(State(state): State<AppState>) -> Response {
         repo: ws.repo().to_string_lossy().into_owned(),
         repo_key: ws.key().to_string(),
         user_name,
+        version: townhall_core::version::VERSION,
     })
 }

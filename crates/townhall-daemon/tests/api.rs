@@ -191,6 +191,32 @@ async fn cors_preflight_allows_the_request_id_header() {
 }
 
 #[tokio::test]
+async fn info_reports_the_build_version() {
+    let (_env, app) = init_repo().await;
+    let (s, v) = call(&app, "GET", "/api/info", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["data"]["version"], townhall_core::version::VERSION);
+    assert!(
+        townhall_core::version::VERSION.starts_with(env!("CARGO_PKG_VERSION")),
+        "{}",
+        townhall_core::version::VERSION
+    );
+}
+
+#[test]
+fn the_daemon_prints_its_build_version() {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_townhall-daemon"))
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap().trim(),
+        format!("townhall-daemon {}", townhall_core::version::VERSION)
+    );
+}
+
+#[tokio::test]
 async fn info_reports_home_repo_and_key() {
     let (env, app) = init_repo().await;
     let (s, v) = call(&app, "GET", "/api/info", None).await;

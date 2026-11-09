@@ -20,7 +20,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 
 | Method | Path | Body | Response | Errors | Unit |
 |--------|------|------|----------|--------|------|
-| GET | `/info` | | `{ home, repo, repoKey, userName }` (`userName` from `git config user.name`, or `null`) | | 2.1 |
+| GET | `/info` | | `{ home, repo, repoKey, userName, version }` (`userName` from `git config user.name`, or `null`; `version` is the build's version, `0.2.0-alpha.1+d812d0d` in a dev build) | | 2.1 |
 | GET | `/repos` | | `Repo[]` in the order added | 503 | 2.1 |
 | POST | `/repos` | `AddRepo { path, name?, baseBranch?, cloneDir? }` | `201 Repo` | 400 not absolute, missing, not a folder, `not the top folder of a git repo` (a subfolder, a bare repo, a folder under `~/.townhall/worktrees/`, or a linked worktree on a `townhall/*` branch), blank or bad name, base branch not found, `is not a git url`, `could not clone` (authentication failed, repository not found, or git's own message), relative `cloneDir`; 409 path registered, name taken ignoring case, clone target folder already exists | 2.1 |
 | PATCH | `/repos/{name}` | `PatchRepo { name?, baseBranch?, path?, moveFolder? }` | `Repo` | 400 nothing to change, blank or bad name, base branch not found, `path` not absolute, not a folder, not the top folder of a git repo or not the same git repo, `moveFolder` without `path`, target folder's parent missing; 404 no such repo; 409 name or path taken, `moveFolder` target exists, the repo has worktrees, or (for a new path) it is the startup repo or has running agents | |

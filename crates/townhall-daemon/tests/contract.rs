@@ -36,7 +36,7 @@ async fn info_keeps_its_shape_and_adds_the_user_name() {
     let (s, v) = call(&env.start().1, "GET", "/api/info", None).await;
     assert_eq!(s, StatusCode::OK);
     let keys: Vec<&String> = v["data"].as_object().unwrap().keys().collect();
-    assert_eq!(keys, ["home", "repo", "repoKey", "userName"]);
+    assert_eq!(keys, ["home", "repo", "repoKey", "userName", "version"]);
     assert!(v["data"]["userName"].is_string() || v["data"]["userName"].is_null());
 }
 
