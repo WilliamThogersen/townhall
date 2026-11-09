@@ -42,7 +42,7 @@ async fn run(config: Config) -> Result<(), String> {
     tracing::info!(
         target: "townhall::daemon",
         event = "daemon.start",
-        version = env!("CARGO_PKG_VERSION"),
+        version = townhall_core::version::VERSION,
         repo = %repo,
         bind = %config.bind,
         "daemon started"

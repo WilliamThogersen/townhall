@@ -3,5 +3,6 @@ resolver = "2"
 members = ["crates/townhall-core", "crates/townhall-daemon", "src-tauri"]
 
 [workspace.package]
+version = "0.2.0-alpha.1"
 edition = "2021"
 license = "MIT"
