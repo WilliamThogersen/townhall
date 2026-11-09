@@ -14,6 +14,7 @@ const daemon: Settings = {
   minFreeDiskGb: 10,
   learnAboutMe: true,
   githubAccount: "octocat",
+  reflectAfterTasks: true,
 };
 
 function mockFetch(status: number, body: unknown) {

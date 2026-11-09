@@ -163,7 +163,7 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
             "permissionMode": "acceptEdits", "workWithoutAsking": false, "agentsAtOnce": 6,
             "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
             "townhallModel": "sonnet", "minFreeDiskGb": 5, "learnAboutMe": false,
-            "githubAccount": "WilliamThogersen"
+            "githubAccount": "WilliamThogersen", "reflectAfterTasks": false
         })
     );
     let put = Some(json!({"value": 0}));

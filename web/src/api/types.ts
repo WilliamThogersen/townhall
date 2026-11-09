@@ -58,6 +58,7 @@ export interface Settings {
   readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
+  readonly reflectAfterTasks: boolean;
 }
 
 export type SettingKey = keyof Settings;

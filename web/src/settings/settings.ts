@@ -14,6 +14,7 @@ export interface Settings {
   readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
+  readonly reflectAfterTasks: boolean;
 }
 
 export const PERMISSION_MODES: readonly PermissionMode[] = [
@@ -42,6 +43,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   minFreeDiskGb: 5,
   learnAboutMe: false,
   githubAccount: "",
+  reflectAfterTasks: false,
 });
 
 export type SettingKey = keyof Settings;
@@ -57,6 +59,7 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "minFreeDiskGb",
   "learnAboutMe",
   "githubAccount",
+  "reflectAfterTasks",
 ]);
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -96,6 +99,7 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   minFreeDiskGb: isDiskGb,
   learnAboutMe: isFlag,
   githubAccount: isGithubAccount,
+  reflectAfterTasks: isFlag,
 };
 
 export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
@@ -125,5 +129,6 @@ export function parseSettings(raw: unknown): Settings {
     minFreeDiskGb: pick(fields, "minFreeDiskGb"),
     learnAboutMe: pick(fields, "learnAboutMe"),
     githubAccount: pick(fields, "githubAccount"),
+    reflectAfterTasks: pick(fields, "reflectAfterTasks"),
   });
 }

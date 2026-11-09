@@ -20,6 +20,7 @@ const custom: Settings = {
   minFreeDiskGb: 20,
   learnAboutMe: true,
   githubAccount: "octocat",
+  reflectAfterTasks: true,
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -35,6 +36,7 @@ describe("DEFAULT_SETTINGS", () => {
       minFreeDiskGb: 5,
       learnAboutMe: false,
       githubAccount: "",
+      reflectAfterTasks: false,
     });
   });
 
