@@ -1,5 +1,12 @@
+use std::time::Duration;
+
+use super::accounts::Picked;
+use super::detect::{capture_env, Detected};
+use super::publish::{github_session, gitlab_session, Programs};
 use super::source::split_remote;
-use crate::model::ForgeKind;
+use crate::model::{ForgeAccount, ForgeKind};
+
+const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Located {
@@ -32,6 +39,110 @@ pub fn locate(url: &str, gitlab_hosts: &[String]) -> Option<Located> {
         host,
         path: path.to_string(),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found {
+    pub account: Picked,
+    pub registered: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Outcome {
+    pub found: Option<Found>,
+    pub tried: Vec<Picked>,
+}
+
+pub fn find_account(
+    programs: &Programs,
+    located: &Located,
+    registered: &[ForgeAccount],
+    detected: &[Detected],
+) -> Outcome {
+    let mut outcome = Outcome::default();
+    for (account, listed) in candidates(located, registered, detected) {
+        outcome.tried.push(account.clone());
+        if can_see(programs, located, &account) {
+            outcome.found = Some(Found {
+                account,
+                registered: listed,
+            });
+            break;
+        }
+    }
+    outcome
+}
+
+fn candidates(
+    located: &Located,
+    registered: &[ForgeAccount],
+    detected: &[Detected],
+) -> Vec<(Picked, bool)> {
+    let mut list: Vec<(Picked, bool)> = registered
+        .iter()
+        .filter(|a| a.forge == located.forge && a.host == located.host)
+        .map(|a| (picked(&a.login, &a.host), true))
+        .collect();
+    for d in detected
+        .iter()
+        .filter(|d| d.forge == located.forge && d.host.eq_ignore_ascii_case(&located.host))
+    {
+        let known = list.iter().any(|(p, _)| p.login.eq_ignore_ascii_case(&d.login));
+        if !known {
+            list.push((picked(&d.login, &located.host), false));
+        }
+    }
+    list
+}
+
+fn picked(login: &str, host: &str) -> Picked {
+    Picked {
+        login: login.to_string(),
+        host: host.to_string(),
+    }
+}
+
+fn can_see(programs: &Programs, located: &Located, account: &Picked) -> bool {
+    let dir = std::env::temp_dir();
+    let (program, session, args) = match located.forge {
+        ForgeKind::Github => {
+            let session = github_session(&programs.gh, account, &dir);
+            let api = format!("repos/{}", located.path);
+            let args = ["api", "--hostname", located.host.as_str(), api.as_str()];
+            (&programs.gh, session, args.map(str::to_string).to_vec())
+        }
+        ForgeKind::Gitlab => {
+            let session = gitlab_session(&programs.glab, account, &dir);
+            let api = format!("projects/{}", encode(&located.path));
+            let args = ["api", api.as_str(), "--hostname", located.host.as_str()];
+            (&programs.glab, session, args.map(str::to_string).to_vec())
+        }
+    };
+    let Ok(session) = session else {
+        return false;
+    };
+    let mut envs: Vec<(&str, &str)> = session
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    envs.push(("GH_PROMPT_DISABLED", "1"));
+    envs.push(("NO_COLOR", "1"));
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    matches!(
+        capture_env(program, &args, &envs, PROBE_TIMEOUT),
+        Ok(Some(out)) if out.success
+    )
+}
+
+fn encode(path: &str) -> String {
+    path.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                char::from(b).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 #[cfg(test)]

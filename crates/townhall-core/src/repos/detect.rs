@@ -46,9 +46,10 @@ struct Probe {
     warnings: Vec<String>,
 }
 
-struct Output {
-    stdout: String,
-    stderr: String,
+pub(super) struct Output {
+    pub stdout: String,
+    pub stderr: String,
+    pub success: bool,
 }
 
 fn drain<R: Read + Send + 'static>(mut pipe: R) -> std::thread::JoinHandle<String> {
@@ -62,9 +63,19 @@ fn drain<R: Read + Send + 'static>(mut pipe: R) -> std::thread::JoinHandle<Strin
 /// Runs `program args` and keeps stdout and stderr, whatever the exit status: `auth status`
 /// exits non-zero when any one account is broken. `None` when the program is not installed.
 fn capture(program: &str, args: &[&str], timeout: Duration) -> Result<Option<Output>> {
+    capture_env(program, args, &[], timeout)
+}
+
+pub(super) fn capture_env(
+    program: &str,
+    args: &[&str],
+    extra: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<Option<Output>> {
     let mut child = match Command::new(program)
         .args(args)
         .envs(remote_env())
+        .envs(extra.iter().copied())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -82,12 +93,14 @@ fn capture(program: &str, args: &[&str], timeout: Duration) -> Result<Option<Out
     let stdout = child.stdout.take().map(drain);
     let stderr = child.stderr.take().map(drain);
     let deadline = Instant::now() + timeout;
+    let success;
     loop {
         let waited = child.try_wait().map_err(|source| Error::Spawn {
             program: program.to_string(),
             source,
         })?;
-        if waited.is_some() {
+        if let Some(status) = waited {
+            success = status.success();
             break;
         }
         if Instant::now() >= deadline {
@@ -107,6 +120,7 @@ fn capture(program: &str, args: &[&str], timeout: Duration) -> Result<Option<Out
     Ok(Some(Output {
         stdout: read(stdout),
         stderr: read(stderr),
+        success,
     }))
 }
 
