@@ -7,6 +7,7 @@ import { ApiError } from "../../api/errors";
 import { aConversation, anAgentInfo, aRepo, aTask } from "../../api/fixtures";
 import * as reposApi from "../../api/repos";
 import * as tasksApi from "../../api/tasks";
+import * as bridge from "../../desktop/bridge";
 import { createFakeEvents, TestDataProvider, type FakeEvents } from "../../data/testing";
 import { DEFAULT_SETTINGS, type ForgeAccount, type Settings } from "../../settings/settings";
 import { createSettingsStore } from "../../settings/settingsStore";
@@ -100,51 +101,59 @@ describe("ReposPage", () => {
     expect(screen.getByText("0", { selector: ".th-page-head .th-cap" })).toBeInTheDocument();
   });
 
-  it("adds a repository from the inline form and shows it at once", async () => {
+  const openAdd = async () => userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+  const chooseUrl = () => userEvent.click(screen.getByRole("radio", { name: "url" }));
+  const dialog = () => screen.getByRole("dialog", { name: "add repository" });
+
+  it("adds a folder from the modal and shows it at once", async () => {
     const added = aRepo({ name: "data-hub", path: "/Users/me/Developer/data-hub", baseBranch: "trunk" });
     const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
     renderPage();
     await screen.findByText("shop", { selector: ".th-repo-name b" });
     const open = screen.getByRole("button", { name: "add repository…" });
     expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await userEvent.click(open);
     expect(open).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("textbox", { name: "folder or link" })).toHaveFocus();
-    expect(screen.getByRole("button", { name: "add" })).toBeDisabled();
+    const modal = within(dialog());
+    expect(modal.getByRole("radio", { name: "folder" })).toBeChecked();
+    expect(modal.getByRole("radio", { name: "url" })).not.toBeChecked();
+    expect(modal.getByRole("textbox", { name: "folder" })).toHaveFocus();
+    expect(modal.queryByRole("button", { name: "browse…" })).not.toBeInTheDocument();
+    expect(modal.getByRole("button", { name: "add" })).toBeDisabled();
     expect(screen.getByTestId("hints")).toHaveTextContent("⏎=add | esc=cancel");
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "~/Developer/data-hub");
-    await userEvent.type(screen.getByRole("textbox", { name: "base branch" }), "trunk{Enter}");
+    await userEvent.type(modal.getByRole("textbox", { name: "folder" }), "~/Developer/data-hub");
+    await userEvent.type(modal.getByRole("textbox", { name: "base branch" }), "trunk{Enter}");
     expect(add).toHaveBeenCalledWith({ path: "~/Developer/data-hub", baseBranch: "trunk" });
     expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
-    expect(screen.queryByRole("form", { name: "add repository" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("3", { selector: ".th-page-head .th-cap" })).toBeInTheDocument();
   });
 
-  it("takes a github or gitlab link in the path field and sends it as the path", async () => {
+  it("adds by git url from the url choice and sends it as the path", async () => {
     const link = "git@github.com:acme/data-hub.git";
     const added = aRepo({ name: "data-hub", path: "/Users/me/.townhall/repos/data-hub", baseBranch: "main" });
     const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    expect(screen.getByPlaceholderText(/or a github\/gitlab link/)).toBe(screen.getByRole("textbox", { name: "folder or link" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), `${link}{Enter}`);
+    await openAdd();
+    await chooseUrl();
+    expect(screen.queryByRole("textbox", { name: "folder" })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/github or gitlab/)).toBe(screen.getByRole("textbox", { name: "git url" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), `${link}{Enter}`);
     expect(add).toHaveBeenCalledWith({ path: link });
     expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
   });
 
-  it("asks where to clone only once a link is typed, and says where it will land", async () => {
+  it("says where a url will be cloned and takes an optional clone-into folder", async () => {
     const link = "https://github.com/acme/data-hub.git";
     const added = aRepo({ name: "data-hub", path: "/Users/me/Developer/data-hub", baseBranch: "main" });
     const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    const path = screen.getByRole("textbox", { name: "folder or link" });
-    await userEvent.type(path, "~/Developer/data-hub");
-    expect(screen.queryByRole("textbox", { name: "clone into" })).not.toBeInTheDocument();
-    await userEvent.clear(path);
-    await userEvent.type(path, link);
+    await openAdd();
+    await chooseUrl();
     const into = screen.getByRole("textbox", { name: "clone into" });
     expect(into).toHaveAttribute("placeholder", "~/.townhall/repos");
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), link);
     expect(screen.getByText("clones into ~/.townhall/repos/data-hub")).toBeInTheDocument();
     await userEvent.type(into, "~/Developer");
     expect(screen.getByText("clones into ~/Developer/data-hub")).toBeInTheDocument();
@@ -155,32 +164,55 @@ describe("ReposPage", () => {
 
   it("offers the clones folder from the settings as the default", async () => {
     renderPage(createFakeEvents(), [], { clonesDir: "~/Developer" });
-    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "git@gitlab.com:group/sub/app.git");
+    await openAdd();
+    await chooseUrl();
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "git@gitlab.com:group/sub/app.git");
     expect(await screen.findByText("clones into ~/Developer/app")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "clone into" })).toHaveAttribute("placeholder", "~/Developer");
   });
 
-  it("refuses a link that names no repo before asking the daemon", async () => {
+  it("starts empty again when the choice changes", async () => {
+    renderPage();
+    await openAdd();
+    await userEvent.type(screen.getByRole("textbox", { name: "folder" }), "~/Developer/notes");
+    await chooseUrl();
+    expect(screen.getByRole("textbox", { name: "git url" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "add" })).toBeDisabled();
+  });
+
+  it("refuses a url that names no repo before asking the daemon", async () => {
     const add = vi.spyOn(reposApi, "addRepo");
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "https://github.com/acme{Enter}");
+    await openAdd();
+    await chooseUrl();
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "https://github.com/acme{Enter}");
     expect(screen.getByRole("alert")).toHaveTextContent("expected host/owner/repo");
     expect(screen.getByRole("button", { name: "add" })).toBeDisabled();
     expect(add).not.toHaveBeenCalled();
   });
 
-  it("shows the clone target while cloning and the daemon's reason when it fails", async () => {
-    const link = "https://github.com/acme/data-hub";
+  it("refuses a url in the folder choice and a plain path in the url choice", async () => {
+    const add = vi.spyOn(reposApi, "addRepo");
+    renderPage();
+    await openAdd();
+    await userEvent.type(screen.getByRole("textbox", { name: "folder" }), "https://github.com/acme/shop{Enter}");
+    expect(screen.getByRole("alert")).toHaveTextContent("choose url");
+    await chooseUrl();
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "~/Developer/shop{Enter}");
+    expect(screen.getByRole("alert")).toHaveTextContent("expected a git url");
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it("shows the daemon's reason when a clone fails and keeps the modal open", async () => {
     vi.spyOn(reposApi, "addRepo").mockRejectedValue(new ApiError("http", "/Users/me/Developer/data-hub already exists and is not a clone of x", 409));
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), link);
+    await openAdd();
+    await chooseUrl();
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "https://github.com/acme/data-hub");
     await userEvent.type(screen.getByRole("textbox", { name: "clone into" }), "~/Developer");
     await userEvent.click(screen.getByRole("button", { name: "add" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("error: /Users/me/Developer/data-hub already exists");
-    expect(screen.getByRole("form", { name: "add repository" })).toBeInTheDocument();
+    expect(dialog()).toBeInTheDocument();
   });
 
   describe("editing a repo", () => {
@@ -246,43 +278,93 @@ describe("ReposPage", () => {
     });
   });
 
-  it("says cloning while a link is added and initialising while a folder is", async () => {
+  it("says cloning while a url is added", async () => {
     vi.spyOn(reposApi, "addRepo").mockReturnValue(new Promise(() => undefined));
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "https://github.com/acme/data-hub{Enter}");
+    await openAdd();
+    await chooseUrl();
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "https://github.com/acme/data-hub{Enter}");
     expect(await screen.findByRole("status")).toHaveTextContent("cloning…");
   });
 
   it("says initialising while a folder is added", async () => {
     vi.spyOn(reposApi, "addRepo").mockReturnValue(new Promise(() => undefined));
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "~/Developer/notes{Enter}");
+    await openAdd();
+    await userEvent.type(screen.getByRole("textbox", { name: "folder" }), "~/Developer/notes{Enter}");
     expect(await screen.findByRole("status")).toHaveTextContent("initialising…");
   });
 
-  it("shows the daemon's refusal in the form and keeps what you typed", async () => {
+  it("shows the daemon's refusal in the modal and keeps what you typed", async () => {
     vi.spyOn(reposApi, "addRepo").mockRejectedValue(
       new ApiError("http", "/Users/me/Developer is not the top folder of a git repo", 400),
     );
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "~/Developer{Enter}");
+    await openAdd();
+    await userEvent.type(screen.getByRole("textbox", { name: "folder" }), "~/Developer{Enter}");
     expect(await screen.findByRole("alert")).toHaveTextContent("error: /Users/me/Developer is not the top folder of a git repo");
-    expect(screen.getByRole("textbox", { name: "folder or link" })).toHaveValue("~/Developer");
+    expect(screen.getByRole("textbox", { name: "folder" })).toHaveValue("~/Developer");
   });
 
-  it("opens the form with a and closes it with esc", async () => {
+  it("opens the modal with a and closes it with esc", async () => {
     renderPage();
     await screen.findByText("shop", { selector: ".th-repo-name b" });
     expect(screen.getByTestId("hints")).toHaveTextContent("a=add repository");
     await userEvent.keyboard("a");
-    const path = screen.getByRole("textbox", { name: "folder or link" });
+    const path = screen.getByRole("textbox", { name: "folder" });
     expect(path).toHaveFocus();
     expect(path).toHaveValue("");
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("textbox", { name: "folder or link" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("closes the modal with cancel", async () => {
+    renderPage();
+    await openAdd();
+    await userEvent.click(within(dialog()).getByRole("button", { name: "cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  describe("in the desktop app", () => {
+    beforeEach(() => vi.stubGlobal("__TAURI_INTERNALS__", {}));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("opens the modal instead of the native dialog and browses only on request", async () => {
+      const pick = vi.spyOn(bridge, "pickFolder").mockResolvedValue("/Users/me/code/notes");
+      const added = aRepo({ name: "notes", path: "/Users/me/code/notes" });
+      const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
+      renderPage();
+      await openAdd();
+      expect(pick).not.toHaveBeenCalled();
+      const modal = within(dialog());
+      expect(modal.getByRole("radio", { name: "folder" })).toBeChecked();
+      expect(modal.getByRole("radio", { name: "url" })).toBeInTheDocument();
+      await userEvent.click(modal.getByRole("button", { name: "browse…" }));
+      expect(pick).toHaveBeenCalledTimes(1);
+      expect(modal.getByRole("textbox", { name: "folder" })).toHaveValue("/Users/me/code/notes");
+      expect(add).not.toHaveBeenCalled();
+      await userEvent.click(modal.getByRole("button", { name: "add" }));
+      expect(add).toHaveBeenCalledWith({ path: "/Users/me/code/notes" });
+      expect(await screen.findByText("notes", { selector: ".th-repo-name b" })).toBeInTheDocument();
+    });
+
+    it("keeps the path when the native dialog is cancelled", async () => {
+      vi.spyOn(bridge, "pickFolder").mockResolvedValue(null);
+      renderPage();
+      await openAdd();
+      await userEvent.type(screen.getByRole("textbox", { name: "folder" }), "~/code");
+      await userEvent.click(screen.getByRole("button", { name: "browse…" }));
+      expect(screen.getByRole("textbox", { name: "folder" })).toHaveValue("~/code");
+    });
+
+    it("offers the url choice with its clone-into field and no browse button", async () => {
+      renderPage();
+      await openAdd();
+      await chooseUrl();
+      expect(screen.queryByRole("button", { name: "browse…" })).not.toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "git url" })).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "clone into" })).toBeInTheDocument();
+    });
   });
 
   it("asks before removing a repo and can be cancelled", async () => {

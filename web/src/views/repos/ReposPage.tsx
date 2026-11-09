@@ -14,7 +14,7 @@ import { Button } from "../../ui/Button";
 import { DRAG_REGION } from "../../ui/dragRegion";
 import { EmptyState } from "../../ui/EmptyState";
 import { Loading } from "../../ui/Loading";
-import { AddRepoForm } from "./AddRepoForm";
+import { AddRepoModal } from "./AddRepoModal";
 import type { PickAccount } from "./RepoAccounts";
 import { RepoRow } from "./RepoRow";
 import { useRepoKeys } from "./useRepoKeys";
@@ -51,9 +51,7 @@ function ReposHead({ count, flow }: { readonly count: number | null; readonly fl
         <Button
           variant="primary"
           size="sm"
-          busy={flow.desktop && flow.busy}
-          busyLabel="adding…"
-          aria-expanded={flow.desktop ? undefined : flow.formOpen}
+          aria-expanded={flow.formOpen}
           onClick={flow.begin}
         >
           add repository…
@@ -90,11 +88,12 @@ interface BodyProps {
 
 function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, onEdit, accounts, defaultCloneDir }: BodyProps) {
   const form = flow.formOpen ? (
-    <AddRepoForm
+    <AddRepoModal
       busy={flow.busy}
       error={flow.error}
       focusToken={flow.focusToken}
       defaultCloneDir={defaultCloneDir}
+      onBrowse={flow.desktop ? flow.browse : undefined}
       onSubmit={(input) => void flow.submit(input)}
       onCancel={flow.cancel}
     />
@@ -145,9 +144,8 @@ function useRemove(remove: RemoveRepo, setAccounts: SetAccounts) {
   return { error, run, pick, dismiss };
 }
 
-function pickProblem(removal: ReturnType<typeof useRemove>, flow: AddRepoFlow, loadError: string | null): Problem | null {
+function pickProblem(removal: ReturnType<typeof useRemove>, loadError: string | null): Problem | null {
   if (removal.error !== null) return { message: removal.error, dismiss: removal.dismiss };
-  if (flow.desktop && flow.error !== null) return { message: flow.error, dismiss: flow.dismissError };
   return loadError === null ? null : { message: `repos not loaded: ${loadError}`, dismiss: null };
 }
 
@@ -158,7 +156,7 @@ export function ReposPage() {
   const removal = useRemove(remove, setAccounts);
   const summaries = useSummaries(repos);
   useRepoKeys(flow.formOpen, flow.begin);
-  const problem = pickProblem(removal, flow, repos === null ? error : null);
+  const problem = pickProblem(removal, repos === null ? error : null);
   return (
     <div className="th-page">
       <ReposHead count={repos === null ? null : repos.length} flow={flow} />

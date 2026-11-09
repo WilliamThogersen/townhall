@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addProgress, canSubmit, cloneTargetOf, draftToInput, EMPTY_DRAFT, isLink, linkProblem } from "./addRepoDraft";
+import { addProgress, canSubmit, cloneTargetOf, draftToInput, EMPTY_DRAFT, isLink, linkProblem, modeProblem } from "./addRepoDraft";
 
 const draft = (over: Partial<typeof EMPTY_DRAFT>) => ({ ...EMPTY_DRAFT, ...over });
 
@@ -67,5 +67,14 @@ describe("links", () => {
   it("says cloning or initialising while it works", () => {
     expect(addProgress(draft({ path: "git@github.com:acme/shop.git" }))).toBe("cloning…");
     expect(addProgress(draft({ path: "/code/shop" }))).toBe("initialising…");
+  });
+
+  it("refuses a link in folder mode and a plain path in url mode", () => {
+    expect(modeProblem("folder", "~/code/shop")).toBeNull();
+    expect(modeProblem("folder", "https://github.com/acme/shop")).toMatch(/choose url/);
+    expect(modeProblem("url", "https://github.com/acme/shop")).toBeNull();
+    expect(modeProblem("url", "~/code/shop")).toMatch(/git url/);
+    expect(modeProblem("url", "")).toBeNull();
+    expect(modeProblem("url", "https://github.com/acme")).toMatch(/owner\/repo/);
   });
 });
