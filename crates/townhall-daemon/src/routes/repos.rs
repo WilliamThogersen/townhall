@@ -4,7 +4,7 @@ use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use townhall_core::fleet;
-use townhall_core::model::{AddRepo, PutRepoAccounts};
+use townhall_core::model::{AddRepo, PatchRepo, PutRepoAccounts};
 
 use crate::envelope::{created, ok};
 use crate::error::ApiError;
@@ -22,6 +22,18 @@ pub async fn add(
     let ctx = state.ctx();
     ctx.ensure_startup_repo().await;
     Ok(created(ctx.registry()?.add(&req).await?))
+}
+
+/// Body `{"name"?, "baseBranch"?, "path"?, "moveFolder"?}`: renames the repo, changes its base
+/// branch, points it at a new path of the same git repo, or (`moveFolder`) moves its folder.
+pub async fn patch(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    JsonBody(body): JsonBody<PatchRepo>,
+) -> Result<Response, ApiError> {
+    let ctx = state.ctx();
+    ctx.ensure_startup_repo().await;
+    Ok(ok(fleet::edit(ctx, &name, &body).await?))
 }
 
 /// Body `{"githubAccount"?: login | null, "gitlabAccount"?: login | null}`: the registered

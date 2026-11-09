@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch, sent } from "../test/fetchMock";
 import { aRepo } from "./fixtures";
-import { addRepo, listRepos, putRepoAccounts, removeRepo } from "./repos";
+import { addRepo, listRepos, patchRepo, putRepoAccounts, removeRepo } from "./repos";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -16,6 +16,23 @@ describe("repos api", () => {
     const fn = mockFetch(201, aRepo());
     expect(await addRepo({ path: "/code/shop" })).toEqual(aRepo());
     expect(sent(fn)).toEqual({ url: "/api/repos", method: "POST", body: { path: "/code/shop" } });
+  });
+
+  it("adds a repo by link into a chosen folder", async () => {
+    const fn = mockFetch(201, aRepo());
+    await addRepo({ path: "git@github.com:acme/shop.git", cloneDir: "~/Developer" });
+    expect(sent(fn)).toEqual({
+      url: "/api/repos",
+      method: "POST",
+      body: { path: "git@github.com:acme/shop.git", cloneDir: "~/Developer" },
+    });
+  });
+
+  it("patches a repo and encodes its name", async () => {
+    const fn = mockFetch(200, aRepo({ name: "store" }));
+    const patch = { name: "store", baseBranch: "develop", path: "/code/store", moveFolder: true };
+    expect(await patchRepo("my repo", patch)).toEqual(aRepo({ name: "store" }));
+    expect(sent(fn)).toEqual({ url: "/api/repos/my%20repo", method: "PATCH", body: patch });
   });
 
   it("removes a repo and returns it", async () => {

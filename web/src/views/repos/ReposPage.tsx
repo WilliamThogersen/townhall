@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { toMessage } from "../../api/errors";
-import type { PutRepoAccountsInput, Repo } from "../../api/types";
+import type { PatchRepoInput, PutRepoAccountsInput, Repo } from "../../api/types";
 import { useAgentInfos, useConversations, useRepos, useTasks } from "../../data";
 import { NO_REPOS_TEXT } from "../../repos/copy";
 import { clonesDirOf, userHomeOf } from "../../repos/repoPath";
@@ -22,6 +22,7 @@ import "../settings/cap.css";
 
 type RemoveRepo = (name: string, deleteClone?: boolean) => Promise<void>;
 type SetAccounts = (name: string, input: PutRepoAccountsInput) => Promise<Repo>;
+type EditRepo = (name: string, input: PatchRepoInput) => Promise<Repo>;
 
 interface Problem {
   readonly message: string;
@@ -82,12 +83,21 @@ interface BodyProps {
   readonly flow: AddRepoFlow;
   readonly onRemove: RemoveRepo;
   readonly onPickAccount: PickAccount;
+  readonly onEdit: EditRepo;
   readonly accounts: readonly ForgeAccount[];
+  readonly defaultCloneDir: string;
 }
 
-function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, accounts }: BodyProps) {
+function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, onEdit, accounts, defaultCloneDir }: BodyProps) {
   const form = flow.formOpen ? (
-    <AddRepoForm busy={flow.busy} error={flow.error} focusToken={flow.focusToken} onSubmit={(input) => void flow.submit(input)} onCancel={flow.cancel} />
+    <AddRepoForm
+      busy={flow.busy}
+      error={flow.error}
+      focusToken={flow.focusToken}
+      defaultCloneDir={defaultCloneDir}
+      onSubmit={(input) => void flow.submit(input)}
+      onCancel={flow.cancel}
+    />
   ) : null;
   if (summaries === null) {
     return loading ? (
@@ -101,7 +111,7 @@ function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, accounts
       {form}
       {summaries.length === 0 && !flow.formOpen ? <EmptyState title="no repos yet">{NO_REPOS_TEXT}</EmptyState> : null}
       {summaries.map((summary) => (
-        <RepoRow key={summary.repo.name} summary={summary} onRemove={onRemove} accounts={accounts} onPickAccount={onPickAccount} />
+        <RepoRow key={summary.repo.name} summary={summary} onRemove={onRemove} accounts={accounts} onPickAccount={onPickAccount} onEdit={onEdit} />
       ))}
     </>
   );
@@ -142,7 +152,7 @@ function pickProblem(removal: ReturnType<typeof useRemove>, flow: AddRepoFlow, l
 }
 
 export function ReposPage() {
-  const { repos, loading, error, remove, setAccounts } = useRepos();
+  const { repos, loading, error, remove, setAccounts, edit } = useRepos();
   const { settings } = useSettings();
   const flow = useAddRepo();
   const removal = useRemove(remove, setAccounts);
@@ -160,7 +170,9 @@ export function ReposPage() {
           flow={flow}
           onRemove={removal.run}
           onPickAccount={removal.pick}
+          onEdit={edit}
           accounts={settings.forgeAccounts}
+          defaultCloneDir={settings.clonesDir}
         />
       </div>
     </div>

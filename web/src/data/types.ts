@@ -7,6 +7,7 @@ import type {
   ConversationDetail,
   ConversationPatch,
   NewMessageInput,
+  PatchRepoInput,
   PutRepoAccountsInput,
   Repo,
   Stats,
@@ -49,6 +50,7 @@ export interface ReposState extends Loadable {
   readonly add: (input: AddRepoInput) => Promise<Repo>;
   readonly remove: (name: string, deleteClone?: boolean) => Promise<void>;
   readonly setAccounts: (name: string, input: PutRepoAccountsInput) => Promise<Repo>;
+  readonly edit: (name: string, input: PatchRepoInput) => Promise<Repo>;
 }
 
 export interface StatsState extends Loadable {

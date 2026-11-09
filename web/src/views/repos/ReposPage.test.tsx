@@ -8,7 +8,7 @@ import { aConversation, anAgentInfo, aRepo, aTask } from "../../api/fixtures";
 import * as reposApi from "../../api/repos";
 import * as tasksApi from "../../api/tasks";
 import { createFakeEvents, TestDataProvider, type FakeEvents } from "../../data/testing";
-import { DEFAULT_SETTINGS, type ForgeAccount } from "../../settings/settings";
+import { DEFAULT_SETTINGS, type ForgeAccount, type Settings } from "../../settings/settings";
 import { createSettingsStore } from "../../settings/settingsStore";
 import { SettingsStoreContext } from "../../settings/useSettings";
 import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
@@ -22,9 +22,13 @@ function HintsProbe() {
   return <p data-testid="hints">{hints.map((hint) => `${hint.keys}=${hint.label}`).join(" | ")}</p>;
 }
 
-function renderPage(events: FakeEvents = createFakeEvents(), forgeAccounts: readonly ForgeAccount[] = []) {
+function renderPage(
+  events: FakeEvents = createFakeEvents(),
+  forgeAccounts: readonly ForgeAccount[] = [],
+  over: Partial<Settings> = {},
+) {
   const settings = createSettingsStore({
-    load: async () => ({ ...DEFAULT_SETTINGS, forgeAccounts }),
+    load: async () => ({ ...DEFAULT_SETTINGS, forgeAccounts, ...over }),
     put: async () => DEFAULT_SETTINGS,
     storage: () => null,
   });
@@ -126,6 +130,120 @@ describe("ReposPage", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), `${link}{Enter}`);
     expect(add).toHaveBeenCalledWith({ path: link });
     expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
+  });
+
+  it("asks where to clone only once a link is typed, and says where it will land", async () => {
+    const link = "https://github.com/acme/data-hub.git";
+    const added = aRepo({ name: "data-hub", path: "/Users/me/Developer/data-hub", baseBranch: "main" });
+    const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+    const path = screen.getByRole("textbox", { name: "folder or link" });
+    await userEvent.type(path, "~/Developer/data-hub");
+    expect(screen.queryByRole("textbox", { name: "clone into" })).not.toBeInTheDocument();
+    await userEvent.clear(path);
+    await userEvent.type(path, link);
+    const into = screen.getByRole("textbox", { name: "clone into" });
+    expect(into).toHaveAttribute("placeholder", "~/.townhall/repos");
+    expect(screen.getByText("clones into ~/.townhall/repos/data-hub")).toBeInTheDocument();
+    await userEvent.type(into, "~/Developer");
+    expect(screen.getByText("clones into ~/Developer/data-hub")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(add).toHaveBeenCalledWith({ path: link, cloneDir: "~/Developer" });
+    expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
+  });
+
+  it("offers the clones folder from the settings as the default", async () => {
+    renderPage(createFakeEvents(), [], { clonesDir: "~/Developer" });
+    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "git@gitlab.com:group/sub/app.git");
+    expect(await screen.findByText("clones into ~/Developer/app")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "clone into" })).toHaveAttribute("placeholder", "~/Developer");
+  });
+
+  it("refuses a link that names no repo before asking the daemon", async () => {
+    const add = vi.spyOn(reposApi, "addRepo");
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "https://github.com/acme{Enter}");
+    expect(screen.getByRole("alert")).toHaveTextContent("expected host/owner/repo");
+    expect(screen.getByRole("button", { name: "add" })).toBeDisabled();
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it("shows the clone target while cloning and the daemon's reason when it fails", async () => {
+    const link = "https://github.com/acme/data-hub";
+    vi.spyOn(reposApi, "addRepo").mockRejectedValue(new ApiError("http", "/Users/me/Developer/data-hub already exists and is not a clone of x", 409));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "add repository…" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), link);
+    await userEvent.type(screen.getByRole("textbox", { name: "clone into" }), "~/Developer");
+    await userEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("error: /Users/me/Developer/data-hub already exists");
+    expect(screen.getByRole("form", { name: "add repository" })).toBeInTheDocument();
+  });
+
+  describe("editing a repo", () => {
+    const form = () => screen.getByRole("form", { name: "edit shop" });
+
+    it("renames it, changes its base branch and shows the saved repo at once", async () => {
+      const saved = aRepo({ ...shop, name: "store", baseBranch: "main" });
+      const patch = vi.spyOn(reposApi, "patchRepo").mockResolvedValue(saved);
+      renderPage();
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "edit shop" }));
+      const f = within(form());
+      expect(f.getByRole("textbox", { name: "name" })).toHaveValue("shop");
+      expect(f.getByRole("textbox", { name: "base branch" })).toHaveValue("develop");
+      expect(f.getByRole("textbox", { name: "folder" })).toHaveValue(shop.path);
+      expect(f.getByRole("button", { name: "save" })).toBeDisabled();
+      await userEvent.clear(f.getByRole("textbox", { name: "name" }));
+      await userEvent.type(f.getByRole("textbox", { name: "name" }), "store");
+      await userEvent.clear(f.getByRole("textbox", { name: "base branch" }));
+      await userEvent.type(f.getByRole("textbox", { name: "base branch" }), "main{Enter}");
+      expect(patch).toHaveBeenCalledWith("shop", { name: "store", baseBranch: "main" });
+      expect(await screen.findByText("store", { selector: ".th-repo-name b" })).toBeInTheDocument();
+      expect(screen.queryByText("shop", { selector: ".th-repo-name b" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("form", { name: "edit shop" })).not.toBeInTheDocument();
+    });
+
+    it("points the repo at a new folder, or moves the folder when asked", async () => {
+      const patch = vi.spyOn(reposApi, "patchRepo").mockResolvedValue(aRepo({ ...shop, path: "/code/shop" }));
+      renderPage();
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "edit shop" }));
+      const f = within(form());
+      expect(f.queryByRole("checkbox")).not.toBeInTheDocument();
+      await userEvent.clear(f.getByRole("textbox", { name: "folder" }));
+      await userEvent.type(f.getByRole("textbox", { name: "folder" }), "/code/shop");
+      await userEvent.click(f.getByRole("checkbox", { name: /move the folder/ }));
+      await userEvent.click(f.getByRole("button", { name: "save" }));
+      expect(patch).toHaveBeenCalledWith("shop", { path: "/code/shop", moveFolder: true });
+    });
+
+    it("keeps the form open with the daemon's reason when it refuses", async () => {
+      vi.spyOn(reposApi, "patchRepo").mockRejectedValue(new ApiError("http", "a repo named `townhall` already exists", 409));
+      renderPage();
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "edit shop" }));
+      await userEvent.clear(within(form()).getByRole("textbox", { name: "name" }));
+      await userEvent.type(within(form()).getByRole("textbox", { name: "name" }), "townhall{Enter}");
+      expect(await within(form()).findByRole("alert")).toHaveTextContent("error: a repo named `townhall` already exists");
+      expect(within(form()).getByRole("textbox", { name: "name" })).toHaveValue("townhall");
+    });
+
+    it("does not save a name the daemon would refuse, and cancels with escape", async () => {
+      const patch = vi.spyOn(reposApi, "patchRepo");
+      renderPage();
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "edit shop" }));
+      await userEvent.type(within(form()).getByRole("textbox", { name: "name" }), " x");
+      expect(within(form()).getByRole("button", { name: "save" })).toBeDisabled();
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("form", { name: "edit shop" })).not.toBeInTheDocument();
+      expect(patch).not.toHaveBeenCalled();
+      expect(screen.getByText("shop", { selector: ".th-repo-name b" })).toBeInTheDocument();
+    });
   });
 
   it("says cloning while a link is added and initialising while a folder is", async () => {

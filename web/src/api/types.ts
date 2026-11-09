@@ -49,6 +49,14 @@ export interface AddRepoInput {
   readonly path: string;
   readonly name?: string;
   readonly baseBranch?: string;
+  readonly cloneDir?: string;
+}
+
+export interface PatchRepoInput {
+  readonly name?: string;
+  readonly baseBranch?: string;
+  readonly path?: string;
+  readonly moveFolder?: boolean;
 }
 
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
@@ -77,6 +85,7 @@ export interface Settings {
   readonly githubAccount: string;
   readonly forgeAccounts: readonly ForgeAccount[];
   readonly reflectAfterTasks: boolean;
+  readonly clonesDir: string;
 }
 
 export type SettingKey = keyof Settings;

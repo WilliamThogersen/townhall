@@ -60,6 +60,15 @@
   white-space: pre-wrap;
 }
 
+.th-repo-field--wide {
+  grid-column: 1 / -1;
+}
+
+.th-repo-add-check {
+  display: block;
+  cursor: pointer;
+}
+
 .th-repo-add[data-layout="stack"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   width: min(56ch, 100%);

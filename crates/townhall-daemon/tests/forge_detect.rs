@@ -24,6 +24,8 @@ fn point_at(gh: &str, glab: &str) {
     std::env::set_var("TOWNHALL_GLAB_BIN", glab);
     std::env::set_var("GH_CONFIG_DIR", "/nonexistent-townhall-test/gh");
     std::env::set_var("GLAB_CONFIG_DIR", "/nonexistent-townhall-test/glab-cli");
+    std::env::set_var("XDG_CONFIG_HOME", "/nonexistent-townhall-test/xdg");
+    std::env::set_var("HOME", "/nonexistent-townhall-test/home");
 }
 
 fn glab_config(dir: &Path, text: &str) {
@@ -260,7 +262,7 @@ async fn a_missing_glab_config_says_why_nothing_was_found() {
         warnings[0]
             .as_str()
             .unwrap()
-            .starts_with("glab: no glab config at"),
+            .starts_with("glab: no glab config found (tried"),
         "{body}"
     );
 }

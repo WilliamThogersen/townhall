@@ -26,6 +26,7 @@ const custom: Settings = {
     { forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "me" },
   ],
   reflectAfterTasks: true,
+  clonesDir: "~/Developer",
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -43,7 +44,14 @@ describe("DEFAULT_SETTINGS", () => {
       githubAccount: "",
       forgeAccounts: [],
       reflectAfterTasks: false,
+      clonesDir: "",
     });
+  });
+
+  it("checks the clones dir like the daemon: empty, ~, ~/x or absolute", () => {
+    ["", "~", "~/Developer", "/srv/code"].forEach((value) => expect(isSettingValue("clonesDir", value)).toBe(true));
+    ["relative/dir", "  ", "~other", 7, null].forEach((value) => expect(isSettingValue("clonesDir", value)).toBe(false));
+    expect(parseSettings({ clonesDir: "nope" }).clonesDir).toBe("");
   });
 
   it("is frozen", () => {

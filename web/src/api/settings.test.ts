@@ -16,6 +16,7 @@ const daemon: Settings = {
   githubAccount: "octocat",
   forgeAccounts: [{ forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "work" }],
   reflectAfterTasks: true,
+  clonesDir: "~/Developer",
 };
 
 function mockFetch(status: number, body: unknown) {

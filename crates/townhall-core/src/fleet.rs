@@ -5,7 +5,7 @@ use crate::agent::{self, state};
 use crate::cmd::validate_name;
 use crate::context::Context;
 use crate::home::repo_key;
-use crate::model::{AgentInfo, Repo, TaskState};
+use crate::model::{AgentInfo, PatchRepo, Repo, TaskState};
 use crate::{tmux, worktree, Error, Result, Workspace};
 
 /// Where an agent lives: its repo's name, its name as stored, and the workspace.
@@ -133,6 +133,31 @@ pub async fn locate(ctx: &Context, name: &str, repo: Option<&str>) -> Result<Loc
             )))
         }
     }
+}
+
+/// Edits a repo (see `RepoRegistry::edit`). A new path, by pointing or by moving the folder,
+/// is refused for the daemon's startup repo and while agents run in it: their sessions are
+/// keyed by the repo's path. Renaming and the base branch are always allowed.
+pub async fn edit(ctx: &Context, name: &str, patch: &PatchRepo) -> Result<Repo> {
+    let repo = ctx.repo(name).await?;
+    if patch.path.is_some() {
+        if ctx.ensure_startup_repo().await.as_deref() == Some(repo.name.as_str()) {
+            return Err(Error::Conflict(format!(
+                "`{}` is the repo the daemon started with: start it on another repo to move it",
+                repo.name
+            )));
+        }
+        let running = tmux::list(&repo_key(&repo.path)).await?.len();
+        if running > 0 {
+            return Err(Error::Conflict(format!(
+                "repo `{}` has {running} running agent{}: stop {} before moving it",
+                repo.name,
+                if running == 1 { "" } else { "s" },
+                if running == 1 { "it" } else { "them" }
+            )));
+        }
+    }
+    ctx.registry()?.edit(&repo.name, patch).await
 }
 
 /// Unregisters a repo. Refused for the daemon's startup repo and while agents run in it.
