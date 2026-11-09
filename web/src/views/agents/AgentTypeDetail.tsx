@@ -9,6 +9,7 @@ import { AgentPrompt } from "./AgentPrompt";
 import { CopyButton } from "./CopyButton";
 import { AvatarEditor } from "./AvatarEditor";
 import { StepBadge } from "./AgentTypeRow";
+import { isConversationType } from "./agentTypes";
 import { RUNS_SHOWN, runModel, shownRuns, showsModelColumn } from "./agentRuns";
 import { UsageGraph } from "./UsageGraph";
 
@@ -123,6 +124,11 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
           <CopyButton text={data.source} />
         </div>
       </header>
+      {isConversationType(data.name) ? (
+        <p className="th-cap">
+          runs your conversations with townhall: its model, permission mode, tools and prompt apply to every turn. it can be edited but cannot be deleted, and tasks never default to it.
+        </p>
+      ) : null}
       <Section title="avatar">
         <AvatarEditor
           key={`${data.updatedAt}:${data.source}`}

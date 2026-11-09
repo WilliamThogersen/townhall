@@ -1,6 +1,6 @@
 import type { AgentTypeSummary } from "../../api/types";
 import { AgentAvatar } from "./AgentAvatar";
-import { pipelineStep, type Usage } from "./agentTypes";
+import { isConversationType, pipelineStep, type Usage } from "./agentTypes";
 
 export interface AgentTypeRowProps {
   readonly type: AgentTypeSummary;
@@ -22,7 +22,8 @@ export function AgentTypeRow({ type, isDefault, selected, usage, onSelect }: Age
       <span className="th-agent-row-body">
         <span className="th-agent-row-head">
           <b>{type.name}</b>
-          {isDefault ? <span className="th-tag">default</span> : null}
+          {isDefault ? <span className="th-tag">task default</span> : null}
+          {isConversationType(type.name) ? <span className="th-tag">conversation default</span> : null}
           <StepBadge name={type.name} />
         </span>
         <span className="th-agent-row-desc">{type.description}</span>

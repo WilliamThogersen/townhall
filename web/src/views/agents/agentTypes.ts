@@ -11,6 +11,11 @@ const STEP_OF: Readonly<Record<string, PipelineStep>> = {
 };
 
 const FALLBACK_DEFAULT = "builder";
+const CONVERSATION_TYPE = "default";
+
+export function isConversationType(name: string): boolean {
+  return name.toLowerCase() === CONVERSATION_TYPE;
+}
 
 export function pipelineStep(name: string): PipelineStep | null {
   return STEP_OF[name.toLowerCase()] ?? null;
@@ -20,9 +25,10 @@ const byName = (a: AgentTypeSummary, b: AgentTypeSummary) =>
   a.name.toLowerCase().localeCompare(b.name.toLowerCase());
 
 export function defaultTypeName(types: readonly AgentTypeSummary[]): string | null {
-  const builder = types.find((t) => t.name.toLowerCase() === FALLBACK_DEFAULT);
+  const forTasks = types.filter((t) => !isConversationType(t.name));
+  const builder = forTasks.find((t) => t.name.toLowerCase() === FALLBACK_DEFAULT);
   if (builder) return builder.name;
-  return [...types].sort(byName)[0]?.name ?? null;
+  return [...forTasks].sort(byName)[0]?.name ?? null;
 }
 
 export interface Usage {

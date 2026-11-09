@@ -72,10 +72,52 @@ describe("AgentsPage", () => {
     expect(within(await rowOf("dev-server")).getByText("shell")).toBeInTheDocument();
   });
 
-  it("marks the default type", async () => {
+  it("marks the type tasks default to", async () => {
     render(<AgentsPage />);
-    expect(within(await rowOf("builder")).getByText("default")).toBeInTheDocument();
-    expect(within(await rowOf("planner")).queryByText("default")).not.toBeInTheDocument();
+    expect(within(await rowOf("builder")).getByText("task default")).toBeInTheDocument();
+    expect(within(await rowOf("planner")).queryByText("task default")).not.toBeInTheDocument();
+  });
+
+  describe("the conversation default", () => {
+    const conversationType = anAgentTypeSummary({ name: "default", description: "the conversation agent", model: null });
+
+    beforeEach(() => {
+      vi.spyOn(library, "listAgentTypes").mockResolvedValue([conversationType, builder, planner]);
+    });
+
+    const conversationRow = async () => {
+      const name = await screen.findByText("default", { selector: "b" });
+      return within(name.closest("button") as HTMLElement);
+    };
+
+    it("is listed and labelled as the conversation default, not the task default", async () => {
+      render(<AgentsPage />);
+      const row = await conversationRow();
+      expect(row.getByText("conversation default")).toBeInTheDocument();
+      expect(row.queryByText("task default")).not.toBeInTheDocument();
+      expect(within(await rowOf("builder")).getByText("task default")).toBeInTheDocument();
+    });
+
+    it("lists the task default before it", async () => {
+      render(<AgentsPage />);
+      await conversationRow();
+      const names = screen.getAllByRole("button", { pressed: false }).map((row) => row.querySelector("b")?.textContent);
+      expect(names[0]).toBe("builder");
+    });
+
+    it("says in its detail that it runs the conversations and cannot be deleted", async () => {
+      render(<AgentsPage />);
+      await userEvent.click((await conversationRow()) && (await screen.findByText("default", { selector: "b" })));
+      expect(await screen.findByText(/runs your conversations with townhall/)).toBeInTheDocument();
+      expect(screen.getByText(/cannot be deleted/)).toBeInTheDocument();
+    });
+
+    it("gives other types no such note", async () => {
+      render(<AgentsPage />);
+      await userEvent.click(await rowOf("planner"));
+      await screen.findByLabelText("planner");
+      expect(screen.queryByText(/runs your conversations/)).not.toBeInTheDocument();
+    });
   });
 
   it("badges a type with its pipeline step and leaves unknown types bare", async () => {
