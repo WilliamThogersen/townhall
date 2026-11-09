@@ -14,7 +14,7 @@ use super::publish::Programs;
 use crate::model::{normalize_accounts, ForgeAccount, ForgeKind};
 use crate::{Error, Result};
 
-const STATUS_TIMEOUT: Duration = Duration::from_secs(15);
+const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// One login found on one host.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -186,17 +186,32 @@ fn mark(found: Vec<ForgeAccount>, registered: &[ForgeAccount]) -> Vec<Detected> 
 }
 
 /// Every account `gh` and then `glab` report as logged in. A program that is not installed, or
-/// has no login, adds nothing. Blocking: it runs both programs.
+/// has no login, adds nothing. Blocking, but both programs run at the same time, each held to
+/// `STATUS_TIMEOUT`. One that fails or times out does not hide the other's accounts; its error
+/// is returned only when nothing was found at all, so the reason is never lost.
 pub fn detect_blocking(programs: &Programs, registered: &[ForgeAccount]) -> Result<Vec<Detected>> {
-    let gh = accounts(
-        ForgeKind::Github,
-        found_by(&programs.gh, ForgeKind::Github)?,
-    );
-    let glab = accounts(
-        ForgeKind::Gitlab,
-        found_by(&programs.glab, ForgeKind::Gitlab)?,
-    );
-    Ok(mark(gh.into_iter().chain(glab).collect(), registered))
+    let (gh, glab) = std::thread::scope(|scope| {
+        let glab = scope.spawn(|| found_by(&programs.glab, ForgeKind::Gitlab));
+        let gh = found_by(&programs.gh, ForgeKind::Github);
+        let glab = glab.join().unwrap_or_else(|_| {
+            Err(Error::InvalidInput(
+                "detecting glab accounts panicked".to_string(),
+            ))
+        });
+        (gh, glab)
+    });
+    let mut found = Vec::new();
+    let mut failure = None;
+    for (forge, result) in [(ForgeKind::Github, gh), (ForgeKind::Gitlab, glab)] {
+        match result {
+            Ok(pairs) => found.extend(accounts(forge, pairs)),
+            Err(e) => failure = failure.or(Some(e)),
+        }
+    }
+    match failure {
+        Some(e) if found.is_empty() => Err(e),
+        _ => Ok(mark(found, registered)),
+    }
 }
 
 #[cfg(test)]
@@ -231,6 +246,33 @@ mod tests {
         ]);
         assert_eq!(from_json(REAL_GH_JSON), Some(both.clone()));
         assert_eq!(from_text(REAL_GH_TEXT), both);
+    }
+
+    const REAL_GLAB_PARTIAL: &str = "gitlab.com
+  x gitlab.com: API call failed: context deadline exceeded
+  ✓ Git operations for gitlab.com configured to use ssh protocol.
+  ✓ API calls for gitlab.com are made over https protocol.
+  ✓ REST API Endpoint: https://gitlab.com/api/v4/
+  ✓ GraphQL Endpoint: https://gitlab.com/api/graphql/
+gitlab.wexo.io
+  ✓ Logged in to gitlab.wexo.io as wexowgt (keyring)
+  ✓ Git operations for gitlab.wexo.io configured to use ssh protocol.
+  ✓ API calls for gitlab.wexo.io are made over https protocol.
+  ✓ REST API Endpoint: https://gitlab.wexo.io/api/v4/
+  ✓ GraphQL Endpoint: https://gitlab.wexo.io/api/graphql/
+
+   ERROR
+
+
+  X could not authenticate to one or more of the configured GitLab instances.
+";
+
+    #[test]
+    fn glab_with_one_failed_host_yields_only_the_working_one() {
+        assert_eq!(
+            from_text(REAL_GLAB_PARTIAL),
+            pairs(&[("gitlab.wexo.io", "wexowgt")])
+        );
     }
 
     #[test]

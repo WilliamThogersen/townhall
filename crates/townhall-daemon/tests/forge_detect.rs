@@ -194,6 +194,53 @@ async fn real_gh_2_101_text_lists_both_accounts_when_json_is_unavailable() {
     assert_eq!(detected(&env).await, both_real_accounts());
 }
 
+const REAL_GLAB_PARTIAL: &str = "gitlab.com
+  x gitlab.com: API call failed: context deadline exceeded
+  ✓ Git operations for gitlab.com configured to use ssh protocol.
+  ✓ API calls for gitlab.com are made over https protocol.
+  ✓ REST API Endpoint: https://gitlab.com/api/v4/
+  ✓ GraphQL Endpoint: https://gitlab.com/api/graphql/
+gitlab.wexo.io
+  ✓ Logged in to gitlab.wexo.io as wexowgt (keyring)
+  ✓ Git operations for gitlab.wexo.io configured to use ssh protocol.
+  ✓ API calls for gitlab.wexo.io are made over https protocol.
+  ✓ REST API Endpoint: https://gitlab.wexo.io/api/v4/
+  ✓ GraphQL Endpoint: https://gitlab.wexo.io/api/graphql/
+
+   ERROR
+
+
+  X could not authenticate to one or more of the configured GitLab instances.
+";
+
+#[tokio::test]
+async fn real_glab_output_with_one_failed_host_and_non_zero_exit_lists_the_working_host_only() {
+    let _guard = ENV_LOCK.lock().await;
+    let env = Env::new("alpha").await;
+    let dir = env.root.path();
+    let glab = format!("cat >&2 <<'EOF'\n{REAL_GLAB_PARTIAL}EOF\nexit 1");
+    point_at(&stub(dir, "gh", "exit 1"), &stub(dir, "glab", &glab));
+    assert_eq!(
+        detected(&env).await,
+        json!([{"forge": "gitlab", "login": "wexowgt", "host": "gitlab.wexo.io", "registered": false}])
+    );
+}
+
+#[tokio::test]
+async fn a_hanging_glab_does_not_hide_gh_and_is_cut_off_at_the_timeout() {
+    let _guard = ENV_LOCK.lock().await;
+    let env = Env::new("alpha").await;
+    let dir = env.root.path();
+    point_at(
+        &stub(dir, "gh", GH_TEXT),
+        &stub(dir, "glab", "exec sleep 60"),
+    );
+    let started = std::time::Instant::now();
+    let got = detected(&env).await;
+    assert!(started.elapsed() < std::time::Duration::from_secs(30));
+    assert_eq!(got.as_array().unwrap().len(), 3, "{got}");
+}
+
 #[tokio::test]
 async fn glab_status_on_stderr_with_two_hosts_lists_both_even_when_it_exits_non_zero() {
     let _guard = ENV_LOCK.lock().await;
