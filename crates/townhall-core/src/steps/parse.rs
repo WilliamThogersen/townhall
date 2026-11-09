@@ -40,6 +40,17 @@ pub fn transcript_tokens(jsonl: &str) -> u64 {
         .sum()
 }
 
+pub fn transcript_model(jsonl: &str) -> Option<String> {
+    jsonl
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|line| {
+            let model = line.get("message")?.get("model")?.as_str()?;
+            (!model.is_empty() && !model.starts_with('<')).then(|| model.to_string())
+        })
+        .last()
+}
+
 /// One step per `tool_use` in an assistant message, paired with its `tool_result` by id
 /// and ordered by start. Lines that do not parse, and sidechain lines, are skipped.
 pub fn parse_transcript(jsonl: &str) -> Vec<Step> {

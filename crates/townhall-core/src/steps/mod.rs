@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 pub use agent::{claude_projects_dir, worktree_made, CLAUDE_PROJECTS_ENV};
 pub use locate::{latest_transcript, latest_transcript_since, project_dir_for, session_transcript};
-pub use parse::{parse_transcript, transcript_tokens};
+pub use parse::{parse_transcript, transcript_model, transcript_tokens};
 
 use crate::{Error, Result};
 
@@ -61,26 +61,38 @@ pub async fn steps_for_agent(claude_projects: &Path, worktree: &Path) -> Result<
     .await
 }
 
-pub async fn tokens_for_agent(claude_projects: &Path, worktree: &Path) -> Result<u64> {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TranscriptUsage {
+    pub tokens: u64,
+    pub model: Option<String>,
+}
+
+pub async fn usage_for_agent(claude_projects: &Path, worktree: &Path) -> Result<TranscriptUsage> {
     let (projects, cwd) = (claude_projects.to_path_buf(), worktree.to_path_buf());
-    tokio::task::spawn_blocking(move || read_tokens(&projects, &cwd))
+    tokio::task::spawn_blocking(move || read_usage(&projects, &cwd))
         .await
         .map_err(|e| Error::Io {
-            context: format!("read tokens for {}", worktree.display()),
+            context: format!("read usage for {}", worktree.display()),
             source: std::io::Error::other(e),
         })?
 }
 
-fn read_tokens(projects: &Path, cwd: &Path) -> Result<u64> {
+fn read_usage(projects: &Path, cwd: &Path) -> Result<TranscriptUsage> {
     let Some(made) = worktree_made(cwd)? else {
-        return Ok(0);
+        return Ok(TranscriptUsage::default());
     };
     let Some(path) = latest_transcript_since(projects, cwd, made)? else {
-        return Ok(0);
+        return Ok(TranscriptUsage::default());
     };
     match std::fs::read(&path) {
-        Ok(bytes) => Ok(transcript_tokens(&String::from_utf8_lossy(&bytes))),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+        Ok(bytes) => {
+            let text = String::from_utf8_lossy(&bytes);
+            Ok(TranscriptUsage {
+                tokens: transcript_tokens(&text),
+                model: transcript_model(&text),
+            })
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(TranscriptUsage::default()),
         Err(source) => Err(Error::Io {
             context: format!("read transcript {}", path.display()),
             source,

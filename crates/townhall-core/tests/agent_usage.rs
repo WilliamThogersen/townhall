@@ -1,5 +1,5 @@
 use townhall_core::model::AgentUsage;
-use townhall_core::steps::transcript_tokens;
+use townhall_core::steps::{transcript_model, transcript_tokens};
 
 mod common;
 use common::{new_task, store_env};
@@ -59,28 +59,53 @@ async fn usage_sums_runs_and_tokens_per_agent_type() {
     assert!(env.store.set_task_tokens("nope", 1).await.is_err());
 }
 
+#[test]
+fn transcript_model_is_the_last_real_model() {
+    let jsonl = [
+        r#"{"type":"assistant","message":{"id":"m1","model":"claude-a"}}"#,
+        "not json",
+        r#"{"type":"assistant","message":{"id":"m2","model":"claude-b"}}"#,
+        r#"{"type":"assistant","message":{"id":"m3"}}"#,
+        r#"{"type":"assistant","message":{"id":"m4","model":"<synthetic>"}}"#,
+        r#"{"type":"assistant","message":{"id":"m5","model":""}}"#,
+    ]
+    .join("\n");
+    assert_eq!(transcript_model(&jsonl), Some("claude-b".to_string()));
+    assert_eq!(transcript_model(""), None);
+    assert_eq!(
+        transcript_model(r#"{"message":{"model":"<synthetic>"}}"#),
+        None
+    );
+}
+
 #[tokio::test]
-async fn tokens_for_agent_read_the_worktrees_newest_transcript() {
+async fn usage_for_agent_reads_the_worktrees_newest_transcript() {
     use std::fs;
-    use townhall_core::steps::{project_dir_for, tokens_for_agent};
+    use townhall_core::steps::{project_dir_for, usage_for_agent, TranscriptUsage};
     let projects = tempfile::TempDir::new().unwrap();
     let worktree = tempfile::TempDir::new().unwrap();
     assert_eq!(
-        tokens_for_agent(projects.path(), worktree.path())
+        usage_for_agent(projects.path(), worktree.path())
             .await
             .unwrap(),
-        0
+        TranscriptUsage::default()
     );
     let dir = project_dir_for(projects.path(), worktree.path());
     fs::create_dir_all(&dir).unwrap();
-    let line = r#"{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":3,"output_tokens":4}}}"#;
+    let line = r#"{"type":"assistant","message":{"id":"m1","model":"claude-x","usage":{"input_tokens":3,"output_tokens":4}}}"#;
     fs::write(dir.join("s.jsonl"), line).unwrap();
     assert_eq!(
-        tokens_for_agent(projects.path(), worktree.path())
+        usage_for_agent(projects.path(), worktree.path())
             .await
             .unwrap(),
-        7
+        TranscriptUsage {
+            tokens: 7,
+            model: Some("claude-x".into())
+        }
     );
     let gone = worktree.path().join("gone");
-    assert_eq!(tokens_for_agent(projects.path(), &gone).await.unwrap(), 0);
+    assert_eq!(
+        usage_for_agent(projects.path(), &gone).await.unwrap(),
+        TranscriptUsage::default()
+    );
 }
