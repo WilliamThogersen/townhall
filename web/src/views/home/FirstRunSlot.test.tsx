@@ -101,7 +101,7 @@ describe("FirstRunSlot", () => {
     await userEvent.click(screen.getByRole("radio", { name: "url" }));
     await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "https://github.com/acme/shop");
     await userEvent.click(screen.getByRole("button", { name: "add" }));
-    expect(add).toHaveBeenCalledWith({ path: "https://github.com/acme/shop" });
+    expect(add).toHaveBeenCalledWith({ path: "git@github.com:acme/shop.git" });
     expect(pickFolder).not.toHaveBeenCalled();
   });
 });

@@ -261,8 +261,8 @@ fn push(req: &PrRequest, session: &Session) -> Result<()> {
     match run_blocking_env("git", &args, Some(req.worktree), &envs) {
         Ok(_) => Ok(()),
         Err(Error::Command { stderr, .. }) => {
-            let why =
-                auth_failure(&stderr).map_or_else(|| stderr.trim().to_string(), str::to_string);
+            let why = auth_failure(&stderr, false)
+                .map_or_else(|| stderr.trim().to_string(), str::to_string);
             Err(invalid(format!(
                 "could not push {} to origin: {why}",
                 req.branch

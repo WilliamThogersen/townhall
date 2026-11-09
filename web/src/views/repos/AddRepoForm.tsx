@@ -4,11 +4,14 @@ import {
   addProgress,
   cloneTargetOf,
   DEFAULT_CLONES_DIR,
+  DEFAULT_PROTOCOL,
   draftToInput,
   EMPTY_DRAFT,
   modeProblem,
+  withProtocol,
   type AddMode,
   type AddRepoDraft,
+  type CloneProtocol,
 } from "../../repos/addRepoDraft";
 import { Button } from "../../ui/Button";
 import { Segmented, type SegmentedOption } from "../../ui/Segmented";
@@ -20,6 +23,11 @@ export type AddRepoLayout = "row" | "stack";
 const MODES: readonly SegmentedOption<AddMode>[] = [
   { value: "folder", label: "folder" },
   { value: "url", label: "url" },
+];
+
+const PROTOCOLS: readonly SegmentedOption<CloneProtocol>[] = [
+  { value: "ssh", label: "ssh" },
+  { value: "https", label: "https" },
 ];
 
 export interface AddRepoFormProps {
@@ -36,13 +44,14 @@ export interface AddRepoFormProps {
 export function AddRepoForm({ busy, error, focusToken, layout = "row", defaultCloneDir = "", onBrowse, onSubmit, onCancel }: AddRepoFormProps) {
   const [draft, setDraft] = useState<AddRepoDraft>(EMPTY_DRAFT);
   const [mode, setMode] = useState<AddMode>("folder");
+  const [protocol, setProtocol] = useState<CloneProtocol>(DEFAULT_PROTOCOL);
   const pathRef = useFocusOn(focusToken);
   const set = (key: keyof AddRepoDraft) => (value: string) => setDraft((current) => ({ ...current, [key]: value }));
   const problem = modeProblem(mode, draft.path);
   const ready = draft.path.trim() !== "" && problem === null;
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (ready && !busy) onSubmit(draftToInput(draft));
+    if (ready && !busy) onSubmit(draftToInput(draft, protocol));
   };
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
     if (e.key !== "Escape" || busy) return;
@@ -62,6 +71,7 @@ export function AddRepoForm({ busy, error, focusToken, layout = "row", defaultCl
   return (
     <form className="th-repo-add" data-layout={layout} aria-label="add repository" onSubmit={submit} onKeyDown={onKeyDown}>
       <Segmented name="th-repo-add-mode" label="add from" value={mode} options={MODES} onChange={choose} />
+      {url ? <Segmented name="th-repo-add-protocol" label="clone over" value={protocol} options={PROTOCOLS} onChange={setProtocol} /> : null}
       {url ? (
         <Field label="git url" className="th-repo-field--wide" value={draft.path} placeholder="a github or gitlab link" inputRef={pathRef} onChange={set("path")} />
       ) : (
@@ -85,7 +95,7 @@ export function AddRepoForm({ busy, error, focusToken, layout = "row", defaultCl
       {url ? (
         <Field label="clone into" className="th-repo-field--wide" value={draft.cloneDir} placeholder={defaultCloneDir.trim() || DEFAULT_CLONES_DIR} onChange={set("cloneDir")} />
       ) : null}
-      {target !== null && !busy ? <p className="th-cap th-repo-add-error">clones into {target}</p> : null}
+      {target !== null && !busy ? <p className="th-cap th-repo-add-error">clones {withProtocol(draft.path, protocol)} into {target}</p> : null}
       {busy ? (
         <p className="th-cap th-repo-add-error" role="status">
           {addProgress(draft)}

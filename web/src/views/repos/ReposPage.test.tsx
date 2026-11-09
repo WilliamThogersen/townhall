@@ -144,7 +144,7 @@ describe("ReposPage", () => {
     expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
   });
 
-  it("says where a url will be cloned and takes an optional clone-into folder", async () => {
+  it("says what a url will clone and where, and takes an optional clone-into folder", async () => {
     const link = "https://github.com/acme/data-hub.git";
     const added = aRepo({ name: "data-hub", path: "/Users/me/Developer/data-hub", baseBranch: "main" });
     const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
@@ -154,12 +154,40 @@ describe("ReposPage", () => {
     const into = screen.getByRole("textbox", { name: "clone into" });
     expect(into).toHaveAttribute("placeholder", "~/.townhall/repos");
     await userEvent.type(screen.getByRole("textbox", { name: "git url" }), link);
-    expect(screen.getByText("clones into ~/.townhall/repos/data-hub")).toBeInTheDocument();
+    expect(screen.getByText("clones git@github.com:acme/data-hub.git into ~/.townhall/repos/data-hub")).toBeInTheDocument();
     await userEvent.type(into, "~/Developer");
-    expect(screen.getByText("clones into ~/Developer/data-hub")).toBeInTheDocument();
+    expect(screen.getByText("clones git@github.com:acme/data-hub.git into ~/Developer/data-hub")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "add" }));
-    expect(add).toHaveBeenCalledWith({ path: link, cloneDir: "~/Developer" });
+    expect(add).toHaveBeenCalledWith({ path: "git@github.com:acme/data-hub.git", cloneDir: "~/Developer" });
     expect(await screen.findByText("data-hub", { selector: ".th-repo-name b" })).toBeInTheDocument();
+  });
+
+  it("clones a pasted https link over ssh by default and over https when chosen", async () => {
+    const link = "https://gitlab.wexo.io/konpap/vines.git";
+    const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(aRepo({ name: "vines", path: "/Users/me/.townhall/repos/vines", baseBranch: "main" }));
+    renderPage();
+    await openAdd();
+    expect(screen.queryByRole("radio", { name: "ssh" })).not.toBeInTheDocument();
+    await chooseUrl();
+    expect(screen.getByRole("radio", { name: "ssh" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "https" })).not.toBeChecked();
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), link);
+    expect(screen.getByText("clones git@gitlab.wexo.io:konpap/vines.git into ~/.townhall/repos/vines")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "https" }));
+    expect(screen.getByText(`clones ${link} into ~/.townhall/repos/vines`)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "ssh" }));
+    await userEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(add).toHaveBeenCalledWith({ path: "git@gitlab.wexo.io:konpap/vines.git" });
+  });
+
+  it("sends the https form when https is chosen", async () => {
+    const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(aRepo({ name: "vines", path: "/Users/me/.townhall/repos/vines", baseBranch: "main" }));
+    renderPage();
+    await openAdd();
+    await chooseUrl();
+    await userEvent.click(screen.getByRole("radio", { name: "https" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "git@gitlab.wexo.io:konpap/vines{Enter}");
+    expect(add).toHaveBeenCalledWith({ path: "https://gitlab.wexo.io/konpap/vines.git" });
   });
 
   it("offers the clones folder from the settings as the default", async () => {
@@ -167,7 +195,7 @@ describe("ReposPage", () => {
     await openAdd();
     await chooseUrl();
     await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "git@gitlab.com:group/sub/app.git");
-    expect(await screen.findByText("clones into ~/Developer/app")).toBeInTheDocument();
+    expect(await screen.findByText("clones git@gitlab.com:group/sub/app.git into ~/Developer/app")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "clone into" })).toHaveAttribute("placeholder", "~/Developer");
   });
 

@@ -97,7 +97,8 @@ fn clone_into(remote: &Remote, dest: &Path) -> Result<()> {
 fn clone_failed(url: &str, stderr: &str) -> Error {
     let lower = stderr.to_ascii_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| lower.contains(n));
-    let why = if let Some(hint) = auth_failure(stderr) {
+    let why = if let Some(hint) = auth_failure(stderr, url.to_ascii_lowercase().starts_with("http"))
+    {
         hint.to_string()
     } else if has(&NOT_FOUND) {
         "repository not found: check the link and your access to it".to_string()
@@ -205,5 +206,14 @@ mod tests {
         assert!(gone.contains("repository not found"), "{gone}");
         let other = msg("fatal: unable to access: Could not resolve host: nowhere");
         assert!(other.contains("Could not resolve host"), "{other}");
+    }
+
+    #[test]
+    fn an_https_clone_that_cannot_log_in_suggests_ssh() {
+        let stderr = "fatal: could not read Username for 'https://gitlab.wexo.io': terminal prompts disabled";
+        let https = clone_failed("https://gitlab.wexo.io/konpap/vines.git", stderr).to_string();
+        assert!(https.contains("switch to ssh"), "{https}");
+        let ssh = clone_failed("git@gitlab.wexo.io:konpap/vines.git", stderr).to_string();
+        assert!(!ssh.contains("switch to ssh"), "{ssh}");
     }
 }
