@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::model::PermissionMode;
@@ -27,6 +28,9 @@ pub struct LaunchOptions {
     /// The MCP tools of that server (`mcp__<server>__<tool>`), allowed without asking and
     /// kept apart from `allowed_tools`: they never turn a type with no tool list into one.
     pub mcp_tools: Vec<String>,
+    /// Extra environment variables for the process, set after the ones townhall unsets.
+    /// Names are checked and values quoted when the command is built; values are never logged.
+    pub env: BTreeMap<String, String>,
 }
 
 /// Knows how to turn launch options into the shell command run inside tmux.
