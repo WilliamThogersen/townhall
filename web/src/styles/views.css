@@ -741,6 +741,12 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.th-setting-text {
+  display: grid;
+  gap: var(--th-space-1);
+  width: min(32ch, 100%);
+}
+
 .th-input.th-profile-input {
   height: auto;
   min-height: 12lh;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { aConversation, aDetail, anAgentInfo, anEntry, aRepo, aTask, aYouEntry } from "../api/fixtures";
 import {
   applyEvent,
+  applyRepoEdited,
   applyStarted,
   reduceDetail,
   upsertAgent,
@@ -63,6 +64,36 @@ describe("list upserts", () => {
     const list = upsertRepo([aRepo()], aRepo({ name: "admin" }));
     expect(list.map((r) => r.name)).toEqual(["shop", "admin"]);
     expect(withoutRepo(list, "SHOP").map((r) => r.name)).toEqual(["admin"]);
+  });
+});
+
+describe("applyRepoEdited", () => {
+  const edited = aRepo({ name: "store", baseBranch: "develop" });
+  const state = {
+    ...INITIAL_STATE,
+    repos: loaded([aRepo({ name: "Shop" }), aRepo({ name: "admin" })]),
+    tasks: loaded([aTask({ name: "t1", repo: "shop" }), aTask({ name: "t2", repo: "admin" })]),
+    conversations: loaded([aConversation({ id: "c1", linkedRepo: "SHOP" }), aConversation({ id: "c2", linkedRepo: null })]),
+    agents: loaded([anAgentInfo({ repo: "shop" }), anAgentInfo({ repo: "admin" })]),
+    details: new Map([["c1", loaded(aDetail({ conversation: aConversation({ id: "c1", linkedRepo: "shop" }), tasks: [aTask({ repo: "shop" })] }))]]),
+  };
+
+  it("replaces the repo in place and renames it in everything that mentions it", () => {
+    const next = applyRepoEdited(state, "shop", edited);
+    expect(next.repos?.data?.map((r) => r.name)).toEqual(["store", "admin"]);
+    expect(next.tasks?.data?.map((t) => t.repo)).toEqual(["store", "admin"]);
+    expect(next.conversations?.data?.map((c) => c.linkedRepo)).toEqual(["store", null]);
+    expect(next.agents?.data?.map((a) => a.repo)).toEqual(["store", "admin"]);
+    const detail = next.details.get("c1")?.data;
+    expect([detail?.conversation.linkedRepo, detail?.tasks[0]?.repo]).toEqual(["store", "store"]);
+  });
+
+  it("only swaps the repo when its name stays", () => {
+    const moved = aRepo({ name: "Shop", path: "/elsewhere" });
+    const next = applyRepoEdited(state, "shop", moved);
+    expect(next.repos?.data?.[0]).toBe(moved);
+    expect(next.tasks).toBe(state.tasks);
+    expect(next.agents).toBe(state.agents);
   });
 });
 

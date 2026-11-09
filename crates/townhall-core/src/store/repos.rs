@@ -138,6 +138,49 @@ impl Store {
         .await
     }
 
+    /// Saves a new name, path and base branch for the repo called `current` (accounts are
+    /// kept). `Conflict` when another repo has the name (ignoring case) or the path. A new
+    /// name is followed by the tasks, conversations and agent states that mention the repo,
+    /// in the same transaction.
+    pub async fn update_repo(&self, current: &str, next: Repo) -> Result<Repo> {
+        let current = current.to_string();
+        self.call(move |conn| {
+            let tx = conn.transaction()?;
+            let found = by_name(&tx, &current)?.ok_or_else(|| Error::missing("repo", &current))?;
+            let same = |other: &Repo| names::same(&other.name, &found.name);
+            if let Some(other) = by_name(&tx, &next.name)?.filter(|o| !same(o)) {
+                return Err(Error::Conflict(format!(
+                    "a repo named `{}` already exists",
+                    other.name
+                )));
+            }
+            if let Some(other) = by_path(&tx, &path_text(&next.path)?)?.filter(|o| !same(o)) {
+                return Err(Error::Conflict(format!(
+                    "{} is already registered as `{}`",
+                    next.path.display(),
+                    other.name
+                )));
+            }
+            tx.execute(
+                "update repos set name = ?1, path = ?2, base_branch = ?3 where name = ?4",
+                params![next.name, path_text(&next.path)?, next.base_branch, found.name],
+            )?;
+            if next.name != found.name {
+                for sql in [
+                    "update tasks set repo = ?1 where repo = ?2 collate nocase",
+                    "update conversations set linked_repo = ?1 where linked_repo = ?2 collate nocase",
+                    "update agent_states set repo = ?1 where repo = ?2 collate nocase",
+                ] {
+                    tx.execute(sql, params![next.name, found.name])?;
+                }
+            }
+            let saved = by_name(&tx, &next.name)?.ok_or_else(|| Error::missing("repo", &next.name))?;
+            tx.commit()?;
+            Ok(saved)
+        })
+        .await
+    }
+
     /// Removes the repo called `name` (ignoring case). `Missing` when there is none.
     pub async fn remove_repo(&self, name: &str) -> Result<Repo> {
         let name = name.to_string();

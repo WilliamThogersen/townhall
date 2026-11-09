@@ -5,9 +5,9 @@ import {
   startConversation,
   stopTurn,
 } from "../api/conversations";
-import { addRepo, putRepoAccounts, removeRepo } from "../api/repos";
-import type { AddRepoInput, Conversation, PutRepoAccountsInput, Repo, ServerEvent } from "../api/types";
-import { applyStarted, upsertRepo, withoutRepo } from "./reducers";
+import { addRepo, patchRepo, putRepoAccounts, removeRepo } from "../api/repos";
+import type { AddRepoInput, Conversation, PatchRepoInput, PutRepoAccountsInput, Repo, ServerEvent } from "../api/types";
+import { applyRepoEdited, applyStarted, upsertRepo, withoutRepo } from "./reducers";
 import { mapResource, type DataState } from "./state";
 import type { ConversationActions } from "./types";
 
@@ -19,6 +19,7 @@ export interface StoreAccess {
 export interface RepoActions {
   readonly addRepo: (input: AddRepoInput) => Promise<Repo>;
   readonly removeRepo: (name: string, deleteClone?: boolean) => Promise<void>;
+  readonly editRepo: (name: string, input: PatchRepoInput) => Promise<Repo>;
   readonly setRepoAccounts: (name: string, input: PutRepoAccountsInput) => Promise<Repo>;
 }
 
@@ -55,6 +56,11 @@ export function createRepoActions({ update }: StoreAccess): RepoActions {
     removeRepo: async (name, deleteClone) => {
       await (deleteClone ? removeRepo(name, true) : removeRepo(name));
       update((state) => ({ ...state, repos: mapResource(state.repos, (list) => withoutRepo(list, name)) }));
+    },
+    editRepo: async (name, input) => {
+      const repo = await patchRepo(name, input);
+      update((state) => applyRepoEdited(state, name, repo));
+      return repo;
     },
     setRepoAccounts: async (name, input) => {
       const repo = await putRepoAccounts(name, input);

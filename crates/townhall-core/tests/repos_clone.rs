@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 
+use serde_json::json;
 use tempfile::TempDir;
 use townhall_core::events::EventBus;
-use townhall_core::model::AddRepo;
+use townhall_core::model::{AddRepo, SettingKey};
 use townhall_core::repos::RepoRegistry;
 use townhall_core::store::Store;
 use townhall_core::{Error, Home};
@@ -12,6 +13,7 @@ use common::{git, init_named};
 
 struct Env {
     dir: TempDir,
+    store: Store,
     registry: RepoRegistry,
 }
 
@@ -19,7 +21,8 @@ fn env() -> Env {
     let dir = TempDir::new().unwrap();
     let store = Store::open(&Home::at(dir.path().join(".townhall")), EventBus::new()).unwrap();
     Env {
-        registry: RepoRegistry::new(store),
+        registry: RepoRegistry::new(store.clone()),
+        store,
         dir,
     }
 }
@@ -68,10 +71,75 @@ async fn trailing_slashes_and_a_given_name_and_base_branch_work() {
         path: format!("  {url}/ "),
         name: Some("store".into()),
         base_branch: Some("develop".into()),
+        ..AddRepo::default()
     };
     let got = env.registry.add(&req).await.unwrap();
     assert_eq!(got.name, "store");
     assert!(got.path.ends_with("repos/shop"), "{:?}", got.path);
+}
+
+#[tokio::test]
+async fn a_clone_dir_in_the_request_picks_the_base_folder() {
+    let env = env();
+    let url = origin(&env.dir.path().join("a"), "shop", "main").await;
+    let base = env.dir.path().join("dev");
+    let req = AddRepo {
+        clone_dir: Some(base.to_string_lossy().into_owned()),
+        ..add(&url)
+    };
+    let got = env.registry.add(&req).await.unwrap();
+    assert_eq!(got.path, base.join("shop").canonicalize().unwrap());
+    assert!(!env.repos_dir().join("shop").exists());
+}
+
+#[tokio::test]
+async fn the_clones_dir_setting_is_the_default_base_and_the_request_overrides_it() {
+    let env = env();
+    let (dev, other) = (env.dir.path().join("dev"), env.dir.path().join("other"));
+    let value = json!(dev.to_string_lossy());
+    env.store
+        .set_setting(SettingKey::ClonesDir, value)
+        .await
+        .unwrap();
+    let a = origin(&env.dir.path().join("a"), "shop", "main").await;
+    let b = origin(&env.dir.path().join("b"), "cart", "main").await;
+    let got = env.registry.add(&add(&a)).await.unwrap();
+    assert_eq!(got.path, dev.join("shop").canonicalize().unwrap());
+    let req = AddRepo {
+        clone_dir: Some(other.to_string_lossy().into_owned()),
+        ..add(&b)
+    };
+    let got = env.registry.add(&req).await.unwrap();
+    assert_eq!(got.path, other.join("cart").canonicalize().unwrap());
+}
+
+#[tokio::test]
+async fn a_chosen_base_folder_never_overwrites_or_renames_around_an_existing_folder() {
+    let env = env();
+    let url = origin(&env.dir.path().join("a"), "shop", "main").await;
+    let base = env.dir.path().join("dev");
+    std::fs::create_dir_all(base.join("shop")).unwrap();
+    std::fs::write(base.join("shop/keep.txt"), "mine").unwrap();
+    let req = AddRepo {
+        clone_dir: Some(base.to_string_lossy().into_owned()),
+        ..add(&url)
+    };
+    let err = env.registry.add(&req).await.unwrap_err();
+    assert!(matches!(err, Error::Conflict(_)), "{err:?}");
+    assert_eq!(std::fs::read_dir(&base).unwrap().count(), 1);
+    assert!(base.join("shop/keep.txt").exists());
+}
+
+#[tokio::test]
+async fn a_relative_clone_dir_is_refused() {
+    let env = env();
+    let url = origin(&env.dir.path().join("a"), "shop", "main").await;
+    let req = AddRepo {
+        clone_dir: Some("dev/projects".into()),
+        ..add(&url)
+    };
+    let err = env.registry.add(&req).await.unwrap_err();
+    assert!(matches!(err, Error::InvalidInput(_)), "{err:?}");
 }
 
 #[tokio::test]
