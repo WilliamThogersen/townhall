@@ -81,10 +81,20 @@ fn is_clone_of(dir: &Path, remote: &Remote) -> bool {
 }
 
 fn clone_into(remote: &Remote, dest: &Path) -> Result<()> {
+    clone_into_with("git", remote, dest, &[])
+}
+
+pub(super) fn clone_into_with(
+    git: &str,
+    remote: &Remote,
+    dest: &Path,
+    extra: &[(&str, &str)],
+) -> Result<()> {
     let target = dest.to_string_lossy();
-    let envs = remote_env();
+    let mut envs: Vec<(&str, &str)> = remote_env();
+    envs.extend_from_slice(extra);
     let args = ["clone", "-q", "--", &remote.url, &target];
-    match run_blocking_env("git", &args, None, &envs) {
+    match run_blocking_env(git, &args, None, &envs) {
         Ok(_) => Ok(()),
         Err(Error::Command { stderr, .. }) => {
             let _ = std::fs::remove_dir_all(dest);

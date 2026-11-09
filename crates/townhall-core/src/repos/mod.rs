@@ -11,6 +11,7 @@ pub mod edit;
 mod git;
 pub mod names;
 pub mod publish;
+pub mod remote_git;
 pub mod source;
 
 use std::path::{Path, PathBuf};

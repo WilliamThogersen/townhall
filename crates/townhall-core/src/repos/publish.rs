@@ -206,6 +206,31 @@ fn token_of(program: &str, args: &[&str], picked: &Picked, dir: &Path) -> Result
     }
 }
 
+pub(super) fn token_for(
+    programs: &Programs,
+    forge: ForgeKind,
+    picked: &Picked,
+    dir: &Path,
+) -> Result<String> {
+    match forge {
+        ForgeKind::Github => {
+            let args = [
+                "auth",
+                "token",
+                "--user",
+                picked.login.as_str(),
+                "--hostname",
+                picked.host.as_str(),
+            ];
+            token_of(&programs.gh, &args, picked, dir)
+        }
+        ForgeKind::Gitlab => {
+            let args = ["config", "get", "token", "--host", picked.host.as_str()];
+            token_of(&programs.glab, &args, picked, dir)
+        }
+    }
+}
+
 /// `gh` on github.com reads `GH_TOKEN`, on any other host `GH_ENTERPRISE_TOKEN`.
 pub(super) fn github_session(program: &str, picked: &Picked, dir: &Path) -> Result<Session> {
     let args = [
