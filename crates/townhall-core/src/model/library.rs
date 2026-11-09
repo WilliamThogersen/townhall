@@ -36,6 +36,11 @@ pub struct AgentTypeSummary {
 }
 
 impl AgentType {
+    /// Whether a task may run as this type: every type but the conversation's.
+    pub fn for_tasks(&self) -> bool {
+        !self.def.name.eq_ignore_ascii_case(CONVERSATION_AGENT_TYPE)
+    }
+
     pub fn summary(&self) -> AgentTypeSummary {
         AgentTypeSummary {
             name: self.def.name.clone(),

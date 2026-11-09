@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use crate::cmd::run;
 use crate::context::Context;
-use crate::model::{Task, MAX_HANDOFFS};
+use crate::model::{AgentType, Task, MAX_HANDOFFS};
 use crate::worktree;
 
 use super::checks::{self, one_line, Checked};
@@ -90,6 +90,7 @@ pub(super) async fn hand_back(ctx: &Context, task: &str, input: HandBackInput) -
         .await
         .map_err(text)?
         .into_iter()
+        .filter(AgentType::for_tasks)
         .map(|t| t.def.name)
         .collect();
     let to = input.to.trim();

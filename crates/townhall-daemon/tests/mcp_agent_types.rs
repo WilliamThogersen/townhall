@@ -36,7 +36,8 @@ async fn list_and_read_show_the_saved_types() {
     let listed = m.ok("list_agent_types", json!({})).await;
     assert_eq!(listed["default"], "builder");
     let types = listed["types"].as_array().unwrap();
-    assert_eq!(types.len(), 1);
+    assert_eq!(types.len(), 2);
+    assert_eq!(types[1]["name"], "default");
     assert_eq!(
         (
             &types[0]["name"],

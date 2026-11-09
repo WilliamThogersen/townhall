@@ -36,7 +36,8 @@ async fn the_list_starts_with_builder() {
     let (s, v) = call(&app, "GET", "/api/library/agents", None).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     let rows = v["data"].as_array().unwrap();
-    assert_eq!(rows.len(), 1);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1]["name"], "default");
     let keys: Vec<&String> = rows[0].as_object().unwrap().keys().collect();
     assert_eq!(
         keys,
@@ -98,7 +99,7 @@ async fn put_saves_toml_and_get_reads_it_back() {
         .iter()
         .map(|r| r["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["builder", "coder"]);
+    assert_eq!(names, ["builder", "coder", "default"]);
 }
 
 #[tokio::test]
@@ -138,7 +139,7 @@ async fn a_bad_put_answers_the_error_list() {
     assert_eq!(v["data"][0]["field"], "name");
     assert!(v["error"].as_str().unwrap().contains("other"), "{v}");
     let (_, v) = call(&app, "GET", "/api/library/agents", None).await;
-    assert_eq!(v["data"].as_array().unwrap().len(), 1);
+    assert_eq!(v["data"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]
@@ -153,6 +154,21 @@ async fn delete_refuses_unknown_and_the_last_type() {
     let (s, v) = call(&app, "DELETE", "/api/library/agents/coder", None).await;
     assert_eq!(s, StatusCode::CONFLICT);
     assert!(v["error"].as_str().unwrap().contains("last"), "{v}");
+}
+
+#[tokio::test]
+async fn delete_refuses_the_conversation_default() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    put(&app, "coder", CODER).await;
+    let (s, v) = call(&app, "DELETE", "/api/library/agents/default", None).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    assert!(
+        v["error"].as_str().unwrap().contains("conversations"),
+        "{v}"
+    );
+    let (s, _) = call(&app, "GET", "/api/library/agents/default", None).await;
+    assert_eq!(s, StatusCode::OK);
 }
 
 #[tokio::test]
