@@ -42,7 +42,7 @@ pub fn tools() -> Vec<ToolDef> {
     vec![
         ToolDef {
             name: LIST_AGENT_TYPES,
-            description: "The saved agent types: name, description, adapter, model and permission mode, plus the default create_task uses. Every task runs as one of them; reuse a type before you design a new one.",
+            description: "The saved agent types: name, description, adapter, model, effort and permission mode, plus the default create_task uses. Every task runs as one of them; reuse a type before you design a new one.",
             input_schema: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
             read_only: true,
         },
@@ -78,7 +78,7 @@ fn save_schema() -> Value {
         "properties": {
             "source": {
                 "type": "string", "minLength": 1, "maxLength": Store::MAX_AGENT_SOURCE,
-                "description": "The whole type as TOML, in the shape read_agent_type shows: name, description, adapter (claude or shell), model, tools (claude --allowedTools entries), prompt (its personality, appended to claude's system prompt); command for shell; requires (agent type names whose tasks must finish with a clearing report first)."
+                "description": "The whole type as TOML, in the shape read_agent_type shows: name, description, adapter (claude or shell), model, effort (low, medium, high, xhigh or max; left out, claude's own default), tools (claude --allowedTools entries), prompt (its personality, appended to claude's system prompt); command for shell; requires (agent type names whose tasks must finish with a clearing report first)."
             },
             "confirmed": {
                 "type": "boolean",

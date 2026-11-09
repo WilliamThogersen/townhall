@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use crate::definitions::Effort;
 use crate::model::PermissionMode;
 use crate::{Error, Result};
 
@@ -16,6 +17,8 @@ pub struct LaunchOptions {
     pub session_id: Option<String>,
     /// `claude --model`, for example `sonnet` or `opus`.
     pub model: Option<String>,
+    /// `claude --effort`. `None` adds no flag.
+    pub effort: Option<Effort>,
     /// `claude --allowedTools`, for example `Read` or `Bash(git diff:*)`.
     pub allowed_tools: Vec<String>,
     /// `claude --append-system-prompt`.

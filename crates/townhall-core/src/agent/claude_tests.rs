@@ -1,6 +1,7 @@
 use std::os::unix::fs::PermissionsExt;
 
 use super::*;
+use crate::definitions::Effort;
 
 const ID: &str = "0b8e7f8a-3c1d-4f7e-9a2b-1c2d3e4f5a6b";
 const UNSET: &str = "env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT \
@@ -241,6 +242,27 @@ fn permission_modes() {
     for (m, flag) in cases {
         assert_eq!(mode(m), with_isolation(&[flag]), "{flag}");
     }
+}
+
+#[test]
+fn effort_is_one_flag_after_the_model_and_only_when_set() {
+    let o = LaunchOptions {
+        model: Some("opus".into()),
+        effort: Some(Effort::Medium),
+        ..LaunchOptions::default()
+    };
+    assert_eq!(
+        ClaudeCodeAdapter::args(&o).unwrap(),
+        with_isolation(&[
+            "--model=opus",
+            "--effort=medium",
+            "--permission-mode=acceptEdits"
+        ])
+    );
+    assert!(!ClaudeCodeAdapter::args(&LaunchOptions::default())
+        .unwrap()
+        .iter()
+        .any(|a| a.starts_with("--effort")));
 }
 
 #[test]

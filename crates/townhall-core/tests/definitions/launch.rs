@@ -4,7 +4,7 @@ use std::process::Command;
 use townhall_core::agent::{
     AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter, AGENT_ISOLATION,
 };
-use townhall_core::definitions::{parse_agent, AgentDef, PermissionMode};
+use townhall_core::definitions::{parse_agent, AgentDef, Effort, PermissionMode};
 use townhall_core::model::PermissionMode as SettingsMode;
 
 use crate::support::{agent_errors, CODER};
@@ -116,6 +116,19 @@ fn definition_modes_map_onto_the_same_settings_modes() {
     ] {
         assert_eq!(SettingsMode::from(mode).cli_value(), Some(mode.as_str()));
     }
+}
+
+#[test]
+fn an_effort_reaches_the_claude_launch_only_when_set() {
+    let medium = agent("effort = \"medium\"").launch_options(SettingsMode::AcceptEdits);
+    assert_eq!(medium.effort, Some(Effort::Medium));
+    assert_eq!(
+        argv(&medium),
+        ["--effort=medium", "--permission-mode=acceptEdits"]
+    );
+    let unset = agent("").launch_options(SettingsMode::AcceptEdits);
+    assert_eq!(unset.effort, None);
+    assert_eq!(argv(&unset), ["--permission-mode=acceptEdits"]);
 }
 
 #[test]
