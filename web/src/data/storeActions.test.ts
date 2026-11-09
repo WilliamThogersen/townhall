@@ -80,6 +80,23 @@ describe("repo actions", () => {
     expect(store.getState().repos?.data).toEqual([picked]);
   });
 
+  it("replaces an edited repo in the loaded list, even under a new name", async () => {
+    const { store } = await loaded();
+    const renamed = aRepo({ name: "store", baseBranch: "develop" });
+    const patch = vi.spyOn(reposApi, "patchRepo").mockResolvedValue(renamed);
+    expect(await store.editRepo("shop", { name: "store", baseBranch: "develop" })).toEqual(renamed);
+    expect(patch).toHaveBeenCalledWith("shop", { name: "store", baseBranch: "develop" });
+    expect(store.getState().repos?.data).toEqual([renamed]);
+  });
+
+  it("keeps the list as it was when the daemon refuses an edit", async () => {
+    const { store } = await loaded();
+    const before = store.getState();
+    vi.spyOn(reposApi, "patchRepo").mockRejectedValue(new ApiError("http", "a repo named `x` already exists", 409));
+    await expect(store.editRepo("shop", { name: "x" })).rejects.toThrow("already exists");
+    expect(store.getState()).toBe(before);
+  });
+
   it("keeps the list as it was when the daemon refuses the account", async () => {
     const { store } = await loaded();
     const before = store.getState();

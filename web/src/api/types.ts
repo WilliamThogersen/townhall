@@ -49,6 +49,17 @@ export interface AddRepoInput {
   readonly path: string;
   readonly name?: string;
   readonly baseBranch?: string;
+  /** Only for a link: the folder to clone into; else the `clonesDir` setting. */
+  readonly cloneDir?: string;
+}
+
+/** `PATCH /repos/{name}`: a missing key leaves that field as it is. */
+export interface PatchRepoInput {
+  readonly name?: string;
+  readonly baseBranch?: string;
+  /** Alone: the repo is now here. With `moveFolder`: move the folder here (must not exist). */
+  readonly path?: string;
+  readonly moveFolder?: boolean;
 }
 
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
@@ -77,6 +88,8 @@ export interface Settings {
   readonly githubAccount: string;
   readonly forgeAccounts: readonly ForgeAccount[];
   readonly reflectAfterTasks: boolean;
+  /** Where repos added by link are cloned; empty means townhall's own `repos` folder. */
+  readonly clonesDir: string;
 }
 
 export type SettingKey = keyof Settings;

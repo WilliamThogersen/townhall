@@ -25,6 +25,7 @@ export interface Settings {
   readonly githubAccount: string;
   readonly forgeAccounts: readonly ForgeAccount[];
   readonly reflectAfterTasks: boolean;
+  readonly clonesDir: string;
 }
 
 export const PERMISSION_MODES: readonly PermissionMode[] = [
@@ -57,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   githubAccount: "",
   forgeAccounts: Object.freeze([]),
   reflectAfterTasks: false,
+  clonesDir: "",
 });
 
 export type SettingKey = keyof Settings;
@@ -74,6 +76,7 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "githubAccount",
   "forgeAccounts",
   "reflectAfterTasks",
+  "clonesDir",
 ]);
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -101,6 +104,12 @@ const GITHUB_LOGIN = /^(?!-)[A-Za-z0-9-]{0,39}$/;
 
 const isGithubAccount: Check<string> = (value): value is string =>
   typeof value === "string" && GITHUB_LOGIN.test(value);
+
+/** Empty (townhall's own folder), `~`, `~/...` or an absolute path: as the daemon checks it. */
+export const isClonesDirText = (value: string): boolean =>
+  value === "" || value === "~" || value.startsWith("~/") || value.startsWith("/");
+
+const isClonesDir: Check<string> = (value): value is string => typeof value === "string" && isClonesDirText(value);
 
 const ACCOUNT_KEYS = ["forge", "login", "host", "label"];
 
@@ -134,6 +143,7 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   githubAccount: isGithubAccount,
   forgeAccounts: isForgeAccounts,
   reflectAfterTasks: isFlag,
+  clonesDir: isClonesDir,
 };
 
 export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
@@ -165,5 +175,6 @@ export function parseSettings(raw: unknown): Settings {
     githubAccount: pick(fields, "githubAccount"),
     forgeAccounts: pick(fields, "forgeAccounts"),
     reflectAfterTasks: pick(fields, "reflectAfterTasks"),
+    clonesDir: pick(fields, "clonesDir"),
   });
 }

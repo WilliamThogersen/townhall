@@ -90,6 +90,38 @@ export function reduceAgents(list: readonly AgentInfo[], event: ServerEvent): re
   return event.type === "agentUpdated" ? upsertAgent(list, event.agent) : list;
 }
 
+/**
+ * The repo `oldName` as the daemon saved it after an edit. The daemon also renames the repo in its
+ * tasks, conversations and agent states, so the lists here follow without a reload.
+ */
+export function applyRepoEdited(state: DataState, oldName: string, repo: Repo): DataState {
+  const rename = sameName(oldName, repo.name) ? null : { from: oldName, to: repo.name };
+  const base: DataState = {
+    ...state,
+    repos: mapResource(state.repos, (list) =>
+      list.map((r) => (sameName(r.name, oldName) ? repo : r)),
+    ),
+  };
+  if (rename === null) return base;
+  const { from, to } = rename;
+  const task = (t: Task): Task => (sameName(t.repo, from) ? { ...t, repo: to } : t);
+  const conversation = (c: Conversation): Conversation =>
+    c.linkedRepo !== null && sameName(c.linkedRepo, from) ? { ...c, linkedRepo: to } : c;
+  return {
+    ...base,
+    tasks: mapResource(state.tasks, (list) => list.map(task)),
+    conversations: mapResource(state.conversations, (list) => list.map(conversation)),
+    agents: mapResource(state.agents, (list) =>
+      list.map((a) => (sameName(a.repo, from) ? { ...a, repo: to } : a)),
+    ),
+    details: mapDetails(state.details, (detail) => ({
+      ...detail,
+      conversation: conversation(detail.conversation),
+      tasks: detail.tasks.map(task),
+    })),
+  };
+}
+
 export const keepRepos = (list: readonly Repo[]): readonly Repo[] => list;
 
 export function applyEvent(state: DataState, event: ServerEvent): DataState {
