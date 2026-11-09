@@ -31,6 +31,7 @@ pub fn tools() -> Vec<ToolDef> {
         name: OPEN_PR,
         description: "Push this task's branch to origin and open a pull request (GitHub) or merge request (GitLab) into the task's `prBase` when it has one, else its base branch. Returns state `opened` with the url, or `noRemote` when the repo has no origin (nothing is pushed). Commit your work first.",
         input_schema: schema(),
+        read_only: false,
     }]
 }
 

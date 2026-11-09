@@ -26,7 +26,7 @@ pub use conversation::{
     NewMessage, NEW_CONVERSATION_TITLE,
 };
 pub use event::ServerEvent;
-pub use library::{AgentType, AgentTypeSummary, AgentUsage, DEFAULT_AGENT_TYPE};
+pub use library::{AgentType, AgentTypeSummary, AgentUsage, TaskRun, DEFAULT_AGENT_TYPE};
 pub use repo::{AddRepo, PutRepoAccounts, Repo};
 pub use settings::{
     NotifyWhen, PermissionMode, PutProfile, PutSetting, RepoUnclear, SettingKey, Settings,

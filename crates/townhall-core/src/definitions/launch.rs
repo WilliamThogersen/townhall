@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use super::agent::{AgentDef, PermissionMode};
 use crate::agent::LaunchOptions;
 use crate::model;
@@ -15,6 +17,8 @@ pub struct LaunchFields {
     pub system_prompt: Option<String>,
     /// The `shell` adapter's command.
     pub command: Option<String>,
+    /// Extra environment variables for the launched process.
+    pub env: BTreeMap<String, String>,
 }
 
 /// A definition's mode maps onto the settings mode. Nothing maps back, so no
@@ -38,6 +42,7 @@ impl AgentDef {
             allowed_tools: self.tools.clone(),
             system_prompt: non_blank(&self.prompt),
             command: non_blank(&self.command),
+            env: self.env.clone(),
         }
     }
 
@@ -55,6 +60,7 @@ impl AgentDef {
             model: fields.model,
             allowed_tools: fields.allowed_tools,
             system_prompt: fields.system_prompt,
+            env: fields.env,
             ..LaunchOptions::default()
         }
     }
