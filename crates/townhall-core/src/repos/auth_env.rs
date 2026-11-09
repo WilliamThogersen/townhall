@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn an_https_failure_says_to_save_a_token_or_use_ssh() {
-        let stderr = "fatal: could not read Username for 'https://gitlab.wexo.io': terminal prompts disabled";
+        let stderr = "fatal: could not read Username for 'https://gitlab.example.com': terminal prompts disabled";
         let hint = auth_failure(stderr, true).unwrap();
         assert!(hint.starts_with("authentication failed"), "{hint}");
         assert!(
