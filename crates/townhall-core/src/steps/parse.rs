@@ -48,7 +48,7 @@ pub fn transcript_model(jsonl: &str) -> Option<String> {
             let model = line.get("message")?.get("model")?.as_str()?;
             (!model.is_empty() && !model.starts_with('<')).then(|| model.to_string())
         })
-        .last()
+        .next_back()
 }
 
 /// One step per `tool_use` in an assistant message, paired with its `tool_result` by id
