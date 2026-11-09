@@ -4,11 +4,6 @@ function retried(retries: number): string {
   return `${retries} ${retries === 1 ? "retry" : "retries"}`;
 }
 
-/**
- * Where a task's done-when check stands, in words: "verifying", "retry 1/2",
- * "check failed after 2 retries", "check passed". `null` for a task without a
- * check, one whose agent has not ended yet, or one that moved on to a pull request.
- */
 export function verifyWords(task: Task): string | null {
   const verify = task.verify;
   if (task.check === null || verify === null) return null;
