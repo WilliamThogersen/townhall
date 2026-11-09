@@ -9,7 +9,6 @@ use crate::model::PermissionMode;
 use super::args::{allowed_tools, DENIED_TOOLS};
 use super::prompt::INSTRUCTIONS;
 
-/// The model a turn runs on when the type `default` sets none (or cannot be used).
 pub const FALLBACK_MODEL: &str = "opus";
 
 #[derive(Debug, Clone, PartialEq, Eq)]

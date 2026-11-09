@@ -290,7 +290,6 @@ mod tests {
     #[test]
     fn invalid_fields_fall_back_one_by_one() {
         let raw = json!({"permissionMode": "plan", "agentsAtOnce": 99, "notifyWhen": "x", "repoUnclear": "guess", "townhallModel": "gpt"});
-        // a leftover stored `townhallModel` is ignored, not an error
         let s: Settings = serde_json::from_value(raw).unwrap();
         assert_eq!(s.permission_mode, PermissionMode::Plan);
         assert_eq!(s.agents_at_once, AGENTS_AT_ONCE_DEFAULT);
