@@ -26,6 +26,7 @@ beforeEach(() => {
     { agent: "builder", runs: 3, tokens: 12_400 },
     { agent: "planner", runs: 1, tokens: 800 },
   ]);
+  vi.spyOn(library, "listAgentRuns").mockResolvedValue([]);
   vi.spyOn(library, "listAgentTypes").mockResolvedValue([builder, planner, shellType]);
   vi.spyOn(library, "getAgentType").mockImplementation((name) =>
     Promise.resolve(name === "planner" ? plannerFull : anAgentType({ name, source: `name = "${name}"\n` })),
@@ -117,6 +118,40 @@ describe("AgentsPage", () => {
     expect(screen.queryByText(/hunter2/)).not.toBeInTheDocument();
     await userEvent.click(await rowOf("builder"));
     expect(await screen.findByText("none", { selector: "dd" })).toBeInTheDocument();
+  });
+
+  it("compares the recent runs of a type by model and tokens", async () => {
+    vi.mocked(library.listAgentRuns).mockResolvedValue([
+      { task: "cheap-one", repo: "alpha", state: "ended", model: "claude-haiku", tokens: 12_400, createdAt: "2026-11-09T10:00:00Z", endedAt: null },
+      { task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
+    ]);
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const runs = within(await screen.findByRole("region", { name: "recent runs" }));
+    expect(library.listAgentRuns).toHaveBeenCalledWith("planner", expect.anything());
+    const cheap = within(await runs.findByRole("row", { name: /cheap-one/ }));
+    expect(cheap.getByText("claude-haiku")).toBeInTheDocument();
+    expect(cheap.getByText("12.4K")).toBeInTheDocument();
+    expect(cheap.getByText("ended")).toBeInTheDocument();
+    expect(cheap.getByText("2026-11-09")).toBeInTheDocument();
+    expect(within(runs.getByRole("row", { name: /old-one/ })).getByText("unknown")).toBeInTheDocument();
+    expect(runs.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["task", "model", "tokens", "state", "started"]);
+  });
+
+  it("says when a type has no runs yet", async () => {
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    expect(await screen.findByText("no runs yet")).toBeInTheDocument();
+  });
+
+  it("keeps the type's fields when its runs do not load", async () => {
+    vi.mocked(library.listAgentRuns).mockRejectedValue(new ApiError("network", "no runs"));
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    expect(await screen.findByText(/runs not loaded: no runs/)).toBeInTheDocument();
+    const detail = within(screen.getByRole("region", { name: "planner" }));
+    expect(detail.getByText("env")).toBeInTheDocument();
+    expect(detail.getByText(/model = "opus"/)).toBeInTheDocument();
   });
 
   it("copies the TOML", async () => {
