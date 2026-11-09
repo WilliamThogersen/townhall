@@ -1,6 +1,6 @@
 import { FORGE_KINDS, type ForgeKind } from "../settings/settings";
 import { bool, listOf, oneOf, record, str } from "./guardKit";
-import { request } from "./request";
+import { exchange } from "./request";
 
 export interface DetectedAccount {
   readonly forge: ForgeKind;
@@ -19,5 +19,15 @@ function parseDetected(value: unknown): DetectedAccount {
   });
 }
 
-export const getDetectedAccounts = (signal?: AbortSignal): Promise<readonly DetectedAccount[]> =>
-  request("GET", "/forge-accounts/detected", listOf(parseDetected, "detected accounts"), undefined, signal);
+export interface Detection {
+  readonly accounts: readonly DetectedAccount[];
+  /** Why a program gave nothing or less than expected; empty when all went well. */
+  readonly warnings: readonly string[];
+}
+
+const parseAccounts = listOf(parseDetected, "detected accounts");
+
+export async function getDetectedAccounts(signal?: AbortSignal): Promise<Detection> {
+  const { data, warnings } = await exchange("GET", "/forge-accounts/detected", undefined, signal);
+  return { accounts: parseAccounts(data), warnings };
+}

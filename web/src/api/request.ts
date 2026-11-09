@@ -1,6 +1,7 @@
 import { httpBase } from "./base";
 import { ApiError, toMessage } from "./errors";
 import { parseEnvelope, type Guard } from "./guards";
+import { isRecord } from "./guardKit";
 import { reportQuiet } from "../log/report";
 
 async function readJson(res: Response): Promise<unknown> {
@@ -26,13 +27,22 @@ function encode(body: unknown): { readonly type: string | null; readonly payload
   return { type: "application/json", payload: JSON.stringify(body) };
 }
 
-export async function request<T>(
+export interface Answer {
+  readonly data: unknown;
+  readonly warnings: readonly string[];
+}
+
+function warningsOf(json: unknown): readonly string[] {
+  const warnings = isRecord(json) ? json.warnings : undefined;
+  return Array.isArray(warnings) ? warnings.filter((w): w is string => typeof w === "string") : [];
+}
+
+export async function exchange(
   method: string,
   path: string,
-  guard: Guard<T>,
   body?: unknown,
   signal?: AbortSignal,
-): Promise<T> {
+): Promise<Answer> {
   const requestId = crypto.randomUUID();
   const quiet = path.startsWith("/logs/client");
   const fail = (err: ApiError, event: string): never => {
@@ -71,5 +81,15 @@ export async function request<T>(
     if (res.status >= 500) return fail(err, "api.http");
     throw err;
   }
-  return guard(env.data);
+  return { data: env.data, warnings: warningsOf(json) };
+}
+
+export async function request<T>(
+  method: string,
+  path: string,
+  guard: Guard<T>,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  return guard((await exchange(method, path, body, signal)).data);
 }
