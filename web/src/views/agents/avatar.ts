@@ -17,7 +17,6 @@ export type Avatar = { readonly [P in AvatarPart]: (typeof AVATAR_PARTS)[P][numb
 export interface AvatarCell {
   readonly x: number;
   readonly y: number;
-  /** body is drawn in the avatar color, face is cut out of it. */
   readonly tone: "body" | "face";
 }
 
@@ -60,7 +59,6 @@ const ACCESSORIES: Readonly<Record<Avatar["accessory"], readonly Point[]>> = {
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
 
-/** FNV-1a over the lowercased, trimmed name, as an unsigned 32 bit integer. */
 export function hashName(name: string): number {
   let hash = FNV_OFFSET;
   for (const byte of new TextEncoder().encode(name.trim().toLowerCase())) {
