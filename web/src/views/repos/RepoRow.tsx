@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import type { PatchRepoInput } from "../../api/types";
 import type { RepoSummary } from "../../repos/repoSummary";
 import type { ForgeAccount } from "../../settings/settings";
 import { Link, PATHS } from "../../router";
@@ -6,6 +7,7 @@ import { Button } from "../../ui/Button";
 import { StatusGlyph } from "../../ui/StatusGlyph";
 import "../settings/cap.css";
 import { RepoAccounts, type PickAccount } from "./RepoAccounts";
+import { RepoEdit } from "./RepoEdit";
 import "./repos.css";
 
 export function removeQuestion(name: string, managed = false): string {
@@ -18,6 +20,8 @@ export interface RepoRowProps {
   readonly onRemove: (name: string, deleteClone?: boolean) => Promise<void>;
   readonly accounts?: readonly ForgeAccount[];
   readonly onPickAccount?: PickAccount;
+  /** Saves an edit; rejects with the daemon's reason, which the edit form shows. */
+  readonly onEdit?: (name: string, input: PatchRepoInput) => Promise<unknown>;
 }
 
 function RepoName({ summary }: { readonly summary: RepoSummary }) {
@@ -97,8 +101,9 @@ function useReturnFocus(confirming: boolean) {
   return { target, arm };
 }
 
-export function RepoRow({ summary, onRemove, accounts = [], onPickAccount }: RepoRowProps) {
+export function RepoRow({ summary, onRemove, accounts = [], onPickAccount, onEdit }: RepoRowProps) {
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const focus = useReturnFocus(confirming);
   const name = summary.repo.name;
@@ -121,6 +126,9 @@ export function RepoRow({ summary, onRemove, accounts = [], onPickAccount }: Rep
       </div>
     );
   }
+  if (editing && onEdit !== undefined) {
+    return <RepoEdit repo={summary.repo} onSave={onEdit} onCancel={() => setEditing(false)} />;
+  }
   const choose = onPickAccount !== undefined && accounts.length > 0;
   return (
     <div className="th-repo" data-accounts={choose ? "true" : undefined}>
@@ -134,6 +142,11 @@ export function RepoRow({ summary, onRemove, accounts = [], onPickAccount }: Rep
         <Link className="th-btn th-btn--ghost th-btn--sm" to={PATHS.home}>
           new conversation
         </Link>
+        {onEdit === undefined ? null : (
+          <Button variant="ghost" size="sm" aria-label={`edit ${name}`} onClick={() => setEditing(true)}>
+            edit
+          </Button>
+        )}
         <Button ref={focus.target} variant="ghost" size="sm" aria-label={`remove ${name}`} onClick={() => setConfirming(true)}>
           remove
         </Button>

@@ -1,7 +1,18 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type Ref } from "react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 import type { AddRepoInput } from "../../api/types";
-import { addProgress, canSubmit, draftToInput, EMPTY_DRAFT, type AddRepoDraft } from "../../repos/addRepoDraft";
+import {
+  addProgress,
+  canSubmit,
+  cloneTargetOf,
+  DEFAULT_CLONES_DIR,
+  draftToInput,
+  EMPTY_DRAFT,
+  isLink,
+  linkProblem,
+  type AddRepoDraft,
+} from "../../repos/addRepoDraft";
 import { Button } from "../../ui/Button";
+import { Field, useFocusOn } from "./RepoField";
 import "./repos.css";
 
 export type AddRepoLayout = "row" | "stack";
@@ -11,46 +22,13 @@ export interface AddRepoFormProps {
   readonly error: string | null;
   readonly focusToken: number;
   readonly layout?: AddRepoLayout;
+  /** The `clonesDir` setting: where a link is cloned when the form names no folder. */
+  readonly defaultCloneDir?: string;
   readonly onSubmit: (input: AddRepoInput) => void;
   readonly onCancel: () => void;
 }
 
-interface FieldProps {
-  readonly label: string;
-  readonly value: string;
-  readonly placeholder: string;
-  readonly className?: string;
-  readonly inputRef?: Ref<HTMLInputElement>;
-  readonly onChange: (value: string) => void;
-}
-
-function Field({ label, value, placeholder, className, inputRef, onChange }: FieldProps) {
-  return (
-    <label className={className ? `th-repo-field ${className}` : "th-repo-field"}>
-      <span>{label}</span>
-      <input
-        ref={inputRef}
-        className="th-input"
-        value={value}
-        placeholder={placeholder}
-        autoComplete="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
-      />
-    </label>
-  );
-}
-
-function useFocusOn(token: number) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    ref.current?.focus();
-  }, [token]);
-  return ref;
-}
-
-export function AddRepoForm({ busy, error, focusToken, layout = "row", onSubmit, onCancel }: AddRepoFormProps) {
+export function AddRepoForm({ busy, error, focusToken, layout = "row", defaultCloneDir = "", onSubmit, onCancel }: AddRepoFormProps) {
   const [draft, setDraft] = useState<AddRepoDraft>(EMPTY_DRAFT);
   const pathRef = useFocusOn(focusToken);
   const set = (key: keyof AddRepoDraft) => (value: string) => setDraft((current) => ({ ...current, [key]: value }));
@@ -63,6 +41,9 @@ export function AddRepoForm({ busy, error, focusToken, layout = "row", onSubmit,
     e.preventDefault();
     onCancel();
   };
+  const link = isLink(draft.path);
+  const target = cloneTargetOf(draft, defaultCloneDir);
+  const problem = error === null ? linkProblem(draft.path) : null;
   return (
     <form className="th-repo-add" data-layout={layout} aria-label="add repository" onSubmit={submit} onKeyDown={onKeyDown}>
       <Field label="folder or link" className="th-repo-field--path" value={draft.path} placeholder="~/Developer/shop or a github/gitlab link" inputRef={pathRef} onChange={set("path")} />
@@ -76,9 +57,19 @@ export function AddRepoForm({ busy, error, focusToken, layout = "row", onSubmit,
           cancel
         </Button>
       </div>
+      {link ? (
+        <Field label="clone into" className="th-repo-field--wide" value={draft.cloneDir} placeholder={defaultCloneDir.trim() || DEFAULT_CLONES_DIR} onChange={set("cloneDir")} />
+      ) : null}
+      {link && target !== null && !busy ? <p className="th-cap th-repo-add-error">clones into {target}</p> : null}
       {busy ? (
         <p className="th-cap th-repo-add-error" role="status">
           {addProgress(draft)}
+          {target === null ? "" : ` ${target}`}
+        </p>
+      ) : null}
+      {problem !== null ? (
+        <p className="th-field-error th-repo-add-error" role="alert">
+          error: {problem}
         </p>
       ) : null}
       {error ? (

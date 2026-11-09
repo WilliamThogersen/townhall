@@ -110,11 +110,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("SettingsPage", () => {
-  it("shows the five groups and how changes are saved", async () => {
+  it("shows the six groups and how changes are saved", async () => {
     await renderLoaded();
     expect(screen.getByRole("heading", { level: 1, name: "settings" })).toBeInTheDocument();
     expect(screen.getByText("saved as you change them")).toBeInTheDocument();
-    ["agents", "conversations", "forge accounts", "appearance and notifications", "about you"].forEach((name) => {
+    ["agents", "conversations", "repos", "forge accounts", "appearance and notifications", "about you"].forEach((name) => {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     });
     const saves = screen.getAllByRole("button", { name: /^save/ });
@@ -131,12 +131,32 @@ describe("SettingsPage", () => {
       "agents at once",
       "when the repo is unclear",
       "session panel",
+      "clone folder",
       "accounts",
       "theme",
       "notify me when",
       "learn about me",
       "profile",
     ]);
+  });
+
+  it("saves the folder repos are cloned into, and refuses a relative one", async () => {
+    await renderLoaded();
+    const input = screen.getByRole("textbox", { name: "Clone folder" });
+    expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("placeholder", "~/.townhall/repos");
+    await userEvent.type(input, "projects");
+    await userEvent.tab();
+    expect(screen.getByRole("alert")).toHaveTextContent("use ~, ~/folder or an absolute path");
+    expect(daemon.puts()).toEqual([]);
+    await userEvent.clear(input);
+    await userEvent.type(input, "~/Developer");
+    await userEvent.tab();
+    await waitFor(() => expect(lastPut()).toEqual(["/api/settings/clonesDir", { value: "~/Developer" }]));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await userEvent.clear(input);
+    await userEvent.tab();
+    await waitFor(() => expect(lastPut()).toEqual(["/api/settings/clonesDir", { value: "" }]));
   });
 
   it("shows a profile problem in the profile row, not as the settings banner", async () => {
