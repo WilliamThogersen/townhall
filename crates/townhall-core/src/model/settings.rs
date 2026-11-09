@@ -90,10 +90,11 @@ pub enum SettingKey {
     LearnAboutMe,
     GithubAccount,
     ForgeAccounts,
+    ReflectAfterTasks,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 11] = [
+    pub const ALL: [SettingKey; 12] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
@@ -105,6 +106,7 @@ impl SettingKey {
         Self::LearnAboutMe,
         Self::GithubAccount,
         Self::ForgeAccounts,
+        Self::ReflectAfterTasks,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -120,6 +122,7 @@ impl SettingKey {
             Self::LearnAboutMe => "learnAboutMe",
             Self::GithubAccount => "githubAccount",
             Self::ForgeAccounts => "forgeAccounts",
+            Self::ReflectAfterTasks => "reflectAfterTasks",
         }
     }
 
@@ -143,9 +146,10 @@ impl SettingKey {
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
             Self::TownhallModel => parses::<TownhallModel>(value),
-            Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::LearnAboutMe => {
-                value.is_boolean()
-            }
+            Self::WorkWithoutAsking
+            | Self::SessionPanelOpen
+            | Self::LearnAboutMe
+            | Self::ReflectAfterTasks => value.is_boolean(),
             Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
             Self::GithubAccount => value.as_str().is_some_and(is_github_login),
             Self::ForgeAccounts => unreachable!("handled above"),
@@ -192,6 +196,8 @@ pub struct Settings {
     pub github_account: String,
     /// The registered forge accounts; each repo picks one per forge.
     pub forge_accounts: Vec<ForgeAccount>,
+    /// After a task ends, a `reflector` run records lessons in the repo's memory files.
+    pub reflect_after_tasks: bool,
 }
 
 impl Default for Settings {
@@ -208,6 +214,7 @@ impl Default for Settings {
             learn_about_me: false,
             github_account: String::new(),
             forge_accounts: Vec::new(),
+            reflect_after_tasks: false,
         }
     }
 }
@@ -235,6 +242,7 @@ impl Settings {
             learn_about_me: field(raw, SettingKey::LearnAboutMe, d.learn_about_me),
             github_account: field(raw, SettingKey::GithubAccount, d.github_account),
             forge_accounts: field(raw, SettingKey::ForgeAccounts, d.forge_accounts),
+            reflect_after_tasks: field(raw, SettingKey::ReflectAfterTasks, d.reflect_after_tasks),
         }
     }
 
@@ -284,7 +292,8 @@ mod tests {
                 "minFreeDiskGb": 5,
                 "learnAboutMe": false,
                 "githubAccount": "",
-                "forgeAccounts": []
+                "forgeAccounts": [],
+                "reflectAfterTasks": false
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -397,6 +406,23 @@ mod tests {
         );
         assert!(SettingKey::LearnAboutMe.check(&json!(true)).is_ok());
         assert!(SettingKey::LearnAboutMe.check(&json!(1)).is_err());
+    }
+
+    #[test]
+    fn reflect_after_tasks_is_off_unless_stored_as_a_boolean() {
+        assert!(!Settings::default().reflect_after_tasks);
+        let old: Settings = serde_json::from_value(json!({"permissionMode": "plan"})).unwrap();
+        assert!(!old.reflect_after_tasks);
+        let on: Settings = serde_json::from_value(json!({"reflectAfterTasks": true})).unwrap();
+        assert!(on.reflect_after_tasks);
+        let bad: Settings = serde_json::from_value(json!({"reflectAfterTasks": "yes"})).unwrap();
+        assert!(!bad.reflect_after_tasks);
+        assert_eq!(
+            SettingKey::parse("reflectAfterTasks").unwrap(),
+            SettingKey::ReflectAfterTasks
+        );
+        assert!(SettingKey::ReflectAfterTasks.check(&json!(true)).is_ok());
+        assert!(SettingKey::ReflectAfterTasks.check(&json!(1)).is_err());
     }
 
     #[test]
