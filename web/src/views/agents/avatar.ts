@@ -79,7 +79,7 @@ function mix(hash: number, salt: number): number {
 const PART_ORDER = Object.keys(AVATAR_PARTS) as readonly AvatarPart[];
 
 function pick<P extends AvatarPart>(part: P, hash: number): Avatar[P] {
-  const options = AVATAR_PARTS[part] as readonly Avatar[P][];
+  const options: readonly string[] = AVATAR_PARTS[part];
   return options[mix(hash, PART_ORDER.indexOf(part)) % options.length] as Avatar[P];
 }
 

@@ -1,5 +1,6 @@
 import { composeAvatar, GRID, type Avatar } from "./avatar";
 import { useAvatar } from "./avatarPrefs";
+import "./avatar.css";
 
 export interface AvatarFaceProps {
   readonly avatar: Avatar;

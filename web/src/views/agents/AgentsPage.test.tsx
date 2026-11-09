@@ -32,7 +32,10 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
 
 const rowOf = async (name: string) => (await screen.findByRole("button", { name: new RegExp(name) })) as HTMLElement;
 
@@ -70,7 +73,8 @@ describe("AgentsPage", () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
     const detail = within(await screen.findByRole("region", { name: "planner" }));
-    expect(await detail.findByText("Read, Grep")).toBeInTheDocument();
+    expect(await detail.findByText("Read", { selector: ".th-tag" })).toBeInTheDocument();
+    expect(detail.getByText("Grep", { selector: ".th-tag" })).toBeInTheDocument();
     expect(detail.getByText("opus")).toBeInTheDocument();
     expect(detail.getByText("plan", { selector: "dd" })).toBeInTheDocument();
     expect(detail.getByText("claude")).toBeInTheDocument();
@@ -97,7 +101,7 @@ describe("AgentsPage", () => {
     );
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
-    expect(await screen.findByText("builder", { selector: "dd" })).toBeInTheDocument();
+    expect(await screen.findByText("builder", { selector: "dd .th-tag" })).toBeInTheDocument();
     await userEvent.click(await rowOf("builder"));
     expect(await screen.findByText("nobody", { selector: "dd" })).toBeInTheDocument();
     await userEvent.click(await rowOf("dev-server"));
@@ -168,6 +172,86 @@ describe("AgentsPage", () => {
     const detail = within(await screen.findByRole("region", { name: "builder" }));
     expect(await detail.findByText("12.4K")).toBeInTheDocument();
     expect(detail.getByText("3", { selector: "dd" })).toBeInTheDocument();
+  });
+
+  it("lists the default first, then the busiest types", async () => {
+    vi.spyOn(library, "listAgentTypes").mockResolvedValue([shellType, planner, builder]);
+    render(<AgentsPage />);
+    await rowOf("builder");
+    const names = screen.getAllByRole("button", { name: /builder|planner|dev-server/ }).filter((b) => b.classList.contains("th-agent-row"));
+    expect(names.map((b) => b.querySelector("b")?.textContent)).toEqual(["builder", "planner", "dev-server"]);
+  });
+
+  it("shows an avatar on every row", async () => {
+    render(<AgentsPage />);
+    for (const name of ["builder", "planner", "dev-server"]) {
+      expect((await rowOf(name)).querySelector("svg.th-avatar")).not.toBeNull();
+    }
+  });
+
+  it("filters the list as you type and says when nothing matches", async () => {
+    render(<AgentsPage />);
+    await rowOf("builder");
+    const filter = screen.getByRole("searchbox", { name: "filter agent types" });
+    await userEvent.type(filter, "plans");
+    expect(screen.getByRole("button", { name: /planner/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /builder/ })).not.toBeInTheDocument();
+    await userEvent.clear(filter);
+    await userEvent.type(filter, "zzz");
+    expect(screen.getByText('no agent types match "zzz"')).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(filter).toHaveValue("");
+    expect(await rowOf("builder")).toBeInTheDocument();
+  });
+
+  it("moves the selection with the arrow keys from a row", async () => {
+    render(<AgentsPage />);
+    const first = await rowOf("builder");
+    first.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(await rowOf("planner")).toHaveAttribute("aria-pressed", "true");
+    expect(await rowOf("planner")).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+    expect(await rowOf("dev-server")).toHaveAttribute("aria-pressed", "true");
+    await userEvent.keyboard("{ArrowUp}");
+    expect(await rowOf("planner")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("moves from the filter box into the list with the down arrow", async () => {
+    render(<AgentsPage />);
+    await rowOf("builder");
+    await userEvent.click(screen.getByRole("searchbox", { name: "filter agent types" }));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(await rowOf("builder")).toHaveFocus();
+  });
+
+  it("shows tools and hand-back targets as chips and keeps the TOML collapsible", async () => {
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    expect(await detail.findByText("Read", { selector: ".th-tag" })).toBeInTheDocument();
+    expect(detail.getByText("Grep", { selector: ".th-tag" })).toBeInTheDocument();
+    const toggle = detail.getByText("toml");
+    const fold = toggle.closest("details");
+    expect(fold).not.toBeNull();
+    expect(fold).not.toHaveAttribute("open");
+    await userEvent.click(toggle);
+    expect(fold).toHaveAttribute("open");
+    expect(detail.getByRole("button", { name: "copy" })).toBeInTheDocument();
+  });
+
+  it("shows the avatar and its editor in the detail, and a pick shows in the list row", async () => {
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    expect(detail.getByRole("img", { name: "planner avatar preview" })).toBeInTheDocument();
+    const before = (await rowOf("planner")).querySelector("svg")?.getAttribute("class");
+    const body = (await rowOf("planner")).querySelector('path[data-tone="body"]')?.getAttribute("d");
+    await userEvent.click(detail.getByRole("button", { name: "next head" }));
+    await userEvent.click(detail.getByRole("button", { name: "next color" }));
+    const row = await rowOf("planner");
+    expect(row.querySelector("svg")?.getAttribute("class")).not.toBe(before);
+    expect(row.querySelector('path[data-tone="body"]')?.getAttribute("d")).not.toBe(body);
   });
 
   it("still lists the types when usage fails to load", async () => {
