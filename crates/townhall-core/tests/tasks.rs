@@ -45,6 +45,56 @@ async fn task_names_are_unique_across_conversations_ignoring_case() {
 }
 
 #[tokio::test]
+async fn a_tasks_check_and_verify_state_are_stored() {
+    use townhall_core::model::{Done, Verify, VerifyPhase};
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    let new = NewTask {
+        done: Done {
+            done_when: Some("all tests pass".into()),
+            check: Some("npm test".into()),
+            max_retries: 4,
+            verify: Some(Verify {
+                phase: VerifyPhase::Passed,
+                retries: 9,
+                output: None,
+            }),
+        },
+        ..new_task("checked")
+    };
+    let made = env.store.create_task(&c.id, new).await.unwrap();
+    assert_eq!(made.done.done_when.as_deref(), Some("all tests pass"));
+    assert_eq!(made.done.check.as_deref(), Some("npm test"));
+    assert_eq!(made.done.max_retries, 4);
+    assert_eq!(made.done.verify, None, "a new task has not been verified");
+    let verify = Verify {
+        phase: VerifyPhase::Failed,
+        retries: 2,
+        output: Some("1 failed".into()),
+    };
+    let set = verify.clone();
+    let change = move |t: Task| {
+        Ok(Task {
+            done: Done {
+                verify: Some(set),
+                ..t.done
+            },
+            ..t
+        })
+    };
+    env.store.update_task("checked", change).await.unwrap();
+    let read = env.store.find_task("checked").await.unwrap().unwrap();
+    assert_eq!(read.done.verify, Some(verify));
+    assert_eq!(read.done.check.as_deref(), Some("npm test"));
+    let plain = env
+        .store
+        .create_task(&c.id, new_task("plain"))
+        .await
+        .unwrap();
+    assert_eq!(plain.done, Done::default());
+}
+
+#[tokio::test]
 async fn after_is_deduped_and_attachments_are_kept() {
     let env = store_env();
     let c = env.store.create_conversation().await.unwrap();

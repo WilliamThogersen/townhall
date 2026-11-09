@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::context::Context;
-use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
+use crate::model::{Conversation, CreateTaskInput, Done, NewTask, Task, DEFAULT_MAX_RETRIES};
 use crate::redact::redact;
 
 use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
@@ -119,6 +119,12 @@ impl TaskTools<'_> {
             attachments: input.attachments,
             agent,
             pr_base,
+            done: Done {
+                done_when: input.done_when,
+                check: input.check,
+                max_retries: input.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
+                verify: None,
+            },
         };
         let task = store
             .create_task(self.conversation_id, new)

@@ -21,6 +21,7 @@ mod task_tools;
 use serde_json::{json, Value};
 
 use crate::context::Context;
+use crate::model::MAX_HANDOFFS;
 
 pub use artifacts::{ADD_ARTIFACT, LIST_ARTIFACTS};
 pub use hand_back::HAND_BACK;
@@ -55,6 +56,8 @@ pub const MAX_NAME_LEN: u64 = 64;
 pub const MAX_TITLE_LEN: u64 = 80;
 pub const MAX_PROMPT_LEN: u64 = 50_000;
 pub const MAX_LIST_LEN: u64 = 20;
+pub const MAX_DONE_WHEN_LEN: u64 = 500;
+pub const MAX_CHECK_LEN: u64 = 2_000;
 
 pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to an agent of a saved agent type in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did; list_agent_types, read_agent_type and save_agent_type show and save the agent types tasks run as; log_summary and read_logs show townhall's own errors and warnings from its logs in ~/.townhall/logs/: when asked to improve townhall, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint.";
 
@@ -157,6 +160,18 @@ fn create_task_schema() -> Value {
                 "type": "string", "minLength": 1,
                 "description": "Existing branch of the repo the task's pull request (open_pr) targets. Default: baseBranch. Set it when the task starts from a branch that is not where the work must land, for example a shipper that starts from the reviewed branch and opens its pull request into main."
             },
+            "doneWhen": {
+                "type": "string", "maxLength": MAX_DONE_WHEN_LEN,
+                "description": "What finished means, in plain words, for example `all tests pass`. Put in the agent's brief and shown to people. Optional."
+            },
+            "check": {
+                "type": "string", "maxLength": MAX_CHECK_LEN,
+                "description": "A shell command townhall runs in the task's worktree when its agent ends; exit 0 means done. On failure the task runs again in the same worktree with the command's output added to its brief, up to maxRetries times, then it needs the user. Optional."
+            },
+            "maxRetries": {
+                "type": "integer", "minimum": 0, "maximum": MAX_HANDOFFS,
+                "description": "How many times a failing check relaunches the task. Default 2. Each retry counts as one hand back, so the limit is the most hand backs a task gets."
+            },
             "after": names_array("Names of tasks that must finish before this one starts."),
             "attachments": names_array("Attachment ids of this conversation the agent needs."),
             "agent": {
@@ -244,6 +259,9 @@ mod tests {
                 "agent",
                 "attachments",
                 "baseBranch",
+                "check",
+                "doneWhen",
+                "maxRetries",
                 "name",
                 "prBase",
                 "prompt",

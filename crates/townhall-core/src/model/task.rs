@@ -35,6 +35,64 @@ pub struct Pr {
     pub checks: Checks,
 }
 
+/// Retries a task with a check gets when it names no `maxRetries`.
+pub const DEFAULT_MAX_RETRIES: u32 = 2;
+
+fn default_max_retries() -> u32 {
+    DEFAULT_MAX_RETRIES
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VerifyPhase {
+    /// The agent ended and the check runs (or is about to).
+    Verifying,
+    /// The check failed and a new agent run is queued or working on it.
+    Retrying,
+    Passed,
+    /// The check failed after the last retry: the task needs the user.
+    Failed,
+}
+
+/// Where a task's verification stands. `None` on the task until its agent first ends.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Verify {
+    pub phase: VerifyPhase,
+    /// Retries started so far: 0 while the first run is verified.
+    pub retries: u32,
+    /// The last failing check's output (capped), kept for the brief and the user.
+    pub output: Option<String>,
+}
+
+/// A task's "done when" criterion and the check that proves it. Flattened into the task's
+/// JSON (`doneWhen`, `check`, `maxRetries`, `verify`), so a task without one reads as before.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Done {
+    /// Free text: what finished means. Shown to people and put in the brief.
+    #[serde(default)]
+    pub done_when: Option<String>,
+    /// Shell command run in the task's worktree when its agent ends; exit 0 passes.
+    #[serde(default)]
+    pub check: Option<String>,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    #[serde(default)]
+    pub verify: Option<Verify>,
+}
+
+impl Default for Done {
+    fn default() -> Self {
+        Self {
+            done_when: None,
+            check: None,
+            max_retries: DEFAULT_MAX_RETRIES,
+            verify: None,
+        }
+    }
+}
+
 /// What an agent picks up. Stored in its conversation's `tasks.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,6 +118,8 @@ pub struct Task {
     /// are not met. Set and cleared by the scheduler, `None` when nothing holds it back.
     pub blocked: Option<String>,
     pub pr_base: Option<String>,
+    #[serde(flatten)]
+    pub done: Done,
 }
 
 impl Task {
@@ -101,6 +161,8 @@ pub struct NewTask {
     /// The stored name of its agent type.
     pub agent: String,
     pub pr_base: Option<String>,
+    /// Its `verify` is ignored: a new task has none.
+    pub done: Done,
 }
 
 /// The `create_task` MCP tool's arguments (see `docs/daemon-api.md`).
@@ -123,6 +185,15 @@ pub struct CreateTaskInput {
     pub agent: Option<String>,
     #[serde(default)]
     pub pr_base: Option<String>,
+    /// What finished means, as free text.
+    #[serde(default)]
+    pub done_when: Option<String>,
+    /// Shell command run in the worktree when the agent ends; a failure relaunches the task.
+    #[serde(default)]
+    pub check: Option<String>,
+    /// Relaunches after a failing check. Default `DEFAULT_MAX_RETRIES`.
+    #[serde(default)]
+    pub max_retries: Option<u32>,
 }
 
 #[cfg(test)]
@@ -151,6 +222,7 @@ mod tests {
             agent: "builder".into(),
             blocked: None,
             pr_base: None,
+            done: Default::default(),
         };
         let v = serde_json::to_value(&t).unwrap();
         assert_eq!(v["state"], "needsYou");
@@ -199,6 +271,69 @@ mod tests {
             ["queued", "working", "needsYou", "inCi", "inReview", "merged", "ended", "error"]
         );
         assert_eq!(serde_json::to_value(Checks::None).unwrap(), "none");
+    }
+
+    #[test]
+    fn a_task_without_a_check_reads_as_before() {
+        let old = json!({
+            "name": "a", "title": "t", "prompt": "p", "repo": "shop", "baseBranch": "main",
+            "after": [], "state": "queued", "conversationId": "c", "attachments": [],
+            "createdAt": "2026-11-04T10:42:05.000Z", "pr": null, "agent": "builder",
+            "blocked": null, "prBase": null
+        });
+        let t: Task = serde_json::from_value(old).unwrap();
+        assert_eq!(t.done, Done::default());
+        assert_eq!(t.done.max_retries, DEFAULT_MAX_RETRIES);
+        let v = serde_json::to_value(&t).unwrap();
+        assert_eq!(v["doneWhen"], json!(null));
+        assert_eq!(v["check"], json!(null));
+        assert_eq!(v["maxRetries"], 2);
+        assert_eq!(v["verify"], json!(null));
+    }
+
+    #[test]
+    fn a_task_carries_its_done_when_check_and_verify_state() {
+        let done = Done {
+            done_when: Some("all tests pass".into()),
+            check: Some("npm test".into()),
+            max_retries: 3,
+            verify: Some(Verify {
+                phase: VerifyPhase::Retrying,
+                retries: 1,
+                output: Some("1 failed".into()),
+            }),
+        };
+        let t = Task {
+            done,
+            ..serde_json::from_value(json!({
+                "name": "a", "title": "t", "prompt": "p", "repo": "shop", "baseBranch": "main",
+                "after": [], "state": "working", "conversationId": "c", "attachments": [],
+                "createdAt": "2026-11-04T10:42:05.000Z", "pr": null, "agent": "builder",
+                "blocked": null, "prBase": null
+            }))
+            .unwrap()
+        };
+        let v = serde_json::to_value(&t).unwrap();
+        assert_eq!(v["doneWhen"], "all tests pass");
+        assert_eq!(v["check"], "npm test");
+        assert_eq!(v["maxRetries"], 3);
+        assert_eq!(
+            v["verify"],
+            json!({"phase": "retrying", "retries": 1, "output": "1 failed"})
+        );
+        assert_eq!(serde_json::from_value::<Task>(v).unwrap(), t);
+    }
+
+    #[test]
+    fn create_task_input_takes_the_check_fields() {
+        let i: CreateTaskInput = serde_json::from_value(json!({
+            "name": "a", "title": "t", "prompt": "p",
+            "doneWhen": "tests pass", "check": "cargo test", "maxRetries": 1
+        }))
+        .unwrap();
+        assert_eq!(i.done_when.as_deref(), Some("tests pass"));
+        assert_eq!(i.check.as_deref(), Some("cargo test"));
+        assert_eq!(i.max_retries, Some(1));
     }
 
     #[test]
