@@ -16,7 +16,7 @@ use crate::model::{
     Conversation, ConversationStatus, EntryBody, NewMessage, Repo, CONVERSATION_AGENT_TYPE,
 };
 use crate::redact::redact;
-use crate::{ids, mcp, Context, Result};
+use crate::{clock, ids, mcp, Context, Result};
 
 pub const LOST_SESSION: &str = "claude no longer has this conversation's history, so townhall started a fresh session: earlier context is gone";
 
@@ -39,6 +39,7 @@ pub(super) async fn run(
     guard: TurnGuard,
 ) {
     let started = Instant::now();
+    let started_at = clock::now_rfc3339();
     // Lengths only: the message is the user's words.
     tracing::info!(
         target: "townhall::runner", event = "turn.start", conversation = %id,
@@ -50,7 +51,36 @@ pub(super) async fn run(
         Err(e) => TurnEnd::failed(format!("townhall failed: {e}")),
     };
     log_end(&id, started, &end);
+    record(&ctx, &id, &started_at, &end).await;
     finish(&ctx, &id, guard, end).await;
+}
+
+async fn record(ctx: &Context, id: &str, started_at: &str, end: &TurnEnd) {
+    if !end.ran {
+        return;
+    }
+    let state = match (&end.error, end.stopped) {
+        (Some(_), _) => "failed",
+        (None, true) => "stopped",
+        (None, false) => "done",
+    };
+    let saved = match ctx.store() {
+        Ok(store) => {
+            let ended_at = clock::now_rfc3339();
+            store
+                .record_turn(id, state, end.tokens, started_at, &ended_at)
+                .await
+        }
+        Err(e) => Err(e),
+    };
+    if let Err(e) = saved {
+        warn_turn(
+            "turn.not_recorded",
+            id,
+            &e,
+            "cannot record the turn as a run",
+        );
+    }
 }
 
 fn log_end(id: &str, started: Instant, end: &TurnEnd) {

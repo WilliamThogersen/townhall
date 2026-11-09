@@ -30,6 +30,8 @@ pub(super) struct TurnEnd {
     /// The user stopped the turn.
     pub stopped: bool,
     pub cost_usd: Option<f64>,
+    pub ran: bool,
+    pub tokens: u64,
 }
 
 impl TurnEnd {
@@ -121,6 +123,8 @@ impl Session<'_> {
             lost: lost_session(self.result.as_ref(), &exit, self.saw_init),
             stopped: exit.stopped,
             cost_usd: self.result.as_ref().and_then(|r| r.cost_usd),
+            ran: true,
+            tokens: self.result.as_ref().and_then(|r| r.tokens).unwrap_or(0),
         }
     }
 }
