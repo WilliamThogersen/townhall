@@ -19,6 +19,7 @@ pub mod insights;
 pub mod logs;
 pub mod mcp;
 pub mod model;
+pub mod plugins;
 pub mod reaper;
 pub mod redact;
 pub mod repo_infer;
