@@ -4,10 +4,13 @@
 //! type that is missing, unreadable or not a claude type keeps all of them.
 
 use crate::definitions::{AdapterKind, AgentDef};
-use crate::model::{PermissionMode, TownhallModel};
+use crate::model::PermissionMode;
 
 use super::args::{allowed_tools, DENIED_TOOLS};
 use super::prompt::INSTRUCTIONS;
+
+/// The model a turn runs on when the type `default` sets none (or cannot be used).
+pub const FALLBACK_MODEL: &str = "opus";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Persona {
@@ -22,9 +25,9 @@ pub struct Persona {
 
 impl Persona {
     /// The built-in behaviour: `def` is `None`, or a type the conversation cannot run as.
-    fn built_in(setting_model: TownhallModel) -> Self {
+    fn built_in() -> Self {
         Self {
-            model: setting_model.cli_value().into(),
+            model: FALLBACK_MODEL.into(),
             permission_mode: PermissionMode::Default,
             tools: allowed_tools(),
             prompt: INSTRUCTIONS.into(),
@@ -33,12 +36,8 @@ impl Persona {
 
     /// `def` applied on the built-in values. Its tools lose every entry that writes or
     /// runs things, so a saved type cannot let the session edit a repo.
-    pub fn from_type(
-        def: Option<&AgentDef>,
-        setting_model: TownhallModel,
-        setting_mode: PermissionMode,
-    ) -> Self {
-        let built_in = Self::built_in(setting_model);
+    pub fn from_type(def: Option<&AgentDef>, setting_mode: PermissionMode) -> Self {
+        let built_in = Self::built_in();
         let Some(def) = def.filter(|d| d.adapter == AdapterKind::Claude) else {
             return built_in;
         };
@@ -71,9 +70,9 @@ mod tests {
         parse_agent(&source).unwrap().def
     }
 
-    fn built_in(model: TownhallModel) -> Persona {
+    fn built_in() -> Persona {
         Persona {
-            model: model.cli_value().into(),
+            model: FALLBACK_MODEL.into(),
             permission_mode: PermissionMode::Default,
             tools: allowed_tools(),
             prompt: INSTRUCTIONS.into(),
@@ -91,8 +90,8 @@ mod tests {
 
     #[test]
     fn no_type_keeps_the_built_in_behaviour() {
-        let got = Persona::from_type(None, TownhallModel::Opus, PermissionMode::AcceptEdits);
-        assert_eq!(got, built_in(TownhallModel::Opus));
+        let got = Persona::from_type(None, PermissionMode::AcceptEdits);
+        assert_eq!(got, built_in());
         assert_eq!(got.permission_mode, PermissionMode::Default);
         assert_eq!(got.model, "opus");
     }
@@ -100,10 +99,10 @@ mod tests {
     #[test]
     fn a_type_sets_model_tools_and_prompt() {
         let d = def(
-            "model = \"opus\"\ntools = [\"Read\", \"mcp__townhall__create_task\"]\nprompt = \"be kind\"\n",
+            "model = \"haiku\"\ntools = [\"Read\", \"mcp__townhall__create_task\"]\nprompt = \"be kind\"\n",
         );
-        let got = Persona::from_type(Some(&d), TownhallModel::Sonnet, PermissionMode::AcceptEdits);
-        assert_eq!(got.model, "opus");
+        let got = Persona::from_type(Some(&d), PermissionMode::AcceptEdits);
+        assert_eq!(got.model, "haiku");
         assert_eq!(got.tools, ["Read", "mcp__townhall__create_task"]);
         assert_eq!(got.prompt, "be kind");
     }
@@ -111,21 +110,18 @@ mod tests {
     #[test]
     fn blank_fields_keep_the_built_in_values() {
         let d = def("model = \" \"\nprompt = \"  \"\n");
-        let got = Persona::from_type(Some(&d), TownhallModel::Haiku, PermissionMode::AcceptEdits);
-        assert_eq!(got, built_in(TownhallModel::Haiku));
+        let got = Persona::from_type(Some(&d), PermissionMode::AcceptEdits);
+        assert_eq!(got, built_in());
+        assert_eq!(got.model, "opus");
     }
 
     #[test]
     fn tools_that_write_or_run_things_are_never_allowed() {
         let d = def("tools = [\"Read\", \"Bash(git *)\", \"Edit\", \"Write\", \"Grep\"]\n");
-        let got = Persona::from_type(Some(&d), TownhallModel::Sonnet, PermissionMode::AcceptEdits);
+        let got = Persona::from_type(Some(&d), PermissionMode::AcceptEdits);
         assert_eq!(got.tools, ["Read", "Grep"]);
         let only_denied = def("tools = [\"Bash\"]\n");
-        let got = Persona::from_type(
-            Some(&only_denied),
-            TownhallModel::Sonnet,
-            PermissionMode::AcceptEdits,
-        );
+        let got = Persona::from_type(Some(&only_denied), PermissionMode::AcceptEdits);
         assert_eq!(got.tools, allowed_tools());
     }
 
@@ -133,7 +129,7 @@ mod tests {
     fn the_permission_mode_is_never_looser_than_the_setting() {
         let mode = |own: &str, setting| {
             let d = def(&format!("permission_mode = \"{own}\"\n"));
-            Persona::from_type(Some(&d), TownhallModel::Sonnet, setting).permission_mode
+            Persona::from_type(Some(&d), setting).permission_mode
         };
         assert_eq!(
             mode("acceptEdits", PermissionMode::AcceptEdits),
@@ -155,11 +151,7 @@ mod tests {
             mode("plan", PermissionMode::AcceptEdits),
             PermissionMode::Plan
         );
-        let unset = Persona::from_type(
-            Some(&def("")),
-            TownhallModel::Sonnet,
-            PermissionMode::BypassPermissions,
-        );
+        let unset = Persona::from_type(Some(&def("")), PermissionMode::BypassPermissions);
         assert_eq!(unset.permission_mode, PermissionMode::Default);
     }
 
@@ -170,11 +162,7 @@ mod tests {
         )
         .unwrap()
         .def;
-        let got = Persona::from_type(
-            Some(&shell),
-            TownhallModel::Sonnet,
-            PermissionMode::AcceptEdits,
-        );
-        assert_eq!(got, built_in(TownhallModel::Sonnet));
+        let got = Persona::from_type(Some(&shell), PermissionMode::AcceptEdits);
+        assert_eq!(got, built_in());
     }
 }

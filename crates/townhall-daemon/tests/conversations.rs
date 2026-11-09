@@ -26,7 +26,7 @@ fn check_first_turn(first: &[String], session: &str, config: String) {
     assert_eq!(values_of(first, "--session-id"), [session]);
     assert!(values_of(first, "--resume").is_empty(), "{first:?}");
     assert_eq!(values_of(first, "--permission-mode"), ["default"]);
-    assert_eq!(values_of(first, "--model"), ["sonnet"]);
+    assert_eq!(values_of(first, "--model"), ["opus"]);
     assert_eq!(values_of(first, "--mcp-config"), [config]);
     assert_eq!(values_of(first, "--tools"), ["Read,Grep,Glob"]);
     assert_eq!(
@@ -85,22 +85,44 @@ async fn the_first_turn_starts_the_session_and_later_ones_resume_it() {
 }
 
 #[tokio::test]
-async fn the_townhall_model_setting_picks_the_model_of_the_next_turn() {
+async fn the_default_types_model_picks_the_model_of_the_next_turn() {
     let env = Env::new("alpha").await;
     let fake = Fake::install(env.root.path());
-    let (_state, app) = app_with(&env, &fake);
-    set_setting(&app, "townhallModel", json!("opus")).await;
+    let (state, app) = app_with(&env, &fake);
+    let store = state.ctx().store().unwrap();
+    let typed =
+        |model: &str| format!("name = \"default\"\nadapter = \"claude\"\nmodel = \"{model}\"\n");
+    store.save_agent_type(&typed("haiku")).await.unwrap();
     let created = create(&app, "plan a settings page").await;
     let id = created["conversation"]["id"].as_str().unwrap().to_string();
     idle(&app, &id).await;
-    assert_eq!(values_of(&fake.argv(1), "--model"), ["opus"]);
-    set_setting(&app, "townhallModel", json!("haiku")).await;
+    assert_eq!(values_of(&fake.argv(1), "--model"), ["haiku"]);
+    store.save_agent_type(&typed("sonnet")).await.unwrap();
     let (s, v) = message(&app, &id, "and a dark theme").await;
     assert_eq!(s, StatusCode::OK, "{v}");
     idle(&app, &id).await;
     let second = fake.argv(2);
-    assert_eq!(values_of(&second, "--model"), ["haiku"]);
+    assert_eq!(values_of(&second, "--model"), ["sonnet"]);
     assert_eq!(values_of(&second, "--setting-sources"), [""]);
+    store
+        .save_agent_type("name = \"default\"\nadapter = \"claude\"\nmodel = \" \"\n")
+        .await
+        .unwrap();
+    let (s, v) = message(&app, &id, "and a light theme").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    idle(&app, &id).await;
+    assert_eq!(values_of(&fake.argv(3), "--model"), ["opus"]);
+}
+
+#[tokio::test]
+async fn a_fresh_install_runs_conversations_on_opus() {
+    let env = Env::new("alpha").await;
+    let fake = Fake::install(env.root.path());
+    let (_state, app) = app_with(&env, &fake);
+    let created = create(&app, "plan a settings page").await;
+    let id = created["conversation"]["id"].as_str().unwrap().to_string();
+    idle(&app, &id).await;
+    assert_eq!(values_of(&fake.argv(1), "--model"), ["opus"]);
 }
 
 const EDITED_DEFAULT: &str = "name = \"default\"\nadapter = \"claude\"\nmodel = \"opus\"\npermission_mode = \"acceptEdits\"\ntools = [\"Read\", \"Bash\", \"mcp__townhall__create_task\"]\nprompt = \"you are a pirate planner\"\n";

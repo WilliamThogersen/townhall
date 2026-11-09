@@ -32,7 +32,7 @@ pub use library::{
 pub use repo::{AddRepo, PatchRepo, PutRepoAccounts, Repo};
 pub use settings::{
     NotifyWhen, PermissionMode, PutProfile, PutSetting, RepoUnclear, SettingKey, Settings,
-    TownhallModel, AGENTS_AT_ONCE_DEFAULT, AGENTS_AT_ONCE_MAX, AGENTS_AT_ONCE_MIN,
+    AGENTS_AT_ONCE_DEFAULT, AGENTS_AT_ONCE_MAX, AGENTS_AT_ONCE_MIN,
 };
 pub use task::{
     Checks, CreateTaskInput, Done, Handoff, NewTask, Pr, Task, TaskState, Verify, VerifyPhase,

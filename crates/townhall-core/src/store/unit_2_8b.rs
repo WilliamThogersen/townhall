@@ -7,6 +7,7 @@
 //! adds `tasks.agent`, the type a task runs as (`builder` for tasks from before it).
 //! `0806_seed_default` saves `default`, the type townhall's own conversations run as, when
 //! none of that name exists; it cannot be deleted and is not a type tasks default to.
+//! `0807_default_model` gives an existing `default` with no model line `model = "opus"`.
 //! Migrations 0800 to 0849, files `migrations/08xx_<name>.sql`.
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -53,6 +54,11 @@ pub const MIGRATIONS: &[Migration] = &[
         id: 806,
         name: "0806_seed_default",
         sql: include_str!("migrations/0806_seed_default.sql"),
+    },
+    Migration {
+        id: 807,
+        name: "0807_default_model",
+        sql: include_str!("migrations/0807_default_model.sql"),
     },
 ];
 
