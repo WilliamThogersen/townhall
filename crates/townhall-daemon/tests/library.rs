@@ -236,6 +236,7 @@ async fn runs_list_one_agent_types_tasks_with_model_and_tokens() {
             attachments: vec![],
             agent: agent.into(),
             pr_base: None,
+            done: Default::default(),
         };
         store.create_task(&c, task).await.unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
