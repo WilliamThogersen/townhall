@@ -9,6 +9,7 @@ import * as reposApi from "../../api/repos";
 import * as tasksApi from "../../api/tasks";
 import { createFakeEvents, TestDataProvider, type FakeEvents } from "../../data/testing";
 import { DEFAULT_SETTINGS, type ForgeAccount, type Settings } from "../../settings/settings";
+import type { PutSetting } from "../../settings/browserImport";
 import { createSettingsStore } from "../../settings/settingsStore";
 import { SettingsStoreContext } from "../../settings/useSettings";
 import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
@@ -26,10 +27,11 @@ function renderPage(
   events: FakeEvents = createFakeEvents(),
   forgeAccounts: readonly ForgeAccount[] = [],
   over: Partial<Settings> = {},
+  put: PutSetting = async () => DEFAULT_SETTINGS,
 ) {
   const settings = createSettingsStore({
     load: async () => ({ ...DEFAULT_SETTINGS, forgeAccounts, ...over }),
-    put: async () => DEFAULT_SETTINGS,
+    put,
     storage: () => null,
   });
   return render(
@@ -159,6 +161,30 @@ describe("ReposPage", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "git@gitlab.com:group/sub/app.git");
     expect(await screen.findByText("clones into ~/Developer/app")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "clone into" })).toHaveAttribute("placeholder", "~/Developer");
+  });
+
+  it("edits the default clone folder from the repos page and saves it as the clones setting", async () => {
+    const put = vi.fn<PutSetting>(async (key, value) => ({ ...DEFAULT_SETTINGS, [key]: value }));
+    renderPage(createFakeEvents(), [], {}, put);
+    const input = await screen.findByRole("textbox", { name: "default clone folder" });
+    expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("placeholder", "~/.townhall/repos");
+    await userEvent.type(input, "projects");
+    await userEvent.tab();
+    expect(screen.getByRole("alert")).toHaveTextContent("use ~, ~/folder or an absolute path");
+    expect(put).not.toHaveBeenCalled();
+    await userEvent.clear(input);
+    await userEvent.type(input, "~/Developer{Enter}");
+    expect(put).toHaveBeenLastCalledWith("clonesDir", "~/Developer");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await userEvent.clear(input);
+    await userEvent.tab();
+    expect(put).toHaveBeenLastCalledWith("clonesDir", "");
+  });
+
+  it("shows the saved default clone folder", async () => {
+    renderPage(createFakeEvents(), [], { clonesDir: "~/Developer" });
+    expect(await screen.findByRole("textbox", { name: "default clone folder" })).toHaveValue("~/Developer");
   });
 
   it("refuses a link that names no repo before asking the daemon", async () => {
