@@ -77,38 +77,66 @@ describe("useAddRepo in the browser", () => {
 describe("useAddRepo in the desktop app", () => {
   beforeEach(() => vi.stubGlobal("__TAURI_INTERNALS__", {}));
 
-  it("adds the folder picked in the native dialog", async () => {
-    const added = aRepo({ name: "shop", path: "/Users/me/code/shop" });
-    const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
-    pickFolder.mockResolvedValue("/Users/me/code/shop");
+  it("opens the form instead of the native dialog", async () => {
     const { result } = renderFlow();
     await waitFor(() => expect(result.current.repos).toEqual([]));
     expect(result.current.flow.desktop).toBe(true);
-    await act(async () => result.current.flow.begin());
-    await waitFor(() => expect(result.current.repos).toEqual([added]));
+    act(() => result.current.flow.begin());
+    expect(result.current.flow.formOpen).toBe(true);
+    expect(pickFolder).not.toHaveBeenCalled();
+  });
+
+  it("browses for a folder and hands the path back without adding it", async () => {
+    const add = vi.spyOn(reposApi, "addRepo");
+    pickFolder.mockResolvedValue("/Users/me/code/shop");
+    const { result } = renderFlow();
+    act(() => result.current.flow.begin());
+    let path: string | null = null;
+    await act(async () => {
+      path = await result.current.flow.browse();
+    });
+    expect(path).toBe("/Users/me/code/shop");
+    expect(add).not.toHaveBeenCalled();
+    expect(result.current.flow).toMatchObject({ formOpen: true, error: null });
+  });
+
+  it("returns null when the dialog is cancelled", async () => {
+    pickFolder.mockResolvedValue(null);
+    const { result } = renderFlow();
+    act(() => result.current.flow.begin());
+    let path: string | null = "x";
+    await act(async () => {
+      path = await result.current.flow.browse();
+    });
+    expect(path).toBeNull();
+    expect(result.current.flow.error).toBeNull();
+  });
+
+  it("reports a dialog that fails and keeps the form open", async () => {
+    pickFolder.mockRejectedValue(new Error("dialog unavailable"));
+    const { result } = renderFlow();
+    act(() => result.current.flow.begin());
+    await act(async () => {
+      await result.current.flow.browse();
+    });
+    expect(result.current.flow).toMatchObject({ formOpen: true, error: "dialog unavailable" });
+  });
+
+  it("adds the submitted folder and closes the form", async () => {
+    const added = aRepo({ name: "shop", path: "/Users/me/code/shop" });
+    const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(added);
+    const { result } = renderFlow();
+    act(() => result.current.flow.begin());
+    await act(() => result.current.flow.submit({ path: "/Users/me/code/shop" }));
     expect(add).toHaveBeenCalledWith({ path: "/Users/me/code/shop" });
     expect(result.current.flow).toMatchObject({ formOpen: false, busy: false, error: null });
   });
 
-  it("does nothing when the dialog is cancelled", async () => {
-    const add = vi.spyOn(reposApi, "addRepo");
-    pickFolder.mockResolvedValue(null);
-    const { result } = renderFlow();
-    await act(async () => result.current.flow.begin());
-    await waitFor(() => expect(result.current.flow.busy).toBe(false));
-    expect(add).not.toHaveBeenCalled();
-    expect(result.current.flow.error).toBeNull();
-  });
-
-  it("is busy while picking and reports a refused folder", async () => {
-    let answer: (path: string | null) => void = () => undefined;
-    pickFolder.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+  it("reports a refused folder in the open form", async () => {
     vi.spyOn(reposApi, "addRepo").mockRejectedValue(new ApiError("http", "path /Users/me is registered already", 409));
     const { result } = renderFlow();
     act(() => result.current.flow.begin());
-    expect(result.current.flow.busy).toBe(true);
-    await act(async () => answer("/Users/me"));
-    await waitFor(() => expect(result.current.flow.error).toBe("path /Users/me is registered already"));
-    expect(result.current.flow.busy).toBe(false);
+    await act(() => result.current.flow.submit({ path: "/Users/me" }));
+    expect(result.current.flow).toMatchObject({ formOpen: true, busy: false, error: "path /Users/me is registered already" });
   });
 });

@@ -7,6 +7,8 @@ export interface AddRepoDraft {
   readonly cloneDir: string;
 }
 
+export type AddMode = "folder" | "url";
+
 export const EMPTY_DRAFT: AddRepoDraft = { path: "", name: "", baseBranch: "", cloneDir: "" };
 
 export const DEFAULT_CLONES_DIR = "~/.townhall/repos";
@@ -30,6 +32,12 @@ export function linkProblem(input: string): string | null {
   const segments = linkPath(link).split("/");
   const bad = segments.length < 2 || segments.some((s) => s === "" || s === "." || s === "..");
   return bad ? "expected host/owner/repo" : null;
+}
+
+export function modeProblem(mode: AddMode, path: string): string | null {
+  if (mode === "folder") return isLink(path) ? "that is a link: choose url to clone it" : null;
+  if (path.trim() !== "" && !isLink(path)) return "expected a git url: https://, ssh:// or git@";
+  return linkProblem(path);
 }
 
 function linkName(link: string): string {

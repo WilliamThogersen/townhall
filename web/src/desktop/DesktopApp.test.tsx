@@ -38,7 +38,10 @@ describe("DesktopApp", () => {
     expect(await screen.findByRole("heading", { name: "add your first repository" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "townhall" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
+    expect(pickFolder).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "browse…" }));
     expect(pickFolder).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "add" }));
     expect(add).toHaveBeenCalledWith({ path: shop.path });
     expect(await screen.findByRole("textbox", { name: "Describe the work" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "add your first repository" })).not.toBeInTheDocument();
@@ -62,7 +65,11 @@ describe("DesktopApp", () => {
     render(<DesktopApp />);
     expect(await screen.findByText("shop", { selector: ".th-repo-name b" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
+    expect(pickFolder).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "add repository" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "browse…" }));
+    await userEvent.click(screen.getByRole("button", { name: "add" }));
     expect(await screen.findByText("townhall", { selector: ".th-repo-name b" })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "folder or link" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
