@@ -173,7 +173,7 @@ pub(crate) fn remote_env() -> Vec<(&'static str, &'static str)> {
         .collect()
 }
 
-pub(super) fn auth_failure(stderr: &str) -> Option<&'static str> {
+pub(super) fn auth_failure(stderr: &str, https: bool) -> Option<&'static str> {
     let lower = stderr.to_ascii_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| lower.contains(n));
     if has(&["host key verification failed"]) {
@@ -193,7 +193,11 @@ pub(super) fn auth_failure(stderr: &str) -> Option<&'static str> {
         "returned error: 401",
         "returned error: 403",
     ]) {
-        Some("authentication failed: check your git credentials or ssh key")
+        if https {
+            Some("authentication failed: https needs a saved git credential (an access token), which townhall cannot ask for; switch to ssh, or save a token with a credential helper")
+        } else {
+            Some("authentication failed: check your git credentials or ssh key")
+        }
     } else {
         None
     }
@@ -337,19 +341,45 @@ mod tests {
     fn failures_get_a_specific_hint() {
         let host = auth_failure(
             "Host key verification failed.\nfatal: Could not read from remote repository.",
+            false,
         )
         .unwrap();
         assert!(host.contains("host key"), "{host}");
-        let key = auth_failure("git@github.com: Permission denied (publickey).").unwrap();
+        let key = auth_failure("git@github.com: Permission denied (publickey).", false).unwrap();
         assert!(key.contains("ssh-add"), "{key}");
         let creds = auth_failure(
             "fatal: could not read Username for 'https://x': terminal prompts disabled",
+            false,
         )
         .unwrap();
         assert!(creds.contains("credentials"), "{creds}");
-        assert!(auth_failure("fatal: Could not resolve host: nowhere").is_none());
+        assert!(auth_failure("fatal: Could not resolve host: nowhere", false).is_none());
         for hint in [host, key, creds] {
             assert!(hint.starts_with("authentication failed"), "{hint}");
         }
+    }
+
+    #[test]
+    fn an_https_failure_says_to_save_a_token_or_use_ssh() {
+        let stderr = "fatal: could not read Username for 'https://gitlab.wexo.io': terminal prompts disabled";
+        let hint = auth_failure(stderr, true).unwrap();
+        assert!(hint.starts_with("authentication failed"), "{hint}");
+        assert!(
+            hint.contains("https needs a saved git credential"),
+            "{hint}"
+        );
+        assert!(hint.contains("token"), "{hint}");
+        assert!(hint.contains("switch to ssh"), "{hint}");
+        assert!(!auth_failure(stderr, false)
+            .unwrap()
+            .contains("switch to ssh"));
+    }
+
+    #[test]
+    fn https_does_not_change_the_ssh_specific_hints() {
+        let key = "git@github.com: Permission denied (publickey).";
+        assert_eq!(auth_failure(key, true), auth_failure(key, false));
+        let host = "Host key verification failed.";
+        assert_eq!(auth_failure(host, true), auth_failure(host, false));
     }
 }
