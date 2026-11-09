@@ -37,17 +37,6 @@
   background: var(--th-surface);
 }
 
-.th-repo-default-dir {
-  display: grid;
-  gap: var(--th-space-1);
-  padding: var(--th-space-3) var(--th-space-4);
-  border-bottom: var(--th-border) solid var(--th-line);
-}
-
-.th-repo-default-dir p {
-  margin: 0;
-}
-
 .th-repo-field {
   display: grid;
   gap: var(--th-space-1);

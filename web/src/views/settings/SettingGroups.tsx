@@ -5,6 +5,7 @@ import { Segmented } from "../../ui/Segmented";
 import { Stepper } from "../../ui/Stepper";
 import { Switch } from "../../ui/Switch";
 import { AccountsSection } from "./AccountsSection";
+import { ClonesDirRow } from "./ClonesDirRow";
 import { PermissionRow } from "./PermissionRow";
 import { ProfileSection } from "./ProfileSection";
 import { SettingGroup, SettingRow } from "./SettingRow";
@@ -55,6 +56,14 @@ export function ConversationsGroup() {
           onChange={(sessionPanelOpen) => update({ sessionPanelOpen })}
         />
       </SettingRow>
+    </SettingGroup>
+  );
+}
+
+export function ReposGroup() {
+  return (
+    <SettingGroup title="repos">
+      <ClonesDirRow />
     </SettingGroup>
   );
 }
