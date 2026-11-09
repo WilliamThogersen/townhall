@@ -22,9 +22,11 @@ mod task_tools;
 use serde_json::{json, Value};
 
 use crate::context::Context;
+use crate::model::MAX_HANDOFFS;
 
 pub use artifacts::{ADD_ARTIFACT, LIST_ARTIFACTS};
 pub use hand_back::HAND_BACK;
+pub(crate) use hand_back::{summary_of, worktree_of};
 pub use library::{LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 pub use open_pr::OPEN_PR;
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
@@ -56,6 +58,8 @@ pub const MAX_NAME_LEN: u64 = 64;
 pub const MAX_TITLE_LEN: u64 = 80;
 pub const MAX_PROMPT_LEN: u64 = 50_000;
 pub const MAX_LIST_LEN: u64 = 20;
+pub const MAX_DONE_WHEN_LEN: u64 = 500;
+pub const MAX_CHECK_LEN: u64 = 2_000;
 
 pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to an agent of a saved agent type in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did; list_agent_types, read_agent_type and save_agent_type show and save the agent types tasks run as; log_summary and read_logs show townhall's own errors and warnings from its logs in ~/.townhall/logs/: when asked to improve townhall, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint; conversation_insights shows the recurring patterns across every conversation (repeated requests, questions, failures, manual steps, hand backs, task chains) with a suggested automation for each.";
 
@@ -65,6 +69,10 @@ pub struct ToolDef {
     pub name: &'static str,
     pub description: &'static str,
     pub input_schema: Value,
+    /// Sent as `annotations.readOnlyHint`: the tool changes no code and runs no command, at
+    /// most it records something in townhall's own store. Claude Code in plan mode asks before
+    /// every tool that is not marked so, whatever the allow rules say.
+    pub read_only: bool,
 }
 
 /// The URL of one conversation's MCP endpoint on this daemon.
@@ -158,6 +166,18 @@ fn create_task_schema() -> Value {
                 "type": "string", "minLength": 1,
                 "description": "Existing branch of the repo the task's pull request (open_pr) targets. Default: baseBranch. Set it when the task starts from a branch that is not where the work must land, for example a shipper that starts from the reviewed branch and opens its pull request into main."
             },
+            "doneWhen": {
+                "type": "string", "maxLength": MAX_DONE_WHEN_LEN,
+                "description": "What finished means, in plain words, for example `all tests pass`. Put in the agent's brief and shown to people. Optional."
+            },
+            "check": {
+                "type": "string", "maxLength": MAX_CHECK_LEN,
+                "description": "A shell command townhall runs in the task's worktree when its agent ends; exit 0 means done. On failure the task runs again in the same worktree with the command's output added to its brief, up to maxRetries times, then it needs the user. Optional."
+            },
+            "maxRetries": {
+                "type": "integer", "minimum": 0, "maximum": MAX_HANDOFFS,
+                "description": "How many times a failing check relaunches the task. Default 2. Each retry counts as one hand back, so the limit is the most hand backs a task gets."
+            },
             "after": names_array("Names of tasks that must finish before this one starts."),
             "attachments": names_array("Attachment ids of this conversation the agent needs."),
             "agent": {
@@ -199,16 +219,19 @@ fn task_tools() -> Vec<ToolDef> {
             name: CREATE_TASK,
             description: "Create one task for an agent of a saved agent type (`agent`). It is queued and starts in its own worktree of the repo's base branch once its `after` tasks finished and a slot is free. If the agent type has `requires`, the `after` chain must contain a task of each required type or this is refused, and the task starts only once those tasks ended with a report that clears it. `prBase` sets the branch its pull request targets (default: its base branch). Returns the task.",
             input_schema: create_task_schema(),
+            read_only: false,
         },
         ToolDef {
             name: SET_TITLE,
             description: "Name this conversation in townhall's sidebar (3 to 6 words, lowercase), once the topic is clear. Returns the conversation.",
             input_schema: set_title_schema(),
+            read_only: false,
         },
         ToolDef {
             name: TASK_STATUS,
             description: "What this conversation's tasks are doing and did. Without `name`: every task with its state, branch, `after`, its last 3 agent and needs-you entries and its proof artifacts (name, kind, author role, url) and `blocked`, why a queued task does not start although its `after` tasks finished. With `name`: that task plus its agent's last 20 steps and, once it is ended or merged, the agent's last message. Call it whenever you are asked what a task did or how it stands, instead of guessing.",
             input_schema: status::schema(),
+            read_only: true,
         },
     ]
 }
@@ -253,6 +276,9 @@ mod tests {
                 "agent",
                 "attachments",
                 "baseBranch",
+                "check",
+                "doneWhen",
+                "maxRetries",
                 "name",
                 "prBase",
                 "prompt",

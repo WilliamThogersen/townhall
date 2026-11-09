@@ -1,0 +1,63 @@
+.th-accounts {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.th-account {
+  display: flex;
+  align-items: center;
+  gap: var(--th-space-3);
+  min-width: 0;
+  padding: var(--th-space-1) 0;
+}
+
+.th-account + .th-account {
+  border-top: var(--th-border) solid var(--th-line);
+}
+
+.th-account > .th-cap {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-account-add {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: var(--th-space-2) var(--th-space-3);
+}
+
+.th-account-field {
+  display: grid;
+  gap: var(--th-space-1);
+  min-width: 0;
+}
+
+.th-account-field > span {
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+  line-height: var(--th-leading-xs);
+}
+
+.th-account-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 680px) {
+  .th-account-add {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .th-account-add > .th-segmented,
+  .th-account-add > .th-btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}

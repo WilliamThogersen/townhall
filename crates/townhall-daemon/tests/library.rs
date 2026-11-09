@@ -206,6 +206,7 @@ async fn usage_sums_runs_and_tokens_per_agent_type() {
             attachments: vec![],
             agent: "builder".into(),
             pr_base: None,
+            done: Default::default(),
         };
         store.create_task(&c, task).await.unwrap();
     }
@@ -235,6 +236,7 @@ async fn one_types_usage_series_is_served_by_range() {
         attachments: vec![],
         agent: "builder".into(),
         pr_base: None,
+        done: Default::default(),
     };
     store.create_task(&c, task).await.unwrap();
     store.set_task_tokens("one", 1200).await.unwrap();
@@ -272,4 +274,60 @@ async fn one_types_usage_series_is_served_by_range() {
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     assert!(v["error"].as_str().unwrap().contains("24h"), "{v}");
+}
+
+#[tokio::test]
+async fn runs_list_one_agent_types_tasks_with_model_and_tokens() {
+    let env = Env::new("alpha").await;
+    let (state, app) = env.start();
+    let store = state.ctx().store().unwrap();
+    let c = store.create_conversation().await.unwrap().id;
+    for (name, agent) in [("one", "builder"), ("two", "builder"), ("three", "coder")] {
+        let task = townhall_core::model::NewTask {
+            name: name.into(),
+            title: format!("do {name}"),
+            prompt: "the brief".into(),
+            repo: "alpha".into(),
+            base_branch: "main".into(),
+            after: vec![],
+            attachments: vec![],
+            agent: agent.into(),
+            pr_base: None,
+            done: Default::default(),
+        };
+        store.create_task(&c, task).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    store.set_task_tokens("one", 1200).await.unwrap();
+    store.set_task_model("one", "claude-x").await.unwrap();
+    let (s, v) = call(&app, "GET", "/api/library/agents/BUILDER/runs", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let runs = v["data"].as_array().unwrap();
+    let names: Vec<&str> = runs.iter().map(|r| r["task"].as_str().unwrap()).collect();
+    assert_eq!(names, ["two", "one"]);
+    let mut keys: Vec<&str> = runs[1]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "createdAt",
+            "endedAt",
+            "model",
+            "repo",
+            "state",
+            "task",
+            "tokens"
+        ]
+    );
+    assert_eq!(runs[1]["model"], "claude-x");
+    assert_eq!(runs[1]["tokens"], 1200);
+    assert!(runs[0]["model"].is_null());
+    let (s, v) = call(&app, "GET", "/api/library/agents/nobody/runs", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["data"], json!([]));
 }

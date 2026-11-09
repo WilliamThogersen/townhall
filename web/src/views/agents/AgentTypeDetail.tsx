@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useAgentType } from "../../data";
+import { useAgentRuns, useAgentType } from "../../data";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Loading } from "../../ui/Loading";
+import { compactNumber } from "../home/format";
 import { AgentAvatar } from "./AgentAvatar";
 import { AvatarEditor } from "./AvatarEditor";
 import { StepBadge } from "./AgentTypeRow";
@@ -65,6 +66,46 @@ function HandBackTo({ allowed }: { readonly allowed: readonly string[] | null })
   return allowed.length > 0 ? <Chips items={allowed} /> : <>nobody</>;
 }
 
+function envNames(env: Readonly<Record<string, string>>): string {
+  const names = Object.keys(env).sort();
+  return names.length > 0 ? names.join(", ") : "none";
+}
+
+function RecentRuns({ name }: { readonly name: string }) {
+  const { data, error } = useAgentRuns(name);
+  return (
+    <section className="th-agent-runs" aria-label="recent runs">
+      <h3>recent runs</h3>
+      {error !== null && data === null ? <Banner level="error">runs not loaded: {error}</Banner> : null}
+      {data !== null && data.length === 0 ? <p>no runs yet</p> : null}
+      {data !== null && data.length > 0 ? (
+        <table>
+          <thead>
+            <tr>
+              <th>task</th>
+              <th>model</th>
+              <th>tokens</th>
+              <th>state</th>
+              <th>started</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((run) => (
+              <tr key={run.task}>
+                <td>{run.task}</td>
+                <td>{run.model ?? "unknown"}</td>
+                <td>{compactNumber(run.tokens)}</td>
+                <td>{run.state}</td>
+                <td>{run.createdAt.slice(0, 10)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+    </section>
+  );
+}
+
 export function AgentTypeDetail({ name, onSaved }: { readonly name: string; readonly onSaved: () => void }) {
   const { data, error, loading, reload } = useAgentType(name);
   if (error !== null && data === null) return <Banner level="error">{error}</Banner>;
@@ -94,11 +135,13 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
           <Field label="hands back to">
             <HandBackTo allowed={data.canHandBackTo} />
           </Field>
+          <Field label="env">{envNames(data.env)}</Field>
         </dl>
       </Section>
       <Section title="usage">
         <UsageGraph name={data.name} />
       </Section>
+      <RecentRuns name={data.name} />
       <Section title="avatar">
         <AvatarEditor
           key={`${data.updatedAt}:${data.source}`}

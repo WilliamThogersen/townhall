@@ -17,6 +17,7 @@ fn new_task(name: &str, repo: &str) -> NewTask {
         attachments: vec![],
         agent: "builder".into(),
         pr_base: None,
+        done: Default::default(),
     }
 }
 

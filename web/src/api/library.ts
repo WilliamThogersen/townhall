@@ -4,6 +4,7 @@ import { fail, list, listOf, nullable, num, oneOf, record, str, strings, type Ch
 import { request, TomlBody } from "./request";
 import type {
   AgentAdapterKind,
+  AgentRun,
   AgentType,
   AgentTypeMode,
   AgentTypeSummary,
@@ -43,6 +44,11 @@ function parseSummary(value: unknown): AgentTypeSummary {
   };
 }
 
+function stringMap(value: unknown, what: string): Readonly<Record<string, string>> {
+  const r = record(value, what);
+  return Object.fromEntries(Object.entries(r).map(([key, item]) => [key, str(item, `${what}.${key}`)]));
+}
+
 const parseType: Guard<AgentType> = (value) => {
   const r = record(value, "agent type");
   if (typeof r.source !== "string") return fail("agentType.source");
@@ -52,6 +58,7 @@ const parseType: Guard<AgentType> = (value) => {
     prompt: nullable(r.prompt, "agentType.prompt", str),
     command: nullable(r.command, "agentType.command", str),
     canHandBackTo: nullable(r.canHandBackTo, "agentType.canHandBackTo", strings),
+    env: stringMap(r.env, "agentType.env"),
     source: r.source,
   };
 };
@@ -71,7 +78,23 @@ const parseUsage: Guard<AgentUsage> = (value) => {
   };
 };
 
-export const listAgentUsage = (signal?: AbortSignal): Promise<readonly AgentUsage[]> =>
+const parseRun: Guard<AgentRun> = (value) => {
+  const r = record(value, "agent run");
+  return {
+    task: str(r.task, "agentRun.task"),
+    repo: str(r.repo, "agentRun.repo"),
+    state: str(r.state, "agentRun.state"),
+    model: nullable(r.model, "agentRun.model", str),
+    tokens: num(r.tokens, "agentRun.tokens"),
+    createdAt: str(r.createdAt, "agentRun.createdAt"),
+    endedAt: nullable(r.endedAt, "agentRun.endedAt", str),
+  };
+};
+
+export const listAgentRuns = (name: string, signal?: AbortSignal): Promise<readonly AgentRun[]> =>
+  request("GET", `/library/agents/${encodeURIComponent(name)}/runs`, listOf(parseRun, "agent runs"), undefined, signal);
+
+export const listAgentUsage =(signal?: AbortSignal): Promise<readonly AgentUsage[]> =>
   request("GET", "/library/agents/usage", listOf(parseUsage, "agent usage"), undefined, signal);
 
 export const saveAgentType = (name: string, source: string, signal?: AbortSignal): Promise<AgentType> =>

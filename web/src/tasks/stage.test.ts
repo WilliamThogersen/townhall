@@ -40,6 +40,16 @@ describe("stepKind", () => {
   });
 });
 
+describe("stageOf a task under a check", () => {
+  const under = (phase: "verifying" | "retrying", retries = 0) =>
+    aTask({ state: "working", check: "npm test", verify: { phase, retries, output: null } });
+
+  it("is in test while the check runs, and back in code for a retry", () => {
+    expect(stageOf(under("verifying"), bash("git commit -m x"))).toBe("test");
+    expect(stageOf(under("retrying", 1), null)).toBe("code");
+  });
+});
+
 describe("stepVerb", () => {
   it("names a step by what it does, else by its tool in lowercase", () => {
     expect(stepVerb(aStep({ tool: "Read" }))).toBe("read");

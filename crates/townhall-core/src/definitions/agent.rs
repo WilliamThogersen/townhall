@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::avatar::AvatarDef;
@@ -91,6 +93,10 @@ pub struct AgentDef {
     /// The `[avatar]` table. `None`: the face derived from the name.
     #[serde(default)]
     pub avatar: Option<AvatarDef>,
+    /// Environment variables the launched process gets, on top of the daemon's. Values are
+    /// never logged. Townhall gives no name a meaning: they are the user's to choose.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
 }
 
 /// Parse an agent definition, keeping `source` as written.
@@ -122,6 +128,7 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
         .iter()
         .flat_map(AvatarDef::grid_problems)
         .map(|m| error("avatar.grid", m));
+    let env = env_problems(&def.env).into_iter().map(|m| error("env", m));
     let errors = name
         .into_iter()
         .chain(model.map(|m| error("model", m)))
@@ -129,7 +136,8 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
         .chain(hand_back)
         .chain(requires)
         .chain(command)
-        .chain(grid);
+        .chain(grid)
+        .chain(env);
     into_result(errors.collect())
 }
 
@@ -147,6 +155,20 @@ fn command_problem(def: &AgentDef) -> Option<&'static str> {
         AdapterKind::Claude if def.command.is_some() => Some("is only for the shell adapter"),
         _ => None,
     }
+}
+
+/// Names the offending key only: a value may be a secret.
+fn env_problems(env: &BTreeMap<String, String>) -> Vec<String> {
+    env.keys()
+        .filter_map(|key| match (key.is_empty(), key.contains('=')) {
+            (true, _) => Some("a variable name must not be empty".to_string()),
+            (_, true) => Some(format!(
+                "variable name \"{}\" must not contain `=`",
+                key.escape_debug()
+            )),
+            _ => None,
+        })
+        .collect()
 }
 
 fn hand_back_problems(def: &AgentDef) -> Vec<String> {

@@ -56,6 +56,10 @@ export const aTask = (over: Partial<Task> = {}): Task => ({
   agent: "builder",
   blocked: null,
   prBase: null,
+  doneWhen: null,
+  check: null,
+  maxRetries: 2,
+  verify: null,
   ...over,
 });
 
@@ -107,6 +111,8 @@ export const aRepo = (over: Partial<Repo> = {}): Repo => ({
   name: "shop",
   path: "/code/shop",
   baseBranch: "main",
+  githubAccount: null,
+  gitlabAccount: null,
   ...over,
 });
 
@@ -149,6 +155,7 @@ export const anAgentType = (over: Partial<AgentType> = {}): AgentType => ({
   prompt: "You implement the task.",
   command: null,
   canHandBackTo: null,
+  env: {},
   source: 'name = "builder"\nadapter = "claude"\n',
   ...over,
 });

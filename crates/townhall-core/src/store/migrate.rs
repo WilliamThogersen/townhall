@@ -35,6 +35,11 @@ const BASE: &[Migration] = &[
         name: "0003_github_account",
         sql: include_str!("migrations/0003_github_account.sql"),
     },
+    Migration {
+        id: 4,
+        name: "0004_repo_accounts",
+        sql: include_str!("migrations/0004_repo_accounts.sql"),
+    },
 ];
 
 /// Who owns which numbers. Ask the orchestrator for a range before adding a unit.
@@ -217,6 +222,59 @@ mod tests {
         assert!(conn.prepare("select pr_base from tasks").is_ok());
         assert_eq!(apply(&mut conn, &all()).unwrap(), 0);
         assert_eq!(applied(&conn).unwrap().len(), all().len());
+    }
+
+    #[test]
+    fn migration_0004_keeps_existing_repos_and_leaves_their_accounts_unpicked() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let before: Vec<Migration> = all().into_iter().filter(|m| m.id < 4).collect();
+        apply(&mut conn, &before).unwrap();
+        conn.execute(
+            "insert into repos (name, path, base_branch, added_at) values ('shop', '/x/shop', 'main', 't')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(apply(&mut conn, &all()).unwrap(), all().len() - 3);
+        let picks: (Option<String>, Option<String>) = conn
+            .query_row(
+                "select github_account, gitlab_account from repos where name = 'shop'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(picks, (None, None));
+        let old: String = conn
+            .query_row(
+                "select value from settings where key = 'githubAccount'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old, "\"WilliamThogersen\"");
+    }
+
+    #[test]
+    fn migration_0206_gives_old_tasks_the_default_retries_and_no_check() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let without: Vec<Migration> = all().into_iter().filter(|m| m.id != 206).collect();
+        apply(&mut conn, &without).unwrap();
+        conn.pragma_update(None, "foreign_keys", false).unwrap();
+        conn.execute(
+            "insert into tasks (name, conversation_id, title, prompt, repo, base_branch, after,
+             state, attachments, created_at, agent)
+             values ('a', 'c', 't', 'p', 'r', 'main', '[]', 'queued', '[]', 'x', 'builder')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 1);
+        let row: (Option<String>, Option<String>, i64, Option<String>) = conn
+            .query_row(
+                "select done_when, check_cmd, max_retries, verify from tasks",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (None, None, 2, None));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
+use super::accounts::{normalize as normalize_accounts, ForgeAccount};
 use crate::{Error, Result};
 
 pub const AGENTS_AT_ONCE_MIN: u32 = 1;
@@ -88,10 +89,12 @@ pub enum SettingKey {
     MinFreeDiskGb,
     LearnAboutMe,
     GithubAccount,
+    ForgeAccounts,
+    ReflectAfterTasks,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 10] = [
+    pub const ALL: [SettingKey; 12] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
@@ -102,6 +105,8 @@ impl SettingKey {
         Self::MinFreeDiskGb,
         Self::LearnAboutMe,
         Self::GithubAccount,
+        Self::ForgeAccounts,
+        Self::ReflectAfterTasks,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -116,6 +121,8 @@ impl SettingKey {
             Self::MinFreeDiskGb => "minFreeDiskGb",
             Self::LearnAboutMe => "learnAboutMe",
             Self::GithubAccount => "githubAccount",
+            Self::ForgeAccounts => "forgeAccounts",
+            Self::ReflectAfterTasks => "reflectAfterTasks",
         }
     }
 
@@ -129,16 +136,23 @@ impl SettingKey {
     /// The value as it will be stored, or why it is not valid for this key.
     pub fn check(self, value: &Value) -> Result<Value> {
         let bad = || Error::InvalidInput(format!("invalid value {value} for `{}`", self.as_str()));
+        if self == Self::ForgeAccounts {
+            let accounts = normalize_accounts(value)?;
+            return serde_json::to_value(accounts)
+                .map_err(|e| Error::InvalidInput(format!("invalid forge accounts: {e}")));
+        }
         let valid = match self {
             Self::PermissionMode => parses::<PermissionMode>(value),
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
             Self::TownhallModel => parses::<TownhallModel>(value),
-            Self::WorkWithoutAsking | Self::SessionPanelOpen | Self::LearnAboutMe => {
-                value.is_boolean()
-            }
+            Self::WorkWithoutAsking
+            | Self::SessionPanelOpen
+            | Self::LearnAboutMe
+            | Self::ReflectAfterTasks => value.is_boolean(),
             Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
             Self::GithubAccount => value.as_str().is_some_and(is_github_login),
+            Self::ForgeAccounts => unreachable!("handled above"),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
             }),
@@ -177,7 +191,13 @@ pub struct Settings {
     /// A task does not start while the data volume has less free space; `0` is off.
     pub min_free_disk_gb: u32,
     pub learn_about_me: bool,
+    /// The old single account: still read as the fallback for a GitHub repo with no
+    /// registered account of its own.
     pub github_account: String,
+    /// The registered forge accounts; each repo picks one per forge.
+    pub forge_accounts: Vec<ForgeAccount>,
+    /// After a task ends, a `reflector` run records lessons in the repo's memory files.
+    pub reflect_after_tasks: bool,
 }
 
 impl Default for Settings {
@@ -193,6 +213,8 @@ impl Default for Settings {
             min_free_disk_gb: MIN_FREE_DISK_GB_DEFAULT,
             learn_about_me: false,
             github_account: String::new(),
+            forge_accounts: Vec::new(),
+            reflect_after_tasks: false,
         }
     }
 }
@@ -219,6 +241,8 @@ impl Settings {
             min_free_disk_gb: field(raw, SettingKey::MinFreeDiskGb, d.min_free_disk_gb),
             learn_about_me: field(raw, SettingKey::LearnAboutMe, d.learn_about_me),
             github_account: field(raw, SettingKey::GithubAccount, d.github_account),
+            forge_accounts: field(raw, SettingKey::ForgeAccounts, d.forge_accounts),
+            reflect_after_tasks: field(raw, SettingKey::ReflectAfterTasks, d.reflect_after_tasks),
         }
     }
 
@@ -267,7 +291,9 @@ mod tests {
                 "townhallModel": "sonnet",
                 "minFreeDiskGb": 5,
                 "learnAboutMe": false,
-                "githubAccount": ""
+                "githubAccount": "",
+                "forgeAccounts": [],
+                "reflectAfterTasks": false
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -383,6 +409,23 @@ mod tests {
     }
 
     #[test]
+    fn reflect_after_tasks_is_off_unless_stored_as_a_boolean() {
+        assert!(!Settings::default().reflect_after_tasks);
+        let old: Settings = serde_json::from_value(json!({"permissionMode": "plan"})).unwrap();
+        assert!(!old.reflect_after_tasks);
+        let on: Settings = serde_json::from_value(json!({"reflectAfterTasks": true})).unwrap();
+        assert!(on.reflect_after_tasks);
+        let bad: Settings = serde_json::from_value(json!({"reflectAfterTasks": "yes"})).unwrap();
+        assert!(!bad.reflect_after_tasks);
+        assert_eq!(
+            SettingKey::parse("reflectAfterTasks").unwrap(),
+            SettingKey::ReflectAfterTasks
+        );
+        assert!(SettingKey::ReflectAfterTasks.check(&json!(true)).is_ok());
+        assert!(SettingKey::ReflectAfterTasks.check(&json!(1)).is_err());
+    }
+
+    #[test]
     fn the_github_account_is_a_login_or_empty() {
         for good in ["WilliamThogersen", "a", "octo-cat-1", ""] {
             let value = json!(good);
@@ -396,6 +439,26 @@ mod tests {
         assert_eq!(s.github_account, "WilliamThogersen");
         let bad: Settings = serde_json::from_value(json!({"githubAccount": "no way"})).unwrap();
         assert_eq!(bad.github_account, "");
+    }
+
+    #[test]
+    fn forge_accounts_are_checked_and_stored_with_their_defaults_filled_in() {
+        let given = json!([{"forge": "gitlab", "login": "me", "host": "GitLab.Corp.io"}]);
+        let stored = SettingKey::ForgeAccounts.check(&given).unwrap();
+        assert_eq!(
+            stored,
+            json!([{"forge": "gitlab", "login": "me", "host": "gitlab.corp.io", "label": "me"}])
+        );
+        let s: Settings = serde_json::from_value(json!({"forgeAccounts": stored})).unwrap();
+        assert_eq!(s.forge_accounts.len(), 1);
+        assert_eq!(s.forge_accounts[0].host, "gitlab.corp.io");
+        assert!(SettingKey::ForgeAccounts.check(&json!("me")).is_err());
+        let bad: Settings = serde_json::from_value(json!({"forgeAccounts": "me"})).unwrap();
+        assert!(bad.forge_accounts.is_empty());
+        assert_eq!(
+            SettingKey::parse("forgeAccounts").unwrap(),
+            SettingKey::ForgeAccounts
+        );
     }
 
     #[test]

@@ -36,7 +36,7 @@ pub async fn write(
     handoffs: &[Handoff],
 ) -> Result<PathBuf> {
     let path = brief_file(home, &task.name);
-    let text = plan::brief_text(&task.title, &task.prompt, files, handoffs);
+    let text = plan::brief_text(&task.title, &task.prompt, &task.done, files, handoffs);
     let (home, target) = (home.clone(), path.clone());
     tokio::task::spawn_blocking(move || {
         if let Some(dir) = target.parent() {

@@ -192,6 +192,7 @@ fn launch_fields_carry_the_definition() {
             allowed_tools: vec!["Read".into(), "Edit".into(), "Write".into(), "Bash".into()],
             system_prompt: def.prompt.clone(),
             command: None,
+            env: Default::default(),
         }
     );
 }
@@ -210,6 +211,7 @@ fn launch_fields_drop_empty_text() {
         can_hand_back_to: None,
         requires: Vec::new(),
         avatar: None,
+        env: Default::default(),
     };
     let fields = def.launch_fields();
     assert_eq!(fields.model, None);
@@ -295,5 +297,25 @@ fn requires_must_hold_valid_unique_names() {
         let errors = agent_errors(&format!("{MINIMAL}requires = {bad}\n"));
         assert_eq!(errors.len(), 1, "{bad}: {errors:?}");
         assert!(errors[0].contains("requires"), "{errors:?}");
+    }
+}
+
+#[test]
+fn env_defaults_to_empty_and_parses_a_table() {
+    assert!(parse_agent(MINIMAL).unwrap().def.env.is_empty());
+    let source = format!("{MINIMAL}\n[env]\nA_VAR = \"1\"\nB_VAR = \"two words\"\n");
+    let def = check_agent(&source).unwrap().def;
+    assert_eq!(def.env.get("A_VAR").map(String::as_str), Some("1"));
+    assert_eq!(def.env.get("B_VAR").map(String::as_str), Some("two words"));
+    assert_eq!(def.launch_fields().env, def.env);
+}
+
+#[test]
+fn env_rejects_empty_keys_and_keys_with_equals_without_echoing_values() {
+    for key in ["\"\"", "\"A=B\""] {
+        let errors = agent_errors(&format!("{MINIMAL}\n[env]\n{key} = \"hunter2\"\n"));
+        assert_eq!(errors.len(), 1, "{key}: {errors:?}");
+        assert!(errors[0].contains("env"), "{errors:?}");
+        assert!(!errors[0].contains("hunter2"), "{errors:?}");
     }
 }

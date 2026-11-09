@@ -1,5 +1,5 @@
-import { getAgentType, getAgentUsageSeries, listAgentTypes, listAgentUsage } from "../api/library";
-import type { AgentType, AgentTypeSummary, AgentUsage, AgentUsageSeries, UsageRange } from "../api/types";
+import { getAgentType, getAgentUsageSeries, listAgentRuns, listAgentTypes, listAgentUsage } from "../api/library";
+import type { AgentRun, AgentType, AgentTypeSummary, AgentUsage, AgentUsageSeries, UsageRange } from "../api/types";
 import { useLoad, type Loaded } from "./useLoad";
 
 const NO_REFRESH = 0;
@@ -14,6 +14,10 @@ export function useAgentType(name: string | null): Loaded<AgentType> {
 
 export function useAgentUsageSeries(name: string, range: UsageRange): Loaded<AgentUsageSeries> {
   return useLoad(`agent-usage-series:${name}:${range}`, (signal) => getAgentUsageSeries(name, range, signal), NO_REFRESH);
+}
+
+export function useAgentRuns(name: string): Loaded<readonly AgentRun[]> {
+  return useLoad(`agent-runs:${name}`, (signal) => listAgentRuns(name, signal), NO_REFRESH);
 }
 
 export function useAgentUsage(): Loaded<readonly AgentUsage[]> {

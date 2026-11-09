@@ -78,6 +78,7 @@ fn library_routes() -> Router<AppState> {
     Router::new()
         .route("/library/agents", get(library::list_agents))
         .route("/library/agents/usage", get(library::agent_usage))
+        .route("/library/agents/{name}/runs", get(library::agent_runs))
         .route(
             "/library/agents/{name}/usage",
             get(library::agent_usage_series),
@@ -105,6 +106,7 @@ pub fn router(state: AppState) -> Router {
         .route("/info", get(info::info))
         .route("/repos", get(repos::list).post(repos::add))
         .route("/repos/{name}", delete(repos::remove))
+        .route("/repos/{name}/accounts", put(repos::put_accounts))
         .route("/settings", get(settings::get))
         .route("/settings/{key}", put(settings::put))
         .route(

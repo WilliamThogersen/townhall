@@ -6,12 +6,16 @@ use std::path::PathBuf;
 
 use crate::cmd::{probe, validate_name};
 use crate::context::Context;
-use crate::model::{Conversation, CreateTaskInput, EntryBody, Repo, TASK_BRANCH_PREFIX};
+use crate::model::{
+    Conversation, CreateTaskInput, EntryBody, Repo, MAX_HANDOFFS, TASK_BRANCH_PREFIX,
+};
 use crate::repos::{names, verify_branch};
 use crate::scheduler::requires;
 use crate::{fleet, Error};
 
-use super::{MAX_LIST_LEN, MAX_NAME_LEN, MAX_PROMPT_LEN, MAX_TITLE_LEN};
+use super::{
+    MAX_CHECK_LEN, MAX_DONE_WHEN_LEN, MAX_LIST_LEN, MAX_NAME_LEN, MAX_PROMPT_LEN, MAX_TITLE_LEN,
+};
 
 pub(super) type Checked<T> = std::result::Result<T, String>;
 
@@ -65,12 +69,30 @@ pub(super) fn input(raw: CreateTaskInput) -> Checked<CreateTaskInput> {
     if raw.pr_base.as_deref().is_some_and(|b| b.trim().is_empty()) {
         return Err("`prBase` must not be blank: leave it out to target `baseBranch`".into());
     }
+    let done_when = given(raw.done_when.as_deref());
+    let check = given(raw.check.as_deref());
+    too_long(
+        "doneWhen",
+        done_when.as_deref().unwrap_or_default(),
+        MAX_DONE_WHEN_LEN,
+    )?;
+    too_long("check", check.as_deref().unwrap_or_default(), MAX_CHECK_LEN)?;
+    if raw
+        .max_retries
+        .is_some_and(|n| usize::try_from(n).map_or(true, |n| n > MAX_HANDOFFS))
+    {
+        return Err(format!(
+            "`maxRetries` is more than {MAX_HANDOFFS}: a task can be relaunched that often at most"
+        ));
+    }
     Ok(CreateTaskInput {
         title,
         repo: given(raw.repo.as_deref()),
         base_branch: given(raw.base_branch.as_deref()),
         agent: given(raw.agent.as_deref()),
         pr_base: given(raw.pr_base.as_deref()),
+        done_when,
+        check,
         ..raw
     })
 }
@@ -293,6 +315,8 @@ mod tests {
             name: name.into(),
             path: PathBuf::from("/r"),
             base_branch: "main".into(),
+            github_account: None,
+            gitlab_account: None,
         };
         assert_eq!(repo_list(&[repo("shop"), repo("Admin")]), "Admin, shop");
         assert!(repo_list(&[]).starts_with("none"));

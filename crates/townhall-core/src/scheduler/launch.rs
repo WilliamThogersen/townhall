@@ -600,12 +600,33 @@ mod tests {
             repo: repos[0].name.clone(),
             base_branch: "main".into(),
             pr_base: None,
+            done: Default::default(),
             after: vec![],
             attachments: vec![],
             agent: "plain".into(),
         };
         let task = store.create_task(&conversation, new).await.unwrap();
         (ctx, task)
+    }
+
+    #[tokio::test]
+    async fn the_launcher_carries_the_types_env_and_old_types_have_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let store = ctx.store().unwrap();
+        let tuned = "name = \"tuned\"\nadapter = \"claude\"\n\n[env]\nTUNE_ME = \"5\"\n";
+        store.save_agent_type(tuned).await.unwrap();
+        let plain = agent_type::launcher(&ctx, &task).await.unwrap();
+        assert!(plain.options.env.is_empty());
+        let task = Task {
+            agent: "tuned".into(),
+            ..task
+        };
+        let launcher = agent_type::launcher(&ctx, &task).await.unwrap();
+        assert_eq!(
+            launcher.options.env.get("TUNE_ME").map(String::as_str),
+            Some("5")
+        );
     }
 
     fn full() -> Error {

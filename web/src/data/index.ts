@@ -1,7 +1,7 @@
 export { DataProvider, type DataProviderProps } from "./DataProvider";
 export { useConnection } from "./dataContext";
 export { useAgentInfos } from "./useAgentInfos";
-export { useAgentType, useAgentTypes, useAgentUsage, useAgentUsageSeries } from "./useAgentTypes";
+export { useAgentRuns, useAgentType, useAgentTypes, useAgentUsage, useAgentUsageSeries } from "./useAgentTypes";
 export { ARTIFACTS_POLL_MS, useArtifacts } from "./useArtifacts";
 export { useConversation, useConversations } from "./useConversations";
 export { useConversationActions } from "./useConversationActions";

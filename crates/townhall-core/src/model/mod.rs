@@ -2,6 +2,7 @@
 //! Mirrored field for field in `web/src/api/types.ts`; see `docs/daemon-api.md`.
 //! An `Option` is always present on the wire, as `null` when empty.
 
+mod accounts;
 mod agent;
 mod artifact;
 mod attachment;
@@ -13,6 +14,7 @@ mod settings;
 mod task;
 mod thread;
 
+pub use accounts::{normalize as normalize_accounts, ForgeAccount, ForgeKind, MAX_ACCOUNTS};
 pub use agent::{AgentInfo, AgentKey, AgentState};
 pub use artifact::{
     Artifact, ArtifactKind, AuthorRole, NewArtifact, LOG_MIME, MAX_ARTIFACTS_PER_TASK,
@@ -24,15 +26,15 @@ pub use conversation::{
     NewMessage, NEW_CONVERSATION_TITLE,
 };
 pub use event::ServerEvent;
-pub use library::{AgentType, AgentTypeSummary, AgentUsage, DEFAULT_AGENT_TYPE};
-pub use repo::{AddRepo, Repo};
+pub use library::{AgentType, AgentTypeSummary, AgentUsage, TaskRun, DEFAULT_AGENT_TYPE};
+pub use repo::{AddRepo, PutRepoAccounts, Repo};
 pub use settings::{
     NotifyWhen, PermissionMode, PutProfile, PutSetting, RepoUnclear, SettingKey, Settings,
     TownhallModel, AGENTS_AT_ONCE_DEFAULT, AGENTS_AT_ONCE_MAX, AGENTS_AT_ONCE_MIN,
 };
 pub use task::{
-    Checks, CreateTaskInput, Handoff, NewTask, Pr, Task, TaskState, MAX_HANDOFFS,
-    TASK_BRANCH_PREFIX,
+    Checks, CreateTaskInput, Done, Handoff, NewTask, Pr, Task, TaskState, Verify, VerifyPhase,
+    DEFAULT_MAX_RETRIES, MAX_HANDOFFS, TASK_BRANCH_PREFIX,
 };
 pub use thread::{AgentEvent, EntryBody, RepoRule, ThreadEntry};
 

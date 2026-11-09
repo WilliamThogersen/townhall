@@ -3,9 +3,11 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
+use super::accounts::{Accounts, Picked};
 use super::auth_env::{auth_failure, remote_env};
 use super::source::split_remote;
 use crate::cmd::{probe_blocking, run_blocking, run_blocking_env};
+use crate::model::ForgeKind;
 use crate::redact::redact;
 use crate::{Error, Result};
 
@@ -13,6 +15,15 @@ use crate::{Error, Result};
 pub enum Forge {
     GitHub,
     GitLab,
+}
+
+impl Forge {
+    pub fn kind(self) -> ForgeKind {
+        match self {
+            Self::GitHub => ForgeKind::Github,
+            Self::GitLab => ForgeKind::Gitlab,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,8 +81,17 @@ pub struct PrRequest<'a> {
     pub base: &'a str,
     pub title: &'a str,
     pub body: &'a str,
-    /// The GitHub login every push and PR must be made as; empty enforces nothing.
-    pub account: &'a str,
+    /// Which registered account the push and the PR are made as.
+    pub accounts: &'a Accounts,
+}
+
+/// Environment variables for one child, token included: fetched per spawn, never stored.
+type Session = Vec<(String, String)>;
+
+fn with_session(session: &Session) -> Vec<(&str, &str)> {
+    let mut envs = remote_env();
+    envs.extend(session.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    envs
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,11 +149,12 @@ fn check_login(program: &str, origin: &Origin, dir: &Path) -> Result<()> {
     }
 }
 
-fn gh_output(program: &str, args: &[&str], dir: &Path) -> Result<String> {
-    run_blocking_env(program, args, Some(dir), &remote_env())
-}
-
-fn active_login(program: &str, host: &str, dir: &Path) -> Result<(String, String)> {
+fn active_login(
+    program: &str,
+    host: &str,
+    dir: &Path,
+    session: &Session,
+) -> Result<(String, String)> {
     let args = [
         "api",
         "--hostname",
@@ -142,7 +163,7 @@ fn active_login(program: &str, host: &str, dir: &Path) -> Result<(String, String
         "--jq",
         r#".login + " " + (.id | tostring)"#,
     ];
-    let out = gh_output(program, &args, dir).map_err(|e| {
+    let out = run_blocking_env(program, &args, Some(dir), &with_session(session)).map_err(|e| {
         invalid(format!(
             "could not ask `{program}` who is logged in to {host}: {e}"
         ))
@@ -165,28 +186,77 @@ fn set_git_identity(worktree: &Path, login: &str, id: &str) -> Result<()> {
     Ok(())
 }
 
-fn ensure_account(program: &str, origin: &Origin, req: &PrRequest) -> Result<()> {
-    let (host, want) = (origin.host.as_str(), req.account);
-    let (mut login, mut id) = active_login(program, host, req.worktree)?;
-    if !login.eq_ignore_ascii_case(want) {
-        let args = ["auth", "switch", "--hostname", host, "--user", want];
-        gh_output(program, &args, req.worktree).map_err(|e| {
-            invalid(format!(
-                "`{program}` is logged in as {login} on {host}, not {want}, and cannot switch: run `{program} auth login --hostname {host}` as {want} ({e})"
-            ))
-        })?;
-        (login, id) = active_login(program, host, req.worktree)?;
-        if !login.eq_ignore_ascii_case(want) {
-            return Err(invalid(format!(
-                "`{program} auth switch` left {login} active on {host}, not {want}"
-            )));
-        }
-    }
-    set_git_identity(req.worktree, &login, &id)
+fn not_logged_in(program: &str, picked: &Picked, why: &str) -> Error {
+    let Picked { login, host } = picked;
+    invalid(format!(
+        "`{program}` has no login for {login} on {host}: run `{program} auth login --hostname {host}` as {login}{why}"
+    ))
 }
 
-fn push(req: &PrRequest) -> Result<()> {
-    let envs = remote_env();
+fn token_of(program: &str, args: &[&str], picked: &Picked, dir: &Path) -> Result<String> {
+    match run_blocking_env(program, args, Some(dir), &remote_env()) {
+        Ok(token) if !token.trim().is_empty() => Ok(token.trim().to_string()),
+        Ok(_) => Err(not_logged_in(program, picked, "")),
+        Err(Error::Command { stderr, .. }) => Err(not_logged_in(
+            program,
+            picked,
+            &format!(" ({})", redact(stderr.trim())),
+        )),
+        Err(e) => Err(e),
+    }
+}
+
+/// `gh` on github.com reads `GH_TOKEN`, on any other host `GH_ENTERPRISE_TOKEN`.
+fn github_session(program: &str, picked: &Picked, dir: &Path) -> Result<Session> {
+    let args = [
+        "auth",
+        "token",
+        "--user",
+        picked.login.as_str(),
+        "--hostname",
+        picked.host.as_str(),
+    ];
+    let token = token_of(program, &args, picked, dir)?;
+    let var = if picked.host == ForgeKind::Github.default_host() {
+        "GH_TOKEN"
+    } else {
+        "GH_ENTERPRISE_TOKEN"
+    };
+    Ok(vec![
+        (var.to_string(), token),
+        ("GH_HOST".to_string(), picked.host.clone()),
+    ])
+}
+
+fn gitlab_session(program: &str, picked: &Picked, dir: &Path) -> Result<Session> {
+    let args = ["config", "get", "token", "--host", picked.host.as_str()];
+    let token = token_of(program, &args, picked, dir)?;
+    Ok(vec![
+        ("GITLAB_TOKEN".to_string(), token),
+        ("GITLAB_HOST".to_string(), picked.host.clone()),
+    ])
+}
+
+fn start_session(program: &str, origin: &Origin, picked: &Picked, dir: &Path) -> Result<Session> {
+    let session = match origin.forge {
+        Forge::GitHub => github_session(program, picked, dir)?,
+        Forge::GitLab => gitlab_session(program, picked, dir)?,
+    };
+    if origin.forge == Forge::GitHub {
+        let (login, id) = active_login(program, &picked.host, dir, &session)?;
+        if !login.eq_ignore_ascii_case(&picked.login) {
+            return Err(invalid(format!(
+                "`{program}` returned a token for {login} on {}, not {}: log in again with `{program} auth login --hostname {}` as {}",
+                picked.host, picked.login, picked.host, picked.login
+            )));
+        }
+        set_git_identity(dir, &login, &id)?;
+    }
+    Ok(session)
+}
+
+fn push(req: &PrRequest, session: &Session) -> Result<()> {
+    let envs = with_session(session);
     let args = ["push", "--set-upstream", "origin", req.branch];
     match run_blocking_env("git", &args, Some(req.worktree), &envs) {
         Ok(_) => Ok(()),
@@ -202,7 +272,12 @@ fn push(req: &PrRequest) -> Result<()> {
     }
 }
 
-fn create(req: &PrRequest, origin: &Origin, programs: &Programs) -> Result<String> {
+fn create(
+    req: &PrRequest,
+    origin: &Origin,
+    programs: &Programs,
+    session: &Session,
+) -> Result<String> {
     let (program, shown, args, extra): (&str, &str, Vec<&str>, (&str, &str)) = match origin.forge {
         Forge::GitHub => (
             &programs.gh,
@@ -232,7 +307,7 @@ fn create(req: &PrRequest, origin: &Origin, programs: &Programs) -> Result<Strin
             ("GITLAB_HOST", origin.host.as_str()),
         ),
     };
-    let mut envs = remote_env();
+    let mut envs = with_session(session);
     envs.push(extra);
     match run_blocking_env(program, &args, Some(req.worktree), &envs) {
         Ok(out) => link_in(&out)
@@ -249,25 +324,34 @@ fn create(req: &PrRequest, origin: &Origin, programs: &Programs) -> Result<Strin
     }
 }
 
-pub fn publish(req: &PrRequest, programs: &Programs) -> Result<Published> {
-    let dir = Some(req.worktree);
+/// The forge and host of the worktree's `origin`; `None` when it has none.
+pub fn origin_of(worktree: &Path) -> Result<Option<Origin>> {
+    let dir = Some(worktree);
     let url = match probe_blocking("git", &["remote", "get-url", "origin"], dir) {
         Ok(url) => url,
-        Err(Error::Command { .. }) => return Ok(Published::NoRemote),
+        Err(Error::Command { .. }) => return Ok(None),
         Err(e) => return Err(e),
     };
     let configured = probe_blocking("git", &["config", "--get", "townhall.forge"], dir).ok();
-    let origin = detect(&url, configured.as_deref())?;
+    detect(&url, configured.as_deref()).map(Some)
+}
+
+pub fn publish(req: &PrRequest, programs: &Programs) -> Result<Published> {
+    let Some(origin) = origin_of(req.worktree)? else {
+        return Ok(Published::NoRemote);
+    };
     let program = match origin.forge {
         Forge::GitHub => &programs.gh,
         Forge::GitLab => &programs.glab,
     };
+    let picked = req.accounts.pick(origin.forge.kind(), &origin.host)?;
     check_login(program, &origin, req.worktree)?;
-    if origin.forge == Forge::GitHub && !req.account.trim().is_empty() {
-        ensure_account(program, &origin, req)?;
-    }
-    push(req)?;
-    let url = create(req, &origin, programs)?;
+    let session = match &picked {
+        Some(picked) => start_session(program, &origin, picked, req.worktree)?,
+        None => Session::new(),
+    };
+    push(req, &session)?;
+    let url = create(req, &origin, programs, &session)?;
     Ok(Published::Opened {
         number: number_from_url(&url),
         url,

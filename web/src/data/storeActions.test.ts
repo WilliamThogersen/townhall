@@ -70,4 +70,21 @@ describe("repo actions", () => {
     await store.removeRepo("shop");
     expect(store.getState().repos?.data?.map((r) => r.name)).toEqual(["admin"]);
   });
+
+  it("puts a repo's picked accounts into the loaded list", async () => {
+    const { store } = await loaded();
+    const picked = aRepo({ githubAccount: "work-me" });
+    const put = vi.spyOn(reposApi, "putRepoAccounts").mockResolvedValue(picked);
+    expect(await store.setRepoAccounts("shop", { githubAccount: "work-me" })).toEqual(picked);
+    expect(put).toHaveBeenCalledWith("shop", { githubAccount: "work-me" });
+    expect(store.getState().repos?.data).toEqual([picked]);
+  });
+
+  it("keeps the list as it was when the daemon refuses the account", async () => {
+    const { store } = await loaded();
+    const before = store.getState();
+    vi.spyOn(reposApi, "putRepoAccounts").mockRejectedValue(new ApiError("http", "no github account `x`", 400));
+    await expect(store.setRepoAccounts("shop", { githubAccount: "x" })).rejects.toThrow("no github account");
+    expect(store.getState()).toBe(before);
+  });
 });

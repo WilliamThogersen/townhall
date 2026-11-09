@@ -92,6 +92,48 @@ async fn create_task_refuses_bad_input_with_a_reason() {
 }
 
 #[tokio::test]
+async fn create_task_takes_a_done_when_a_check_and_a_retry_limit() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    let plain = m.ok("create_task", task(&unique("plain"))).await;
+    assert_eq!(plain["doneWhen"], json!(null));
+    assert_eq!(plain["check"], json!(null));
+    assert_eq!(plain["maxRetries"], 2);
+    assert_eq!(plain["verify"], json!(null));
+
+    let mut args = task(&unique("checked"));
+    args["doneWhen"] = json!("  all tests pass ");
+    args["check"] = json!("npm test");
+    args["maxRetries"] = json!(3);
+    let made = m.ok("create_task", args).await;
+    assert_eq!(made["doneWhen"], "all tests pass");
+    assert_eq!(made["check"], "npm test");
+    assert_eq!(made["maxRetries"], 3);
+
+    let mut blank = task(&unique("blank"));
+    blank["check"] = json!("   ");
+    blank["doneWhen"] = json!("");
+    let dropped = m.ok("create_task", blank).await;
+    assert_eq!(dropped["check"], json!(null));
+    assert_eq!(dropped["doneWhen"], json!(null));
+}
+
+#[tokio::test]
+async fn create_task_refuses_too_many_retries_and_a_check_that_is_too_long() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    let mut many = task(&unique("many"));
+    many["maxRetries"] = json!(6);
+    let text = m.refused("create_task", many).await;
+    assert!(text.contains("maxRetries"), "{text}");
+    let mut long = task(&unique("long"));
+    long["check"] = json!("x".repeat(2_001));
+    let text = m.refused("create_task", long).await;
+    assert!(text.contains("check"), "{text}");
+    assert!(m.store().all_tasks().await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn create_task_takes_attachments_of_this_conversation() {
     let m = Mcp::new().await;
     m.note_repo("shop").await;

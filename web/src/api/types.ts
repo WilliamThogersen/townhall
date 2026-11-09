@@ -36,6 +36,13 @@ export interface Repo {
   readonly name: string;
   readonly path: string;
   readonly baseBranch: string;
+  readonly githubAccount: string | null;
+  readonly gitlabAccount: string | null;
+}
+
+export interface PutRepoAccountsInput {
+  readonly githubAccount?: string | null;
+  readonly gitlabAccount?: string | null;
 }
 
 export interface AddRepoInput {
@@ -48,6 +55,14 @@ export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypa
 export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
 export type TownhallModel = "sonnet" | "opus" | "haiku";
+export type ForgeKind = "github" | "gitlab";
+
+export interface ForgeAccount {
+  readonly forge: ForgeKind;
+  readonly login: string;
+  readonly host: string;
+  readonly label: string;
+}
 
 export interface Settings {
   readonly permissionMode: PermissionMode;
@@ -60,6 +75,8 @@ export interface Settings {
   readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
+  readonly forgeAccounts: readonly ForgeAccount[];
+  readonly reflectAfterTasks: boolean;
 }
 
 export type SettingKey = keyof Settings;
@@ -175,6 +192,14 @@ export interface Pr {
   readonly checks: Checks;
 }
 
+export type VerifyPhase = "verifying" | "retrying" | "passed" | "failed";
+
+export interface Verify {
+  readonly phase: VerifyPhase;
+  readonly retries: number;
+  readonly output: string | null;
+}
+
 export interface Task {
   readonly name: string;
   readonly title: string;
@@ -190,6 +215,10 @@ export interface Task {
   readonly agent: string;
   readonly blocked: string | null;
   readonly prBase: string | null;
+  readonly doneWhen: string | null;
+  readonly check: string | null;
+  readonly maxRetries: number;
+  readonly verify: Verify | null;
 }
 
 export interface CreateTaskInput {
@@ -199,6 +228,9 @@ export interface CreateTaskInput {
   readonly repo?: string;
   readonly baseBranch?: string;
   readonly prBase?: string;
+  readonly doneWhen?: string;
+  readonly check?: string;
+  readonly maxRetries?: number;
   readonly after?: readonly string[];
   readonly attachments?: readonly string[];
   readonly agent?: string;
@@ -252,6 +284,16 @@ export interface AgentUsageSeries {
   readonly byConversation: readonly UsageShare[];
 }
 
+export interface AgentRun {
+  readonly task: string;
+  readonly repo: string;
+  readonly state: string;
+  readonly model: string | null;
+  readonly tokens: number;
+  readonly createdAt: string;
+  readonly endedAt: string | null;
+}
+
 export interface AgentType {
   readonly name: string;
   readonly description: string;
@@ -263,6 +305,7 @@ export interface AgentType {
   readonly command: string | null;
   readonly canHandBackTo: readonly string[] | null;
   readonly avatar: AvatarSpec | null;
+  readonly env: Readonly<Record<string, string>>;
   readonly source: string;
   readonly updatedAt: string;
 }

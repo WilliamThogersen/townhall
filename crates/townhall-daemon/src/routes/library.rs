@@ -118,6 +118,13 @@ pub async fn agent_usage_series(
     Ok(ok(series))
 }
 
+pub async fn agent_runs(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Response, ApiError> {
+    Ok(ok(state.ctx().store()?.agent_runs(&name, 50).await?))
+}
+
 /// `AgentType`: the parsed definition plus `source` and `updatedAt`. `404` when unknown.
 pub async fn get_agent(
     State(state): State<AppState>,
