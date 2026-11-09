@@ -104,6 +104,21 @@ describe("AgentsPage", () => {
     expect(await screen.findByText("any type", { selector: "dd" })).toBeInTheDocument();
   });
 
+  it("lists the env variable names of a type but not their values", async () => {
+    vi.mocked(library.getAgentType).mockImplementation((name) =>
+      Promise.resolve(
+        anAgentType({ name, env: name === "planner" ? { ZETA: "hunter2", ALPHA: "1" } : {}, source: 'name = "x"\n' }),
+      ),
+    );
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    expect(await detail.findByText("ALPHA, ZETA", { selector: "dd" })).toBeInTheDocument();
+    expect(screen.queryByText(/hunter2/)).not.toBeInTheDocument();
+    await userEvent.click(await rowOf("builder"));
+    expect(await screen.findByText("none", { selector: "dd" })).toBeInTheDocument();
+  });
+
   it("copies the TOML", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });

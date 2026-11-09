@@ -29,6 +29,17 @@ describe("library api", () => {
     await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
   });
 
+  it("reads the env map of a type, empty by default", async () => {
+    mockFetch(200, anAgentType());
+    expect((await getAgentType("builder")).env).toEqual({});
+    mockFetch(200, anAgentType({ env: { TUNE_ME: "5" } }));
+    expect((await getAgentType("builder")).env).toEqual({ TUNE_ME: "5" });
+    mockFetch(200, { ...anAgentType(), env: { TUNE_ME: 5 } });
+    await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
+    mockFetch(200, { ...anAgentType(), env: ["TUNE_ME"] });
+    await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
+  });
+
   it("accepts null model and permission mode", async () => {
     mockFetch(200, [anAgentTypeSummary({ model: null, permissionMode: null })]);
     expect(await listAgentTypes()).toHaveLength(1);

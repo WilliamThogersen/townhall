@@ -43,6 +43,11 @@ function handBackTo(allowed: readonly string[] | null): string {
   return allowed.length > 0 ? allowed.join(", ") : "nobody";
 }
 
+function envNames(env: Readonly<Record<string, string>>): string {
+  const names = Object.keys(env).sort();
+  return names.length > 0 ? names.join(", ") : "none";
+}
+
 export function AgentTypeDetail({ name, usage }: { readonly name: string; readonly usage: Usage | null }) {
   const { data, error, loading } = useAgentType(name);
   if (error !== null && data === null) return <Banner level="error">{error}</Banner>;
@@ -74,6 +79,7 @@ export function AgentTypeDetail({ name, usage }: { readonly name: string; readon
           </>
         )}
         <Field label="hands back to" value={handBackTo(data.canHandBackTo)} />
+        <Field label="env" value={envNames(data.env)} />
       </dl>
       <pre className="th-agent-source" tabIndex={0}>
         {data.source}

@@ -231,6 +231,7 @@ export interface AgentType {
   readonly prompt: string | null;
   readonly command: string | null;
   readonly canHandBackTo: readonly string[] | null;
+  readonly env: Readonly<Record<string, string>>;
   readonly source: string;
   readonly updatedAt: string;
 }

@@ -17,6 +17,11 @@ function parseSummary(value: unknown): AgentTypeSummary {
   };
 }
 
+function stringMap(value: unknown, what: string): Readonly<Record<string, string>> {
+  const r = record(value, what);
+  return Object.fromEntries(Object.entries(r).map(([key, item]) => [key, str(item, `${what}.${key}`)]));
+}
+
 const parseType: Guard<AgentType> = (value) => {
   const r = record(value, "agent type");
   if (typeof r.source !== "string") return fail("agentType.source");
@@ -26,6 +31,7 @@ const parseType: Guard<AgentType> = (value) => {
     prompt: nullable(r.prompt, "agentType.prompt", str),
     command: nullable(r.command, "agentType.command", str),
     canHandBackTo: nullable(r.canHandBackTo, "agentType.canHandBackTo", strings),
+    env: stringMap(r.env, "agentType.env"),
     source: r.source,
   };
 };
