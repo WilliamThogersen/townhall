@@ -5,6 +5,8 @@
 //! keeps the agent types townhall's session asked you to confirm, one per conversation and
 //! name, so a confirmed save can be checked against what you were shown. `0803_task_agent`
 //! adds `tasks.agent`, the type a task runs as (`builder` for tasks from before it).
+//! `0806_seed_default` saves `default`, the type townhall's own conversations run as, when
+//! none of that name exists; it cannot be deleted and is not a type tasks default to.
 //! Migrations 0800 to 0849, files `migrations/08xx_<name>.sql`.
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -13,7 +15,7 @@ use super::migrate::Migration;
 use super::Store;
 use crate::agent_usage::{aggregate, AgentUsageSeries, UsageRange, UsageRun};
 use crate::definitions::{check_agent, AgentDef, DefKind, DefinitionError, Parsed};
-use crate::model::{AgentType, AgentUsage, TaskRun};
+use crate::model::{AgentType, AgentUsage, TaskRun, CONVERSATION_AGENT_TYPE};
 use crate::{clock, Error, Result};
 
 pub const MIGRATIONS: &[Migration] = &[
@@ -46,6 +48,11 @@ pub const MIGRATIONS: &[Migration] = &[
         id: 805,
         name: "0805_task_model",
         sql: include_str!("migrations/0805_task_model.sql"),
+    },
+    Migration {
+        id: 806,
+        name: "0806_seed_default",
+        sql: include_str!("migrations/0806_seed_default.sql"),
     },
 ];
 
@@ -139,7 +146,16 @@ fn delete(conn: &mut Connection, name: &str) -> Result<String> {
         })
         .optional()?
         .ok_or_else(|| Error::missing("agent type", name))?;
-    let count: i64 = tx.query_row("select count(*) from agents", [], |r| r.get(0))?;
+    if stored.eq_ignore_ascii_case(CONVERSATION_AGENT_TYPE) {
+        return Err(Error::Conflict(format!(
+            "agent type `{stored}` runs the conversations and cannot be deleted: edit it instead"
+        )));
+    }
+    let count: i64 = tx.query_row(
+        "select count(*) from agents where name <> ?1 collate nocase",
+        [CONVERSATION_AGENT_TYPE],
+        |r| r.get(0),
+    )?;
     if count <= 1 {
         return Err(Error::Conflict(format!(
             "agent type `{stored}` is the last one: every task needs a type to run, save another type first"

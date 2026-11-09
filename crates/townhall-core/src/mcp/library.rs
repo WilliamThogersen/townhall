@@ -106,12 +106,13 @@ fn names(types: &[AgentType]) -> String {
     }
 }
 
-/// `builder` when it exists, else the first type by name.
+/// `builder` when it exists, else the first type for tasks by name: never the
+/// conversation's own type.
 fn default_of(types: &[AgentType]) -> Option<&AgentType> {
     types
         .iter()
         .find(|t| t.def.name.eq_ignore_ascii_case(DEFAULT_AGENT_TYPE))
-        .or(types.first())
+        .or_else(|| types.iter().find(|t| t.for_tasks()))
 }
 
 /// The stored name of the type a task runs as: `wanted` (ignoring case), else the default.
@@ -125,16 +126,16 @@ pub(super) async fn resolve(ctx: &Context, wanted: Option<&str>) -> Checked<Stri
     let found = match wanted {
         Some(name) => types.iter().find(|t| t.def.name.eq_ignore_ascii_case(name)),
         None => default_of(&types),
-    };
-    found
-        .map(|t| t.def.name.clone())
-        .ok_or_else(|| match wanted {
-            Some(name) => format!(
-                "unknown agent type `{name}`: pass `agent`, one of: {}",
-                names(&types)
-            ),
-            None => format!("no agent type to run the task as: {}", names(&types)),
-        })
+    }
+    .map(|t| t.def.name.clone());
+    let for_tasks: Vec<AgentType> = types.into_iter().filter(AgentType::for_tasks).collect();
+    found.ok_or_else(|| match wanted {
+        Some(name) => format!(
+            "unknown agent type `{name}`: pass `agent`, one of: {}",
+            names(&for_tasks)
+        ),
+        None => format!("no agent type to run the task as: {}", names(&for_tasks)),
+    })
 }
 
 pub(super) async fn list(ctx: &Context, _input: ListInput) -> Checked<Value> {

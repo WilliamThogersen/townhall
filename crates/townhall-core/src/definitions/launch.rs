@@ -70,6 +70,17 @@ impl AgentDef {
     }
 }
 
+impl AgentDef {
+    /// The mode townhall's own conversation runs in: this definition's (`default` when it
+    /// sets none), never looser than `settings_mode`.
+    pub fn conversation_mode(&self, settings_mode: model::PermissionMode) -> model::PermissionMode {
+        let own = self
+            .permission_mode
+            .map_or(model::PermissionMode::Default, Into::into);
+        stricter(own, settings_mode)
+    }
+}
+
 /// Strictest first: `plan`, `default`, `acceptEdits`, `auto`, then skip all.
 fn strictness(mode: model::PermissionMode) -> u8 {
     match mode {

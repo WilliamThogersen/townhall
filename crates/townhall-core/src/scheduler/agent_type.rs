@@ -7,7 +7,7 @@ use crate::agent::{AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter}
 use crate::context::Context;
 use crate::definitions::AdapterKind;
 use crate::mcp;
-use crate::model::Task;
+use crate::model::{AgentType, Task};
 use crate::{Error, Result};
 
 /// How a task's agent starts, before the brief, session id and folders are added.
@@ -41,6 +41,7 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
         .agent_types()
         .await?
         .into_iter()
+        .filter(AgentType::for_tasks)
         .map(|t| t.def.name)
         .collect();
     let targets = found.def.hand_back_targets(&found.def.name, &names);

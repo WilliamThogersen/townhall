@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { anAgentTypeSummary } from "../../api/fixtures";
-import { defaultTypeName, filterTypes, pipelineStep, sortTypes } from "./agentTypes";
+import { defaultTypeName, filterTypes, isConversationType, pipelineStep, sortTypes } from "./agentTypes";
 
 describe("sortTypes", () => {
   const named = (...names: string[]) => names.map((name) => anAgentTypeSummary({ name }));
@@ -85,5 +85,19 @@ describe("defaultTypeName", () => {
 
   it("is null without types", () => {
     expect(defaultTypeName([])).toBeNull();
+  });
+
+  it("is never the conversation type", () => {
+    expect(defaultTypeName(named("default", "zed"))).toBe("zed");
+    expect(defaultTypeName(named("Default", "builder"))).toBe("builder");
+    expect(defaultTypeName(named("default"))).toBeNull();
+  });
+});
+
+describe("isConversationType", () => {
+  it("is the type named default, ignoring case", () => {
+    expect(isConversationType("default")).toBe(true);
+    expect(isConversationType("Default")).toBe(true);
+    expect(isConversationType("builder")).toBe(false);
   });
 });

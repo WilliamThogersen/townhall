@@ -68,7 +68,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/library/agents/{name}/runs` | | `TaskRun[]`: the tasks of that type (name matched ignoring case), newest first, at most 50. `200 []` when there is none, also for a deleted type | | 2.12 |
 | GET | `/library/agents/{name}` | | `AgentType` (ignoring case) | 404 | 2.12 |
 | PUT | `/library/agents/{name}` | the TOML text, `content-type: text/plain` or `application/toml` | `201 AgentType` new, `200 AgentType` replaced (ignoring case, the new spelling wins) | 400 wrong content type, not UTF-8, the error list (below), its `name` is not the path's | 2.12 |
-| DELETE | `/library/agents/{name}` | | the deleted type's name | 404; 409 it is the last type | 2.12 |
+| DELETE | `/library/agents/{name}` | | the deleted type's name | 404; 409 it is the last type for tasks, or `default` | 2.12 |
 | GET | `/library/workflows` | | workflow definitions | 501 | 2.8c |
 | GET, PUT, DELETE | `/library/workflows/{name}` | PUT: TOML text | | 501 | 2.8c |
 | POST | `/library/import` | one agent type's `.toml` as the body, like PUT | `201 AgentType` | 400 like PUT; 403 origin; 409 the name exists (replace it with PUT); 501 a workflow (a `[[step]]` table) | 2.12 |
@@ -87,7 +87,9 @@ An agent type says how a task's agent runs: 2.8a's agent definition (`definition
   "error": "agent \"x\": model \"-p\" must not start with \"-\"" }
 ```
 
-`line` is set for TOML parse errors. Import checks the origin (`403`) because a `text/plain` post needs no CORS preflight. Deleting a type that queued tasks name is allowed: those tasks fail when they start (see Scheduler). The last type cannot be deleted, so a task always has a type to run.
+`line` is set for TOML parse errors. Import checks the origin (`403`) because a `text/plain` post needs no CORS preflight. Deleting a type that queued tasks name is allowed: those tasks fail when they start (see Scheduler). The last type for tasks cannot be deleted, so a task always has a type to run, and neither can `default`, the conversation agent type (below): both are `409`.
+
+`default` (migration `0806_seed_default`, saved when no type of that name exists) is the agent type townhall's own conversation session runs as. It holds the session's tools and its personality prompt (the rules that were hardcoded in `runner/prompt.rs`), and no `model`, so the `townhallModel` setting still picks the model until a `model` is set on the type. Edit it like any type (`PUT /library/agents/default`). On every turn `runner/persona.rs` reads it: a `model` and `prompt` that are not blank, a non-empty `tools` list and the `permission_mode` apply; the mode is never looser than the `permissionMode` setting (`AgentDef::conversation_mode`), and entries that write or run things (`Bash`, `Edit`, `MultiEdit`, `Write`, `NotebookEdit`) are dropped from `tools`. Townhall still appends the repo of the turn, the registered repos and the profile after the prompt. A type that is missing, no longer parses or uses the `shell` adapter leaves today's built-in model, mode, tools and prompt in place. It is never the type tasks default to (`create_task`, `list_agent_types.default`), is left out of the types a task may hand back to and out of the unknown-type error of `create_task`, and the agents page labels it the conversation default.
 
 The seed: `0801_seed_builder` saves `builder` once, on the first open with no agent types; it is never saved again, also not after you delete it:
 
@@ -167,7 +169,7 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | `repoUnclear` | `ask`, `guess` | `ask` |
 | `sessionPanelOpen` | boolean | `true` |
 | `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
-| `townhallModel` | `sonnet`, `opus`, `haiku`: the model of townhall's own session, `--model=<value>` (2.11) | `sonnet` |
+| `townhallModel` | `sonnet`, `opus`, `haiku`: the model of townhall's own session, `--model=<value>` (2.11), unless the type `default` sets a `model` | `sonnet` |
 | `minFreeDiskGb` | integer 0 to 100000: a task does not start with less free space on the data volume; `0` is off | `5` |
 | `learnAboutMe` | boolean: while on, the profile text (below) is added to townhall's own session prompt. Nothing learns into the profile automatically yet | `false` |
 | `githubAccount` | the old single account: a GitHub login, or empty for none. Still read, and still the account `open_pr` uses for a GitHub repo that has no registered account of its own (see `forgeAccounts`) | `WilliamThogersen` on a new database (migration 0003), empty when the row is missing or invalid |
