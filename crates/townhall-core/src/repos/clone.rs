@@ -41,6 +41,32 @@ pub fn clone_or_reuse(home: &Home, remote: &Remote) -> Result<PathBuf> {
     unreachable!("an unbounded range ends only by returning")
 }
 
+/// Where `remote` is cloned inside `base`: `<base>/<name>`.
+pub fn clone_target(base: &Path, remote: &Remote) -> PathBuf {
+    base.join(&remote.name)
+}
+
+/// Clones `remote` into `<base>/<name>`, creating `base` when missing. An existing clone of the
+/// same repo there is reused; any other existing target is refused (`Conflict`), never
+/// overwritten or renamed.
+pub fn clone_into_base(base: &Path, remote: &Remote) -> Result<PathBuf> {
+    let dest = clone_target(base, remote);
+    if dest.exists() {
+        if is_clone_of(&dest, remote) {
+            return canonical(&dest);
+        }
+        return Err(Error::Conflict(format!(
+            "{} already exists and is not a clone of {}: pick another folder",
+            dest.display(),
+            remote.url
+        )));
+    }
+    std::fs::create_dir_all(base)
+        .map_err(|e| Error::io(format!("create {}", base.display()), e))?;
+    clone_into(remote, &dest)?;
+    canonical(&dest)
+}
+
 fn canonical(path: &Path) -> Result<PathBuf> {
     path.canonicalize()
         .map_err(|e| Error::io(format!("clone {}", path.display()), e))
@@ -84,6 +110,70 @@ fn clone_failed(url: &str, stderr: &str) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    }
+
+    /// A local "remote": a repo with one commit, reachable as a `file://` url.
+    fn origin(root: &Path, name: &str) -> Remote {
+        let dir = root.join(format!("{name}.git"));
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        git(&dir, &["commit", "-q", "--allow-empty", "-m", "first"]);
+        match classify(&format!("file://{}", dir.display())).unwrap() {
+            Source::Remote(r) => r,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_clone_target_is_the_repo_name_inside_the_base_folder() {
+        let remote = classify("git@github.com:acme/shop.git").unwrap();
+        let Source::Remote(remote) = remote else { panic!() };
+        assert_eq!(
+            clone_target(Path::new("/dev/projects"), &remote),
+            PathBuf::from("/dev/projects/shop")
+        );
+    }
+
+    #[test]
+    fn a_clone_lands_in_the_base_folder_which_is_created_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let remote = origin(tmp.path(), "shop");
+        let base = tmp.path().join("nested/dev");
+        let got = clone_into_base(&base, &remote).unwrap();
+        assert_eq!(got, base.join("shop").canonicalize().unwrap());
+        assert!(got.join(".git").exists());
+    }
+
+    #[test]
+    fn an_existing_target_folder_is_never_overwritten() {
+        let tmp = tempfile::tempdir().unwrap();
+        let remote = origin(tmp.path(), "shop");
+        let base = tmp.path().join("dev");
+        std::fs::create_dir_all(base.join("shop")).unwrap();
+        std::fs::write(base.join("shop/keep.txt"), "mine").unwrap();
+        let err = clone_into_base(&base, &remote).unwrap_err();
+        assert!(matches!(err, Error::Conflict(_)), "{err:?}");
+        assert!(err.to_string().contains("already exists"), "{err}");
+        assert_eq!(std::fs::read_to_string(base.join("shop/keep.txt")).unwrap(), "mine");
+    }
+
+    #[test]
+    fn an_existing_clone_of_the_same_repo_is_reused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let remote = origin(tmp.path(), "shop");
+        let base = tmp.path().join("dev");
+        let first = clone_into_base(&base, &remote).unwrap();
+        assert_eq!(clone_into_base(&base, &remote).unwrap(), first);
+    }
 
     #[test]
     fn prompts_are_always_off() {
