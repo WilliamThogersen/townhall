@@ -12,6 +12,7 @@ mod forge_accounts;
 mod info;
 mod library;
 mod logs;
+mod marketplaces;
 mod mcp;
 mod profile;
 mod repos;
@@ -109,6 +110,12 @@ pub fn router(state: AppState) -> Router {
         .route("/repos/{name}", delete(repos::remove).patch(repos::patch))
         .route("/repos/{name}/accounts", put(repos::put_accounts))
         .route("/forge-accounts/detected", get(forge_accounts::detected))
+        .route(
+            "/marketplaces",
+            get(marketplaces::list).post(marketplaces::add),
+        )
+        .route("/marketplaces/{name}", delete(marketplaces::remove))
+        .route("/marketplaces/{name}/refresh", post(marketplaces::refresh))
         .route("/settings", get(settings::get))
         .route("/settings/{key}", put(settings::put))
         .route(

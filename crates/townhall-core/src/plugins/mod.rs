@@ -3,4 +3,8 @@
 
 mod check;
 pub mod manifest;
+pub mod market;
 pub mod marketplace;
+mod official;
+
+pub use official::{Official, OFFICIAL};
