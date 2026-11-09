@@ -42,6 +42,10 @@ pub struct AddRepo {
     pub name: Option<String>,
     #[serde(default)]
     pub base_branch: Option<String>,
+    /// Only for a git link: the folder to clone into (`~` allowed), else the `clonesDir`
+    /// setting, else `<home>/repos`.
+    #[serde(default)]
+    pub clone_dir: Option<String>,
 }
 
 #[cfg(test)]
