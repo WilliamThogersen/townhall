@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  talk to it. it turns the work into tasks,<br>
-  and agents run them in their own git worktrees.
+  describe the work. townhall plans it into tasks,<br>
+  and runs each one as an agent in its own git worktree.
 </p>
 
 <p align="center">
