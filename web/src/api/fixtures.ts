@@ -107,6 +107,8 @@ export const aRepo = (over: Partial<Repo> = {}): Repo => ({
   name: "shop",
   path: "/code/shop",
   baseBranch: "main",
+  githubAccount: null,
+  gitlabAccount: null,
   ...over,
 });
 

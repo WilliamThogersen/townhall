@@ -1,6 +1,6 @@
 import { parseRepo, parseRepos } from "./guards";
 import { request } from "./request";
-import type { AddRepoInput, Repo } from "./types";
+import type { AddRepoInput, PutRepoAccountsInput, Repo } from "./types";
 
 export const listRepos = (signal?: AbortSignal): Promise<readonly Repo[]> =>
   request("GET", "/repos", parseRepos, undefined, signal);
@@ -10,3 +10,6 @@ export const addRepo = (input: AddRepoInput): Promise<Repo> =>
 
 export const removeRepo = (name: string, deleteClone = false): Promise<Repo> =>
   request("DELETE", `/repos/${encodeURIComponent(name)}${deleteClone ? "?deleteClone=true" : ""}`, parseRepo);
+
+export const putRepoAccounts = (name: string, input: PutRepoAccountsInput): Promise<Repo> =>
+  request("PUT", `/repos/${encodeURIComponent(name)}/accounts`, parseRepo, input);
