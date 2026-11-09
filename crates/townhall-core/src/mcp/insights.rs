@@ -23,6 +23,7 @@ pub fn tools() -> Vec<ToolDef> {
         name: CONVERSATION_INSIGHTS,
         description: "Recurring patterns across every conversation of townhall (not just this one), counted without a model: repeated user requests, questions agents ask you, agent failures, steps typed into agents by hand, hand back sequences, task chains by agent type and townhall errors, with tasks per agent type and their end states. Each pattern has count, first and last seen, up to 3 samples, conversation and task ids, a stable `fingerprint` to cite in a task brief and a `suggested_automation` hint. Only patterns seen at least twice. Read-only. Use it when asked what to automate or improve in how work gets done.",
         input_schema: schema(),
+        read_only: true,
     }]
 }
 
