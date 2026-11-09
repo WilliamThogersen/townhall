@@ -101,8 +101,12 @@ export function headCells(head: Avatar["head"]): readonly AvatarCell[] {
 }
 
 function gridCells(grid: readonly string[]): readonly AvatarCell[] {
+  const toneOf: Readonly<Record<string, AvatarCell["tone"]>> = { "#": "body", o: "face" };
   return grid.flatMap((line, y) =>
-    [...line].flatMap((ch, x) => (ch === "#" ? [{ x, y, tone: "body" as const }] : ch === "o" ? [{ x, y, tone: "face" as const }] : [])),
+    [...line].flatMap((ch, x): readonly AvatarCell[] => {
+      const tone = toneOf[ch];
+      return tone === undefined ? [] : [{ x, y, tone }];
+    }),
   );
 }
 

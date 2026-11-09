@@ -1,3 +1,5 @@
+import type { AvatarSpec } from "../views/agents/avatarSpec";
+
 export interface Agent {
   readonly name: string;
   readonly kind: string | null;
@@ -212,6 +214,7 @@ export interface AgentTypeSummary {
   readonly adapter: AgentAdapterKind;
   readonly model: string | null;
   readonly permissionMode: AgentTypeMode | null;
+  readonly avatar: AvatarSpec | null;
   readonly updatedAt: string;
 }
 
@@ -219,6 +222,34 @@ export interface AgentUsage {
   readonly agent: string;
   readonly runs: number;
   readonly tokens: number;
+}
+
+export type UsageRange = "24h" | "7d" | "30d";
+
+export interface UsageBucket {
+  readonly start: string;
+  readonly runs: number;
+  readonly tokens: number;
+}
+
+export interface UsageShare {
+  readonly key: string;
+  readonly runs: number;
+  readonly tokens: number;
+}
+
+export interface AgentUsageSeries {
+  readonly agent: string;
+  readonly range: UsageRange;
+  readonly bucketMs: number;
+  readonly since: string;
+  readonly until: string;
+  readonly runs: number;
+  readonly tokens: number;
+  readonly buckets: readonly UsageBucket[];
+  readonly byTask: readonly UsageShare[];
+  readonly byRepo: readonly UsageShare[];
+  readonly byConversation: readonly UsageShare[];
 }
 
 export interface AgentType {
@@ -231,6 +262,7 @@ export interface AgentType {
   readonly prompt: string | null;
   readonly command: string | null;
   readonly canHandBackTo: readonly string[] | null;
+  readonly avatar: AvatarSpec | null;
   readonly source: string;
   readonly updatedAt: string;
 }
