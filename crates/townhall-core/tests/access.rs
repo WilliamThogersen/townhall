@@ -181,19 +181,20 @@ fn accounts_of_another_host_or_forge_are_never_tried() {
 fn a_gitlab_project_is_asked_by_its_encoded_path_on_its_host() {
     let stubs = Stubs::new();
     let programs = programs(&stubs.gh(&[]), &stubs.glab(true));
-    let located = locate("git@gitlab.wexo.io:team/sub/app.git", &[]).unwrap();
-    let list = registered(json!([{"forge": "gitlab", "login": "wgt", "host": "gitlab.wexo.io"}]));
+    let located = locate("git@gitlab.example.com:team/sub/app.git", &[]).unwrap();
+    let list =
+        registered(json!([{"forge": "gitlab", "login": "alice", "host": "gitlab.example.com"}]));
     let got = find_account(&programs, &located, &list, &[]);
     assert_eq!(
         got.found,
         Some(Found {
-            account: picked("wgt", "gitlab.wexo.io"),
+            account: picked("alice", "gitlab.example.com"),
             registered: true
         })
     );
     let log = stubs.log("glab");
     assert!(
-        log.contains("api projects/team%2Fsub%2Fapp --hostname gitlab.wexo.io"),
+        log.contains("api projects/team%2Fsub%2Fapp --hostname gitlab.example.com"),
         "{log}"
     );
 }
@@ -207,12 +208,12 @@ fn a_detected_gitlab_login_wins_when_nothing_is_registered() {
         &["code.example.com".into()],
     )
     .unwrap();
-    let seen = [detected(ForgeKind::Gitlab, "wgt", "code.example.com")];
+    let seen = [detected(ForgeKind::Gitlab, "alice", "code.example.com")];
     let got = find_account(&programs, &located, &[], &seen);
     assert_eq!(
         got.found,
         Some(Found {
-            account: picked("wgt", "code.example.com"),
+            account: picked("alice", "code.example.com"),
             registered: false
         })
     );

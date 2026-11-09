@@ -213,8 +213,8 @@ mod tests {
     #[test]
     fn gitlab_keeps_nested_groups() {
         assert_eq!(
-            at("git@gitlab.wexo.io:team/sub/app.git", &[]),
-            found(ForgeKind::Gitlab, "gitlab.wexo.io", "team/sub/app")
+            at("git@gitlab.example.com:team/sub/app.git", &[]),
+            found(ForgeKind::Gitlab, "gitlab.example.com", "team/sub/app")
         );
         assert_eq!(
             at("https://gitlab.com/a/b/c/d.git", &[]),

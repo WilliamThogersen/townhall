@@ -3,7 +3,7 @@ const CONVERSATIONS = [
   { id: "ci", title: "flaky ci on main", repo: "shop", time: "9m", state: "error", glyph: "error", status: "e2e-smoke failed" },
   { id: "vite", title: "upgrade to vite 8", repo: "townhall", time: "2m", glyph: "working", status: "thinking" },
   { id: "search", title: "search api is slow under load", repo: "shop", time: "14m", glyph: "alive", status: "your turn · 3 running" },
-  { id: "i18n", title: "i18n keys cleanup", repo: "wexo-access", time: "1h", glyph: "alive", status: "your turn · 1 running" },
+  { id: "i18n", title: "i18n keys cleanup", repo: "acme-access", time: "1h", glyph: "alive", status: "your turn · 1 running" },
 ];
 
 const SIDEBARS = {
@@ -46,7 +46,7 @@ const tickLabel = (m) => `${10 + Math.floor(m / 60)}:${String(m % 60).padStart(2
 const REPOS = [
   ["townhall", "~/Developer/townhall", "main", "2 conversations", ["waiting", "working", "alive"]],
   ["shop", "~/Developer/…/clients/shop", "develop", "2 conversations", ["error", "alive", "alive", "alive", "alive"]],
-  ["wexo-access", "~/Developer/wexo-access", "staging", "1 conversation", ["alive"]],
+  ["acme-access", "~/Developer/acme-access", "staging", "1 conversation", ["alive"]],
   ["data-hub", "~/Developer/data-hub", "main", "no conversations", []],
 ];
 

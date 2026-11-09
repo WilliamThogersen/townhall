@@ -16,7 +16,7 @@ import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
 import { ReposPage } from "./ReposPage";
 
 const townhall = aRepo({ name: "townhall", path: "/Users/me/Developer/townhall", baseBranch: "main" });
-const shop = aRepo({ name: "shop", path: "/Users/me/Developer/wexo/work/clients/shop", baseBranch: "develop" });
+const shop = aRepo({ name: "shop", path: "/Users/me/Developer/acme/work/clients/shop", baseBranch: "develop" });
 
 function HintsProbe() {
   const hints = useCurrentKeyHints();
@@ -163,7 +163,7 @@ describe("ReposPage", () => {
   });
 
   it("clones a pasted https link over ssh by default and over https when chosen", async () => {
-    const link = "https://gitlab.wexo.io/konpap/vines.git";
+    const link = "https://gitlab.example.com/konpap/vines.git";
     const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(aRepo({ name: "vines", path: "/Users/me/.townhall/repos/vines", baseBranch: "main" }));
     renderPage();
     await openAdd();
@@ -172,12 +172,12 @@ describe("ReposPage", () => {
     expect(screen.getByRole("radio", { name: "ssh" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "https" })).not.toBeChecked();
     await userEvent.type(screen.getByRole("textbox", { name: "git url" }), link);
-    expect(screen.getByText("clones git@gitlab.wexo.io:konpap/vines.git into ~/.townhall/repos/vines")).toBeInTheDocument();
+    expect(screen.getByText("clones git@gitlab.example.com:konpap/vines.git into ~/.townhall/repos/vines")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: "https" }));
     expect(screen.getByText(`clones ${link} into ~/.townhall/repos/vines`)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: "ssh" }));
     await userEvent.click(screen.getByRole("button", { name: "add" }));
-    expect(add).toHaveBeenCalledWith({ path: "git@gitlab.wexo.io:konpap/vines.git" });
+    expect(add).toHaveBeenCalledWith({ path: "git@gitlab.example.com:konpap/vines.git" });
   });
 
   it("sends the https form when https is chosen", async () => {
@@ -186,8 +186,8 @@ describe("ReposPage", () => {
     await openAdd();
     await chooseUrl();
     await userEvent.click(screen.getByRole("radio", { name: "https" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "git@gitlab.wexo.io:konpap/vines{Enter}");
-    expect(add).toHaveBeenCalledWith({ path: "https://gitlab.wexo.io/konpap/vines.git" });
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "git@gitlab.example.com:konpap/vines{Enter}");
+    expect(add).toHaveBeenCalledWith({ path: "https://gitlab.example.com/konpap/vines.git" });
   });
 
   it("offers the clones folder from the settings as the default", async () => {
@@ -409,7 +409,7 @@ describe("ReposPage", () => {
     it("filters by path too", async () => {
       renderPage();
       await screen.findByText("shop", { selector: ".th-repo-name b" });
-      await userEvent.type(search(), "wexo/work");
+      await userEvent.type(search(), "acme/work");
       expect(names()).toEqual(["shop"]);
     });
 
@@ -602,13 +602,13 @@ describe("repo accounts", () => {
 
   it("shows the forge and account a repo was given, and nothing for a repo without one", async () => {
     vi.mocked(reposApi.listRepos).mockResolvedValue([
-      aRepo({ ...shop, gitlabAccount: "wgt" }),
+      aRepo({ ...shop, gitlabAccount: "alice" }),
       aRepo({ ...townhall, githubAccount: "work-me", gitlabAccount: "me" }),
       aRepo({ name: "plain", path: "/Users/me/Developer/plain" }),
     ]);
     renderPage();
     await screen.findByText("shop", { selector: ".th-repo-name b" });
-    const shopPick = within(rowOf("shop")).getByText("gitlab · wgt");
+    const shopPick = within(rowOf("shop")).getByText("gitlab · alice");
     expect(shopPick).toHaveAttribute("title", "gitlab account for shop");
     const both = within(rowOf("townhall"));
     expect(both.getByText("github · work-me")).toBeInTheDocument();

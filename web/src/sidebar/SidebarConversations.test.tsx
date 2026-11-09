@@ -43,7 +43,7 @@ describe("conversation rows", () => {
     expect(rowButton("flaky ci on main")).toHaveTextContent("e2e-smoke failedshop");
     expect(rowButton("flaky ci on main")).toHaveAttribute("data-state", "error");
     expect(rowButton("upgrade to vite 8").querySelector(".th-status .th-spin")).not.toBeNull();
-    expect(rowButton("i18n keys cleanup")).toHaveTextContent("1hyour turn · 1 runningwexo-access");
+    expect(rowButton("i18n keys cleanup")).toHaveTextContent("1hyour turn · 1 runningacme-access");
     const coupon = rowButton("checkout coupon rounding");
     expect(coupon).toHaveAttribute("data-state", "ended");
     expect(coupon).toHaveTextContent("2dended · 1 mergedshop");
@@ -91,7 +91,7 @@ describe("by repo", () => {
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(localStorage.getItem(BY_REPO_KEY)).toBe("true");
     const heads = [...scrollArea().querySelectorAll(".th-group-head")].map((h) => h.textContent);
-    expect(heads).toEqual(["townhall1", "shop1", "wexo-access1", "no repo1"]);
+    expect(heads).toEqual(["townhall1", "shop1", "acme-access1", "no repo1"]);
     expect(rowButton("login redirect loop").querySelector(".th-convo-repo")).toHaveTextContent("");
     expect(rowButton("checkout coupon rounding")).toHaveTextContent("shop");
   });
@@ -125,7 +125,7 @@ describe("row menu", () => {
       "repo: autoshop",
       "repo: shopdevelop",
       "repo: townhallmain",
-      "repo: wexo-accessstaging",
+      "repo: acme-accessstaging",
     ]);
     fireEvent.click(within(menu).getByText("end conversation"));
     expect(end).toHaveBeenCalledWith("ci");
@@ -143,7 +143,7 @@ describe("row menu", () => {
     row.focus();
     fireEvent.keyDown(row, { key: "F10", shiftKey: true });
     const menu = screen.getByRole("menu");
-    expect(within(menu).getByRole("menuitemradio", { name: /repo: wexo-access/ })).toHaveAttribute("aria-checked", "true");
+    expect(within(menu).getByRole("menuitemradio", { name: /repo: acme-access/ })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(menu).getByText("repo: townhall"));
     expect(patch).toHaveBeenCalledWith("i18n", { linkedRepo: "townhall" });
     expect(row).toHaveFocus();

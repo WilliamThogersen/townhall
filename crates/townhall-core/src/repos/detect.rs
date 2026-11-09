@@ -562,16 +562,13 @@ mod tests {
         assert_eq!(from_text("You are not logged into any hosts"), vec![]);
     }
 
-    const REAL_GH_JSON: &str = r#"{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"WilliamThogersen","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"},{"state":"success","active":false,"host":"github.com","login":"wexowgt","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"}]}}"#;
+    const REAL_GH_JSON: &str = r#"{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"WilliamThogersen","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"},{"state":"success","active":false,"host":"github.com","login":"alice","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"}]}}"#;
 
-    const REAL_GH_TEXT: &str = "github.com\n  ✓ Logged in to github.com account WilliamThogersen (keyring)\n  - Active account: true\n  - Git operations protocol: https\n\n  ✓ Logged in to github.com account wexowgt (keyring)\n  - Active account: false\n  - Git operations protocol: https\n";
+    const REAL_GH_TEXT: &str = "github.com\n  ✓ Logged in to github.com account WilliamThogersen (keyring)\n  - Active account: true\n  - Git operations protocol: https\n\n  ✓ Logged in to github.com account alice (keyring)\n  - Active account: false\n  - Git operations protocol: https\n";
 
     #[test]
     fn real_gh_2_101_output_yields_both_accounts_in_json_and_text() {
-        let both = pairs(&[
-            ("github.com", "WilliamThogersen"),
-            ("github.com", "wexowgt"),
-        ]);
+        let both = pairs(&[("github.com", "WilliamThogersen"), ("github.com", "alice")]);
         assert_eq!(from_json(REAL_GH_JSON), Some(both.clone()));
         assert_eq!(from_text(REAL_GH_TEXT), both);
     }
@@ -600,7 +597,7 @@ mod tests {
         assert_eq!(shown, vec!["Me"]);
     }
 
-    const GH_HOSTS: &str = "github.com:\n    users:\n        WilliamThogersen:\n        wexowgt:\n    git_protocol: https\n    user: WilliamThogersen\nghe.corp.io:\n    oauth_token: gho_secret\n    user: corp-me\n";
+    const GH_HOSTS: &str = "github.com:\n    users:\n        WilliamThogersen:\n        alice:\n    git_protocol: https\n    user: WilliamThogersen\nghe.corp.io:\n    oauth_token: gho_secret\n    user: corp-me\n";
 
     #[test]
     fn gh_hosts_yml_lists_every_user_and_the_active_one_and_no_token() {
@@ -609,7 +606,7 @@ mod tests {
             got,
             pairs(&[
                 ("github.com", "WilliamThogersen"),
-                ("github.com", "wexowgt"),
+                ("github.com", "alice"),
                 ("github.com", "WilliamThogersen"),
                 ("ghe.corp.io", "corp-me"),
             ])
@@ -617,7 +614,7 @@ mod tests {
         assert!(!format!("{got:?}").contains("gho_secret"));
     }
 
-    const GLAB_CONFIG: &str = "# glab config\ngit_protocol: ssh\nglamour_style: dark\nhosts:\n    gitlab.wexo.io:\n        token: glpat-secret\n        api_host: gitlab.wexo.io\n        git_protocol: ssh\n        user: wexowgt\n    \"gitlab.corp.io:8443\":\n        token: !!null glpat-other\n        user: 'corp.me' # who\n    gitlab.com:\n        api_host: gitlab.com\neditor:\n";
+    const GLAB_CONFIG: &str = "# glab config\ngit_protocol: ssh\nglamour_style: dark\nhosts:\n    gitlab.example.com:\n        token: glpat-secret\n        api_host: gitlab.example.com\n        git_protocol: ssh\n        user: alice\n    \"gitlab.corp.io:8443\":\n        token: !!null glpat-other\n        user: 'corp.me' # who\n    gitlab.com:\n        api_host: gitlab.com\neditor:\n";
 
     #[test]
     fn glab_config_gives_each_host_and_its_user_and_never_a_token() {
@@ -625,7 +622,7 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                ("gitlab.wexo.io".to_string(), Some("wexowgt".to_string())),
+                ("gitlab.example.com".to_string(), Some("alice".to_string())),
                 (
                     "gitlab.corp.io:8443".to_string(),
                     Some("corp.me".to_string())
@@ -707,19 +704,19 @@ mod tests {
         );
     }
 
-    const REAL_GLAB_CONFIG: &str = "hosts:\n    gitlab.wexo.io:\n        api_protocol: https\n        git_protocol: https\n        user: wexowgt\n";
+    const REAL_GLAB_CONFIG: &str = "hosts:\n    gitlab.example.com:\n        api_protocol: https\n        git_protocol: https\n        user: alice\n";
 
     #[test]
     fn glab_config_with_keyring_token_keeps_the_user() {
         assert_eq!(
             glab_hosts(REAL_GLAB_CONFIG),
-            vec![("gitlab.wexo.io".to_string(), Some("wexowgt".to_string()))]
+            vec![("gitlab.example.com".to_string(), Some("alice".to_string()))]
         );
         let null_token =
-            "hosts:\n    gitlab.wexo.io:\n        token: !!null\n        user: wexowgt\n";
+            "hosts:\n    gitlab.example.com:\n        token: !!null\n        user: alice\n";
         assert_eq!(
             glab_hosts(null_token),
-            vec![("gitlab.wexo.io".to_string(), Some("wexowgt".to_string()))]
+            vec![("gitlab.example.com".to_string(), Some("alice".to_string()))]
         );
     }
 
@@ -770,7 +767,7 @@ mod tests {
             let glab_cfg = config(
                 dir.path(),
                 "glab-cli",
-                "hosts:\n    gitlab.wexo.io:\n        token: x\n        user: wexowgt\n",
+                "hosts:\n    gitlab.example.com:\n        token: x\n        user: alice\n",
             );
             let started = Instant::now();
             let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[]);
@@ -779,8 +776,8 @@ mod tests {
                 logins(&found),
                 vec![
                     "Github WilliamThogersen@github.com",
-                    "Github wexowgt@github.com",
-                    "Gitlab wexowgt@gitlab.wexo.io"
+                    "Github alice@github.com",
+                    "Gitlab alice@gitlab.example.com"
                 ]
             );
             assert_eq!(found.warnings, Vec::<String>::new());
@@ -807,7 +804,7 @@ mod tests {
             let support = home.path().join("Library").join("Application Support");
             config(&support, "glab-cli", REAL_GLAB_CONFIG);
             let found = detect_with_home(home.path(), &[], true);
-            assert_eq!(logins(&found), vec!["Gitlab wexowgt@gitlab.wexo.io"]);
+            assert_eq!(logins(&found), vec!["Gitlab alice@gitlab.example.com"]);
             assert!(
                 found.warnings.iter().all(|w| !w.starts_with("glab:")),
                 "{:?}",
@@ -820,7 +817,7 @@ mod tests {
             let home = tempfile::tempdir().unwrap();
             config(&home.path().join(".config"), "glab-cli", REAL_GLAB_CONFIG);
             let found = detect_with_home(home.path(), &[], false);
-            assert_eq!(logins(&found), vec!["Gitlab wexowgt@gitlab.wexo.io"]);
+            assert_eq!(logins(&found), vec!["Gitlab alice@gitlab.example.com"]);
         }
 
         #[test]
@@ -831,13 +828,13 @@ mod tests {
             config(
                 &home.path().join(".config"),
                 "glab-cli",
-                "hosts:\n    gitlab.corp.io:\n        user: corp\n    gitlab.wexo.io:\n        user: wexowgt\n",
+                "hosts:\n    gitlab.corp.io:\n        user: corp\n    gitlab.example.com:\n        user: alice\n",
             );
             let found = detect_with_home(home.path(), &[], true);
             assert_eq!(
                 logins(&found),
                 vec![
-                    "Gitlab wexowgt@gitlab.wexo.io",
+                    "Gitlab alice@gitlab.example.com",
                     "Gitlab corp@gitlab.corp.io"
                 ]
             );
@@ -911,7 +908,7 @@ mod tests {
             let gh_cfg = config(dir.path(), "gh", GH_HOSTS);
             let glab_cfg = dir.path().join("none");
             let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[]);
-            assert!(logins(&found).contains(&"Github wexowgt@github.com".to_string()));
+            assert!(logins(&found).contains(&"Github alice@github.com".to_string()));
             assert!(logins(&found).iter().all(|l| !l.starts_with("Gitlab")));
             assert!(
                 found
@@ -973,7 +970,7 @@ mod tests {
             let gh = stub(dir.path(), "gh", &format!("echo '{REAL_GH_JSON}'"));
             let glab = stub(dir.path(), "glab", GLAB);
             let registered = normalize_accounts(
-                &json!([{"forge": "github", "login": "wexowgt", "host": "github.com"}]),
+                &json!([{"forge": "github", "login": "alice", "host": "github.com"}]),
             )
             .unwrap();
             let found = detect_in(
