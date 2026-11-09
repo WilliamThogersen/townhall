@@ -97,7 +97,7 @@ Write tests first. Commit when the tests pass.
 | `prompt` | no | `claude --append-system-prompt` |
 | `command` | shell only | the `shell` adapter's `command` |
 
-`permission_mode` accepts `default`, `acceptEdits` and `plan`. A definition with `bypassPermissions` is rejected: the build brief allows `skip all` only through the settings endpoint.
+`permission_mode` accepts `default`, `acceptEdits`, `plan` and `bypassPermissions` (skip all). A definition that sets none runs in `acceptEdits`. Permissions are no longer a global setting; saving a definition that sets `bypassPermissions` always asks the user to confirm.
 
 Core change: `LaunchOptions` gains `model`, `permission_mode`, `allowed_tools` and `system_prompt`. `ClaudeCodeAdapter` turns them into flags, each quoted with `shell_quote`. 2.5 adds `--permission-mode` too, so the two units share that code.
 
@@ -174,7 +174,7 @@ Every save, import and load runs the same checks. They live in `townhall-core`, 
 4. `after` has no cycles.
 5. `from` names a step this step waits for.
 6. Every `{{...}}` variable is known, and `steps.<id>` names a step that runs before this one.
-7. `permission_mode` is not `bypassPermissions`.
+7. `permission_mode` is one of `default`, `acceptEdits`, `plan`, `bypassPermissions`.
 
 Errors name the definition, the step and the field:
 
@@ -207,7 +207,7 @@ How it goes:
 
 1. You describe what you need: "a planner on opus, then a coder, then a tester that runs cargo test".
 2. The session lists what exists, writes the TOML and calls save. On a validation error it fixes the TOML and tries again.
-3. Before saving, the conversation shows the TOML as a block with save and edit. With "work without asking" on (2.5 setting) it saves at once. Replacing an existing definition always asks.
+3. Before saving, the conversation shows the TOML as a block with save and edit. It never saves at once: every save, new or replacing, asks.
 4. Saved definitions show in the library right away.
 
 ## API
@@ -256,7 +256,7 @@ Add these to the build brief when the work is picked up. Unit 2.0 is in [`storag
 ## Ask the user before
 
 - adding the `toml` crate (small and serde based, still a new dependency)
-- any way to set `bypassPermissions` from a definition
+- saving a definition that sets `bypassPermissions` without the user's confirmation
 
 ## Open questions
 

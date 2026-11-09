@@ -6,7 +6,6 @@ import { Stepper } from "../../ui/Stepper";
 import { Switch } from "../../ui/Switch";
 import { AccountsSection } from "./AccountsSection";
 import { ClonesDirRow } from "./ClonesDirRow";
-import { PermissionRow } from "./PermissionRow";
 import { ProfileSection } from "./ProfileSection";
 import { SettingGroup, SettingRow } from "./SettingRow";
 import { HELP, NOTIFY_CHOICES, REPO_UNCLEAR_CHOICES, THEME_CHOICES } from "./settingsCopy";
@@ -15,14 +14,6 @@ export function AgentsGroup() {
   const { settings, update } = useSettings();
   return (
     <SettingGroup title="agents">
-      <PermissionRow />
-      <SettingRow label="work without asking" help={HELP.workWithoutAsking}>
-        <Switch
-          label="Work without asking"
-          checked={settings.workWithoutAsking}
-          onChange={(workWithoutAsking) => update({ workWithoutAsking })}
-        />
-      </SettingRow>
       <SettingRow label="agents at once" help={HELP.agentsAtOnce}>
         <Stepper
           label="Agents at once"

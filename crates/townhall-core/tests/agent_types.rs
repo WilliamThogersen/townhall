@@ -93,7 +93,9 @@ async fn an_invalid_type_is_refused_with_every_error() {
     let refused = env.store.save_agent_type(bad).await.unwrap_err();
     assert!(matches!(refused, Error::InvalidInput(_)), "{refused:?}");
     let skip = "name = \"x\"\nadapter = \"claude\"\npermission_mode = \"bypassPermissions\"\n";
-    assert!(Store::check_agent_type(skip).is_err());
+    assert!(Store::check_agent_type(skip).is_ok());
+    let unknown = "name = \"x\"\nadapter = \"claude\"\npermission_mode = \"yolo\"\n";
+    assert!(Store::check_agent_type(unknown).is_err());
     let long = format!(
         "name = \"long\"\nadapter = \"claude\"\nprompt = \"{}\"\n",
         "a".repeat(Store::MAX_AGENT_SOURCE)

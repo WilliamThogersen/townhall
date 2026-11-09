@@ -161,7 +161,7 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
     assert_eq!(
         v["data"],
         json!({
-            "permissionMode": "acceptEdits", "workWithoutAsking": false, "agentsAtOnce": 6,
+            "agentsAtOnce": 6,
             "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
             "minFreeDiskGb": 5, "learnAboutMe": false,
             "githubAccount": "WilliamThogersen", "forgeAccounts": [],
@@ -218,8 +218,9 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
         ),
         ("/api/settings/theme", json!({"value": "dark"})),
         ("/api/settings/agentsAtOnce", json!({"value": 51})),
-        ("/api/settings/permissionMode", json!({"value": "yolo"})),
-        ("/api/settings/townhallModel", json!({"value": "opus"})),
+        ("/api/settings/permissionMode", json!({"value": "plan"})),
+        ("/api/settings/workWithoutAsking", json!({"value": true})),
+        ("/api/settings/townhallModel", json!({"value": "gpt-5"})),
         ("/api/settings/agentsAtOnce", json!({"v": 3})),
     ];
     for (uri, body) in bad {

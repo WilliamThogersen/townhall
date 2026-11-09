@@ -10,7 +10,7 @@ How the app is put together: routes, the shell, the data the screens need, keys,
 | `/c/:id` | Conversation: thread, task list, composer. A task's terminal opens as a split on the right | the conversation row |
 | `/townhall` | Control center: loop strip, totals, one timeline for every conversation. `?c=:id` filters to one | `$ control center` and the wordmark |
 | `/repos` | Repo list | `~ repos` |
-| `/settings` | Permissions and behaviour | `settings` in the sidebar foot |
+| `/settings` | Behaviour | `settings` in the sidebar foot |
 | `/search?q=` | Search results over titles and message text | `/ search` |
 
 Starting from home creates the conversation and moves to `/c/:id`. There is no other way to create an agent. There is no repo picker anywhere: townhall infers the repo (see below).

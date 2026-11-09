@@ -96,19 +96,22 @@ fn rule_2_agent_name_must_be_valid() {
 }
 
 #[test]
-fn rule_7_bypass_permissions_is_rejected() {
-    assert_eq!(
-        agent_errors("name = \"coder\"\nadapter = \"claude\"\npermission_mode = \"bypassPermissions\"\n"),
-        ["error: agent \"coder\": line 3: permission_mode \"bypassPermissions\" is not allowed in a definition: skip all is set only in settings"]
-    );
+fn rule_7_bypass_permissions_is_allowed() {
+    let def = parse_agent(
+        "name = \"coder\"\nadapter = \"claude\"\npermission_mode = \"bypassPermissions\"\n",
+    )
+    .unwrap()
+    .def;
+    assert_eq!(def.permission_mode, Some(PermissionMode::BypassPermissions));
 }
 
 #[test]
-fn rule_7_safe_permission_modes_pass() {
+fn rule_7_permission_modes_pass() {
     for (text, mode) in [
         ("default", PermissionMode::Default),
         ("acceptEdits", PermissionMode::AcceptEdits),
         ("plan", PermissionMode::Plan),
+        ("bypassPermissions", PermissionMode::BypassPermissions),
     ] {
         let source = format!("name = \"a\"\nadapter = \"claude\"\npermission_mode = \"{text}\"\n");
         let def = parse_agent(&source).unwrap().def;
@@ -121,7 +124,7 @@ fn rule_7_safe_permission_modes_pass() {
 fn unknown_permission_mode_is_an_error() {
     assert_eq!(
         agent_errors("name = \"a\"\nadapter = \"claude\"\npermission_mode = \"yolo\"\n"),
-        ["error: agent \"a\": line 3: permission_mode \"yolo\" is not one of default, acceptEdits, plan"]
+        ["error: agent \"a\": line 3: permission_mode \"yolo\" is not one of default, acceptEdits, plan, bypassPermissions"]
     );
 }
 

@@ -1,7 +1,7 @@
 //! The one-time import of phase 1's `~/.townhall/config.json` (`{ "repo": "<path>" }`):
 //! the repo goes into `repos` (when it is still a git repo) and becomes the desktop app's
 //! repo, and the file is renamed to `config.json.imported`. Never deleted; existing rows are
-//! never overridden. Only `repo` is read: settings, `skip all` above all, change only
+//! never overridden. Only `repo` is read: settings change only
 //! through `PUT /api/settings/{key}`, never through a file.
 
 use std::fs;

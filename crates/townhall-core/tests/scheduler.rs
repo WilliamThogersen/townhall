@@ -39,7 +39,7 @@ async fn a_task_starts_in_its_own_worktree_from_its_base() {
 }
 
 #[tokio::test]
-async fn the_agent_reads_its_brief_with_the_settings_permission_mode() {
+async fn the_agent_reads_its_brief_in_accept_edits_when_its_type_sets_no_mode() {
     let s = Sched::new().await;
     let name = unique("plain");
     s.create(&name, &[]).await;
@@ -100,12 +100,7 @@ async fn attachments_are_listed_in_the_brief_and_readable() {
         ..s.new_task(&name, &[])
     };
     s.store().create_task(&s.conversation, new).await.unwrap();
-    let skip = json!("bypassPermissions");
     let store = s.store();
-    store
-        .set_setting(SettingKey::PermissionMode, skip)
-        .await
-        .unwrap();
     run_once(s.ctx()).await.unwrap();
 
     let (_, path) = store.attachment(&s.conversation, &file.id).await.unwrap();
@@ -113,7 +108,7 @@ async fn attachments_are_listed_in_the_brief_and_readable() {
     assert!(files_dir.ends_with("files"), "{files_dir:?}");
     let args = s.args(&name).await;
     let lines: Vec<&str> = args.lines().collect();
-    assert_eq!(lines[0], "--dangerously-skip-permissions");
+    assert_eq!(lines[0], "--permission-mode=acceptEdits");
     let brief = s.brief(&name);
     let dirs = [
         format!("--add-dir={}", brief.parent().unwrap().display()),

@@ -11,8 +11,6 @@ import {
 } from "./settings";
 
 const custom: Settings = {
-  permissionMode: "plan",
-  workWithoutAsking: true,
   agentsAtOnce: 12,
   repoUnclear: "guess",
   sessionPanelOpen: false,
@@ -31,8 +29,6 @@ const custom: Settings = {
 describe("DEFAULT_SETTINGS", () => {
   it("matches the design defaults", () => {
     expect(DEFAULT_SETTINGS).toEqual({
-      permissionMode: "acceptEdits",
-      workWithoutAsking: false,
       agentsAtOnce: 6,
       repoUnclear: "ask",
       sessionPanelOpen: true,
@@ -67,13 +63,6 @@ describe("parseSettings", () => {
     expect(parseSettings({ ...custom })).toEqual(custom);
   });
 
-  it("accepts every permission mode", () => {
-    const modes = ["default", "acceptEdits", "plan", "auto", "bypassPermissions"] as const;
-    modes.forEach((permissionMode) => {
-      expect(parseSettings({ permissionMode }).permissionMode).toBe(permissionMode);
-    });
-  });
-
   it("falls back to the defaults for anything that is not an object", () => {
     [null, undefined, 3, "x", true, [1, 2]].forEach((raw) => {
       expect(parseSettings(raw)).toEqual(DEFAULT_SETTINGS);
@@ -82,8 +71,6 @@ describe("parseSettings", () => {
 
   it("falls back per field for missing or wrong values", () => {
     const parsed = parseSettings({
-      permissionMode: "yolo",
-      workWithoutAsking: "yes",
       agentsAtOnce: 12,
       repoUnclear: 1,
       notifyWhen: null,
@@ -104,9 +91,14 @@ describe("parseSettings", () => {
   });
 
   it("drops the keys of removed settings", () => {
-    expect(parseSettings({ ...custom, sharedCargoTarget: true, sharedTargetMaxGb: 50, townhallModel: "opus" })).toEqual(
-      custom,
-    );
+    const removed = {
+      sharedCargoTarget: true,
+      sharedTargetMaxGb: 50,
+      permissionMode: "bypassPermissions",
+      workWithoutAsking: true,
+      townhallModel: "opus",
+    };
+    expect(parseSettings({ ...custom, ...removed })).toEqual(custom);
   });
 
   it("returns a frozen object", () => {
@@ -131,15 +123,11 @@ describe("isSettingValue", () => {
       expect(isSettingValue(key, custom[key])).toBe(true);
       expect(isSettingValue(key, DEFAULT_SETTINGS[key])).toBe(true);
     });
-    expect(isSettingValue("permissionMode", "bypassPermissions")).toBe(true);
     expect(isSettingValue("agentsAtOnce", 1)).toBe(true);
     expect(isSettingValue("agentsAtOnce", 50)).toBe(true);
   });
 
   it("refuses wrong types and values outside the choices", () => {
-    expect(isSettingValue("permissionMode", "yolo")).toBe(false);
-    expect(isSettingValue("permissionMode", undefined)).toBe(false);
-    expect(isSettingValue("workWithoutAsking", "true")).toBe(false);
     expect(isSettingValue("sessionPanelOpen", 1)).toBe(false);
     expect(isSettingValue("repoUnclear", "always")).toBe(false);
     expect(isSettingValue("notifyWhen", null)).toBe(false);

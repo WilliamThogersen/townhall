@@ -6,8 +6,7 @@ mod common;
 mod runner_support;
 use common::{call, Env};
 use runner_support::{
-    app_with, create, detail, entries_of, idle, kinds, message, set_setting, turns_started,
-    values_of, Fake,
+    app_with, create, detail, entries_of, idle, kinds, message, turns_started, values_of, Fake,
 };
 
 const FIRST_FLAGS: [&str; 6] = [
@@ -135,7 +134,6 @@ async fn the_default_agent_type_drives_the_conversation() {
     let store = state.ctx().store().unwrap();
     let (_, replaced) = store.save_agent_type(EDITED_DEFAULT).await.unwrap();
     assert!(replaced, "the type default is seeded");
-    set_setting(&app, "permissionMode", json!("acceptEdits")).await;
     let created = create(&app, "plan a settings page").await;
     let id = created["conversation"]["id"].as_str().unwrap().to_string();
     idle(&app, &id).await;
@@ -158,7 +156,10 @@ async fn the_default_agent_type_drives_the_conversation() {
     );
     assert!(prompt.contains("alpha") && !prompt.contains("you are townhall"));
 
-    set_setting(&app, "permissionMode", json!("plan")).await;
+    store
+        .save_agent_type(&EDITED_DEFAULT.replace("acceptEdits", "plan"))
+        .await
+        .unwrap();
     let (s, v) = message(&app, &id, "and a dark theme").await;
     assert_eq!(s, StatusCode::OK, "{v}");
     idle(&app, &id).await;

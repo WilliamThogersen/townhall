@@ -1,5 +1,5 @@
 //! The agent type a task runs as (2.12): its adapter and launch options. The type's
-//! permission mode only ever narrows the saved setting (`AgentDef::launch_options`).
+//! permission mode is the task's; a type with none runs in `acceptEdits`.
 
 use std::path::Path;
 
@@ -34,9 +34,7 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
             names.join(", ")
         )));
     };
-    let mut options = found
-        .def
-        .launch_options(ctx.settings().await?.permission_mode);
+    let mut options = found.def.launch_options();
     let names: Vec<String> = store
         .agent_types()
         .await?

@@ -441,24 +441,6 @@
                 <h2>agents</h2>
                 <div class="th-setting-rows">
                   <div class="th-setting-row">
-                    <div>
-                      <div class="th-setting-label" id="pv-perm-label">permissions</div>
-                      <div class="th-setting-help" id="pv-perm-help">edits go through, commands ask first.</div>
-                      <div class="th-setting-more" id="pv-perm-more" hidden>every edit and command runs straight away (<code>--dangerously-skip-permissions</code>). townhall and agents can never switch to this themselves.</div>
-                    </div>
-                    <div class="th-segmented" role="radiogroup" aria-labelledby="pv-perm-label">
-                      <label><input type="radio" name="pv-perm" value="ask"><span>ask</span></label>
-                      <label><input type="radio" name="pv-perm" value="edits" checked><span>accept edits</span></label>
-                      <label><input type="radio" name="pv-perm" value="plan"><span>plan</span></label>
-                      <label><input type="radio" name="pv-perm" value="auto"><span>auto</span></label>
-                      <label data-tone="danger"><input type="radio" name="pv-perm" value="skip"><span>skip all</span></label>
-                    </div>
-                  </div>
-                  <div class="th-setting-row">
-                    <div><div class="th-setting-label">work without asking</div><div class="th-setting-help">agents assume and list their assumptions instead of asking. they still stop for missing access or destructive actions.</div></div>
-                    <button class="th-switch" type="button" role="switch" aria-checked="true" aria-label="Work without asking"></button>
-                  </div>
-                  <div class="th-setting-row">
                     <div><div class="th-setting-label">agents at once</div><div class="th-setting-help">the rest wait as queued and start when one finishes.</div></div>
                     <div class="th-stepper" data-pv-stepper><button type="button" aria-label="Fewer">−</button><output aria-live="polite">6</output><button type="button" aria-label="More">+</button></div>
                   </div>

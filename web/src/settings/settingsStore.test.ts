@@ -63,9 +63,9 @@ describe("loading", () => {
   });
 
   it("shows the daemon's settings once loaded", async () => {
-    const { store } = await loadedStore({ agentsAtOnce: 9, permissionMode: "plan" });
+    const { store } = await loadedStore({ agentsAtOnce: 9, notifyWhen: "failed" });
     expect(store.getState().loading).toBe(false);
-    expect(store.getState().settings).toEqual({ ...DEFAULT_SETTINGS, agentsAtOnce: 9, permissionMode: "plan" });
+    expect(store.getState().settings).toEqual({ ...DEFAULT_SETTINGS, agentsAtOnce: 9, notifyWhen: "failed" });
   });
 
   it("loads once however often it is asked", async () => {
@@ -141,11 +141,11 @@ describe("changes", () => {
 
   it("sends one PUT per changed key and skips the rest", async () => {
     const { store, put } = await loadedStore();
-    store.update({ permissionMode: "bypassPermissions", workWithoutAsking: true, agentsAtOnce: 6 });
+    store.update({ notifyWhen: "everything", sessionPanelOpen: false, agentsAtOnce: 6 });
     await flush();
     expect(put.mock.calls).toEqual([
-      ["permissionMode", "bypassPermissions"],
-      ["workWithoutAsking", true],
+      ["sessionPanelOpen", false],
+      ["notifyWhen", "everything"],
     ]);
   });
 
@@ -174,7 +174,7 @@ describe("changes", () => {
 
   it("ignores values that are not valid", async () => {
     const { store, put } = await loadedStore();
-    const bad = JSON.parse('{"permissionMode":"yolo","agentsAtOnce":"many"}') as Partial<Settings>;
+    const bad = JSON.parse('{"notifyWhen":"yolo","agentsAtOnce":"many"}') as Partial<Settings>;
     store.update(bad);
     await flush();
     expect(put).not.toHaveBeenCalled();
@@ -315,13 +315,13 @@ describe("browser settings import", () => {
   });
 
   it("drops a key from a kept import once you choose it here", async () => {
-    localStorage.setItem("th-settings", JSON.stringify({ permissionMode: "bypassPermissions", agentsAtOnce: 9 }));
+    localStorage.setItem("th-settings", JSON.stringify({ notifyWhen: "everything", agentsAtOnce: 9 }));
     const { deps, put } = fakeDeps();
     put.mockRejectedValueOnce(down()).mockRejectedValueOnce(down());
     const store = createSettingsStore(deps);
     store.ensureLoaded();
     await flush();
-    store.update({ permissionMode: "default" });
+    store.update({ notifyWhen: "failed" });
     await flush();
     expect(JSON.parse(localStorage.getItem("th-settings") ?? "null")).toEqual({ agentsAtOnce: 9 });
   });

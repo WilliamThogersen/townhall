@@ -13,8 +13,7 @@ use super::repo::{self, Message, Resolved};
 use super::session::{talk, TurnEnd};
 use super::turns::TurnGuard;
 use crate::model::{
-    Conversation, ConversationStatus, EntryBody, NewMessage, PermissionMode, Repo,
-    CONVERSATION_AGENT_TYPE,
+    Conversation, ConversationStatus, EntryBody, NewMessage, Repo, CONVERSATION_AGENT_TYPE,
 };
 use crate::redact::redact;
 use crate::{ids, mcp, Context, Result};
@@ -195,7 +194,7 @@ async fn session_dir(
 
 /// The conversation's saved type `default`. A type that is missing leaves the built-in
 /// behaviour; so does one that no longer parses, with a warning.
-async fn persona(ctx: &Context, mode: PermissionMode) -> Result<Persona> {
+async fn persona(ctx: &Context) -> Result<Persona> {
     let found = match ctx.store()?.agent_type(CONVERSATION_AGENT_TYPE).await {
         Ok(found) => found,
         Err(e @ crate::Error::Corrupt { .. }) => {
@@ -209,7 +208,7 @@ async fn persona(ctx: &Context, mode: PermissionMode) -> Result<Persona> {
         }
         Err(e) => return Err(e),
     };
-    Ok(Persona::from_type(found.as_ref().map(|t| &t.def), mode))
+    Ok(Persona::from_type(found.as_ref().map(|t| &t.def)))
 }
 
 async fn plan(
@@ -232,7 +231,7 @@ async fn plan(
         true => ctx.store()?.profile().await?,
         false => String::new(),
     };
-    let persona = persona(ctx, settings.permission_mode).await?;
+    let persona = persona(ctx).await?;
     let system = prompt::system_prompt(&persona.prompt, attempt.note, &repos, Some(&profile));
     let turn = TurnArgs {
         session_id: conversation.session_id.clone(),

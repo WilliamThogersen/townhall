@@ -1,5 +1,5 @@
 //! `/api/settings`: the `settings` table. `PUT /api/settings/{key}` is the only way to change
-//! a setting, and so the only way to choose `skip all` (`bypassPermissions`).
+//! a setting. Permissions are not settings: each agent type sets its own.
 
 use axum::extract::{Path, State};
 use axum::response::Response;

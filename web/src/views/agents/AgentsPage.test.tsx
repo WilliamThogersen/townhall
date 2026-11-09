@@ -91,6 +91,24 @@ describe("AgentsPage", () => {
     expect(builderDetail.queryByText("effort")).not.toBeInTheDocument();
   });
 
+  it("shows skip all as bypassPermissions and a type with no mode as acceptEdits", async () => {
+    const skipper = anAgentTypeSummary({ name: "skipper", permissionMode: "bypassPermissions" });
+    vi.spyOn(library, "listAgentTypes").mockResolvedValue([builder, skipper, shellType]);
+    vi.mocked(library.getAgentType).mockImplementation((name) =>
+      Promise.resolve(
+        anAgentType({ ...(name === "skipper" ? skipper : shellType), source: `name = "${name}"\n` }),
+      ),
+    );
+    render(<AgentsPage />);
+    expect(within(await rowOf("skipper")).getByText("bypassPermissions", { selector: ".th-agent-mode" })).toBeInTheDocument();
+    await userEvent.click(await rowOf("skipper"));
+    const detail = within(await screen.findByRole("region", { name: "skipper" }));
+    expect(await detail.findByText(/bypassPermissions \(skip all/, { selector: "dd" })).toBeInTheDocument();
+    await userEvent.click(await rowOf("dev-server"));
+    const plain = within(await screen.findByRole("region", { name: "dev-server" }));
+    expect(await plain.findByText("acceptEdits", { selector: "dd" })).toBeInTheDocument();
+  });
+
   it("filters by effort", async () => {
     vi.spyOn(library, "listAgentTypes").mockResolvedValue([builder, { ...planner, effort: "xhigh" }]);
     render(<AgentsPage />);

@@ -262,20 +262,9 @@ An agent's terminal, opened from a task row, a task block or a control center ro
 
 `/settings`, from `settings` in the sidebar foot. `.th-settings` is an 800px column of groups (`.th-setting-group`: a rule title and a bordered list of `.th-setting-row`). Each row: bold label and a faint help line on the left, the control on the right; under 680px the control drops below. Changes save at once (`saved as you change them`), no save button.
 
-**Permissions** (Hive's modes, passed to every agent as `claude --permission-mode`). Default `accept edits`.
+**Agents** group: one row, `agents at once`. Permissions are not settings: each agent type sets its own `permission_mode` (`default`, `acceptEdits`, `plan` or `bypassPermissions`, which is skip all; `acceptEdits` when a type sets none), shown in the agents page type detail. Saving a type that sets `bypassPermissions` always asks the user to confirm its TOML.
 
-| Choice | Help line |
-|--------|-----------|
-| `ask` | agents ask before every edit or command. |
-| `accept edits` | edits go through, commands ask first. |
-| `plan` | agents plan first and change nothing. |
-| `auto` | agents decide what needs your approval. |
-| `skip all` | agents never ask. only use on repos you trust. **more** |
-
-- The help line follows the choice. `skip all` fills its segment red (`label[data-tone="danger"]`), turns the help line red and adds a `more` toggle that opens `.th-setting-more`: `every edit and command runs straight away (--dangerously-skip-permissions). townhall and agents can never switch to this themselves.`
-- Only this page can choose `skip all`. Townhall's own tools and agents may set the other four, never this one (as in Hive).
-
-**Other rows**: `work without asking` (switch), `agents at once` (stepper, 1 to 50), `when the repo is unclear` (`ask` or `guess`), `session panel` open by default (switch), `theme` (`dark`, `light`, `system`), `notify me when` (`needs you`, `+ failed`, `everything`), `learn about me` (switch, off by default), `profile` (full-width row: textarea, `save`, `reset` with an inline confirm; `no profile yet` when empty; the help line says it is not used while the switch is off).
+**Other rows**: `agents at once` (stepper, 1 to 50), `when the repo is unclear` (`ask` or `guess`), `session panel` open by default (switch), `theme` (`dark`, `light`, `system`), `notify me when` (`needs you`, `+ failed`, `everything`), `learn about me` (switch, off by default), `profile` (full-width row: textarea, `save`, `reset` with an inline confirm; `no profile yet` when empty; the help line says it is not used while the switch is off).
 
 **Forge accounts** (group between `conversations` and `appearance and notifications`, one full-width `accounts` row): a faint `.th-account-login` line (`log in first: gh auth login or glab auth login`), a bordered `.th-accounts` list, one `.th-account` per registered login (bold label, faint `github · login@host`, ghost `remove`, no confirm: adding it again is one step), or `no accounts yet: gh and glab run as whoever is logged in`. Under it a `.th-account-add` form, every control `--th-control-lg` high on one baseline: a `forge` caption over a `github` or `gitlab` segmented, `login`, `host` (placeholder `github.com` or `gitlab.com`, any self-hosted name) and `label` fields (the same faint-caption-over-`.th-input` as the add repository form) and `add`. A refused entry (not a login, a bad host, already registered) shows as a `.th-field-error` line under the form; the rest saves at once like every row. Tokens are never entered or shown here: townhall asks `gh` or `glab` for them when it runs a command.
 

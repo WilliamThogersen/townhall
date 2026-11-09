@@ -11,7 +11,7 @@ pub const DISK_GB_MAX: u32 = 100_000;
 pub const MIN_FREE_DISK_GB_DEFAULT: u32 = 5;
 
 /// Claude Code's `--permission-mode`, named as in `web/src/settings/settings.ts`.
-/// `BypassPermissions` is `skip all`: only `PUT /api/settings/permissionMode` may choose it.
+/// `BypassPermissions` is `skip all`; only an agent type's `permission_mode` sets it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PermissionMode {
@@ -58,8 +58,6 @@ pub enum NotifyWhen {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SettingKey {
-    PermissionMode,
-    WorkWithoutAsking,
     AgentsAtOnce,
     RepoUnclear,
     SessionPanelOpen,
@@ -73,9 +71,7 @@ pub enum SettingKey {
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 12] = [
-        Self::PermissionMode,
-        Self::WorkWithoutAsking,
+    pub const ALL: [SettingKey; 10] = [
         Self::AgentsAtOnce,
         Self::RepoUnclear,
         Self::SessionPanelOpen,
@@ -90,8 +86,6 @@ impl SettingKey {
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::PermissionMode => "permissionMode",
-            Self::WorkWithoutAsking => "workWithoutAsking",
             Self::AgentsAtOnce => "agentsAtOnce",
             Self::RepoUnclear => "repoUnclear",
             Self::SessionPanelOpen => "sessionPanelOpen",
@@ -121,13 +115,11 @@ impl SettingKey {
                 .map_err(|e| Error::InvalidInput(format!("invalid forge accounts: {e}")));
         }
         let valid = match self {
-            Self::PermissionMode => parses::<PermissionMode>(value),
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
-            Self::WorkWithoutAsking
-            | Self::SessionPanelOpen
-            | Self::LearnAboutMe
-            | Self::ReflectAfterTasks => value.is_boolean(),
+            Self::SessionPanelOpen | Self::LearnAboutMe | Self::ReflectAfterTasks => {
+                value.is_boolean()
+            }
             Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
             Self::GithubAccount => value.as_str().is_some_and(is_github_login),
             Self::ClonesDir => value.as_str().is_some_and(is_clones_dir),
@@ -164,8 +156,6 @@ fn parses<T: serde::de::DeserializeOwned>(value: &Value) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
-    pub permission_mode: PermissionMode,
-    pub work_without_asking: bool,
     pub agents_at_once: u32,
     pub repo_unclear: RepoUnclear,
     pub session_panel_open: bool,
@@ -187,8 +177,6 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            permission_mode: PermissionMode::AcceptEdits,
-            work_without_asking: false,
             agents_at_once: AGENTS_AT_ONCE_DEFAULT,
             repo_unclear: RepoUnclear::Ask,
             session_panel_open: true,
@@ -215,8 +203,6 @@ impl Settings {
     pub fn from_value(raw: &Value) -> Self {
         let d = Self::default();
         Self {
-            permission_mode: field(raw, SettingKey::PermissionMode, d.permission_mode),
-            work_without_asking: field(raw, SettingKey::WorkWithoutAsking, d.work_without_asking),
             agents_at_once: field(raw, SettingKey::AgentsAtOnce, d.agents_at_once),
             repo_unclear: field(raw, SettingKey::RepoUnclear, d.repo_unclear),
             session_panel_open: field(raw, SettingKey::SessionPanelOpen, d.session_panel_open),
@@ -266,8 +252,6 @@ mod tests {
         assert_eq!(
             v,
             json!({
-                "permissionMode": "acceptEdits",
-                "workWithoutAsking": false,
                 "agentsAtOnce": 6,
                 "repoUnclear": "ask",
                 "sessionPanelOpen": true,
@@ -289,9 +273,8 @@ mod tests {
 
     #[test]
     fn invalid_fields_fall_back_one_by_one() {
-        let raw = json!({"permissionMode": "plan", "agentsAtOnce": 99, "notifyWhen": "x", "repoUnclear": "guess", "townhallModel": "gpt"});
+        let raw = json!({"agentsAtOnce": 99, "notifyWhen": "x", "repoUnclear": "guess", "townhallModel": "gpt"});
         let s: Settings = serde_json::from_value(raw).unwrap();
-        assert_eq!(s.permission_mode, PermissionMode::Plan);
         assert_eq!(s.agents_at_once, AGENTS_AT_ONCE_DEFAULT);
         assert_eq!(s.notify_when, NotifyWhen::NeedsYou);
         assert_eq!(s.repo_unclear, RepoUnclear::Guess);
@@ -306,16 +289,13 @@ mod tests {
     #[test]
     fn keys_check_their_values() {
         let ok = [
-            (SettingKey::PermissionMode, json!("bypassPermissions")),
             (SettingKey::AgentsAtOnce, json!(50)),
-            (SettingKey::WorkWithoutAsking, json!(true)),
             (SettingKey::NotifyWhen, json!("everything")),
         ];
         for (key, value) in ok {
             assert_eq!(key.check(&value).unwrap(), value);
         }
         let bad = [
-            (SettingKey::PermissionMode, json!("yolo")),
             (SettingKey::AgentsAtOnce, json!(0)),
             (SettingKey::AgentsAtOnce, json!(51)),
             (SettingKey::AgentsAtOnce, json!("6")),
@@ -366,8 +346,19 @@ mod tests {
     }
 
     #[test]
+    fn stored_permission_settings_are_ignored() {
+        let old = json!({"permissionMode": "bypassPermissions", "workWithoutAsking": true, "agentsAtOnce": 4});
+        let s: Settings = serde_json::from_value(old).unwrap();
+        assert_eq!(s.agents_at_once, 4);
+        assert!(SettingKey::parse("permissionMode").is_err());
+        assert!(SettingKey::parse("workWithoutAsking").is_err());
+        let v = serde_json::to_value(&s).unwrap();
+        assert!(v.get("permissionMode").is_none() && v.get("workWithoutAsking").is_none());
+    }
+
+    #[test]
     fn learn_about_me_is_off_unless_stored_as_a_boolean() {
-        let old: Settings = serde_json::from_value(json!({"permissionMode": "plan"})).unwrap();
+        let old: Settings = serde_json::from_value(json!({"agentsAtOnce": 3})).unwrap();
         assert!(!old.learn_about_me, "a settings file from before the field");
         let on: Settings = serde_json::from_value(json!({"learnAboutMe": true})).unwrap();
         assert!(on.learn_about_me);
@@ -384,7 +375,7 @@ mod tests {
     #[test]
     fn reflect_after_tasks_is_off_unless_stored_as_a_boolean() {
         assert!(!Settings::default().reflect_after_tasks);
-        let old: Settings = serde_json::from_value(json!({"permissionMode": "plan"})).unwrap();
+        let old: Settings = serde_json::from_value(json!({"agentsAtOnce": 3})).unwrap();
         assert!(!old.reflect_after_tasks);
         let on: Settings = serde_json::from_value(json!({"reflectAfterTasks": true})).unwrap();
         assert!(on.reflect_after_tasks);

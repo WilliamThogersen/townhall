@@ -1,7 +1,6 @@
 //! Agent type tools (2.12, in unit 2.8b's file): `list_agent_types`, `read_agent_type` and
-//! `save_agent_type`, plus the type `create_task` runs a task as. A save that replaces a
-//! type, or any save while `workWithoutAsking` is off, is not saved: townhall shows the TOML
-//! in the thread and asks (`ask.rs`); the session saves it with `confirmed: true` once you
+//! `save_agent_type`, plus the type `create_task` runs a task as. A save is never made
+//! at once: townhall shows the TOML in the thread and asks (`ask.rs`); the session saves it with `confirmed: true` once you
 //! answered.
 
 use serde::Deserialize;
@@ -173,20 +172,17 @@ fn errors_text(errors: &[DefinitionError]) -> String {
     )
 }
 
-/// Saves at once only a new type while `workWithoutAsking` is on, or a type the user
-/// confirmed; anything else asks in the thread.
+/// Saves only a type the user confirmed, whatever it sets (skip all included); anything
+/// else asks in the thread.
 pub(super) async fn save(ctx: &Context, conversation_id: &str, input: SaveInput) -> Checked<Value> {
     let parsed = Store::check_agent_type(&input.source).map_err(|e| errors_text(&e))?;
     let store = ctx.store().map_err(text)?;
     let name = parsed.def.name.clone();
     let replaces = store.agent_type(&name).await.map_err(text)?.is_some();
-    let on_its_own = !replaces && ctx.settings().await.map_err(text)?.work_without_asking;
-    if !on_its_own && !input.confirmed {
+    if !input.confirmed {
         return ask::ask(store, conversation_id, &name, &parsed.source, replaces).await;
     }
-    if !on_its_own {
-        ask::check_confirmed(store, conversation_id, &name, &parsed.source).await?;
-    }
+    ask::check_confirmed(store, conversation_id, &name, &parsed.source).await?;
     let (saved, replaced) = store.save_agent_type(&parsed.source).await.map_err(text)?;
     store
         .forget_agent_type_ask(conversation_id, &name)

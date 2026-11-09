@@ -17,7 +17,7 @@ import type {
 } from "./types";
 
 const adapter = oneOf<AgentAdapterKind>(["claude", "shell"]);
-const mode = oneOf<AgentTypeMode>(["default", "acceptEdits", "plan"]);
+const mode = oneOf<AgentTypeMode>(["default", "acceptEdits", "plan", "bypassPermissions"]);
 const effort = oneOf<AgentTypeEffort>(["low", "medium", "high", "xhigh", "max"]);
 const range = oneOf<UsageRange>(["24h", "7d", "30d"]);
 

@@ -35,7 +35,7 @@ impl Persona {
 
     /// `def` applied on the built-in values. Its tools lose every entry that writes or
     /// runs things, so a saved type cannot let the session edit a repo.
-    pub fn from_type(def: Option<&AgentDef>, setting_mode: PermissionMode) -> Self {
+    pub fn from_type(def: Option<&AgentDef>) -> Self {
         let built_in = Self::built_in();
         let Some(def) = def.filter(|d| d.adapter == AdapterKind::Claude) else {
             return built_in;
@@ -48,7 +48,7 @@ impl Persona {
             .collect();
         Self {
             model: fields.model.unwrap_or(built_in.model),
-            permission_mode: def.conversation_mode(setting_mode),
+            permission_mode: def.conversation_mode(),
             tools: if tools.is_empty() {
                 built_in.tools
             } else {
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn no_type_keeps_the_built_in_behaviour() {
-        let got = Persona::from_type(None, PermissionMode::AcceptEdits);
+        let got = Persona::from_type(None);
         assert_eq!(got, built_in());
         assert_eq!(got.permission_mode, PermissionMode::Default);
         assert_eq!(got.model, "opus");
@@ -100,7 +100,7 @@ mod tests {
         let d = def(
             "model = \"haiku\"\ntools = [\"Read\", \"mcp__townhall__create_task\"]\nprompt = \"be kind\"\n",
         );
-        let got = Persona::from_type(Some(&d), PermissionMode::AcceptEdits);
+        let got = Persona::from_type(Some(&d));
         assert_eq!(got.model, "haiku");
         assert_eq!(got.tools, ["Read", "mcp__townhall__create_task"]);
         assert_eq!(got.prompt, "be kind");
@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn blank_fields_keep_the_built_in_values() {
         let d = def("model = \" \"\nprompt = \"  \"\n");
-        let got = Persona::from_type(Some(&d), PermissionMode::AcceptEdits);
+        let got = Persona::from_type(Some(&d));
         assert_eq!(got, built_in());
         assert_eq!(got.model, "opus");
     }
@@ -117,40 +117,24 @@ mod tests {
     #[test]
     fn tools_that_write_or_run_things_are_never_allowed() {
         let d = def("tools = [\"Read\", \"Bash(git *)\", \"Edit\", \"Write\", \"Grep\"]\n");
-        let got = Persona::from_type(Some(&d), PermissionMode::AcceptEdits);
+        let got = Persona::from_type(Some(&d));
         assert_eq!(got.tools, ["Read", "Grep"]);
         let only_denied = def("tools = [\"Bash\"]\n");
-        let got = Persona::from_type(Some(&only_denied), PermissionMode::AcceptEdits);
+        let got = Persona::from_type(Some(&only_denied));
         assert_eq!(got.tools, allowed_tools());
     }
 
     #[test]
-    fn the_permission_mode_is_never_looser_than_the_setting() {
-        let mode = |own: &str, setting| {
+    fn the_conversation_runs_in_its_types_mode_and_never_skips_permissions() {
+        let mode = |own: &str| {
             let d = def(&format!("permission_mode = \"{own}\"\n"));
-            Persona::from_type(Some(&d), setting).permission_mode
+            Persona::from_type(Some(&d)).permission_mode
         };
-        assert_eq!(
-            mode("acceptEdits", PermissionMode::AcceptEdits),
-            PermissionMode::AcceptEdits
-        );
-        assert_eq!(
-            mode("acceptEdits", PermissionMode::Default),
-            PermissionMode::Default
-        );
-        assert_eq!(
-            mode("acceptEdits", PermissionMode::Plan),
-            PermissionMode::Plan
-        );
-        assert_eq!(
-            mode("default", PermissionMode::BypassPermissions),
-            PermissionMode::Default
-        );
-        assert_eq!(
-            mode("plan", PermissionMode::AcceptEdits),
-            PermissionMode::Plan
-        );
-        let unset = Persona::from_type(Some(&def("")), PermissionMode::BypassPermissions);
+        assert_eq!(mode("acceptEdits"), PermissionMode::AcceptEdits);
+        assert_eq!(mode("default"), PermissionMode::Default);
+        assert_eq!(mode("plan"), PermissionMode::Plan);
+        assert_eq!(mode("bypassPermissions"), PermissionMode::Default);
+        let unset = Persona::from_type(Some(&def("")));
         assert_eq!(unset.permission_mode, PermissionMode::Default);
     }
 
@@ -161,7 +145,7 @@ mod tests {
         )
         .unwrap()
         .def;
-        let got = Persona::from_type(Some(&shell), PermissionMode::AcceptEdits);
+        let got = Persona::from_type(Some(&shell));
         assert_eq!(got, built_in());
     }
 }
