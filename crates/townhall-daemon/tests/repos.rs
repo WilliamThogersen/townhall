@@ -285,10 +285,23 @@ async fn a_link_is_cloned_into_the_clone_dir_of_the_request() {
     let body = json!({"path": url, "cloneDir": dev});
     let (s, v) = call(&app, "POST", "/api/repos", Some(body)).await;
     assert_eq!(s, StatusCode::CREATED, "{v}");
-    assert_eq!(v["data"]["path"], json!(dev.join("shop").canonicalize().unwrap()));
+    assert_eq!(
+        v["data"]["path"],
+        json!(dev.join("shop").canonicalize().unwrap())
+    );
     std::fs::create_dir_all(dev.join("taken")).unwrap();
     let taken = format!("file://{}/taken.git", env.root.path().display());
-    git(env.root.path(), &["clone", "-q", "--bare", &from, &env.root.path().join("taken.git").to_string_lossy()]).await;
+    git(
+        env.root.path(),
+        &[
+            "clone",
+            "-q",
+            "--bare",
+            &from,
+            &env.root.path().join("taken.git").to_string_lossy(),
+        ],
+    )
+    .await;
     let body = json!({"path": taken, "cloneDir": dev});
     let (s, v) = call(&app, "POST", "/api/repos", Some(body)).await;
     assert_eq!(s, StatusCode::CONFLICT, "{v}");
@@ -304,16 +317,31 @@ async fn a_repo_is_renamed_and_gets_another_base_branch_through_patch() {
     let body = json!({"name": "store", "baseBranch": "develop"});
     let (s, v) = call(&app, "PATCH", "/api/repos/beta", Some(body)).await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    assert_eq!((&v["data"]["name"], &v["data"]["baseBranch"]), (&json!("store"), &json!("develop")));
+    assert_eq!(
+        (&v["data"]["name"], &v["data"]["baseBranch"]),
+        (&json!("store"), &json!("develop"))
+    );
     let (_, v) = call(&app, "GET", "/api/repos", None).await;
     assert_eq!(v["data"][1]["name"], "store");
     let (s, _) = call(&app, "PATCH", "/api/repos/beta", Some(json!({"name": "x"}))).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
-    let (s, _) = call(&app, "PATCH", "/api/repos/store", Some(json!({"name": "ALPHA"}))).await;
+    let (s, _) = call(
+        &app,
+        "PATCH",
+        "/api/repos/store",
+        Some(json!({"name": "ALPHA"})),
+    )
+    .await;
     assert_eq!(s, StatusCode::CONFLICT);
     let (s, _) = call(&app, "PATCH", "/api/repos/store", Some(json!({}))).await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
-    let (s, _) = call(&app, "PATCH", "/api/repos/store", Some(json!({"token": "x"}))).await;
+    let (s, _) = call(
+        &app,
+        "PATCH",
+        "/api/repos/store",
+        Some(json!({"token": "x"})),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
 

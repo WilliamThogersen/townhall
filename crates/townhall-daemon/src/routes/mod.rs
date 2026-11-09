@@ -25,7 +25,8 @@ mod tasks;
 mod usage;
 
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{delete, get, post, put};use axum::Router;
+use axum::routing::{delete, get, post, put};
+use axum::Router;
 use townhall_core::model::{MAX_ARTIFACT_BYTES, MAX_ATTACHMENT_BYTES};
 
 use crate::state::AppState;

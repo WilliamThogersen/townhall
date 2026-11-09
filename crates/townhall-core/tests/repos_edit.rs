@@ -41,19 +41,37 @@ async fn a_rename_keeps_the_path_and_accounts_and_follows_into_tasks_and_convers
     let env = env();
     let shop = env.add("shop", "main").await;
     let accounts = json!([{"forge": "github", "login": "work-me"}]);
-    env.s.store.set_setting(SettingKey::ForgeAccounts, accounts).await.unwrap();
+    env.s
+        .store
+        .set_setting(SettingKey::ForgeAccounts, accounts)
+        .await
+        .unwrap();
     let put = townhall_core::model::PutRepoAccounts {
         github_account: Some(Some("work-me".into())),
         ..Default::default()
     };
     env.s.store.set_repo_accounts("shop", put).await.unwrap();
     let conv = env.s.store.create_conversation().await.unwrap();
-    env.s.store.update_conversation(&conv.id, |c| {
-        Ok(townhall_core::model::Conversation { linked_repo: Some("shop".into()), ..c })
-    }).await.unwrap();
-    env.s.store.create_task(&conv.id, new_task("fix-cart")).await.unwrap();
+    env.s
+        .store
+        .update_conversation(&conv.id, |c| {
+            Ok(townhall_core::model::Conversation {
+                linked_repo: Some("shop".into()),
+                ..c
+            })
+        })
+        .await
+        .unwrap();
+    env.s
+        .store
+        .create_task(&conv.id, new_task("fix-cart"))
+        .await
+        .unwrap();
 
-    let rename = PatchRepo { name: Some("store".into()), ..patch() };
+    let rename = PatchRepo {
+        name: Some("store".into()),
+        ..patch()
+    };
     let got = env.registry.edit("SHOP", &rename).await.unwrap();
     assert_eq!(got.name, "store");
     assert_eq!(got.path, shop.path);
@@ -70,17 +88,31 @@ async fn a_name_taken_by_another_repo_is_a_conflict_and_changes_nothing() {
     let env = env();
     env.add("shop", "main").await;
     env.add("cart", "main").await;
-    let rename = PatchRepo { name: Some("CART".into()), base_branch: Some("main".into()), ..patch() };
+    let rename = PatchRepo {
+        name: Some("CART".into()),
+        base_branch: Some("main".into()),
+        ..patch()
+    };
     let err = env.registry.edit("shop", &rename).await.unwrap_err();
     assert!(matches!(err, Error::Conflict(_)), "{err:?}");
-    let names: Vec<String> = env.registry.list().await.unwrap().into_iter().map(|r| r.name).collect();
+    let names: Vec<String> = env
+        .registry
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| r.name)
+        .collect();
     assert_eq!(names, ["shop", "cart"]);
 }
 
 #[tokio::test]
 async fn an_unknown_repo_is_missing() {
     let env = env();
-    let rename = PatchRepo { name: Some("x".into()), ..patch() };
+    let rename = PatchRepo {
+        name: Some("x".into()),
+        ..patch()
+    };
     let err = env.registry.edit("ghost", &rename).await.unwrap_err();
     assert!(matches!(err, Error::Missing { .. }), "{err:?}");
 }
@@ -90,12 +122,18 @@ async fn the_base_branch_changes_to_an_existing_branch_only() {
     let env = env();
     let shop = env.add("shop", "main").await;
     git(&shop.path, &["branch", "develop"]).await;
-    let to = |b: &str| PatchRepo { base_branch: Some(b.into()), ..patch() };
+    let to = |b: &str| PatchRepo {
+        base_branch: Some(b.into()),
+        ..patch()
+    };
     let got = env.registry.edit("shop", &to("develop")).await.unwrap();
     assert_eq!(got.base_branch, "develop");
     let err = env.registry.edit("shop", &to("nope")).await.unwrap_err();
     assert!(matches!(err, Error::InvalidInput(_)), "{err:?}");
-    assert_eq!(env.registry.get("shop").await.unwrap().base_branch, "develop");
+    assert_eq!(
+        env.registry.get("shop").await.unwrap().base_branch,
+        "develop"
+    );
 }
 
 #[tokio::test]
@@ -120,8 +158,16 @@ async fn a_refused_path_edit_changes_neither_the_name_nor_the_registry() {
     let shop = env.add("shop", "main").await;
     let stranger = init_named(&env.s.dir.path().join("other"), "stranger", "main").await;
     let amend = [
-        "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--amend", "--allow-empty", "-q",
-        "-m", "a different history",
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "--amend",
+        "--allow-empty",
+        "-q",
+        "-m",
+        "a different history",
     ];
     git(&stranger, &amend).await;
     let bad = PatchRepo {

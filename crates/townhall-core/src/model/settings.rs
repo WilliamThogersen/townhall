@@ -479,16 +479,29 @@ mod tests {
     fn the_clones_dir_is_empty_or_an_absolute_or_home_folder() {
         for good in ["", "~/Developer", "~", "/srv/code"] {
             let value = json!(good);
-            assert_eq!(SettingKey::ClonesDir.check(&value).unwrap(), value, "{good}");
+            assert_eq!(
+                SettingKey::ClonesDir.check(&value).unwrap(),
+                value,
+                "{good}"
+            );
         }
-        for bad in [json!("relative/dir"), json!("  "), json!("~other"), json!(7), json!(null)] {
+        for bad in [
+            json!("relative/dir"),
+            json!("  "),
+            json!("~other"),
+            json!(7),
+            json!(null),
+        ] {
             assert!(SettingKey::ClonesDir.check(&bad).is_err(), "{bad}");
         }
         let s: Settings = serde_json::from_value(json!({"clonesDir": "~/Developer"})).unwrap();
         assert_eq!(s.clones_dir, "~/Developer");
         let bad: Settings = serde_json::from_value(json!({"clonesDir": "x"})).unwrap();
         assert_eq!(bad.clones_dir, "");
-        assert_eq!(SettingKey::parse("clonesDir").unwrap(), SettingKey::ClonesDir);
+        assert_eq!(
+            SettingKey::parse("clonesDir").unwrap(),
+            SettingKey::ClonesDir
+        );
     }
 
     #[test]

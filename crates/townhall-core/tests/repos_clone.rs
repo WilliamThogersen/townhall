@@ -97,7 +97,10 @@ async fn the_clones_dir_setting_is_the_default_base_and_the_request_overrides_it
     let env = env();
     let (dev, other) = (env.dir.path().join("dev"), env.dir.path().join("other"));
     let value = json!(dev.to_string_lossy());
-    env.store.set_setting(SettingKey::ClonesDir, value).await.unwrap();
+    env.store
+        .set_setting(SettingKey::ClonesDir, value)
+        .await
+        .unwrap();
     let a = origin(&env.dir.path().join("a"), "shop", "main").await;
     let b = origin(&env.dir.path().join("b"), "cart", "main").await;
     let got = env.registry.add(&add(&a)).await.unwrap();

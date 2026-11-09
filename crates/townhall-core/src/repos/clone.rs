@@ -113,7 +113,14 @@ mod tests {
 
     fn git(dir: &Path, args: &[&str]) {
         let status = std::process::Command::new("git")
-            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
             .args(args)
             .current_dir(dir)
             .status()
@@ -136,7 +143,9 @@ mod tests {
     #[test]
     fn the_clone_target_is_the_repo_name_inside_the_base_folder() {
         let remote = classify("git@github.com:acme/shop.git").unwrap();
-        let Source::Remote(remote) = remote else { panic!() };
+        let Source::Remote(remote) = remote else {
+            panic!()
+        };
         assert_eq!(
             clone_target(Path::new("/dev/projects"), &remote),
             PathBuf::from("/dev/projects/shop")
@@ -163,7 +172,10 @@ mod tests {
         let err = clone_into_base(&base, &remote).unwrap_err();
         assert!(matches!(err, Error::Conflict(_)), "{err:?}");
         assert!(err.to_string().contains("already exists"), "{err}");
-        assert_eq!(std::fs::read_to_string(base.join("shop/keep.txt")).unwrap(), "mine");
+        assert_eq!(
+            std::fs::read_to_string(base.join("shop/keep.txt")).unwrap(),
+            "mine"
+        );
     }
 
     #[test]

@@ -26,7 +26,12 @@ fn blank(what: &str) -> Error {
 /// Checks `patch` against `current` and the other `known` repos: something must change, a new
 /// name is valid and free (ignoring case, but `current` itself may change its case), a base
 /// branch is not blank, a path is absolute, and `moveFolder` comes with a path.
-pub fn plan(known: &[Repo], current: &Repo, patch: &PatchRepo, home: Option<&Path>) -> Result<EditPlan> {
+pub fn plan(
+    known: &[Repo],
+    current: &Repo,
+    patch: &PatchRepo,
+    home: Option<&Path>,
+) -> Result<EditPlan> {
     if patch.name.is_none() && patch.base_branch.is_none() && patch.path.is_none() {
         return Err(Error::InvalidInput("nothing to change".into()));
     }
@@ -129,7 +134,12 @@ pub struct Applied {
 
 /// Does the git and disk part of `plan`. Every check runs before anything moves, so a refusal
 /// leaves the folder where it was. `others` are the other registered repos.
-pub fn apply_disk(home: &crate::Home, repo: &Repo, plan: &EditPlan, others: &[Repo]) -> Result<Applied> {
+pub fn apply_disk(
+    home: &crate::Home,
+    repo: &Repo,
+    plan: &EditPlan,
+    others: &[Repo],
+) -> Result<Applied> {
     let worktrees = home.root().join(crate::home::WORKTREES_DIR);
     let wanted = match &plan.path {
         None => None,
@@ -216,7 +226,11 @@ fn check_move(repo: &Repo, target: &Path) -> Result<()> {
 
 /// Refuses while task worktrees hang off the repo: their folders are keyed by the repo path.
 fn check_no_worktrees(repo: &Repo) -> Result<()> {
-    let out = run_blocking("git", &["worktree", "list", "--porcelain"], Some(&repo.path))?;
+    let out = run_blocking(
+        "git",
+        &["worktree", "list", "--porcelain"],
+        Some(&repo.path),
+    )?;
     let linked = out.lines().filter(|l| l.starts_with("worktree ")).count() > 1;
     if linked {
         return Err(Error::Conflict(format!(
@@ -470,7 +484,10 @@ mod tests {
         let shop = init(&w.tmp.path().join("shop"), "one");
         let tree = w.tmp.path().join("tree");
         let tree_arg = tree.to_string_lossy();
-        git(&shop.path, &["worktree", "add", "-q", "-b", "task", &tree_arg]);
+        git(
+            &shop.path,
+            &["worktree", "add", "-q", "-b", "task", &tree_arg],
+        );
         let target = w.tmp.path().join("elsewhere");
         let mv = PatchRepo {
             move_folder: true,
