@@ -143,6 +143,7 @@ export const anAgentTypeSummary = (over: Partial<AgentTypeSummary> = {}): AgentT
   description: "implements a task, tests first",
   adapter: "claude",
   model: "sonnet",
+  effort: null,
   permissionMode: "acceptEdits",
   avatar: null,
   updatedAt: "2026-01-01T00:00:00Z",
