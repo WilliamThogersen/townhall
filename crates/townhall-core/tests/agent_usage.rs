@@ -1,5 +1,5 @@
 use townhall_core::model::AgentUsage;
-use townhall_core::steps::transcript_tokens;
+use townhall_core::steps::{transcript_model, transcript_tokens};
 
 mod common;
 use common::{new_task, store_env};
@@ -59,28 +59,87 @@ async fn usage_sums_runs_and_tokens_per_agent_type() {
     assert!(env.store.set_task_tokens("nope", 1).await.is_err());
 }
 
+#[test]
+fn transcript_model_is_the_last_real_model() {
+    let jsonl = [
+        r#"{"type":"assistant","message":{"id":"m1","model":"claude-a"}}"#,
+        "not json",
+        r#"{"type":"assistant","message":{"id":"m2","model":"claude-b"}}"#,
+        r#"{"type":"assistant","message":{"id":"m3"}}"#,
+        r#"{"type":"assistant","message":{"id":"m4","model":"<synthetic>"}}"#,
+        r#"{"type":"assistant","message":{"id":"m5","model":""}}"#,
+    ]
+    .join("\n");
+    assert_eq!(transcript_model(&jsonl), Some("claude-b".to_string()));
+    assert_eq!(transcript_model(""), None);
+    assert_eq!(
+        transcript_model(r#"{"message":{"model":"<synthetic>"}}"#),
+        None
+    );
+}
+
 #[tokio::test]
-async fn tokens_for_agent_read_the_worktrees_newest_transcript() {
+async fn usage_for_agent_reads_the_worktrees_newest_transcript() {
     use std::fs;
-    use townhall_core::steps::{project_dir_for, tokens_for_agent};
+    use townhall_core::steps::{project_dir_for, usage_for_agent, TranscriptUsage};
     let projects = tempfile::TempDir::new().unwrap();
     let worktree = tempfile::TempDir::new().unwrap();
     assert_eq!(
-        tokens_for_agent(projects.path(), worktree.path())
+        usage_for_agent(projects.path(), worktree.path())
             .await
             .unwrap(),
-        0
+        TranscriptUsage::default()
     );
     let dir = project_dir_for(projects.path(), worktree.path());
     fs::create_dir_all(&dir).unwrap();
-    let line = r#"{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":3,"output_tokens":4}}}"#;
+    let line = r#"{"type":"assistant","message":{"id":"m1","model":"claude-x","usage":{"input_tokens":3,"output_tokens":4}}}"#;
     fs::write(dir.join("s.jsonl"), line).unwrap();
     assert_eq!(
-        tokens_for_agent(projects.path(), worktree.path())
+        usage_for_agent(projects.path(), worktree.path())
             .await
             .unwrap(),
-        7
+        TranscriptUsage {
+            tokens: 7,
+            model: Some("claude-x".into())
+        }
     );
     let gone = worktree.path().join("gone");
-    assert_eq!(tokens_for_agent(projects.path(), &gone).await.unwrap(), 0);
+    assert_eq!(
+        usage_for_agent(projects.path(), &gone).await.unwrap(),
+        TranscriptUsage::default()
+    );
+}
+
+#[tokio::test]
+async fn agent_runs_list_one_types_tasks_newest_first() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    let coder = townhall_core::model::NewTask {
+        agent: "coder".into(),
+        ..new_task("x")
+    };
+    for task in [new_task("a"), coder, new_task("b"), new_task("c")] {
+        env.store.create_task(&c.id, task).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let runs = env.store.agent_runs("BUILDER", 10).await.unwrap();
+    let names: Vec<&str> = runs.iter().map(|r| r.task.as_str()).collect();
+    assert_eq!(names, ["c", "b", "a"]);
+    assert_eq!(runs[0].model, None);
+    assert_eq!(runs[0].tokens, 0);
+    assert_eq!(env.store.agent_runs("builder", 2).await.unwrap().len(), 2);
+    assert!(env.store.agent_runs("nobody", 10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn task_model_and_tokens_are_stored_on_the_run() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    env.store.create_task(&c.id, new_task("a")).await.unwrap();
+    env.store.set_task_model("A", "claude-x").await.unwrap();
+    env.store.set_task_tokens("a", 12).await.unwrap();
+    let runs = env.store.agent_runs("builder", 10).await.unwrap();
+    assert_eq!(runs[0].model.as_deref(), Some("claude-x"));
+    assert_eq!(runs[0].tokens, 12);
+    assert!(env.store.set_task_model("nope", "m").await.is_err());
 }

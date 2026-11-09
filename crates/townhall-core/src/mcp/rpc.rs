@@ -56,7 +56,13 @@ fn initialize(params: &Map<String, Value>, instructions: &str) -> Value {
 fn tool_list(tools: Vec<ToolDef>) -> Value {
     let listed: Vec<Value> = tools
         .into_iter()
-        .map(|t| json!({ "name": t.name, "description": t.description, "inputSchema": t.input_schema }))
+        .map(|t| {
+            let mut tool = json!({ "name": t.name, "description": t.description, "inputSchema": t.input_schema });
+            if t.read_only {
+                tool["annotations"] = json!({ "readOnlyHint": true, "destructiveHint": false });
+            }
+            tool
+        })
         .collect();
     json!({ "tools": listed })
 }
@@ -220,6 +226,44 @@ mod tests {
         );
     }
 
+    /// The names `tools/list` marks `readOnlyHint: true`, checking every tool is either
+    /// marked (with `destructiveHint: false`) or carries no `annotations` at all.
+    fn read_only_names(tools: Vec<ToolDef>) -> Vec<&'static str> {
+        let listed = tool_list(tools.clone());
+        let mut marked = vec![];
+        for (def, wire) in tools.iter().zip(listed["tools"].as_array().unwrap()) {
+            if let Some(a) = wire.get("annotations") {
+                assert_eq!(
+                    a,
+                    &json!({"readOnlyHint": true, "destructiveHint": false}),
+                    "{}",
+                    def.name
+                );
+                marked.push(def.name);
+            }
+        }
+        marked
+    }
+
+    #[test]
+    fn tools_list_marks_only_the_store_and_read_tools_read_only() {
+        assert_eq!(
+            read_only_names(crate::mcp::task_tools_list()),
+            ["hand_back", "add_artifact", "list_artifacts"]
+        );
+        assert_eq!(
+            read_only_names(crate::mcp::tools()),
+            [
+                "task_status",
+                "list_agent_types",
+                "read_agent_type",
+                "read_logs",
+                "log_summary",
+                "conversation_insights"
+            ]
+        );
+    }
+
     #[tokio::test]
     async fn notifications_and_invalid_messages() {
         let note = json!({"jsonrpc": "2.0", "method": "notifications/initialized"});
@@ -272,7 +316,8 @@ mod tests {
                 "read_agent_type",
                 "save_agent_type",
                 "read_logs",
-                "log_summary"
+                "log_summary",
+                "conversation_insights"
             ]
         );
         assert_eq!(got[2]["error"]["code"], INVALID_REQUEST);

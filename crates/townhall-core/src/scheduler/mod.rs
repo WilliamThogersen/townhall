@@ -9,6 +9,9 @@
 //!   sets. The agent watcher (2.5) owns `needsYou`, `error` and `ended`.
 //! - An `ended` task whose branch has commits of its own and is merged into its base
 //!   branch becomes `merged`, with an `agent` `passed` entry. It never merges or deletes.
+//! - A task whose agent ended under a `check` is verified (`verify.rs`): the check runs in its
+//!   worktree, a failure queues it again with the output in its brief (up to `maxRetries`),
+//!   then it needs the user.
 //! - Safe across restarts: it never starts an agent for a name that has a worktree or a
 //!   session. A queued task whose agent exists (a start cut short) is adopted as `working`.
 //!
@@ -23,6 +26,7 @@ mod plan;
 pub mod reflect;
 pub mod report;
 pub mod requires;
+mod verify;
 
 use std::time::Duration;
 
@@ -63,6 +67,8 @@ pub struct Pass {
     pub merged: Vec<String>,
     /// Ended tasks handed on to the `reflector` type (`reflect.rs`).
     pub reflected: Vec<String>,
+    /// Tasks whose check this pass started (`verify.rs`).
+    pub verifying: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -123,9 +129,11 @@ pub async fn run_once(ctx: &Context) -> Result<Pass> {
     if !reflected.is_empty() {
         tasks = ctx.store()?.all_tasks().await?;
     }
+    let verifying = verify::start(ctx, &tasks);
     let pass = launch::start_ready(ctx, &tasks).await?;
     let (merged, warnings) = merged::detect(ctx, &tasks).await?;
     Ok(Pass {
+        verifying,
         merged,
         reflected,
         warnings: [pass.warnings.clone(), reflect_warnings, warnings].concat(),

@@ -8,12 +8,13 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::context::Context;
-use crate::model::{Conversation, CreateTaskInput, NewTask, Task};
+use crate::model::{Conversation, CreateTaskInput, Done, NewTask, Task, DEFAULT_MAX_RETRIES};
 use crate::redact::redact;
 
 use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
 use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
+use super::insights::{self as insight_tools, CONVERSATION_INSIGHTS};
 use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 use super::logs::{self as log_tools, LOG_SUMMARY, READ_LOGS};
 use super::open_pr::{self, OPEN_PR};
@@ -73,6 +74,7 @@ impl ToolRunner for TaskTools<'_> {
             }
             READ_LOGS => log_tools::read(self.ctx, parse(arguments)?).await,
             LOG_SUMMARY => log_tools::summary(self.ctx, parse(arguments)?).await,
+            CONVERSATION_INSIGHTS => insight_tools::insights(self.ctx, parse(arguments)?).await,
             other => Err(unknown_tool(other, &tools())),
         }
     }
@@ -119,6 +121,12 @@ impl TaskTools<'_> {
             attachments: input.attachments,
             agent,
             pr_base,
+            done: Done {
+                done_when: input.done_when,
+                check: input.check,
+                max_retries: input.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
+                verify: None,
+            },
         };
         let task = store
             .create_task(self.conversation_id, new)

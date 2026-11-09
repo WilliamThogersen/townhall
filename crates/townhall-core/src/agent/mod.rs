@@ -70,6 +70,7 @@ pub async fn start(
     let command = adapter.launch_command(options)?;
     let wt = worktree::create(ws, name, base).await?;
     if let Err(cause) = tmux::spawn(ws.key(), name, &wt.path, &command, adapter.kind()).await {
+        let cause = adapter::hide_env(cause, options);
         return Err(match worktree::remove(ws, name).await {
             Ok(()) => cause,
             Err(cleanup) => Error::RollbackFailed {
@@ -101,7 +102,9 @@ pub async fn restart(
         Err(e) if tmux_absent(&e) => {}
         Err(e) => return Err(e),
     }
-    tmux::spawn(ws.key(), name, &wt.path, &command, adapter.kind()).await?;
+    tmux::spawn(ws.key(), name, &wt.path, &command, adapter.kind())
+        .await
+        .map_err(|e| adapter::hide_env(e, options))?;
     Ok(from_worktree(wt, Some(adapter.kind().to_string()), true))
 }
 

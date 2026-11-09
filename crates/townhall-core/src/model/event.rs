@@ -10,6 +10,9 @@ use super::{AgentInfo, Conversation, Task, ThreadEntry};
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
+// `Task` grew with its `done` fields; boxing it would change every `TaskUpdated` site for no
+// gain, since events are built once and sent on at once.
+#[allow(clippy::large_enum_variant)]
 pub enum ServerEvent {
     ConversationUpdated {
         conversation: Conversation,

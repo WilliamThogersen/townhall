@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use crate::model::{Handoff, Task, TaskState};
+use crate::model::{Done, Handoff, Task, TaskState};
 
 /// `ended` or `merged`: a task an `after` list waits for is done. `error` is not: a task
 /// waiting for one stays queued.
@@ -61,17 +61,40 @@ fn handed_back(handoffs: &[Handoff]) -> String {
     }
 }
 
-/// A task's brief: its title as a heading, its prompt, what its hand backs said, then its
-/// attachments' paths.
-pub fn brief_text(title: &str, prompt: &str, files: &[PathBuf], handoffs: &[Handoff]) -> String {
+/// What finished means and the check that proves it: nothing when the task has neither.
+fn done_when(done: &Done) -> String {
+    let when = done
+        .done_when
+        .as_deref()
+        .map(str::trim)
+        .filter(|w| !w.is_empty());
+    let when = when.map(|w| format!("\n\n## Done when\n\n{w}"));
+    let check = done.check.as_deref().map(|c| {
+        format!(
+            "\n\nWhen you finish, townhall runs `{c}` in your worktree. If it fails you are started again with its output."
+        )
+    });
+    [when, check].into_iter().flatten().collect()
+}
+
+/// A task's brief: its title as a heading, its prompt, when it is done, what its hand backs
+/// said, then its attachments' paths.
+pub fn brief_text(
+    title: &str,
+    prompt: &str,
+    done: &Done,
+    files: &[PathBuf],
+    handoffs: &[Handoff],
+) -> String {
     let listed: Vec<String> = files.iter().map(|f| format!("- {}", f.display())).collect();
     let attached = match listed.is_empty() {
         true => String::new(),
         false => format!("\n\nFiles attached to this task:\n{}", listed.join("\n")),
     };
     format!(
-        "# {title}\n\n{}{}{attached}\n",
+        "# {title}\n\n{}{}{}{attached}\n",
         prompt.trim_end(),
+        done_when(done),
         handed_back(handoffs)
     )
 }
@@ -105,6 +128,7 @@ mod tests {
             agent: "builder".into(),
             blocked: None,
             pr_base: None,
+            done: Default::default(),
         }
     }
 
@@ -148,11 +172,46 @@ mod tests {
 
     #[test]
     fn the_brief_lists_attachments_after_the_prompt() {
-        assert_eq!(brief_text("fix", "do it\n\n", &[], &[]), "# fix\n\ndo it\n");
+        let none = Done::default();
+        assert_eq!(
+            brief_text("fix", "do it\n\n", &none, &[], &[]),
+            "# fix\n\ndo it\n"
+        );
         let files = [PathBuf::from("/h/a.png"), PathBuf::from("/h/b c.txt")];
         assert_eq!(
-            brief_text("fix", "do it", &files, &[]),
+            brief_text("fix", "do it", &none, &files, &[]),
             "# fix\n\ndo it\n\nFiles attached to this task:\n- /h/a.png\n- /h/b c.txt\n"
+        );
+    }
+
+    #[test]
+    fn the_brief_says_when_the_task_is_done_and_what_checks_it() {
+        let done = Done {
+            done_when: Some("all tests pass\n".into()),
+            check: Some("npm test".into()),
+            ..Done::default()
+        };
+        let files = [PathBuf::from("/a/b.png")];
+        assert_eq!(
+            brief_text("fix", "do it", &done, &files, &[]),
+            "# fix\n\ndo it\n\n## Done when\n\nall tests pass\n\nWhen you finish, townhall runs `npm test` in your worktree. If it fails you are started again with its output.\n\nFiles attached to this task:\n- /a/b.png\n"
+        );
+        let only_check = Done {
+            check: Some("npm test".into()),
+            ..Done::default()
+        };
+        let text = brief_text("fix", "do it", &only_check, &[], &[]);
+        assert!(
+            !text.contains("Done when") && text.contains("townhall runs `npm test`"),
+            "{text}"
+        );
+        let blank = Done {
+            done_when: Some("  ".into()),
+            ..Done::default()
+        };
+        assert_eq!(
+            brief_text("fix", "do it", &blank, &[], &[]),
+            "# fix\n\ndo it\n"
         );
     }
 
@@ -179,7 +238,7 @@ mod tests {
             hand("coder", "shipper", "fixed", ""),
         ];
         let files = [PathBuf::from("/a/b.png")];
-        let text = brief_text("fix", "do it", &files, &handoffs);
+        let text = brief_text("fix", "do it", &Done::default(), &files, &handoffs);
         let at = |needle: &str| {
             text.find(needle)
                 .unwrap_or_else(|| panic!("{needle}: {text}"))

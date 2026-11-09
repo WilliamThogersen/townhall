@@ -138,6 +138,7 @@ impl Sched {
             attachments: vec![],
             agent: "plain".into(),
             pr_base: None,
+            done: Default::default(),
         }
     }
 

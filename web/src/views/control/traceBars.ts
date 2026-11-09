@@ -1,5 +1,6 @@
 import type { AgentInfo, Step, Task, TaskState } from "../../api/types";
 import { stageOf, stepKind, type AgentKind } from "../../tasks/stage";
+import { verifyWords } from "../../tasks/verify";
 import { durationLabel, spanPercents, type TimeAxis } from "./timeAxis";
 import { conversationEnd, type ScopedConversation } from "./traceScope";
 
@@ -81,6 +82,8 @@ function errorWords(task: Task, agent: AgentInfo | null): string {
 }
 
 function outcome(task: Task, agent: AgentInfo | null): string | null {
+  const checked = verifyWords(task);
+  if (checked !== null) return checked;
   switch (task.state) {
     case "inCi":
       return prSuffix(task, "in ci");

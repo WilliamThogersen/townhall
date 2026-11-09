@@ -110,6 +110,7 @@ impl Env {
             attachments: vec![],
             agent: "builder".into(),
             pr_base: None,
+            done: Default::default(),
         };
         store.create_task(&self.conversation, new).await.unwrap();
         let working = move |t: Task| {

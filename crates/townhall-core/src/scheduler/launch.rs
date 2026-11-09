@@ -401,6 +401,7 @@ async fn launch(ctx: &Context, task: &Task, start_commit: &str) -> Result<TaskLa
         prompt: Some(brief::order(&brief)),
         session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
+        extra_allowed: agent_type::own_rules(&ws.worktrees_dir().join(&task.name)),
         ..launcher.options
     };
     let adapter = launcher.adapter.as_ref();
@@ -459,6 +460,7 @@ async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch>
         prompt: Some(brief::order(&brief)),
         session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
+        extra_allowed: agent_type::own_rules(&dir),
         ..launcher.options
     };
     agent::restart(&ws, &task.name, launcher.adapter.as_ref(), &options).await?;
@@ -598,12 +600,33 @@ mod tests {
             repo: repos[0].name.clone(),
             base_branch: "main".into(),
             pr_base: None,
+            done: Default::default(),
             after: vec![],
             attachments: vec![],
             agent: "plain".into(),
         };
         let task = store.create_task(&conversation, new).await.unwrap();
         (ctx, task)
+    }
+
+    #[tokio::test]
+    async fn the_launcher_carries_the_types_env_and_old_types_have_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let store = ctx.store().unwrap();
+        let tuned = "name = \"tuned\"\nadapter = \"claude\"\n\n[env]\nTUNE_ME = \"5\"\n";
+        store.save_agent_type(tuned).await.unwrap();
+        let plain = agent_type::launcher(&ctx, &task).await.unwrap();
+        assert!(plain.options.env.is_empty());
+        let task = Task {
+            agent: "tuned".into(),
+            ..task
+        };
+        let launcher = agent_type::launcher(&ctx, &task).await.unwrap();
+        assert_eq!(
+            launcher.options.env.get("TUNE_ME").map(String::as_str),
+            Some("5")
+        );
     }
 
     fn full() -> Error {

@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::migrate::Migration;
 use super::Store;
 use crate::definitions::{check_agent, AgentDef, DefKind, DefinitionError, Parsed};
-use crate::model::{AgentType, AgentUsage};
+use crate::model::{AgentType, AgentUsage, TaskRun};
 use crate::{clock, Error, Result};
 
 pub const MIGRATIONS: &[Migration] = &[
@@ -40,6 +40,11 @@ pub const MIGRATIONS: &[Migration] = &[
         id: 804,
         name: "0804_task_tokens",
         sql: include_str!("migrations/0804_task_tokens.sql"),
+    },
+    Migration {
+        id: 805,
+        name: "0805_task_model",
+        sql: include_str!("migrations/0805_task_model.sql"),
     },
 ];
 
@@ -217,6 +222,46 @@ impl Store {
                 0 => Err(Error::missing("task", &name)),
                 _ => Ok(()),
             }
+        })
+        .await
+    }
+
+    pub async fn set_task_model(&self, task: &str, model: &str) -> Result<()> {
+        let (name, model) = (task.to_string(), model.to_string());
+        self.call(move |conn| {
+            let changed = conn.execute(
+                "update tasks set model = ?2 where name = ?1",
+                params![name, model],
+            )?;
+            match changed {
+                0 => Err(Error::missing("task", &name)),
+                _ => Ok(()),
+            }
+        })
+        .await
+    }
+
+    pub async fn agent_runs(&self, agent: &str, limit: u32) -> Result<Vec<TaskRun>> {
+        let agent = agent.to_string();
+        self.call(move |conn| {
+            let mut stmt = conn.prepare(
+                "select name, repo, state, model, tokens, created_at, ended_at from tasks
+                 where agent = ?1 collate nocase order by created_at desc, name limit ?2",
+            )?;
+            let rows = stmt
+                .query_map(params![agent, limit], |r| {
+                    Ok(TaskRun {
+                        task: r.get(0)?,
+                        repo: r.get(1)?,
+                        state: r.get(2)?,
+                        model: r.get(3)?,
+                        tokens: r.get(4)?,
+                        created_at: r.get(5)?,
+                        ended_at: r.get(6)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
         })
         .await
     }

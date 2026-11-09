@@ -77,6 +77,7 @@ function stageOfAgent(task: Task, agentType: AgentKind | null): LoopStage | null
 export function stageOf(task: Task, latest: Step | null, agentType: AgentKind | null = null): LoopStage | null {
   if (task.state === "ended") return null;
   if (task.state === "error" && task.pr?.checks === "failed") return "review";
+  if (task.verify?.phase === "verifying") return "test";
   const byState = STATE_STAGES[task.state];
   if (byState !== undefined) return byState;
   return stageOfAgent(task, agentType) ?? stageOfStep(latest);

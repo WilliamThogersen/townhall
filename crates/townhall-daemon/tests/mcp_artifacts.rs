@@ -22,6 +22,7 @@ async fn make_task(m: &Mcp, conversation: &str, name: &str) {
         attachments: vec![],
         agent: "builder".into(),
         pr_base: None,
+        done: Default::default(),
     };
     m.store().create_task(conversation, new).await.unwrap();
 }

@@ -24,6 +24,24 @@ describe("task guards", () => {
     expect(() => parseTask({ ...aTask(), prBase: 3 })).toThrow("task.prBase");
   });
 
+  it("reads the done-when check and where its verification stands", () => {
+    const checked = aTask({
+      doneWhen: "all tests pass",
+      check: "npm test",
+      maxRetries: 3,
+      verify: { phase: "retrying", retries: 1, output: "1 failed" },
+    });
+    expect(parseTask(checked)).toEqual(checked);
+    const plain = parseTask(aTask());
+    expect([plain.doneWhen, plain.check, plain.maxRetries, plain.verify]).toEqual([null, null, 2, null]);
+    const old = { ...aTask(), doneWhen: undefined, check: undefined, maxRetries: undefined, verify: undefined };
+    expect(parseTask(old)).toEqual(aTask());
+    expect(() => parseTask({ ...aTask(), maxRetries: "2" })).toThrow("task.maxRetries");
+    expect(() => parseTask({ ...aTask(), verify: { phase: "stuck", retries: 0, output: null } })).toThrow(
+      "task.verify.phase",
+    );
+  });
+
   it("refuses broken tasks and prs", () => {
     expect(() => parseTask({ ...aTask(), after: [3] })).toThrow("task.after[0]");
     expect(() => parseTask({ ...aTask(), agent: undefined })).toThrow("task.agent");

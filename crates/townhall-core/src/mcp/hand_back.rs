@@ -36,6 +36,7 @@ pub fn tools() -> Vec<ToolDef> {
         name: HAND_BACK,
         description: "Hand this task back to another agent type: your run ends and the task is queued again for that type, in this same worktree and branch, with your reason and a summary of what you did as its brief. Commit your work first. Stop right after calling it.",
         input_schema: schema(),
+        read_only: true,
     }]
 }
 

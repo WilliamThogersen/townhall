@@ -19,7 +19,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::context::Context;
 use crate::home::{repo_key, WORKTREES_DIR};
-use crate::model::{AgentInfo, AgentState, ServerEvent, Task};
+use crate::model::{AgentInfo, AgentState, Done, ServerEvent, Task};
 use crate::{fleet, runner, tmux, Error, Result, Workspace};
 use sync::Change;
 
@@ -233,7 +233,12 @@ impl Watcher {
         }
         if let Some(task) = task {
             let entry = Some(trust::entry(&task.name));
-            self.apply(task, Some(Change { state: None, entry })).await;
+            let change = Change {
+                state: None,
+                entry,
+                verify: None,
+            };
+            self.apply(task, Some(change)).await;
         }
         true
     }
@@ -243,15 +248,23 @@ impl Watcher {
             let ws = self.workspace_of(&info.repo).await?;
             let listed = crate::worktree::list(&ws).await?;
             let Some(wt) = listed.into_iter().find(|wt| wt.name == info.name) else {
-                return Ok(0);
+                return Ok(Default::default());
             };
             let projects = crate::steps::claude_projects_dir()?;
-            crate::steps::tokens_for_agent(&projects, &wt.path).await
+            crate::steps::usage_for_agent(&projects, &wt.path).await
         }
         .await;
         let saved = match (found, self.ctx.store()) {
-            (Ok(0), _) => Ok(()),
-            (Ok(tokens), Ok(store)) => store.set_task_tokens(&task.name, tokens).await,
+            (Ok(usage), Ok(store)) => {
+                let tokens = match usage.tokens {
+                    0 => Ok(()),
+                    n => store.set_task_tokens(&task.name, n).await,
+                };
+                match (tokens, usage.model) {
+                    (Ok(()), Some(model)) => store.set_task_model(&task.name, &model).await,
+                    (done, _) => done,
+                }
+            }
             (Err(e), _) | (_, Err(e)) => Err(e),
         };
         if let Err(e) = saved {
@@ -276,11 +289,19 @@ impl Watcher {
                 return false;
             }
         };
-        if let Some(state) = change.state {
+        if change.state.is_some() || change.verify.is_some() {
             let (expected, name) = (task.state, task.name.clone());
+            let (state, verify) = (change.state, change.verify);
             let moved = move |t: Task| {
                 if t.state == expected {
-                    Ok(Task { state, ..t })
+                    Ok(Task {
+                        state: state.unwrap_or(t.state),
+                        done: Done {
+                            verify: verify.or(t.done.verify.clone()),
+                            ..t.done.clone()
+                        },
+                        ..t
+                    })
                 } else {
                     Err(Error::Conflict(format!("task `{name}` changed meanwhile")))
                 }
