@@ -1,4 +1,8 @@
+import type { UsageBucket, UsageRange } from "../../api/types";
+
 const MIN_VISIBLE_PERCENT = 4;
+
+export const TARGET_BARS: Readonly<Record<UsageRange, number>> = { "24h": 12, "7d": 14, "30d": 15 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -22,6 +26,42 @@ export function runsLabel(n: number): string {
 
 export function tokensLabel(n: number): string {
   return `${formatCount(n)} tokens`;
+}
+
+export interface MergedBuckets {
+  readonly buckets: readonly UsageBucket[];
+  readonly bucketMs: number;
+}
+
+export function mergeBuckets(buckets: readonly UsageBucket[], bucketMs: number, target: number): MergedBuckets {
+  if (buckets.length <= target) return { buckets, bucketMs };
+  const size = Math.ceil(buckets.length / target);
+  const merged: UsageBucket[] = [];
+  for (let from = 0; from < buckets.length; from += size) {
+    const group = buckets.slice(from, from + size);
+    merged.push({
+      start: group[0]!.start,
+      runs: group.reduce((n, b) => n + b.runs, 0),
+      tokens: group.reduce((n, b) => n + b.tokens, 0),
+    });
+  }
+  return { buckets: merged, bucketMs: bucketMs * size };
+}
+
+export interface AxisTick {
+  readonly at: number;
+  readonly label: string;
+}
+
+export function axisTicks(buckets: readonly UsageBucket[], range: UsageRange, count: number): readonly AxisTick[] {
+  if (buckets.length === 0) return [];
+  const shown = Math.min(count, buckets.length);
+  const last = buckets.length - 1;
+  return Array.from({ length: shown }, (_, i) => {
+    const at = shown === 1 ? 0 : Math.round((i * last) / (shown - 1));
+    const start = new Date(buckets[at]!.start);
+    return { at, label: range === "24h" ? clockOf(start) : `${pad(start.getUTCMonth() + 1)}-${pad(start.getUTCDate())}` };
+  });
 }
 
 export function barPercents(values: readonly number[]): readonly number[] {
