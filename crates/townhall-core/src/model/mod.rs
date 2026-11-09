@@ -2,6 +2,7 @@
 //! Mirrored field for field in `web/src/api/types.ts`; see `docs/daemon-api.md`.
 //! An `Option` is always present on the wire, as `null` when empty.
 
+mod accounts;
 mod agent;
 mod artifact;
 mod attachment;
@@ -13,6 +14,7 @@ mod settings;
 mod task;
 mod thread;
 
+pub use accounts::{normalize as normalize_accounts, ForgeAccount, ForgeKind, MAX_ACCOUNTS};
 pub use agent::{AgentInfo, AgentKey, AgentState};
 pub use artifact::{
     Artifact, ArtifactKind, AuthorRole, NewArtifact, LOG_MIME, MAX_ARTIFACTS_PER_TASK,
