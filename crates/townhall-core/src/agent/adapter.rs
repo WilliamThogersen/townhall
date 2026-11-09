@@ -62,16 +62,43 @@ pub(super) fn env_words(options: &LaunchOptions) -> Result<Vec<String>> {
     options
         .env
         .iter()
-        .map(|(name, value)| match (name.is_empty(), name.contains('=')) {
-            (true, _) => Err(Error::InvalidInput(
-                "env variable name must not be empty".into(),
-            )),
-            (_, true) => Err(Error::InvalidInput(format!(
-                "env variable name {name:?} must not hold `=`"
-            ))),
-            _ => Ok(shell_quote(&format!("{name}={value}"))),
-        })
+        .map(
+            |(name, value)| match (name.is_empty(), name.contains('=')) {
+                (true, _) => Err(Error::InvalidInput(
+                    "env variable name must not be empty".into(),
+                )),
+                (_, true) => Err(Error::InvalidInput(format!(
+                    "env variable name {name:?} must not hold `=`"
+                ))),
+                _ => Ok(shell_quote(&format!("{name}={value}"))),
+            },
+        )
         .collect()
+}
+
+/// `err` with every env word of the launch command replaced by `NAME=<hidden>`: a failed
+/// start quotes the command, and an env value may be a secret.
+pub(super) fn hide_env(err: Error, options: &LaunchOptions) -> Error {
+    let hide = |text: String| {
+        options.env.iter().fold(text, |text, (name, value)| {
+            text.replace(
+                &shell_quote(&format!("{name}={value}")),
+                &format!("{name}=<hidden>"),
+            )
+        })
+    };
+    match err {
+        Error::Command {
+            command,
+            code,
+            stderr,
+        } => Error::Command {
+            command: hide(command),
+            code,
+            stderr: hide(stderr),
+        },
+        other => other,
+    }
 }
 
 /// Runs an arbitrary command. Mostly useful for tests.
@@ -139,6 +166,26 @@ mod tests {
             .output()
             .unwrap();
         assert_eq!(String::from_utf8(out.stdout).unwrap(), "a b'ca b'c");
+    }
+
+    #[test]
+    fn a_failed_command_never_quotes_env_values() {
+        let o = LaunchOptions {
+            command: Some("true".into()),
+            env: [("TUNE".to_string(), "hunter2".to_string())].into(),
+            ..LaunchOptions::default()
+        };
+        let command = ShellAdapter.launch_command(&o).unwrap();
+        let failed = Error::Command {
+            command: format!("tmux new-session {command}"),
+            code: Some(1),
+            stderr: format!("bad: {command}"),
+        };
+        let shown = hide_env(failed, &o).to_string();
+        assert!(!shown.contains("hunter2"), "{shown}");
+        assert!(shown.contains("TUNE=<hidden>"), "{shown}");
+        let other = hide_env(Error::Conflict("x".into()), &o);
+        assert_eq!(other.to_string(), Error::Conflict("x".into()).to_string());
     }
 
     #[test]
