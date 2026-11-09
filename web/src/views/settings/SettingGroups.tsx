@@ -4,6 +4,7 @@ import { useTheme } from "../../theme/useTheme";
 import { Segmented } from "../../ui/Segmented";
 import { Stepper } from "../../ui/Stepper";
 import { Switch } from "../../ui/Switch";
+import { AccountsSection } from "./AccountsSection";
 import { PermissionRow } from "./PermissionRow";
 import { ProfileSection } from "./ProfileSection";
 import { SettingGroup, SettingRow } from "./SettingRow";
@@ -54,6 +55,14 @@ export function ConversationsGroup() {
           onChange={(sessionPanelOpen) => update({ sessionPanelOpen })}
         />
       </SettingRow>
+    </SettingGroup>
+  );
+}
+
+export function AccountsGroup() {
+  return (
+    <SettingGroup title="forge accounts">
+      <AccountsSection />
     </SettingGroup>
   );
 }

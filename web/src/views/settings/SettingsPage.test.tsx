@@ -96,14 +96,14 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("SettingsPage", () => {
-  it("shows the four groups and how changes are saved", async () => {
+  it("shows the five groups and how changes are saved", async () => {
     await renderLoaded();
     expect(screen.getByRole("heading", { level: 1, name: "settings" })).toBeInTheDocument();
     expect(screen.getByText("saved as you change them")).toBeInTheDocument();
-    ["agents", "conversations", "appearance and notifications", "about you"].forEach((name) => {
+    ["agents", "conversations", "forge accounts", "appearance and notifications", "about you"].forEach((name) => {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     });
-    const saves = screen.getAllByRole("button", { name: /save/ });
+    const saves = screen.getAllByRole("button", { name: /^save/ });
     expect(saves).toHaveLength(1);
     expect(saves[0]?.closest(".th-setting-row")).toHaveTextContent("profile");
   });
@@ -117,6 +117,7 @@ describe("SettingsPage", () => {
       "agents at once",
       "when the repo is unclear",
       "session panel",
+      "accounts",
       "theme",
       "notify me when",
       "learn about me",
@@ -350,5 +351,92 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("group", { name: "Agents at once" })).toHaveTextContent("11");
     expect(daemon.puts()).toEqual([["/api/settings/agentsAtOnce", { value: 11 }]]);
     expect(localStorage.getItem("th-settings")).toBeNull();
+  });
+});
+
+describe("forge accounts", () => {
+  const work = { forge: "github", login: "work-me", host: "github.com", label: "work" } as const;
+  const glab = { forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "corp gitlab" } as const;
+
+  const fill = async (name: string, text: string) => {
+    await userEvent.type(screen.getByRole("textbox", { name }), text);
+  };
+  const accounts = () => within(screen.getByRole("list", { name: "Registered accounts" }));
+
+  it("says what happens without accounts", async () => {
+    await renderLoaded();
+    expect(screen.getByText(/no accounts yet/)).toHaveTextContent("gh and glab run as whoever is logged in");
+    expect(screen.queryByRole("list", { name: "Registered accounts" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "add account" })).toBeDisabled();
+  });
+
+  it("lists the registered accounts with their forge, login and host", async () => {
+    daemon = fakeDaemon({ forgeAccounts: [work, glab] });
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+    const rows = await accounts().findAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("work");
+    expect(rows[0]).toHaveTextContent("github · work-me@github.com");
+    expect(rows[1]).toHaveTextContent("corp gitlab");
+    expect(rows[1]).toHaveTextContent("gitlab · me@gitlab.corp.io");
+  });
+
+  it("adds a self-hosted gitlab account and saves the whole list", async () => {
+    daemon = fakeDaemon({ forgeAccounts: [work] });
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+    await accounts().findAllByRole("listitem");
+    await userEvent.click(within(screen.getByRole("radiogroup", { name: "Forge" })).getByRole("radio", { name: "gitlab" }));
+    await fill("Login", "me");
+    await fill("Host", "GitLab.Corp.io");
+    await fill("Label", "corp gitlab");
+    await userEvent.click(screen.getByRole("button", { name: "add account" }));
+    await waitFor(() => expect(daemon.settings().forgeAccounts).toEqual([work, glab]));
+    expect(lastPut()).toEqual(["/api/settings/forgeAccounts", { value: [work, glab] }]);
+    expect(await accounts().findAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("textbox", { name: "Login" })).toHaveValue("");
+  });
+
+  it("fills in the default host and the login as the label", async () => {
+    await renderLoaded();
+    await fill("Login", "private-me");
+    await userEvent.click(screen.getByRole("button", { name: "add account" }));
+    const expected = [{ forge: "github", login: "private-me", host: "github.com", label: "private-me" }];
+    await waitFor(() => expect(daemon.settings().forgeAccounts).toEqual(expected));
+    expect(screen.getByRole("textbox", { name: "Host" })).toHaveAttribute("placeholder", "github.com");
+  });
+
+  it("removes an account and saves the rest", async () => {
+    daemon = fakeDaemon({ forgeAccounts: [work, glab] });
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+    await userEvent.click(await screen.findByRole("button", { name: "remove work" }));
+    await waitFor(() => expect(daemon.settings().forgeAccounts).toEqual([glab]));
+    expect(await accounts().findAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("refuses the same account twice and a login that is not one, without asking the daemon", async () => {
+    daemon = fakeDaemon({ forgeAccounts: [work] });
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+    await accounts().findAllByRole("listitem");
+    await fill("Login", "Work-Me");
+    await userEvent.click(screen.getByRole("button", { name: "add account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("error: github account Work-Me on github.com is already registered");
+    await userEvent.clear(screen.getByRole("textbox", { name: "Login" }));
+    await fill("Login", "two words");
+    await userEvent.click(screen.getByRole("button", { name: "add account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("error: two words is not a login");
+    expect(daemon.puts()).toEqual([]);
+  });
+
+  it("puts the account back when the daemon cannot save the list", async () => {
+    await renderLoaded();
+    daemon.failing.add("forgeAccounts");
+    await fill("Login", "me");
+    await userEvent.click(screen.getByRole("button", { name: "add account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(`error: settings not saved: ${HELD}`);
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Registered accounts" })).not.toBeInTheDocument());
   });
 });

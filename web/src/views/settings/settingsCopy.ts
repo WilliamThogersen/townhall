@@ -1,4 +1,4 @@
-import type { NotifyWhen, PermissionMode, RepoUnclear } from "../../settings/settings";
+import type { ForgeKind, NotifyWhen, PermissionMode, RepoUnclear } from "../../settings/settings";
 import type { ThemeChoice } from "../../theme/theme";
 
 export interface Choice<T extends string> {
@@ -42,12 +42,19 @@ export const NOTIFY_CHOICES: readonly Choice<NotifyWhen>[] = [
   { value: "everything", label: "everything" },
 ];
 
+export const FORGE_CHOICES: readonly Choice<ForgeKind>[] = [
+  { value: "github", label: "github" },
+  { value: "gitlab", label: "gitlab" },
+];
+
 export const HELP = {
   workWithoutAsking:
     "agents assume and list their assumptions instead of asking. they still stop for missing access or destructive actions.",
   agentsAtOnce: "the rest wait as queued and start when one finishes.",
   repoUnclear: "ask shows the candidates as buttons. guess picks the best match and says why.",
   sessionPanel: "open in new conversations. you can always fold it with s.",
+  forgeAccounts:
+    "the gh and glab logins townhall may use. log in first with gh auth login or glab auth login. townhall never stores a token: it asks gh or glab each time. pick one per repo on the repos page, otherwise the first one for the repo's host is used.",
   theme: "dark is the default.",
   notifyWhen: "desktop notifications and toasts.",
   learnAboutMe:
