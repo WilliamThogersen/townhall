@@ -48,7 +48,8 @@ async fn initialize_echoes_the_version_and_lists_the_tools() {
             "read_agent_type",
             "save_agent_type",
             "read_logs",
-            "log_summary"
+            "log_summary",
+            "conversation_insights"
         ]
     );
     for t in tools {
