@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { useAgentInfos, useConversations, useTasks } from "../../data";
-import { loopSummary } from "../../tasks/stage";
+import { useAgentInfos, useAgentTypes, useConversations, useTasks } from "../../data";
+import { loopSummary, type AgentKind } from "../../tasks/stage";
 import { timeAxis } from "./timeAxis";
 import { buildRows, latestStep, toggleKey } from "./traceRows";
 import { earliestStart, scopeTrace } from "./traceScope";
@@ -10,6 +10,7 @@ import { useNow } from "./useNow";
 import { useStepsBook } from "./useStepsBook";
 
 const NO_TOGGLES: ReadonlySet<string> = new Set();
+const NO_TYPES: readonly AgentKind[] = [];
 
 function useTimeline() {
   const { filter, setRepo } = useControlFilter();
@@ -29,11 +30,12 @@ export function useControlView() {
   const timeline = useTimeline();
   const { entries, axis, filter } = timeline;
   const { agents } = useAgentInfos();
+  const types = useAgentTypes().data ?? NO_TYPES;
   const { book, record } = useStepsBook();
   const [toggled, setToggled] = useState<ReadonlySet<string>>(NO_TOGGLES);
   const shownTasks = useMemo(() => entries.flatMap((entry) => entry.tasks), [entries]);
-  const rows = useMemo(() => buildRows({ entries, book, agents, toggled, axis }), [entries, book, agents, toggled, axis]);
-  const loop = useMemo(() => loopSummary(shownTasks, (name) => latestStep(book, name)), [shownTasks, book]);
+  const rows = useMemo(() => buildRows({ entries, book, agents, types, toggled, axis }), [entries, book, agents, types, toggled, axis]);
+  const loop = useMemo(() => loopSummary(shownTasks, (name) => latestStep(book, name), types), [shownTasks, book, types]);
   const stats = useMemo(() => traceStats(entries, book, axis.now), [entries, book, axis.now]);
   const toggle = useCallback((key: string) => setToggled((prev) => toggleKey(prev, key)), []);
   return {
