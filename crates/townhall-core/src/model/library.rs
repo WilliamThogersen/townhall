@@ -61,7 +61,7 @@ mod tests {
             serde_json::to_value(&t).unwrap(),
             json!({"name": "b", "description": "", "adapter": "claude", "model": null,
                    "permissionMode": "acceptEdits", "tools": [], "prompt": null, "command": null,
-                   "canHandBackTo": null, "requires": [], "source": source, "updatedAt": "2026-11-05T10:00:00.000Z"})
+                   "canHandBackTo": null, "requires": [], "env": {}, "source": source, "updatedAt": "2026-11-05T10:00:00.000Z"})
         );
         let keys: Vec<String> = serde_json::to_value(t.summary())
             .unwrap()
@@ -90,4 +90,16 @@ pub struct AgentUsage {
     pub agent: String,
     pub runs: u64,
     pub tokens: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRun {
+    pub task: String,
+    pub repo: String,
+    pub state: String,
+    pub model: Option<String>,
+    pub tokens: u64,
+    pub created_at: String,
+    pub ended_at: Option<String>,
 }

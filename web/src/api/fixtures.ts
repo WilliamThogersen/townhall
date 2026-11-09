@@ -152,6 +152,7 @@ export const anAgentType = (over: Partial<AgentType> = {}): AgentType => ({
   prompt: "You implement the task.",
   command: null,
   canHandBackTo: null,
+  env: {},
   source: 'name = "builder"\nadapter = "claude"\n',
   ...over,
 });

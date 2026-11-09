@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use super::adapter::{shell_quote, shell_word, AgentAdapter, LaunchOptions};
+use super::adapter::{env_words, shell_quote, shell_word, AgentAdapter, LaunchOptions};
 use crate::ids::is_session_id;
 use crate::model::PermissionMode;
 use crate::{Error, Result};
@@ -158,17 +158,15 @@ fn tool_entries(options: &LaunchOptions) -> Result<Vec<&str>> {
     Ok(names)
 }
 
-fn mcp_entries(options: &LaunchOptions) -> Result<Vec<&str>> {
-    options
-        .mcp_tools
-        .iter()
+fn checked_entries<'a>(what: &str, list: &'a [String]) -> Result<Vec<&'a str>> {
+    list.iter()
         .map(|t| t.trim())
         .filter(|t| !t.is_empty())
         .map(|tool| {
-            plain("mcp tool", tool)?;
+            plain(what, tool)?;
             match tool.contains(',') {
                 true => Err(Error::InvalidInput(format!(
-                    "mcp tool {tool:?} must not hold a comma"
+                    "{what} {tool:?} must not hold a comma"
                 ))),
                 false => Ok(tool),
             }
@@ -176,10 +174,11 @@ fn mcp_entries(options: &LaunchOptions) -> Result<Vec<&str>> {
         .collect()
 }
 
-/// A type with no tool list keeps every built-in tool, so its MCP tools are only allowed.
-fn only_mcp_tools(listed: &[&str], mcp: &[&str]) -> Vec<String> {
-    match listed.is_empty() && !mcp.is_empty() {
-        true => vec![format!("--allowedTools={}", mcp.join(","))],
+/// A type with no tool list keeps every built-in tool, so its MCP tools and the extra
+/// rules are only allowed.
+fn only_allowed(listed: &[&str], allowed: &[&str]) -> Vec<String> {
+    match listed.is_empty() && !allowed.is_empty() {
+        true => vec![format!("--allowedTools={}", allowed.join(","))],
         false => vec![],
     }
 }
@@ -195,7 +194,7 @@ fn mcp_config(options: &LaunchOptions) -> Result<Vec<String>> {
 
 /// `--tools=` the built-in tools the entries name (`Bash(git diff:*)` is `Bash`; MCP tools
 /// are no built-in), so no other built-in exists, then `--allowedTools=` the entries.
-fn tools(entries: &[&str]) -> Vec<String> {
+fn tools(entries: &[&str], extra: &[&str]) -> Vec<String> {
     if entries.is_empty() {
         return vec![];
     }
@@ -208,7 +207,15 @@ fn tools(entries: &[&str]) -> Vec<String> {
     }
     vec![
         format!("--tools={}", built_in.join(",")),
-        format!("--allowedTools={}", entries.join(",")),
+        format!(
+            "--allowedTools={}",
+            entries
+                .iter()
+                .chain(extra)
+                .copied()
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
     ]
 }
 
@@ -248,18 +255,20 @@ impl ClaudeCodeAdapter {
     /// The argv after the program, unquoted: for callers that spawn claude without a shell.
     pub fn args(options: &LaunchOptions) -> Result<Vec<String>> {
         let entries = tool_entries(options)?;
-        let mcp = mcp_entries(options)?;
+        let mcp = checked_entries("mcp tool", &options.mcp_tools)?;
+        let extra = checked_entries("extra rule", &options.extra_allowed)?;
         let listed: Vec<&str> = match entries.is_empty() {
             true => vec![],
             false => entries.iter().chain(&mcp).copied().collect(),
         };
+        let unlisted: Vec<&str> = mcp.iter().chain(&extra).copied().collect();
         Ok([
             model(options)?,
             permission(options, &listed),
             system_prompt(options, &listed),
             session(options)?,
-            tools(&listed),
-            only_mcp_tools(&listed, &mcp),
+            tools(&listed, &extra),
+            only_allowed(&listed, &unlisted),
             add_dirs(options)?,
             AGENT_ISOLATION.map(String::from).to_vec(),
             mcp_config(options)?,
@@ -277,6 +286,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
     fn launch_command(&self, options: &LaunchOptions) -> Result<String> {
         let words: Vec<String> = without_outer_session()
             .into_iter()
+            .chain(env_words(options)?)
             .chain([shell_word(&self.bin)])
             .chain(Self::args(options)?.iter().map(|a| shell_quote(a)))
             .collect();
