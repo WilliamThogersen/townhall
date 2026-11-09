@@ -30,7 +30,10 @@ fn non_empty(value: Option<String>) -> Option<String> {
 pub(super) fn parse_shell_output(output: &str) -> Vars {
     let find = |key: &str| {
         let prefix = format!("{MARK}{key}=");
-        let found = output.lines().rev().find_map(|l| l.strip_prefix(&prefix));
+        let found = output
+            .lines()
+            .rev()
+            .find_map(|l| l.find(&prefix).map(|at| &l[at + prefix.len()..]));
         non_empty(found.map(str::to_string))
     };
     Vars {
@@ -225,6 +228,11 @@ mod tests {
             )
         );
         assert_eq!(parse_shell_output("nothing useful"), Vars::default());
+        let escaped = "\u{1b}[?2004h__townhall__PATH=/brew/bin\n";
+        assert_eq!(
+            parse_shell_output(escaped).path.as_deref(),
+            Some("/brew/bin")
+        );
     }
 
     #[test]
