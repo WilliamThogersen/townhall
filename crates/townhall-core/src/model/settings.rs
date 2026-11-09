@@ -91,10 +91,11 @@ pub enum SettingKey {
     GithubAccount,
     ForgeAccounts,
     ReflectAfterTasks,
+    ClonesDir,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 12] = [
+    pub const ALL: [SettingKey; 13] = [
         Self::PermissionMode,
         Self::WorkWithoutAsking,
         Self::AgentsAtOnce,
@@ -107,6 +108,7 @@ impl SettingKey {
         Self::GithubAccount,
         Self::ForgeAccounts,
         Self::ReflectAfterTasks,
+        Self::ClonesDir,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -123,6 +125,7 @@ impl SettingKey {
             Self::GithubAccount => "githubAccount",
             Self::ForgeAccounts => "forgeAccounts",
             Self::ReflectAfterTasks => "reflectAfterTasks",
+            Self::ClonesDir => "clonesDir",
         }
     }
 
@@ -152,6 +155,7 @@ impl SettingKey {
             | Self::ReflectAfterTasks => value.is_boolean(),
             Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
             Self::GithubAccount => value.as_str().is_some_and(is_github_login),
+            Self::ClonesDir => value.as_str().is_some_and(is_clones_dir),
             Self::ForgeAccounts => unreachable!("handled above"),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
@@ -170,6 +174,11 @@ fn is_github_login(login: &str) -> bool {
     login.len() <= 39
         && !login.starts_with('-')
         && login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// Empty (townhall's own `repos` folder), `~`, `~/...` or an absolute path.
+pub fn is_clones_dir(dir: &str) -> bool {
+    dir.is_empty() || dir == "~" || dir.starts_with("~/") || dir.starts_with('/')
 }
 
 fn parses<T: serde::de::DeserializeOwned>(value: &Value) -> bool {
@@ -198,6 +207,8 @@ pub struct Settings {
     pub forge_accounts: Vec<ForgeAccount>,
     /// After a task ends, a `reflector` run records lessons in the repo's memory files.
     pub reflect_after_tasks: bool,
+    /// The folder a repo added by link is cloned into; empty means `<home>/repos`.
+    pub clones_dir: String,
 }
 
 impl Default for Settings {
@@ -215,6 +226,7 @@ impl Default for Settings {
             github_account: String::new(),
             forge_accounts: Vec::new(),
             reflect_after_tasks: false,
+            clones_dir: String::new(),
         }
     }
 }
@@ -243,6 +255,7 @@ impl Settings {
             github_account: field(raw, SettingKey::GithubAccount, d.github_account),
             forge_accounts: field(raw, SettingKey::ForgeAccounts, d.forge_accounts),
             reflect_after_tasks: field(raw, SettingKey::ReflectAfterTasks, d.reflect_after_tasks),
+            clones_dir: field(raw, SettingKey::ClonesDir, d.clones_dir),
         }
     }
 
@@ -293,7 +306,8 @@ mod tests {
                 "learnAboutMe": false,
                 "githubAccount": "",
                 "forgeAccounts": [],
-                "reflectAfterTasks": false
+                "reflectAfterTasks": false,
+                "clonesDir": ""
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -459,6 +473,22 @@ mod tests {
             SettingKey::parse("forgeAccounts").unwrap(),
             SettingKey::ForgeAccounts
         );
+    }
+
+    #[test]
+    fn the_clones_dir_is_empty_or_an_absolute_or_home_folder() {
+        for good in ["", "~/Developer", "~", "/srv/code"] {
+            let value = json!(good);
+            assert_eq!(SettingKey::ClonesDir.check(&value).unwrap(), value, "{good}");
+        }
+        for bad in [json!("relative/dir"), json!("  "), json!("~other"), json!(7), json!(null)] {
+            assert!(SettingKey::ClonesDir.check(&bad).is_err(), "{bad}");
+        }
+        let s: Settings = serde_json::from_value(json!({"clonesDir": "~/Developer"})).unwrap();
+        assert_eq!(s.clones_dir, "~/Developer");
+        let bad: Settings = serde_json::from_value(json!({"clonesDir": "x"})).unwrap();
+        assert_eq!(bad.clones_dir, "");
+        assert_eq!(SettingKey::parse("clonesDir").unwrap(), SettingKey::ClonesDir);
     }
 
     #[test]
