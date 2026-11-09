@@ -8,6 +8,10 @@ use crate::definitions::{AdapterKind, AgentDef, AvatarDef, PermissionMode};
 /// The type `create_task` picks when it is given none and a type of this name exists.
 pub const DEFAULT_AGENT_TYPE: &str = "builder";
 
+/// The type townhall's own conversation agent runs as. It is edited in the agents page,
+/// never deleted, and never the type a task defaults to.
+pub const CONVERSATION_AGENT_TYPE: &str = "default";
+
 /// One saved agent type: the parsed definition, the TOML as written and when it was saved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

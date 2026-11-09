@@ -1,4 +1,5 @@
 use townhall_core::definitions::{AdapterKind, PermissionMode};
+use townhall_core::model::CONVERSATION_AGENT_TYPE;
 use townhall_core::store::Store;
 use townhall_core::Error;
 
@@ -97,6 +98,10 @@ async fn delete_needs_a_known_type_and_keeps_the_last_one() {
     env.store.save_agent_type(CODER).await.unwrap();
     env.store.save_agent_type(RUNNER).await.unwrap();
     let all = env.store.agent_types().await.unwrap();
+    let all: Vec<_> = all
+        .into_iter()
+        .filter(|t| t.def.name != CONVERSATION_AGENT_TYPE)
+        .collect();
     for t in &all[..all.len() - 1] {
         assert_eq!(
             env.store
@@ -117,7 +122,7 @@ async fn the_first_open_seeds_builder() {
     let env = store_env();
     let all = env.store.agent_types().await.unwrap();
     let names: Vec<&str> = all.iter().map(|t| t.def.name.as_str()).collect();
-    assert_eq!(names, ["builder"]);
+    assert_eq!(names, ["builder", "default"]);
     let builder = &all[0];
     assert_eq!(builder.def.description, "implements a task, tests first");
     assert_eq!(builder.def.adapter, AdapterKind::Claude);
@@ -158,5 +163,50 @@ async fn a_deleted_builder_never_comes_back() {
         .into_iter()
         .map(|t| t.def.name)
         .collect();
-    assert_eq!(names, ["coder"]);
+    assert_eq!(names, ["coder", "default"]);
+}
+
+#[tokio::test]
+async fn the_first_open_seeds_the_conversation_default() {
+    let env = store_env();
+    let default = env.store.agent_type("default").await.unwrap().unwrap();
+    assert_eq!(CONVERSATION_AGENT_TYPE, "default");
+    assert_eq!(default.def.adapter, AdapterKind::Claude);
+    assert_eq!(default.def.model.as_deref(), Some("sonnet"));
+    assert_eq!(default.def.permission_mode, Some(PermissionMode::Default));
+    for tool in [
+        "mcp__townhall__create_task",
+        "mcp__townhall__list_agent_types",
+        "Read",
+        "Grep",
+        "Glob",
+    ] {
+        assert!(default.def.tools.iter().any(|t| t == tool), "{tool}");
+    }
+    assert!(!default.def.tools.iter().any(|t| t == "Bash" || t == "Edit"));
+    let prompt = default.def.prompt.as_deref().unwrap();
+    assert!(prompt.starts_with("you are townhall, a planner"));
+    assert!(prompt.contains("keep replies short."));
+    assert!(!prompt.contains("repo for this turn"));
+    assert!(Store::check_agent_type(&default.source).is_ok());
+}
+
+#[tokio::test]
+async fn the_conversation_default_is_edited_never_deleted() {
+    let env = store_env();
+    env.store.save_agent_type(CODER).await.unwrap();
+    let refused = env.store.delete_agent_type("DEFAULT").await.unwrap_err();
+    assert!(matches!(refused, Error::Conflict(_)), "{refused:?}");
+    assert!(env.store.agent_type("default").await.unwrap().is_some());
+    let edited = "name = \"default\"\nadapter = \"claude\"\nmodel = \"opus\"\n";
+    let (saved, replaced) = env.store.save_agent_type(edited).await.unwrap();
+    assert!(replaced && saved.def.model.as_deref() == Some("opus"));
+}
+
+#[tokio::test]
+async fn the_default_does_not_count_as_a_type_for_tasks() {
+    let env = store_env();
+    let refused = env.store.delete_agent_type("builder").await.unwrap_err();
+    assert!(matches!(refused, Error::Conflict(_)), "{refused:?}");
+    assert!(env.store.agent_type("builder").await.unwrap().is_some());
 }
