@@ -8,7 +8,9 @@ use std::ops::RangeInclusive;
 
 use rusqlite::{params, Connection};
 
-use super::{unit_2_2, unit_2_3, unit_2_5, unit_2_6, unit_2_7, unit_2_8b, unit_2_8c, unit_2_9};
+use super::{
+    unit_2_2, unit_2_3, unit_2_5, unit_2_6, unit_2_7, unit_2_8b, unit_2_8c, unit_2_9, unit_plugins,
+};
 use crate::{clock, Error, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +45,7 @@ const BASE: &[Migration] = &[
 ];
 
 /// Who owns which numbers. Ask the orchestrator for a range before adding a unit.
-pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 9] = [
+pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 10] = [
     ("2.0 storage, 2.1 contract", 1..=99, BASE),
     ("2.2 conversations", 100..=199, unit_2_2::MIGRATIONS),
     ("2.3 tasks", 200..=299, unit_2_3::MIGRATIONS),
@@ -53,6 +55,7 @@ pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 9] = [
     ("2.8b library", 800..=849, unit_2_8b::MIGRATIONS),
     ("2.8c runs", 850..=899, unit_2_8c::MIGRATIONS),
     ("2.9 artifacts", 900..=949, unit_2_9::MIGRATIONS),
+    ("plugins", 950..=999, unit_plugins::MIGRATIONS),
 ];
 
 pub const NEWER: &str = "townhall.db is from a newer townhall";
@@ -275,6 +278,32 @@ mod tests {
             )
             .unwrap();
         assert_eq!(row, (None, None, 2, None));
+    }
+
+    #[test]
+    fn a_database_from_before_0950_opens_and_gains_the_plugin_tables() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let before: Vec<Migration> = all().into_iter().filter(|m| m.id < 950).collect();
+        apply(&mut conn, &before).unwrap();
+        assert!(user_version(&conn).unwrap() < 950);
+        assert!(conn.prepare("select name from marketplaces").is_err());
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 1);
+        assert!(conn
+            .prepare("select name, source from marketplaces")
+            .is_ok());
+        assert!(conn.prepare("select id, marketplace from plugins").is_ok());
+        assert_eq!(user_version(&conn).unwrap(), 950);
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_database_with_0950_is_refused_by_a_build_without_it() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply(&mut conn, &all()).unwrap();
+        let older: Vec<Migration> = all().into_iter().filter(|m| m.id < 950).collect();
+        let err = apply(&mut conn, &older).unwrap_err();
+        assert!(matches!(err, Error::Unavailable(_)), "{err}");
+        assert_eq!(err.to_string(), NEWER);
     }
 
     #[test]

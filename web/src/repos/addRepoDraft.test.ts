@@ -101,7 +101,7 @@ describe("withProtocol", () => {
   });
 
   it("keeps nested gitlab groups", () => {
-    expect(ssh("https://gitlab.wexo.io/konpap/vines.git")).toBe("git@gitlab.wexo.io:konpap/vines.git");
+    expect(ssh("https://gitlab.example.com/konpap/vines.git")).toBe("git@gitlab.example.com:konpap/vines.git");
     expect(ssh("https://gitlab.com/group/sub/deep/app")).toBe("git@gitlab.com:group/sub/deep/app.git");
     expect(https("git@gitlab.com:group/sub/app.git")).toBe("https://gitlab.com/group/sub/app.git");
     expect(https("ssh://git@gitlab.com/group/sub/app/")).toBe("https://gitlab.com/group/sub/app.git");
@@ -120,8 +120,8 @@ describe("withProtocol", () => {
   });
 
   it("sends the converted link and previews the same one", () => {
-    const link = "https://gitlab.wexo.io/konpap/vines.git";
-    expect(draftToInput(draft({ path: link }), "ssh")).toEqual({ path: "git@gitlab.wexo.io:konpap/vines.git" });
+    const link = "https://gitlab.example.com/konpap/vines.git";
+    expect(draftToInput(draft({ path: link }), "ssh")).toEqual({ path: "git@gitlab.example.com:konpap/vines.git" });
     expect(draftToInput(draft({ path: link }), "https")).toEqual({ path: link });
     expect(draftToInput(draft({ path: "/code/shop" }), "ssh")).toEqual({ path: "/code/shop" });
   });

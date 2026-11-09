@@ -174,14 +174,14 @@ async fn one_missing_binary_does_not_hide_the_other() {
     assert_eq!(got.as_array().unwrap().len(), 1);
 }
 
-const REAL_GH_JSON: &str = r#"{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"WilliamThogersen","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"},{"state":"success","active":false,"host":"github.com","login":"wexowgt","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"}]}}"#;
+const REAL_GH_JSON: &str = r#"{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"WilliamThogersen","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"},{"state":"success","active":false,"host":"github.com","login":"alice","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"}]}}"#;
 
 const REAL_GH_TEXT: &str = "github.com
   ✓ Logged in to github.com account WilliamThogersen (keyring)
   - Active account: true
   - Git operations protocol: https
 
-  ✓ Logged in to github.com account wexowgt (keyring)
+  ✓ Logged in to github.com account alice (keyring)
   - Active account: false
   - Git operations protocol: https
 ";
@@ -189,7 +189,7 @@ const REAL_GH_TEXT: &str = "github.com
 fn both_real_accounts() -> Value {
     json!([
         {"forge": "github", "login": "WilliamThogersen", "host": "github.com", "registered": false},
-        {"forge": "github", "login": "wexowgt", "host": "github.com", "registered": false}
+        {"forge": "github", "login": "alice", "host": "github.com", "registered": false}
     ])
 }
 
@@ -217,9 +217,9 @@ async fn real_gh_2_101_text_lists_both_accounts_when_json_is_unavailable() {
     assert_eq!(detected(&env).await, both_real_accounts());
 }
 
-/// The user's machine: gitlab.wexo.io has a user in the config, gitlab.com (logged out, dead)
+/// The user's machine: gitlab.example.com has a user in the config, gitlab.com (logged out, dead)
 /// has none and `glab api user` fails there.
-const REAL_GLAB_CONFIG: &str = "git_protocol: ssh\nhosts:\n    gitlab.com:\n        api_host: gitlab.com\n    gitlab.wexo.io:\n        api_host: gitlab.wexo.io\n        git_protocol: ssh\n        user: wexowgt\n";
+const REAL_GLAB_CONFIG: &str = "git_protocol: ssh\nhosts:\n    gitlab.com:\n        api_host: gitlab.com\n    gitlab.example.com:\n        api_host: gitlab.example.com\n        git_protocol: ssh\n        user: alice\n";
 
 #[tokio::test]
 async fn glab_is_read_from_its_config_and_a_dead_host_only_costs_a_warning() {
@@ -234,7 +234,7 @@ async fn glab_is_read_from_its_config_and_a_dead_host_only_costs_a_warning() {
     let body = detected_body(&env).await;
     assert_eq!(
         body["data"],
-        json!([{"forge": "gitlab", "login": "wexowgt", "host": "gitlab.wexo.io", "registered": false}])
+        json!([{"forge": "gitlab", "login": "alice", "host": "gitlab.example.com", "registered": false}])
     );
     let warnings = body["warnings"].to_string();
     assert!(

@@ -2,11 +2,11 @@
 # Scan the commits an MR adds for secrets with gitleaks. The project's allow list is a file of
 # [[allowlists]] tables (gitleaks syntax), each with a non-empty `description` that is the reason.
 # Env: SECRET_DETECTION_BASE (scan BASE..tip, tip = CI_MERGE_REQUEST_SOURCE_BRANCH_SHA or HEAD; empty scans all history),
-#      SECRET_DETECTION_ALLOW_LIST (default .wexo/secret-allow-list.toml; optional),
+#      SECRET_DETECTION_ALLOW_LIST (default .merge-checks/secret-allow-list.toml; optional),
 #      SECRET_DETECTION_REPORT (default gitleaks-report.json).
 set -uo pipefail
 
-allow_list="${SECRET_DETECTION_ALLOW_LIST:-.wexo/secret-allow-list.toml}"
+allow_list="${SECRET_DETECTION_ALLOW_LIST:-.merge-checks/secret-allow-list.toml}"
 report="${SECRET_DETECTION_REPORT:-gitleaks-report.json}"
 base="${SECRET_DETECTION_BASE:-}"
 config="$(mktemp)"

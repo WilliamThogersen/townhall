@@ -5,8 +5,8 @@ import path from 'node:path'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const sharedAllowList = path.join(here, 'comment-allow-list.txt')
-const projectAllowList = '.wexo/comment-allow-list.txt'
-const projectVendoredList = '.wexo/comment-vendored-files.txt'
+const projectAllowList = '.merge-checks/comment-allow-list.txt'
+const projectVendoredList = '.merge-checks/comment-vendored-files.txt'
 
 const STRINGS = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g
 const SLASH_MARKER = /(?<!\\)(?:(?<!:)[/][/]|[/][*])/

@@ -86,7 +86,7 @@ describe("conversationCounts", () => {
 describe("summarizeRepos", () => {
   const repos = [
     aRepo({ name: "townhall", path: "/Users/me/Developer/townhall", baseBranch: "main" }),
-    aRepo({ name: "shop", path: "/Users/me/Developer/wexo/work/clients/shop", baseBranch: "develop" }),
+    aRepo({ name: "shop", path: "/Users/me/Developer/acme/work/clients/shop", baseBranch: "develop" }),
   ];
 
   it("gives each repo its short path, counts and glyphs", () => {

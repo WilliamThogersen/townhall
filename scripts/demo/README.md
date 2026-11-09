@@ -20,7 +20,7 @@ Open `http://localhost:<web port>/` for home, `/townhall` for the control center
 
 ## What is seeded
 
-Repos (made under `<dir>/repos`, registered through `POST /api/repos`): `townhall` (main), `shop` (develop), `wexo-access` (staging), `data-hub` (main). Each has about 70 to 220 `townhall/*` branches merged into its base branch with `fix:` and `feat:` commits over the last two years, most in the last 12 months, so `GET /api/stats` fills the heatmap and the year comparison.
+Repos (made under `<dir>/repos`, registered through `POST /api/repos`): `townhall` (main), `shop` (develop), `acme-access` (staging), `data-hub` (main). Each has about 70 to 220 `townhall/*` branches merged into its base branch with `fix:` and `feat:` commits over the last two years, most in the last 12 months, so `GET /api/stats` fills the heatmap and the year comparison.
 
 Conversations, newest first (times are moved back so the list reads like the preview):
 
@@ -30,7 +30,7 @@ Conversations, newest first (times are moved back so the list reads like the pre
 | `upgrade to vite 8` | townhall | thinking (the turn never ends; `stop` interrupts it) | `you`, `repo` |
 | `flaky ci on main` | shop | your turn | `you`, `repo`, `townhall`, `tasksCreated`, agent `failed` |
 | `search api is slow under load` | shop | your turn | `repo` found by code (`it has src/search/query.ts`), a `you` with `slow-queries.log`, agent `ended` and `sent` |
-| `i18n keys cleanup` | wexo-access | your turn | one working task |
+| `i18n keys cleanup` | acme-access | your turn | one working task |
 | `nightly export drops rows` | none yet | your turn | `repoAsk`: shop or data-hub, unanswered |
 | `checkout coupon rounding` | shop | ended, 2 days ago | agent `passed` (merged into develop) |
 | `dark mode contrast` | townhall | ended, 5 days ago | `townhall` reply, then an `error` entry (`claude failed: API Error: 529 ...`) |
