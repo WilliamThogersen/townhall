@@ -399,3 +399,52 @@ fn an_mcp_config_is_a_checked_value() {
     };
     assert!(ClaudeCodeAdapter::args(&comma).is_err());
 }
+
+fn with_extra(tools: &[&str], extra: &[&str]) -> Vec<String> {
+    let o = LaunchOptions {
+        allowed_tools: tools.iter().map(|t| t.to_string()).collect(),
+        mcp_config: Some(MCP.into()),
+        mcp_tools: vec![HAND_BACK.into()],
+        extra_allowed: extra.iter().map(|t| t.to_string()).collect(),
+        ..LaunchOptions::default()
+    };
+    ClaudeCodeAdapter::args(&o).unwrap()
+}
+
+#[test]
+fn extra_rules_are_allowed_without_turning_a_type_with_no_tool_list_into_one() {
+    let argv = with_extra(&[], &["Bash(pwd)", "Read(~/.claude/plans/*)"]);
+    assert!(
+        argv.contains(&format!(
+            "--allowedTools={HAND_BACK},Bash(pwd),Read(~/.claude/plans/*)"
+        )),
+        "{argv:?}"
+    );
+    assert!(!argv.iter().any(|a| a.starts_with("--tools")), "{argv:?}");
+    assert_eq!(argv[0], "--permission-mode=acceptEdits");
+}
+
+#[test]
+fn extra_rules_never_add_a_built_in_tool_to_a_listed_type() {
+    let argv = with_extra(&["Grep"], &["Bash(pwd)", "Read(~/.claude/plans/*)"]);
+    assert!(argv.contains(&"--tools=Grep".to_string()), "{argv:?}");
+    assert!(
+        argv.contains(&format!(
+            "--allowedTools=Grep,{HAND_BACK},Bash(pwd),Read(~/.claude/plans/*)"
+        )),
+        "{argv:?}"
+    );
+    let notice = tools_notice(&format!("Grep, {HAND_BACK}"));
+    assert!(argv.iter().any(|a| a.ends_with(&notice)), "{argv:?}");
+}
+
+#[test]
+fn an_extra_rule_is_a_checked_value() {
+    for bad in ["--x", "Bash(a,b)", "Read\nx"] {
+        let o = LaunchOptions {
+            extra_allowed: vec![bad.into()],
+            ..LaunchOptions::default()
+        };
+        assert!(ClaudeCodeAdapter::args(&o).is_err(), "{bad}");
+    }
+}

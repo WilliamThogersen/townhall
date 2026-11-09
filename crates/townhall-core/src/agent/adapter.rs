@@ -27,6 +27,9 @@ pub struct LaunchOptions {
     /// The MCP tools of that server (`mcp__<server>__<tool>`), allowed without asking and
     /// kept apart from `allowed_tools`: they never turn a type with no tool list into one.
     pub mcp_tools: Vec<String>,
+    /// Allow rules townhall adds for every agent (`cd` in its worktree, reading its plan
+    /// files). Only `--allowedTools`: they never add a built-in tool or make a tool list.
+    pub extra_allowed: Vec<String>,
 }
 
 /// Knows how to turn launch options into the shell command run inside tmux.
