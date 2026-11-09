@@ -80,11 +80,21 @@ mod tests {
 
     #[test]
     fn the_seeded_prompt_is_the_built_in_one() {
-        let sql = include_str!("../store/migrations/0806_seed_default.sql").replace("''", "'");
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::store::migrate::apply(&mut conn, &crate::store::migrate::all()).unwrap();
+        let source: String = conn
+            .query_row(
+                "select source from agents where name = 'default'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert!(
-            sql.contains(INSTRUCTIONS),
+            source.contains(INSTRUCTIONS),
             "keep the seed and INSTRUCTIONS in step"
         );
+        let def = parse_agent(&source).unwrap().def;
+        assert_eq!(Persona::from_type(Some(&def)).tools, allowed_tools());
     }
 
     #[test]

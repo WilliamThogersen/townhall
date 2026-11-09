@@ -61,8 +61,13 @@ pub const MIGRATIONS: &[Migration] = &[
     },
     Migration {
         id: 808,
-        name: "0808_conversation_turns",
-        sql: include_str!("migrations/0808_conversation_turns.sql"),
+        name: "0808_default_web_tools",
+        sql: include_str!("migrations/0808_default_web_tools.sql"),
+    },
+    Migration {
+        id: 809,
+        name: "0809_conversation_turns",
+        sql: include_str!("migrations/0809_conversation_turns.sql"),
     },
 ];
 
