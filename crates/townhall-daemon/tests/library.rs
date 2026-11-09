@@ -42,6 +42,7 @@ async fn the_list_starts_with_builder() {
         keys,
         [
             "adapter",
+            "avatar",
             "description",
             "model",
             "name",
