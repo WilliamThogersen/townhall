@@ -1,8 +1,11 @@
+import { useMemo } from "react";
+import { listConversations } from "../api/conversations";
 import { getAgentType, getAgentUsageSeries, listAgentRuns, listAgentTypes, listAgentUsage } from "../api/library";
 import type { AgentRun, AgentType, AgentTypeSummary, AgentUsage, AgentUsageSeries, UsageRange } from "../api/types";
 import { useLoad, type Loaded } from "./useLoad";
 
 const NO_REFRESH = 0;
+const NO_TITLES: ReadonlyMap<string, string> = new Map();
 
 export function useAgentTypes(): Loaded<readonly AgentTypeSummary[]> {
   return useLoad("agent-types", listAgentTypes, NO_REFRESH);
@@ -22,4 +25,10 @@ export function useAgentRuns(name: string): Loaded<readonly AgentRun[]> {
 
 export function useAgentUsage(): Loaded<readonly AgentUsage[]> {
   return useLoad("agent-usage", listAgentUsage, NO_REFRESH);
+}
+
+/** Conversation titles by id, empty until loaded (or when they fail to load, so ids show instead). */
+export function useConversationTitles(): ReadonlyMap<string, string> {
+  const { data } = useLoad("conversation-titles", listConversations, NO_REFRESH);
+  return useMemo(() => (data === null ? NO_TITLES : new Map(data.map((c) => [c.id, c.title]))), [data]);
 }

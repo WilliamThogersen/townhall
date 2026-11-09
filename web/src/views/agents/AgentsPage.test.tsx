@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/errors";
 import { anAgentType, anAgentTypeSummary } from "../../api/fixtures";
+import * as conversations from "../../api/conversations";
 import * as library from "../../api/library";
 import { AgentsPage } from "./AgentsPage";
 
@@ -22,6 +23,7 @@ const plannerFull = anAgentType({
 });
 
 beforeEach(() => {
+  vi.spyOn(conversations, "listConversations").mockResolvedValue([]);
   vi.spyOn(library, "getAgentUsageSeries").mockImplementation((name, range) =>
     Promise.resolve({
       agent: name,
@@ -156,8 +158,68 @@ describe("AgentsPage", () => {
     expect(cheap.getByText("12.4K")).toBeInTheDocument();
     expect(cheap.getByText("ended")).toBeInTheDocument();
     expect(cheap.getByText("2026-11-09")).toBeInTheDocument();
-    expect(within(runs.getByRole("row", { name: /old-one/ })).getByText("unknown")).toBeInTheDocument();
     expect(runs.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["task", "model", "tokens", "state", "started"]);
+  });
+
+  it("falls back to the type's model for a run that recorded none, and never says unknown", async () => {
+    vi.mocked(library.listAgentRuns).mockResolvedValue([
+      { task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
+    ]);
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const runs = within(await screen.findByRole("region", { name: "recent runs" }));
+    const cell = within(await runs.findByRole("row", { name: /old-one/ })).getByText("opus");
+    expect(cell).toHaveAttribute("title", "the agent type's model; the run did not record one");
+    expect(screen.queryByText("unknown")).not.toBeInTheDocument();
+  });
+
+  it("hides the model column when no run and not the type knows a model", async () => {
+    vi.mocked(library.getAgentType).mockImplementation((name) =>
+      Promise.resolve(anAgentType({ name, model: null, source: `name = "${name}"\n` })),
+    );
+    vi.mocked(library.listAgentRuns).mockResolvedValue([
+      { task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
+    ]);
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const runs = within(await screen.findByRole("region", { name: "recent runs" }));
+    await runs.findByRole("row", { name: /old-one/ });
+    expect(runs.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["task", "tokens", "state", "started"]);
+  });
+
+  it("lists only the first eight runs until show more is pressed", async () => {
+    vi.mocked(library.listAgentRuns).mockResolvedValue(
+      Array.from({ length: 12 }, (_, i) => ({
+        task: `run-${i}`,
+        repo: "alpha",
+        state: "ended",
+        model: "claude-haiku",
+        tokens: i,
+        createdAt: "2026-11-09T10:00:00Z",
+        endedAt: null,
+      })),
+    );
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const runs = within(await screen.findByRole("region", { name: "recent runs" }));
+    await runs.findByRole("row", { name: /run-0/ });
+    expect(runs.getAllByRole("row")).toHaveLength(1 + 8);
+    expect(runs.queryByRole("row", { name: /run-8/ })).not.toBeInTheDocument();
+    await userEvent.click(runs.getByRole("button", { name: "show 4 more" }));
+    expect(runs.getAllByRole("row")).toHaveLength(1 + 12);
+    await userEvent.click(runs.getByRole("button", { name: "show fewer" }));
+    expect(runs.getAllByRole("row")).toHaveLength(1 + 8);
+  });
+
+  it("offers no show more when the runs fit", async () => {
+    vi.mocked(library.listAgentRuns).mockResolvedValue([
+      { task: "only", repo: "alpha", state: "ended", model: "claude-haiku", tokens: 1, createdAt: "2026-11-09T10:00:00Z", endedAt: null },
+    ]);
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const runs = within(await screen.findByRole("region", { name: "recent runs" }));
+    await runs.findByRole("row", { name: /only/ });
+    expect(runs.queryByRole("button", { name: /show/ })).not.toBeInTheDocument();
   });
 
   it("says when a type has no runs yet", async () => {
@@ -201,7 +263,7 @@ describe("AgentsPage", () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
     await screen.findByRole("region", { name: "planner" });
-    expect(screen.queryByRole("button", { name: /^(edit|delete|remove)/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(edit(?! spec)|delete|remove)/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^save(?! avatar)/i })).not.toBeInTheDocument();
   });
 
@@ -238,8 +300,8 @@ describe("AgentsPage", () => {
     await userEvent.click(await rowOf("builder"));
     const detail = within(await screen.findByRole("region", { name: "builder" }));
     expect(await detail.findByRole("group", { name: "usage range" })).toBeInTheDocument();
-    expect(await detail.findByRole("group", { name: "runs over time" })).toBeInTheDocument();
     expect(await detail.findByRole("group", { name: "tokens over time" })).toBeInTheDocument();
+    expect(detail.getByRole("button", { name: "runs" })).toBeInTheDocument();
     expect(library.getAgentUsageSeries).toHaveBeenCalledWith("builder", "7d", expect.anything());
     expect(detail.queryByText("12.4K")).not.toBeInTheDocument();
   });
@@ -318,7 +380,19 @@ describe("AgentsPage", () => {
     await userEvent.click(await rowOf("planner"));
     const detail = within(await screen.findByRole("region", { name: "planner" }));
     expect(await detail.findByRole("img", { name: "planner avatar preview" })).toHaveClass("th-avatar--fg-muted");
+    await userEvent.click(detail.getByRole("button", { name: "edit spec" }));
     expect(detail.getByRole("textbox", { name: "avatar spec" })).toHaveValue('[avatar]\ncolor = "fg-muted"\n');
+  });
+
+  it("puts the avatar editor at the top of the detail, before the setup and usage sections", async () => {
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    const editor = await detail.findByRole("img", { name: "planner avatar preview" });
+    for (const name of ["setup", "usage", "recent runs"]) {
+      const section = await detail.findByRole("region", { name });
+      expect(editor.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
   });
 
   it("saves an avatar through the type's TOML and shows it in the list row", async () => {
@@ -327,6 +401,7 @@ describe("AgentsPage", () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
     const detail = within(await screen.findByRole("region", { name: "planner" }));
+    await userEvent.click(await detail.findByRole("button", { name: "edit spec" }));
     const box = await detail.findByRole("textbox", { name: "avatar spec" });
     await userEvent.click(box);
     await userEvent.paste('[avatar]\ncolor = "fg-muted"');
@@ -335,7 +410,9 @@ describe("AgentsPage", () => {
     await userEvent.click(detail.getByRole("button", { name: "save avatar" }));
     expect(library.saveAgentType).toHaveBeenCalledWith("planner", saved.source);
     await waitFor(async () => expect((await rowOf("planner")).querySelector("svg")).toHaveClass("th-avatar--fg-muted"));
-    await waitFor(() => expect(detail.getByRole("textbox", { name: "avatar spec" })).toHaveValue('[avatar]\ncolor = "fg-muted"\n'));
+    await waitFor(() => expect(detail.queryByRole("textbox", { name: "avatar spec" })).not.toBeInTheDocument());
+    await userEvent.click(detail.getByRole("button", { name: "edit spec" }));
+    expect(detail.getByRole("textbox", { name: "avatar spec" })).toHaveValue('[avatar]\ncolor = "fg-muted"\n');
   });
 
   it("removes the browser-only avatar choices an older version stored", async () => {
