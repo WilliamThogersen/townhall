@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { AgentTypeMode } from "../../api/types";
 import { useAgentRuns, useAgentType } from "../../data";
+import { Link, PATHS } from "../../router";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Loading } from "../../ui/Loading";
@@ -79,8 +80,10 @@ function RecentRuns({ name, typeModel }: { readonly name: string; readonly typeM
               {shownRuns(data, all).map((run) => {
                 const model = runModel(run, typeModel);
                 return (
-                  <tr key={run.task}>
-                    <td title={run.task}>{run.task}</td>
+                  <tr key={`${run.kind}:${run.conversationId}:${run.task}:${run.createdAt}`}>
+                    <td title={run.task}>
+                      {run.kind === "turn" ? <Link to={PATHS.conversation(run.conversationId)}>{run.task}</Link> : run.task}
+                    </td>
                     {withModel ? (
                       <td title={model?.inferred ? "the agent type's model; the run did not record one" : undefined} data-inferred={model?.inferred || undefined}>
                         {model?.name}
