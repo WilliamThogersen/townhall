@@ -1,8 +1,6 @@
 export interface PromptSection {
-  /** Tag name, or "" for loose text that sits between or after tagged sections. */
   readonly tag: string;
   readonly body: string;
-  /** False when the closing tag is missing and the section ran to the end of the prompt. */
   readonly closed: boolean;
 }
 
@@ -25,11 +23,6 @@ const OPEN = /^\s*<([A-Za-z][\w-]*)>(.*)$/;
 const CLOSE = /^(.*?)\s*<\/([A-Za-z][\w-]*)>\s*$/;
 const CHARS_PER_TOKEN = 4;
 
-/**
- * Splits a prompt into the text before the first tag and its top-level tagged sections.
- * Only tags at the start of a line count, so `Array<string>` in prose stays text. Tags nested
- * inside a section stay in its body.
- */
 export function parsePrompt(text: string): ParsedPrompt {
   let intro = "";
   const sections: PromptSection[] = [];
@@ -88,7 +81,6 @@ export function parsePrompt(text: string): ParsedPrompt {
 const ORDERED_ITEM = /^\s*\d+[.)]\s+(.*\S)\s*$/;
 const BULLET_ITEM = /^\s*[-*]\s+(.*\S)\s*$/;
 
-/** Groups text into paragraphs and numbered or dash lists. */
 export function parseBlocks(text: string): readonly PromptBlock[] {
   const blocks: PromptBlock[] = [];
   let paragraph: string[] = [];
@@ -132,7 +124,6 @@ export function parseBlocks(text: string): readonly PromptBlock[] {
   return blocks;
 }
 
-/** Characters, a rough token estimate (about four characters each) and the section count. */
 export function promptStats(text: string): PromptStats {
   return {
     chars: text.length,

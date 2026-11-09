@@ -27,7 +27,6 @@ export function useAgentUsage(): Loaded<readonly AgentUsage[]> {
   return useLoad("agent-usage", listAgentUsage, NO_REFRESH);
 }
 
-/** Conversation titles by id, empty until loaded (or when they fail to load, so ids show instead). */
 export function useConversationTitles(): ReadonlyMap<string, string> {
   const { data } = useLoad("conversation-titles", listConversations, NO_REFRESH);
   return useMemo(() => (data === null ? NO_TITLES : new Map(data.map((c) => [c.id, c.title]))), [data]);

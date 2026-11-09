@@ -1,6 +1,5 @@
 import type { AgentRun } from "../../api/types";
 
-/** Runs listed before "show more". */
 export const RUNS_SHOWN = 8;
 
 export function shownRuns(runs: readonly AgentRun[], all: boolean): readonly AgentRun[] {
@@ -9,7 +8,6 @@ export function shownRuns(runs: readonly AgentRun[], all: boolean): readonly Age
 
 export interface RunModel {
   readonly name: string;
-  /** True when the run recorded no model and this is the agent type's own. */
   readonly inferred: boolean;
 }
 

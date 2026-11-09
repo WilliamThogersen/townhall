@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useAgentRuns, useAgentType } from "../../data";
 import { Banner } from "../../ui/Banner";
+import { Button } from "../../ui/Button";
 import { Loading } from "../../ui/Loading";
 import { compactNumber } from "../home/format";
 import { AgentAvatar } from "./AgentAvatar";

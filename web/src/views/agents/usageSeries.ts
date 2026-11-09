@@ -2,7 +2,6 @@ import type { UsageBucket, UsageRange } from "../../api/types";
 
 const MIN_VISIBLE_PERCENT = 4;
 
-/** Bars drawn per range: the daemon's hourly, 6-hourly and daily buckets merged in twos. */
 export const TARGET_BARS: Readonly<Record<UsageRange, number>> = { "24h": 12, "7d": 14, "30d": 15 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -34,7 +33,6 @@ export interface MergedBuckets {
   readonly bucketMs: number;
 }
 
-/** Merge neighbouring buckets so there are at most `target` of them; the last one may be shorter. */
 export function mergeBuckets(buckets: readonly UsageBucket[], bucketMs: number, target: number): MergedBuckets {
   if (buckets.length <= target) return { buckets, bucketMs };
   const size = Math.ceil(buckets.length / target);
@@ -55,7 +53,6 @@ export interface AxisTick {
   readonly label: string;
 }
 
-/** Evenly spread labels over the bars: the clock for a day, the month and day for longer ranges. */
 export function axisTicks(buckets: readonly UsageBucket[], range: UsageRange, count: number): readonly AxisTick[] {
   if (buckets.length === 0) return [];
   const shown = Math.min(count, buckets.length);
