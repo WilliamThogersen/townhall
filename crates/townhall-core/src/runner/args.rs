@@ -11,7 +11,7 @@ use crate::{mcp, Error, Result};
 
 /// Tools townhall's session may use besides its own: reading code to plan, nothing more.
 /// They are also the whole built-in set (`--tools`), so no other built-in tool exists.
-pub const READ_ONLY_TOOLS: [&str; 3] = ["Read", "Grep", "Glob"];
+pub const READ_ONLY_TOOLS: [&str; 5] = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"];
 /// Tools that write or run things. Denied outright, so a user's own allow rules in
 /// `~/.claude/settings.json` cannot let townhall's session write to a repo.
 pub const DENIED_TOOLS: [&str; 5] = ["Bash", "Edit", "MultiEdit", "Write", "NotebookEdit"];
@@ -157,8 +157,8 @@ mod tests {
                 "--append-system-prompt=plan",
                 "--strict-mcp-config",
                 "--mcp-config={}",
-                "--tools=Read,Grep,Glob",
-                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__read_logs,mcp__townhall__log_summary,mcp__townhall__conversation_insights,Read,Grep,Glob",
+                "--tools=Read,Grep,Glob,WebFetch,WebSearch",
+                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__read_logs,mcp__townhall__log_summary,mcp__townhall__conversation_insights,Read,Grep,Glob,WebFetch,WebSearch",
                 "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
                 "--setting-sources=",
                 "--settings={\"disableAllHooks\":true,\"autoMemoryEnabled\":false}",

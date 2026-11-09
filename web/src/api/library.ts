@@ -5,6 +5,7 @@ import { request, TomlBody } from "./request";
 import type {
   AgentAdapterKind,
   AgentRun,
+  AgentRunKind,
   AgentType,
   AgentTypeEffort,
   AgentTypeMode,
@@ -20,6 +21,7 @@ const adapter = oneOf<AgentAdapterKind>(["claude", "shell"]);
 const mode = oneOf<AgentTypeMode>(["default", "acceptEdits", "plan", "bypassPermissions"]);
 const effort = oneOf<AgentTypeEffort>(["low", "medium", "high", "xhigh", "max"]);
 const range = oneOf<UsageRange>(["24h", "7d", "30d"]);
+const runKind = oneOf<AgentRunKind>(["task", "turn"]);
 
 const PART_NAMES = Object.keys(AVATAR_PARTS) as readonly AvatarPart[];
 
@@ -84,6 +86,8 @@ const parseUsage: Guard<AgentUsage> = (value) => {
 const parseRun: Guard<AgentRun> = (value) => {
   const r = record(value, "agent run");
   return {
+    kind: runKind(r.kind, "agentRun.kind"),
+    conversationId: str(r.conversationId, "agentRun.conversationId"),
     task: str(r.task, "agentRun.task"),
     repo: str(r.repo, "agentRun.repo"),
     state: str(r.state, "agentRun.state"),

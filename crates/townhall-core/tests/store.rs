@@ -88,6 +88,31 @@ fn a_default_type_that_has_a_model_is_left_alone() {
 }
 
 #[test]
+fn the_seeded_default_type_gains_the_web_tools() {
+    let mut old = Connection::open_in_memory().unwrap();
+    let before: Vec<_> = townhall_core::store::migrate::all()
+        .into_iter()
+        .filter(|m| m.id <= 807)
+        .collect();
+    townhall_core::store::migrate::apply(&mut old, &before).unwrap();
+    let seeded = default_source(&old).unwrap();
+    assert!(!seeded.contains("WebFetch"), "{seeded}");
+    upgrade(&mut old);
+    let source = default_source(&old).unwrap();
+    assert!(source.contains("  \"Glob\",\n  \"WebFetch\",\n  \"WebSearch\"\n]"));
+    assert!(source.contains("the web (WebFetch, WebSearch) only to plan or answer"));
+    assert!(!source.contains("to plan, nothing else"));
+}
+
+#[test]
+fn a_default_type_with_its_own_tools_and_prompt_is_left_alone() {
+    let own = "name = \"default\"\nadapter = \"claude\"\nmodel = \"haiku\"\ntools = [\"Read\"]\nprompt = \"hi\"\n";
+    let mut conn = at_0806(Some(own));
+    upgrade(&mut conn);
+    assert_eq!(default_source(&conn).unwrap(), own);
+}
+
+#[test]
 fn a_missing_default_type_is_not_created() {
     let mut conn = at_0806(None);
     upgrade(&mut conn);

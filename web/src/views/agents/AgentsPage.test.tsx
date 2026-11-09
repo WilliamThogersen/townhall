@@ -255,8 +255,8 @@ describe("AgentsPage", () => {
 
   it("compares the recent runs of a type by model and tokens", async () => {
     vi.mocked(library.listAgentRuns).mockResolvedValue([
-      { task: "cheap-one", repo: "alpha", state: "ended", model: "claude-haiku", tokens: 12_400, createdAt: "2026-11-09T10:00:00Z", endedAt: null },
-      { task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
+      { kind: "task", conversationId: "c1", task: "cheap-one", repo: "alpha", state: "ended", model: "claude-haiku", tokens: 12_400, createdAt: "2026-11-09T10:00:00Z", endedAt: null },
+      { kind: "task", conversationId: "c1", task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
     ]);
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
@@ -272,7 +272,7 @@ describe("AgentsPage", () => {
 
   it("falls back to the type's model for a run that recorded none, and never says unknown", async () => {
     vi.mocked(library.listAgentRuns).mockResolvedValue([
-      { task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
+      { kind: "task", conversationId: "c1", task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
     ]);
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
@@ -287,7 +287,7 @@ describe("AgentsPage", () => {
       Promise.resolve(anAgentType({ name, model: null, source: `name = "${name}"\n` })),
     );
     vi.mocked(library.listAgentRuns).mockResolvedValue([
-      { task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
+      { kind: "task", conversationId: "c1", task: "old-one", repo: "alpha", state: "failed", model: null, tokens: 3, createdAt: "2026-11-08T09:00:00Z", endedAt: null },
     ]);
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));
@@ -299,6 +299,8 @@ describe("AgentsPage", () => {
   it("lists only the first eight runs until show more is pressed", async () => {
     vi.mocked(library.listAgentRuns).mockResolvedValue(
       Array.from({ length: 12 }, (_, i) => ({
+        kind: "task",
+        conversationId: "c1",
         task: `run-${i}`,
         repo: "alpha",
         state: "ended",
@@ -320,9 +322,22 @@ describe("AgentsPage", () => {
     expect(runs.getAllByRole("row")).toHaveLength(1 + 8);
   });
 
+  it("links a conversation turn to its conversation and leaves a task as text", async () => {
+    vi.mocked(library.listAgentRuns).mockResolvedValue([
+      { kind: "turn", conversationId: "c9", task: "plan the login page", repo: "alpha", state: "done", model: null, tokens: 5040, createdAt: "2026-11-09T10:00:00Z", endedAt: "2026-11-09T10:00:05Z" },
+      { kind: "task", conversationId: "c9", task: "a-task", repo: "alpha", state: "ended", model: null, tokens: 1, createdAt: "2026-11-09T09:00:00Z", endedAt: null },
+    ]);
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const runs = within(await screen.findByRole("region", { name: "recent runs" }));
+    const link = await runs.findByRole("link", { name: "plan the login page" });
+    expect(link).toHaveAttribute("href", "/c/c9");
+    expect(runs.queryByRole("link", { name: "a-task" })).not.toBeInTheDocument();
+  });
+
   it("offers no show more when the runs fit", async () => {
     vi.mocked(library.listAgentRuns).mockResolvedValue([
-      { task: "only", repo: "alpha", state: "ended", model: "claude-haiku", tokens: 1, createdAt: "2026-11-09T10:00:00Z", endedAt: null },
+      { kind: "task", conversationId: "c1", task: "only", repo: "alpha", state: "ended", model: "claude-haiku", tokens: 1, createdAt: "2026-11-09T10:00:00Z", endedAt: null },
     ]);
     render(<AgentsPage />);
     await userEvent.click(await rowOf("planner"));

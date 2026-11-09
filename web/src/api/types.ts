@@ -291,7 +291,11 @@ export interface AgentUsageSeries {
   readonly byConversation: readonly UsageShare[];
 }
 
+export type AgentRunKind = "task" | "turn";
+
 export interface AgentRun {
+  readonly kind: AgentRunKind;
+  readonly conversationId: string;
   readonly task: string;
   readonly repo: string;
   readonly state: string;

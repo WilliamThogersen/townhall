@@ -110,6 +110,8 @@ pub struct AgentUsage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskRun {
+    pub kind: String,
+    pub conversation_id: String,
     pub task: String,
     pub repo: String,
     pub state: String,

@@ -165,3 +165,41 @@ async fn the_store_reads_one_agent_types_runs_by_start_time() {
         .unwrap();
     assert_eq!((none.runs, none.tokens, none.by_task.len()), (0, 0, 0));
 }
+
+#[tokio::test]
+async fn conversation_turns_fill_the_default_types_series() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    let (recent, old) = (
+        from_unix_millis(NOW - HOUR / 2),
+        from_unix_millis(NOW - 3 * DAY),
+    );
+    env.store
+        .record_turn(&c.id, "done", 70, &recent, &recent)
+        .await
+        .unwrap();
+    env.store
+        .record_turn(&c.id, "done", 5, &old, &old)
+        .await
+        .unwrap();
+    let day = env
+        .store
+        .agent_usage_series("DEFAULT", UsageRange::Day, NOW)
+        .await
+        .unwrap();
+    assert_eq!(day.agent, "default");
+    assert_eq!((day.runs, day.tokens), (1, 70));
+    assert_eq!(day.by_conversation[0].key, c.id);
+    let week = env
+        .store
+        .agent_usage_series("default", UsageRange::Week, NOW)
+        .await
+        .unwrap();
+    assert_eq!((week.runs, week.tokens), (2, 75));
+    let builder = env
+        .store
+        .agent_usage_series("builder", UsageRange::Week, NOW)
+        .await
+        .unwrap();
+    assert_eq!(builder.runs, 0);
+}

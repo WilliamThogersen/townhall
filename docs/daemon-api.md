@@ -64,8 +64,8 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/tasks/{name}/artifacts` | | `Artifact[]` of the task, oldest first | 404 | 2.9 |
 | GET | `/tasks/{name}/artifacts/{id}` | | the bytes with the stored `content-type` (not the envelope); `inline` for a raster image or text, a download otherwise; `nosniff` and `sandbox; default-src 'none'` | 400 bad id, 404 | 2.9 |
 | GET | `/library/agents` | | `AgentTypeSummary[]` by name, ignoring case | | 2.12 |
-| GET | `/library/agents/usage` | | `AgentUsage[]` = `{ agent, runs, tokens }` per agent type, by name | | 2.12 |
-| GET | `/library/agents/{name}/runs` | | `TaskRun[]`: the tasks of that type (name matched ignoring case), newest first, at most 50. `200 []` when there is none, also for a deleted type | | 2.12 |
+| GET | `/library/agents/usage` | | `AgentUsage[]` = `{ agent, runs, tokens }` per agent type, by name. Every conversation turn that ran claude counts as one run of `default`, with its input plus output tokens (cache tokens left out, like a task's) | | 2.12 |
+| GET | `/library/agents/{name}/runs` | | `TaskRun[]` = `{ kind, conversationId, task, repo, state, model, tokens, createdAt, endedAt }`: the tasks of that type (name matched ignoring case), newest first, at most 50. `default` also lists its conversation turns: `kind` is `turn`, `task` is the conversation's title, `repo` its linked repo (`""` when none), `state` is `done`, `failed` or `stopped`, `model` is null, and `conversationId` is the conversation to open. A task has `kind` `task` and the `conversationId` it was made in. `200 []` when there is none, also for a deleted type | | 2.12 |
 | GET | `/library/agents/{name}` | | `AgentType` (ignoring case) | 404 | 2.12 |
 | PUT | `/library/agents/{name}` | the TOML text, `content-type: text/plain` or `application/toml` | `201 AgentType` new, `200 AgentType` replaced (ignoring case, the new spelling wins) | 400 wrong content type, not UTF-8, the error list (below), its `name` is not the path's | 2.12 |
 | DELETE | `/library/agents/{name}` | | the deleted type's name | 404; 409 it is the last type for tasks, or `default` | 2.12 |
@@ -164,7 +164,7 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | key | values | default |
 |-----|--------|---------|
 | `agentsAtOnce` | integer 1 to 50 | `6` |
-| `repoUnclear` | `ask`, `guess` | `ask` |
+| `repoUnclear` | `ask`, `guess`: what townhall does when a message points at several repos (names two, or its code fits two equally): ask, or run in the first candidate. A message that points at no repo is not unclear: it keeps the conversation's repo, else runs with no repo (the session passes `repo` to `create_task`), and nothing is asked or noted | `ask` |
 | `sessionPanelOpen` | boolean | `true` |
 | `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
 | `minFreeDiskGb` | integer 0 to 100000: a task does not start with less free space on the data volume; `0` is off | `5` |
@@ -218,7 +218,7 @@ claude [--model=M] [--effort=E] [--permission-mode=MODE | --dangerously-skip-per
 - `permission_mode`: `default`, `acceptEdits`, `plan` and `auto` become `--permission-mode=<mode>`; `bypassPermissions` becomes `--dangerously-skip-permissions`. `claude` 2.1.318 lists `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` and no longer lists `default`, but still accepts it, so `default` is passed as is for now.
 - Checked against the installed `claude` 2.1.318 (empty environment, throwaway `HOME`, an invalid `--session-id` so it stops right after parsing): `-- --no-such-flag` reaches the session-id check while `--no-such-flag` alone is `unknown option`, and `--allowedTools=Read,Bash(git diff:*),Edit` and the `--name=value` forms parse.
 - The launch command puts `env -u <name>` for each of `agent::OUTER_SESSION_ENV` in front of `claude` (see Environment below). `ClaudeCodeAdapter::args(&options)` returns the argv after the program unquoted, without that prefix, for a caller that spawns `claude` without a shell (2.2's runner, which removes the same variables itself).
-- Townhall's own session (`runner/args.rs`) follows the same rules, spawned without a shell: `claude -p --output-format=stream-json --verbose --input-format=stream-json --permission-prompt-tool=stdio --include-partial-messages (--session-id=ID | --resume=ID) --model=M --permission-mode=default --append-system-prompt=P --strict-mcp-config --mcp-config=JSON --tools=Read,Grep,Glob --allowedTools=T1,T2 --disallowedTools=T1,T2 --setting-sources= --settings={"disableAllHooks":true} --disable-slash-commands [--add-dir=D ...]`. `M` is the `model` of the type `default`, read at the start of every turn (`opus` when it has none). The session id, the MCP config and each folder are refused (`InvalidInput`, the turn fails) when they start with `-` or hold control characters, a folder also unless absolute and UTF-8. The system prompt may hold newlines.
+- Townhall's own session (`runner/args.rs`) follows the same rules, spawned without a shell: `claude -p --output-format=stream-json --verbose --input-format=stream-json --permission-prompt-tool=stdio --include-partial-messages (--session-id=ID | --resume=ID) --model=M --permission-mode=default --append-system-prompt=P --strict-mcp-config --mcp-config=JSON --tools=Read,Grep,Glob,WebFetch,WebSearch --allowedTools=T1,T2 --disallowedTools=T1,T2 --setting-sources= --settings={"disableAllHooks":true} --disable-slash-commands [--add-dir=D ...]`. `M` is the `model` of the type `default`, read at the start of every turn (`opus` when it has none). The session id, the MCP config and each folder are refused (`InvalidInput`, the turn fails) when they start with `-` or hold control characters, a folder also unless absolute and UTF-8. The system prompt may hold newlines.
 
 ### Townhall's session leaves your own Claude setup out
 
@@ -229,10 +229,10 @@ Unit 2.11. Townhall's session plans tasks; your hooks, CLAUDE.md, skills, slash 
 | `--setting-sources=` (empty) | loads none of the user, project and local settings files: no hooks, `enabledPlugins`, permission rules or `env` from them, and no CLAUDE.md, which claude loads only for an enabled source (the Agent SDK runs claude the same way when its `settingSources` is empty). Managed (policy) settings still apply, as they should |
 | `--settings={"disableAllHooks":true}` | hooks stay off even if some source still had one (a plugin, a future default) |
 | `--disable-slash-commands` | "disable all skills and commands" |
-| `--tools=Read,Grep,Glob` | the whole built-in tool set: no Bash, Edit, Write, WebFetch, Task and the like exist in the session. MCP tools are not built in, so townhall's own stay |
+| `--tools=Read,Grep,Glob,WebFetch,WebSearch` | the whole built-in tool set: read code and open urls or search the web, but no Bash, Edit, Write, Task and the like exist in the session. MCP tools are not built in, so townhall's own stay |
 | `--strict-mcp-config --mcp-config=...` (as before) | townhall's MCP server only, none of yours |
 
-`--allowedTools` (townhall's MCP tools plus `READ_ONLY_TOOLS` = Read, Grep, Glob) and `--disallowedTools` stay as they were; `LS` left the list, since `--tools` names the built-in set.
+`--allowedTools` (townhall's MCP tools plus `READ_ONLY_TOOLS` = Read, Grep, Glob, WebFetch, WebSearch) and `--disallowedTools` stay as they were; `LS` left the list, since `--tools` names the built-in set.
 
 Auth keeps working: it comes from your login (the macOS keychain or `~/.claude/.credentials.json`, with the account in `~/.claude.json`) and from `ANTHROPIC_*` / `CLAUDE_*` variables, which pass through (see Environment). None of these flags reads or skips them. Not chosen: `--bare`, which never reads OAuth or the keychain (only `ANTHROPIC_API_KEY` or an `apiKeyHelper`), so a subscription login would stop working; `--safe-mode`, a troubleshooting mode that also disables MCP servers, which could take townhall's own with it; `--restricted`, which overlaps the flags above but also confines and gates writes in ways townhall does not need. One limit: a provider or `apiKeyHelper` set only in your `~/.claude/settings.json` (not in the environment) is no longer read by townhall's session.
 

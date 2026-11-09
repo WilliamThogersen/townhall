@@ -28,6 +28,23 @@ function RepoName({ summary }: { readonly summary: RepoSummary }) {
   );
 }
 
+function RepoPicks({ summary }: { readonly summary: RepoSummary }) {
+  const { name, githubAccount, gitlabAccount } = summary.repo;
+  const picks = [
+    { forge: "github", login: githubAccount },
+    { forge: "gitlab", login: gitlabAccount },
+  ];
+  return (
+    <>
+      {picks.map(({ forge, login }) =>
+        login === null ? null : (
+          <span key={forge} title={`${forge} account for ${name}`}>{`${forge} · ${login}`}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 function RepoAgents({ summary }: { readonly summary: RepoSummary }) {
   return (
     <span className="th-cap th-repo-agents">
@@ -58,6 +75,7 @@ export function RepoRow({ summary, onRemove, accounts = [], onPickAccount, onEdi
       <div className="th-repo-meta">
         <span title={summary.repo.baseBranch}>{summary.repo.baseBranch}</span>
         <span>{summary.conversations}</span>
+        <RepoPicks summary={summary} />
       </div>
       <RepoAgents summary={summary} />
       <div className="th-repo-actions">
