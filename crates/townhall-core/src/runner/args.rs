@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 
 use crate::agent::{add_dir, plain, ISOLATED_SETTINGS};
-use crate::model::TownhallModel;
-use crate::{mcp, Result};
+use crate::model::PermissionMode;
+use crate::{mcp, Error, Result};
 
 /// Tools townhall's session may use besides its own: reading code to plan, nothing more.
 /// They are also the whole built-in set (`--tools`), so no other built-in tool exists.
@@ -45,8 +45,12 @@ pub struct TurnArgs {
     pub system_prompt: String,
     pub mcp_config: String,
     pub add_dirs: Vec<PathBuf>,
-    /// The `townhallModel` setting.
-    pub model: TownhallModel,
+    /// The `--model` value.
+    pub model: String,
+    pub permission_mode: PermissionMode,
+    /// Every tool the session may use without asking; the built-in ones among them are
+    /// also the whole built-in set (`--tools`).
+    pub tools: Vec<String>,
 }
 
 const FIXED: [&str; 6] = [
@@ -64,18 +68,43 @@ fn session(a: &TurnArgs) -> Result<String> {
     Ok(format!("{flag}={}", a.session_id))
 }
 
+fn permission(a: &TurnArgs) -> Result<String> {
+    match a.permission_mode.cli_value() {
+        Some(value) => Ok(format!("--permission-mode={value}")),
+        None => Err(Error::InvalidInput(
+            "the permission mode of townhall's session has no flag".into(),
+        )),
+    }
+}
+
+/// The built-in tools the entries name (`Bash(git log:*)` is `Bash`; MCP tools are none).
+fn built_in(tools: &[String]) -> Vec<&str> {
+    let mut names: Vec<&str> = vec![];
+    for tool in tools {
+        let name = tool.split('(').next().unwrap_or(tool);
+        if !name.starts_with("mcp__") && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// The options in a fixed order, one element each, the `--add-dir`s last.
 pub fn build(a: &TurnArgs) -> Result<Vec<String>> {
     plain("mcp config", &a.mcp_config)?;
+    plain("model", &a.model)?;
+    for tool in &a.tools {
+        plain("tool", tool)?;
+    }
     let options = [
         session(a)?,
-        format!("--model={}", a.model.cli_value()),
-        "--permission-mode=default".into(),
+        format!("--model={}", a.model),
+        permission(a)?,
         format!("--append-system-prompt={}", a.system_prompt),
         "--strict-mcp-config".into(),
         format!("--mcp-config={}", a.mcp_config),
-        format!("--tools={}", READ_ONLY_TOOLS.join(",")),
-        format!("--allowedTools={}", allowed_tools().join(",")),
+        format!("--tools={}", built_in(&a.tools).join(",")),
+        format!("--allowedTools={}", a.tools.join(",")),
         format!("--disallowedTools={}", DENIED_TOOLS.join(",")),
     ];
     let isolation = ISOLATION.iter().map(|s| s.to_string());
@@ -104,7 +133,9 @@ mod tests {
             system_prompt: "plan".into(),
             mcp_config: "{}".into(),
             add_dirs,
-            model: TownhallModel::default(),
+            model: "sonnet".into(),
+            permission_mode: PermissionMode::Default,
+            tools: allowed_tools(),
         }
     }
 
@@ -144,20 +175,50 @@ mod tests {
     }
 
     #[test]
-    fn the_model_follows_the_setting() {
-        for (model, flag) in [
-            (TownhallModel::Sonnet, "--model=sonnet"),
-            (TownhallModel::Opus, "--model=opus"),
-            (TownhallModel::Haiku, "--model=haiku"),
-        ] {
+    fn the_model_follows_the_persona() {
+        for model in ["sonnet", "opus", "haiku", "claude-opus-4-1"] {
             let argv = build(&TurnArgs {
-                model,
+                model: model.into(),
                 ..args(true, vec![])
             })
             .unwrap();
             let models: Vec<&String> = argv.iter().filter(|a| a.starts_with("--model")).collect();
-            assert_eq!(models, [flag]);
+            assert_eq!(models, [&format!("--model={model}")]);
         }
+    }
+
+    #[test]
+    fn the_mode_and_tools_follow_the_persona() {
+        let argv = build(&TurnArgs {
+            permission_mode: PermissionMode::Plan,
+            tools: vec![
+                "Read".into(),
+                "Grep".into(),
+                "mcp__townhall__create_task".into(),
+            ],
+            ..args(true, vec![])
+        })
+        .unwrap();
+        for flag in [
+            "--permission-mode=plan",
+            "--tools=Read,Grep",
+            "--allowedTools=Read,Grep,mcp__townhall__create_task",
+            "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
+        ] {
+            assert!(argv.contains(&flag.to_string()), "{flag}: {argv:?}");
+        }
+        assert!(!argv.contains(&"--permission-mode=default".to_string()));
+    }
+
+    #[test]
+    fn a_mode_without_a_flag_is_refused() {
+        let error = build(&TurnArgs {
+            permission_mode: PermissionMode::BypassPermissions,
+            ..args(true, vec![])
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("permission mode"), "{error}");
     }
 
     #[test]
@@ -174,6 +235,14 @@ mod tests {
         for config in ["--strict-mcp-config", "{}\u{7}", "{\n}"] {
             let error = refused(&|a| a.mcp_config = config.into());
             assert!(error.contains("mcp config"), "{error}");
+        }
+        for model in ["-p", "opus\n"] {
+            let error = refused(&|a| a.model = model.into());
+            assert!(error.contains("model"), "{error}");
+        }
+        for tool in ["--bare", "Read\n"] {
+            let error = refused(&|a| a.tools = vec![tool.into()]);
+            assert!(error.contains("tool"), "{error}");
         }
         for dir in ["-r", "relative/dir", "/r/\nb"] {
             let error = refused(&|a| a.add_dirs = vec![dir.into()]);

@@ -16,6 +16,7 @@ mod answer;
 mod args;
 mod content;
 mod notify;
+mod persona;
 mod process;
 mod prompt;
 mod quote;

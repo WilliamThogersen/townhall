@@ -1,9 +1,8 @@
 insert into agents (name, description, source, updated_at)
-select 'default', 'the conversation agent: plans with you and hands work to tasks', '# the agent type townhall''s own conversation runs as
+select 'default', 'the conversation agent: plans with you and hands work to tasks', '# the agent type townhall''s own conversation runs as. with no model here the townhallModel setting picks it
 name = "default"
 description = "the conversation agent: plans with you and hands work to tasks"
 adapter = "claude"
-model = "sonnet"
 permission_mode = "default"
 tools = [
   "mcp__townhall__create_task",

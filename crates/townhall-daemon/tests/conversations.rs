@@ -103,6 +103,46 @@ async fn the_townhall_model_setting_picks_the_model_of_the_next_turn() {
     assert_eq!(values_of(&second, "--setting-sources"), [""]);
 }
 
+const EDITED_DEFAULT: &str = "name = \"default\"\nadapter = \"claude\"\nmodel = \"opus\"\npermission_mode = \"acceptEdits\"\ntools = [\"Read\", \"Bash\", \"mcp__townhall__create_task\"]\nprompt = \"you are a pirate planner\"\n";
+
+#[tokio::test]
+async fn the_default_agent_type_drives_the_conversation() {
+    let env = Env::new("alpha").await;
+    let fake = Fake::install(env.root.path());
+    let (state, app) = app_with(&env, &fake);
+    let store = state.ctx().store().unwrap();
+    let (_, replaced) = store.save_agent_type(EDITED_DEFAULT).await.unwrap();
+    assert!(replaced, "the type default is seeded");
+    set_setting(&app, "permissionMode", json!("acceptEdits")).await;
+    let created = create(&app, "plan a settings page").await;
+    let id = created["conversation"]["id"].as_str().unwrap().to_string();
+    idle(&app, &id).await;
+    let first = fake.argv(1);
+    assert_eq!(values_of(&first, "--model"), ["opus"]);
+    assert_eq!(values_of(&first, "--permission-mode"), ["acceptEdits"]);
+    assert_eq!(values_of(&first, "--tools"), ["Read"]);
+    assert_eq!(
+        values_of(&first, "--allowedTools"),
+        ["Read,mcp__townhall__create_task"]
+    );
+    assert_eq!(
+        values_of(&first, "--disallowedTools"),
+        ["Bash,Edit,MultiEdit,Write,NotebookEdit"]
+    );
+    let prompt = values_of(&first, "--append-system-prompt").join(" ");
+    assert!(
+        prompt.starts_with("you are a pirate planner\n\n"),
+        "{prompt}"
+    );
+    assert!(prompt.contains("alpha") && !prompt.contains("you are townhall"));
+
+    set_setting(&app, "permissionMode", json!("plan")).await;
+    let (s, v) = message(&app, &id, "and a dark theme").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    idle(&app, &id).await;
+    assert_eq!(values_of(&fake.argv(2), "--permission-mode"), ["plan"]);
+}
+
 #[tokio::test]
 async fn a_turn_stores_the_reply_and_the_context_but_no_deltas() {
     let env = Env::new("alpha").await;

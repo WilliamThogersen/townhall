@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use crate::model::Repo;
 
-const INSTRUCTIONS: &str = "\
+pub(super) const INSTRUCTIONS: &str = "\
 you are townhall, a planner. you talk with the user, work out what they want and hand the work to Claude agents as tasks.
 - create every piece of work with the create_task tool. each task runs as its own agent in a git worktree of its repo.
 - never edit files or run commands yourself. you may read code (Read, Grep, Glob) to plan, nothing else; the agents do the work.
@@ -74,7 +74,12 @@ fn note_text(note: &RepoNote, registered: &[Repo]) -> String {
 /// `--append-system-prompt`: the rules, this turn's repo and every registered repo, then the
 /// user's profile when there is one with text. The caller passes it only while the
 /// `learnAboutMe` setting is on.
-pub fn system_prompt(note: &RepoNote, registered: &[Repo], profile: Option<&str>) -> String {
+pub fn system_prompt(
+    personality: &str,
+    note: &RepoNote,
+    registered: &[Repo],
+    profile: Option<&str>,
+) -> String {
     let list: Vec<String> = registered
         .iter()
         .map(|r| format!("- {}", describe(r)))
@@ -84,7 +89,7 @@ pub fn system_prompt(note: &RepoNote, registered: &[Repo], profile: Option<&str>
     } else {
         format!("\nregistered repos:\n{}", list.join("\n"))
     };
-    let base = format!("{INSTRUCTIONS}\n\n{}{repos}", note_text(note, registered));
+    let base = format!("{personality}\n\n{}{repos}", note_text(note, registered));
     match profile.map(str::trim).filter(|p| !p.is_empty()) {
         Some(profile) => format!("{base}\n\n{PROFILE_INTRO}\n{profile}"),
         None => base,
@@ -169,7 +174,7 @@ mod tests {
     #[test]
     fn the_prompt_names_the_turns_repo() {
         let all = [repo("shop"), repo("admin")];
-        let one = system_prompt(&RepoNote::One(repo("shop")), &all, None);
+        let one = system_prompt(INSTRUCTIONS, &RepoNote::One(repo("shop")), &all, None);
         assert!(one.starts_with("you are townhall"));
         assert!(one.contains("repo for this turn: shop at /r/shop, base branch main."));
         assert!(one.contains("- admin at /r/admin, base branch main"));
@@ -196,20 +201,39 @@ mod tests {
         assert!(one.contains("never ask the user which GitHub or GitLab account"));
         assert!(one.contains("forgeAccounts") && one.contains("githubAccount"));
         assert!(!one.contains("LS"), "LS is not a tool of the session");
-        let several = system_prompt(&RepoNote::Several(all.to_vec()), &all, None);
+        let several = system_prompt(INSTRUCTIONS, &RepoNote::Several(all.to_vec()), &all, None);
         assert!(several.contains("the user picked these repos: shop, admin."));
-        assert!(system_prompt(&RepoNote::Unknown, &all, None).contains("no repo is resolved"));
-        let none = system_prompt(&RepoNote::Unknown, &[], None);
+        assert!(system_prompt(INSTRUCTIONS, &RepoNote::Unknown, &all, None)
+            .contains("no repo is resolved"));
+        let none = system_prompt(INSTRUCTIONS, &RepoNote::Unknown, &[], None);
         assert!(none.contains("no repo is registered yet") && !none.contains("registered repos"));
         assert!(!one.contains('\u{2014}') && !one.contains('\u{2013}'));
     }
 
     #[test]
+    fn the_personality_is_the_types_and_the_notes_stay_ours() {
+        let all = [repo("shop")];
+        let got = system_prompt(
+            "be kind",
+            &RepoNote::One(repo("shop")),
+            &all,
+            Some("likes tea"),
+        );
+        assert!(got.starts_with("be kind\n\nrepo for this turn: shop at /r/shop"));
+        assert!(got.contains("registered repos:\n- shop at /r/shop"));
+        assert!(got.ends_with("likes tea"));
+        assert!(!got.contains("you are townhall"));
+    }
+
+    #[test]
     fn a_profile_is_added_only_when_it_has_text() {
         let note = RepoNote::Unknown;
-        let plain = system_prompt(&note, &[], None);
-        assert_eq!(system_prompt(&note, &[], Some("  \n ")), plain);
-        let with = system_prompt(&note, &[], Some("  i like short replies\n"));
+        let plain = system_prompt(INSTRUCTIONS, &note, &[], None);
+        assert_eq!(
+            system_prompt(INSTRUCTIONS, &note, &[], Some("  \n ")),
+            plain
+        );
+        let with = system_prompt(INSTRUCTIONS, &note, &[], Some("  i like short replies\n"));
         assert!(with.starts_with(&plain));
         assert!(with.contains("about the user"));
         assert!(with.ends_with("i like short replies"));

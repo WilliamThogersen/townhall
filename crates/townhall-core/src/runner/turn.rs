@@ -6,12 +6,16 @@ use std::time::Instant;
 
 use super::args::{self, TurnArgs};
 use super::content::user_content;
+use super::persona::Persona;
 use super::prompt::{self, RepoNote};
 use super::quote::{self, with_quote};
 use super::repo::{self, Message, Resolved};
 use super::session::{talk, TurnEnd};
 use super::turns::TurnGuard;
-use crate::model::{Conversation, ConversationStatus, EntryBody, NewMessage, Repo};
+use crate::model::{
+    Conversation, ConversationStatus, EntryBody, NewMessage, PermissionMode, Repo, TownhallModel,
+    CONVERSATION_AGENT_TYPE,
+};
 use crate::redact::redact;
 use crate::{ids, mcp, Context, Result};
 
@@ -189,6 +193,29 @@ async fn session_dir(
     Ok(kept.unwrap_or(wanted))
 }
 
+/// The conversation's saved type `default`. A type that is missing leaves the built-in
+/// behaviour; so does one that no longer parses, with a warning.
+async fn persona(ctx: &Context, model: TownhallModel, mode: PermissionMode) -> Result<Persona> {
+    let found = match ctx.store()?.agent_type(CONVERSATION_AGENT_TYPE).await {
+        Ok(found) => found,
+        Err(e @ crate::Error::Corrupt { .. }) => {
+            warn_turn(
+                "turn.default_type_unreadable",
+                "",
+                &e,
+                "agent type default unreadable, the built-in settings are used",
+            );
+            None
+        }
+        Err(e) => return Err(e),
+    };
+    Ok(Persona::from_type(
+        found.as_ref().map(|t| &t.def),
+        model,
+        mode,
+    ))
+}
+
 async fn plan(
     ctx: &Context,
     conversation: &Conversation,
@@ -209,8 +236,8 @@ async fn plan(
         true => ctx.store()?.profile().await?,
         false => String::new(),
     };
-    let system = prompt::system_prompt(attempt.note, &repos, Some(&profile));
-    let model = settings.townhall_model;
+    let persona = persona(ctx, settings.townhall_model, settings.permission_mode).await?;
+    let system = prompt::system_prompt(&persona.prompt, attempt.note, &repos, Some(&profile));
     let turn = TurnArgs {
         session_id: conversation.session_id.clone(),
         resume: conversation.session_started,
@@ -220,7 +247,9 @@ async fn plan(
         },
         mcp_config: mcp::config_json(ctx.base_url(), &conversation.id),
         add_dirs,
-        model,
+        model: persona.model,
+        permission_mode: persona.permission_mode,
+        tools: persona.tools,
     };
     args::build(&turn)
 }
