@@ -8,6 +8,7 @@ import { AgentPrompt } from "./AgentPrompt";
 import { CopyButton } from "./CopyButton";
 import { AvatarEditor } from "./AvatarEditor";
 import { StepBadge } from "./AgentTypeRow";
+import { RUNS_SHOWN, runModel, shownRuns, showsModelColumn } from "./agentRuns";
 import { UsageGraph } from "./UsageGraph";
 
 function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
@@ -50,38 +51,54 @@ function envNames(env: Readonly<Record<string, string>>): string {
   return names.length > 0 ? names.join(", ") : "none";
 }
 
-function RecentRuns({ name }: { readonly name: string }) {
+function RecentRuns({ name, typeModel }: { readonly name: string; readonly typeModel: string | null }) {
   const { data, error } = useAgentRuns(name);
+  const [all, setAll] = useState(false);
+  const hidden = data === null ? 0 : data.length - RUNS_SHOWN;
+  const withModel = data !== null && showsModelColumn(data, typeModel);
   return (
-    <section className="th-agent-runs" aria-label="recent runs">
-      <h3>recent runs</h3>
+    <Section title="recent runs">
       {error !== null && data === null ? <Banner level="error">runs not loaded: {error}</Banner> : null}
-      {data !== null && data.length === 0 ? <p>no runs yet</p> : null}
+      {data !== null && data.length === 0 ? <p className="th-cap">no runs yet</p> : null}
       {data !== null && data.length > 0 ? (
-        <table>
-          <thead>
-            <tr>
-              <th>task</th>
-              <th>model</th>
-              <th>tokens</th>
-              <th>state</th>
-              <th>started</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((run) => (
-              <tr key={run.task}>
-                <td>{run.task}</td>
-                <td>{run.model ?? "unknown"}</td>
-                <td>{compactNumber(run.tokens)}</td>
-                <td>{run.state}</td>
-                <td>{run.createdAt.slice(0, 10)}</td>
+        <>
+          <table className="th-agent-runs-table">
+            <thead>
+              <tr>
+                <th>task</th>
+                {withModel ? <th>model</th> : null}
+                <th>tokens</th>
+                <th>state</th>
+                <th>started</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {shownRuns(data, all).map((run) => {
+                const model = runModel(run, typeModel);
+                return (
+                  <tr key={run.task}>
+                    <td title={run.task}>{run.task}</td>
+                    {withModel ? (
+                      <td title={model?.inferred ? "the agent type's model; the run did not record one" : undefined} data-inferred={model?.inferred || undefined}>
+                        {model?.name}
+                      </td>
+                    ) : null}
+                    <td>{compactNumber(run.tokens)}</td>
+                    <td>{run.state}</td>
+                    <td>{run.createdAt.slice(0, 10)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {hidden > 0 ? (
+            <Button size="sm" variant="ghost" onClick={() => setAll((on) => !on)}>
+              {all ? "show fewer" : `show ${hidden} more`}
+            </Button>
+          ) : null}
+        </>
       ) : null}
-    </section>
+    </Section>
   );
 }
 
@@ -105,6 +122,18 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
           <CopyButton text={data.source} />
         </div>
       </header>
+      <Section title="avatar">
+        <AvatarEditor
+          key={`${data.updatedAt}:${data.source}`}
+          name={data.name}
+          source={data.source}
+          saved={data.avatar}
+          onSaved={() => {
+            reload();
+            onSaved();
+          }}
+        />
+      </Section>
       <Section title="setup">
         <dl className="th-agent-fields">
           <Field label="adapter">{data.adapter}</Field>
@@ -123,19 +152,7 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
       <Section title="usage">
         <UsageGraph name={data.name} />
       </Section>
-      <RecentRuns name={data.name} />
-      <Section title="avatar">
-        <AvatarEditor
-          key={`${data.updatedAt}:${data.source}`}
-          name={data.name}
-          source={data.source}
-          saved={data.avatar}
-          onSaved={() => {
-            reload();
-            onSaved();
-          }}
-        />
-      </Section>
+      <RecentRuns name={data.name} typeModel={data.model} />
       <details className="th-agent-toml">
         <summary>toml</summary>
         <pre className="th-agent-source" tabIndex={0}>
