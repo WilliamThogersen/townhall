@@ -1,35 +1,14 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useAgentRuns, useAgentType } from "../../data";
 import { Banner } from "../../ui/Banner";
-import { Button } from "../../ui/Button";
 import { Loading } from "../../ui/Loading";
 import { compactNumber } from "../home/format";
 import { AgentAvatar } from "./AgentAvatar";
+import { AgentPrompt } from "./AgentPrompt";
+import { CopyButton } from "./CopyButton";
 import { AvatarEditor } from "./AvatarEditor";
 import { StepBadge } from "./AgentTypeRow";
 import { UsageGraph } from "./UsageGraph";
-
-const COPIED_MS = 1500;
-
-function CopyButton({ text }: { readonly text: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  const copy = () => {
-    navigator.clipboard.writeText(text).then(
-      () => setCopied(true),
-      () => setCopied(false),
-    );
-  };
-  return (
-    <Button size="sm" variant="ghost" onClick={copy} data-copied={copied || undefined}>
-      {copied ? "copied" : "copy"}
-    </Button>
-  );
-}
 
 function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
@@ -137,6 +116,9 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
           </Field>
           <Field label="env">{envNames(data.env)}</Field>
         </dl>
+      </Section>
+      <Section title="prompt">
+        <AgentPrompt prompt={data.prompt} />
       </Section>
       <Section title="usage">
         <UsageGraph name={data.name} />
