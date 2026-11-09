@@ -399,3 +399,56 @@ fn an_mcp_config_is_a_checked_value() {
     };
     assert!(ClaudeCodeAdapter::args(&comma).is_err());
 }
+
+fn with_env(pairs: &[(&str, &str)]) -> LaunchOptions {
+    LaunchOptions {
+        env: pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        ..opts("go now")
+    }
+}
+
+#[test]
+fn env_reaches_the_claude_process_as_literal_values() {
+    let hostile = "it's $HOME `x`; rm -rf /\nnext";
+    let options = with_env(&[("TUNE_ME", hostile), ("OTHER", "2")]);
+    let (_dir, command) = fake_command("printf '%s|%s' \"$TUNE_ME\" \"$OTHER\"", &options);
+    let out = std::process::Command::new("sh")
+        .args(["-c", &command])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        format!("{hostile}|2")
+    );
+}
+
+#[test]
+fn env_comes_after_the_unset_list_and_an_empty_env_changes_nothing() {
+    let command = ClaudeCodeAdapter::default()
+        .launch_command(&with_env(&[("CLAUDE_EFFORT", "low")]))
+        .unwrap();
+    assert!(
+        command.starts_with(&format!("{UNSET} 'CLAUDE_EFFORT=low' claude ")),
+        "{command}"
+    );
+    let plain = ClaudeCodeAdapter::default()
+        .launch_command(&opts("go now"))
+        .unwrap();
+    assert!(plain.starts_with(&format!("{UNSET} claude ")), "{plain}");
+}
+
+#[test]
+fn env_names_that_are_empty_or_hold_equals_are_refused_without_the_value() {
+    for key in ["", "A=B"] {
+        let err = ClaudeCodeAdapter::default()
+            .launch_command(&with_env(&[(key, "hunter2")]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("env"), "{err}");
+        assert!(!err.contains("hunter2"), "{err}");
+    }
+}

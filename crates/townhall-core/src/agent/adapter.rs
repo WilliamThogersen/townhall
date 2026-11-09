@@ -56,6 +56,24 @@ pub(super) fn shell_word(s: &str) -> String {
     }
 }
 
+/// One shell-quoted `NAME=value` word per variable. A name that is empty or holds `=` is
+/// refused; the error names the variable at most, never a value.
+pub(super) fn env_words(options: &LaunchOptions) -> Result<Vec<String>> {
+    options
+        .env
+        .iter()
+        .map(|(name, value)| match (name.is_empty(), name.contains('=')) {
+            (true, _) => Err(Error::InvalidInput(
+                "env variable name must not be empty".into(),
+            )),
+            (_, true) => Err(Error::InvalidInput(format!(
+                "env variable name {name:?} must not hold `=`"
+            ))),
+            _ => Ok(shell_quote(&format!("{name}={value}"))),
+        })
+        .collect()
+}
+
 /// Runs an arbitrary command. Mostly useful for tests.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ShellAdapter;
@@ -67,7 +85,10 @@ impl AgentAdapter for ShellAdapter {
 
     fn launch_command(&self, options: &LaunchOptions) -> Result<String> {
         match options.command.as_deref().map(str::trim) {
-            Some(c) if !c.is_empty() => Ok(c.to_string()),
+            Some(c) if !c.is_empty() => match env_words(options)? {
+                exports if exports.is_empty() => Ok(c.to_string()),
+                exports => Ok(format!("export {}; {c}", exports.join(" "))),
+            },
             _ => Err(Error::InvalidInput(
                 "shell adapter requires a non-empty `command`".into(),
             )),
@@ -103,5 +124,31 @@ mod tests {
             ..LaunchOptions::default()
         };
         assert_eq!(ShellAdapter.launch_command(&o).unwrap(), "sleep 1");
+    }
+
+    #[test]
+    fn shell_env_reaches_every_part_of_the_command() {
+        let o = LaunchOptions {
+            command: Some("printf %s \"$TUNE\"; printf %s \"$TUNE\"".into()),
+            env: [("TUNE".to_string(), "a b'c".to_string())].into(),
+            ..LaunchOptions::default()
+        };
+        let command = ShellAdapter.launch_command(&o).unwrap();
+        let out = std::process::Command::new("sh")
+            .args(["-c", &command])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8(out.stdout).unwrap(), "a b'ca b'c");
+    }
+
+    #[test]
+    fn shell_env_refuses_a_bad_name_without_the_value() {
+        let o = LaunchOptions {
+            command: Some("true".into()),
+            env: [("A=B".to_string(), "hunter2".to_string())].into(),
+            ..LaunchOptions::default()
+        };
+        let err = ShellAdapter.launch_command(&o).unwrap_err().to_string();
+        assert!(err.contains("env") && !err.contains("hunter2"), "{err}");
     }
 }
