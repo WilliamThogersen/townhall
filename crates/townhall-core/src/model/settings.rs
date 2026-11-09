@@ -54,27 +54,6 @@ pub enum NotifyWhen {
     Everything,
 }
 
-/// The model of townhall's own session (`claude --model=<alias>`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TownhallModel {
-    #[default]
-    Sonnet,
-    Opus,
-    Haiku,
-}
-
-impl TownhallModel {
-    /// The alias `claude --model` takes.
-    pub fn cli_value(self) -> &'static str {
-        match self {
-            Self::Sonnet => "sonnet",
-            Self::Opus => "opus",
-            Self::Haiku => "haiku",
-        }
-    }
-}
-
 /// One row of the `settings` table: the key is the field name, the value its JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,7 +62,6 @@ pub enum SettingKey {
     RepoUnclear,
     SessionPanelOpen,
     NotifyWhen,
-    TownhallModel,
     MinFreeDiskGb,
     LearnAboutMe,
     GithubAccount,
@@ -93,12 +71,11 @@ pub enum SettingKey {
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 11] = [
+    pub const ALL: [SettingKey; 10] = [
         Self::AgentsAtOnce,
         Self::RepoUnclear,
         Self::SessionPanelOpen,
         Self::NotifyWhen,
-        Self::TownhallModel,
         Self::MinFreeDiskGb,
         Self::LearnAboutMe,
         Self::GithubAccount,
@@ -113,7 +90,6 @@ impl SettingKey {
             Self::RepoUnclear => "repoUnclear",
             Self::SessionPanelOpen => "sessionPanelOpen",
             Self::NotifyWhen => "notifyWhen",
-            Self::TownhallModel => "townhallModel",
             Self::MinFreeDiskGb => "minFreeDiskGb",
             Self::LearnAboutMe => "learnAboutMe",
             Self::GithubAccount => "githubAccount",
@@ -141,7 +117,6 @@ impl SettingKey {
         let valid = match self {
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
-            Self::TownhallModel => parses::<TownhallModel>(value),
             Self::SessionPanelOpen | Self::LearnAboutMe | Self::ReflectAfterTasks => {
                 value.is_boolean()
             }
@@ -177,8 +152,7 @@ fn parses<T: serde::de::DeserializeOwned>(value: &Value) -> bool {
     serde_json::from_value::<T>(value.clone()).is_ok()
 }
 
-/// `GET /api/settings`. Same names, values and defaults as the web UI; `townhallModel`
-/// has no row on the settings page yet.
+/// `GET /api/settings`. Same names, values and defaults as the web UI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -186,7 +160,6 @@ pub struct Settings {
     pub repo_unclear: RepoUnclear,
     pub session_panel_open: bool,
     pub notify_when: NotifyWhen,
-    pub townhall_model: TownhallModel,
     /// A task does not start while the data volume has less free space; `0` is off.
     pub min_free_disk_gb: u32,
     pub learn_about_me: bool,
@@ -208,7 +181,6 @@ impl Default for Settings {
             repo_unclear: RepoUnclear::Ask,
             session_panel_open: true,
             notify_when: NotifyWhen::NeedsYou,
-            townhall_model: TownhallModel::Sonnet,
             min_free_disk_gb: MIN_FREE_DISK_GB_DEFAULT,
             learn_about_me: false,
             github_account: String::new(),
@@ -235,7 +207,6 @@ impl Settings {
             repo_unclear: field(raw, SettingKey::RepoUnclear, d.repo_unclear),
             session_panel_open: field(raw, SettingKey::SessionPanelOpen, d.session_panel_open),
             notify_when: field(raw, SettingKey::NotifyWhen, d.notify_when),
-            townhall_model: field(raw, SettingKey::TownhallModel, d.townhall_model),
             min_free_disk_gb: field(raw, SettingKey::MinFreeDiskGb, d.min_free_disk_gb),
             learn_about_me: field(raw, SettingKey::LearnAboutMe, d.learn_about_me),
             github_account: field(raw, SettingKey::GithubAccount, d.github_account),
@@ -285,7 +256,6 @@ mod tests {
                 "repoUnclear": "ask",
                 "sessionPanelOpen": true,
                 "notifyWhen": "needsYou",
-                "townhallModel": "sonnet",
                 "minFreeDiskGb": 5,
                 "learnAboutMe": false,
                 "githubAccount": "",
@@ -308,9 +278,8 @@ mod tests {
         assert_eq!(s.agents_at_once, AGENTS_AT_ONCE_DEFAULT);
         assert_eq!(s.notify_when, NotifyWhen::NeedsYou);
         assert_eq!(s.repo_unclear, RepoUnclear::Guess);
-        assert_eq!(s.townhall_model, TownhallModel::Sonnet);
-        let opus: Settings = serde_json::from_value(json!({"townhallModel": "opus"})).unwrap();
-        assert_eq!(opus.townhall_model, TownhallModel::Opus);
+        let old: Settings = serde_json::from_value(json!({"townhallModel": "opus"})).unwrap();
+        assert_eq!(old, Settings::default());
         assert_eq!(
             serde_json::from_value::<Settings>(json!(7)).unwrap(),
             Settings::default()
@@ -322,9 +291,6 @@ mod tests {
         let ok = [
             (SettingKey::AgentsAtOnce, json!(50)),
             (SettingKey::NotifyWhen, json!("everything")),
-            (SettingKey::TownhallModel, json!("sonnet")),
-            (SettingKey::TownhallModel, json!("opus")),
-            (SettingKey::TownhallModel, json!("haiku")),
         ];
         for (key, value) in ok {
             assert_eq!(key.check(&value).unwrap(), value);
@@ -334,10 +300,6 @@ mod tests {
             (SettingKey::AgentsAtOnce, json!(51)),
             (SettingKey::AgentsAtOnce, json!("6")),
             (SettingKey::SessionPanelOpen, json!("yes")),
-            (SettingKey::TownhallModel, json!("fable")),
-            (SettingKey::TownhallModel, json!("Sonnet")),
-            (SettingKey::TownhallModel, json!("claude-sonnet-4-5")),
-            (SettingKey::TownhallModel, json!(null)),
         ];
         for (key, value) in bad {
             assert!(key.check(&value).is_err(), "{key:?} {value}");
@@ -347,10 +309,7 @@ mod tests {
             SettingKey::AgentsAtOnce
         );
         assert!(SettingKey::parse("theme").is_err());
-        assert_eq!(
-            SettingKey::parse("townhallModel").unwrap(),
-            SettingKey::TownhallModel
-        );
+        assert!(SettingKey::parse("townhallModel").is_err());
     }
 
     #[test]
@@ -493,13 +452,6 @@ mod tests {
             SettingKey::parse("clonesDir").unwrap(),
             SettingKey::ClonesDir
         );
-    }
-
-    #[test]
-    fn townhall_models_are_claude_aliases() {
-        assert_eq!(TownhallModel::default().cli_value(), "sonnet");
-        assert_eq!(TownhallModel::Opus.cli_value(), "opus");
-        assert_eq!(TownhallModel::Haiku.cli_value(), "haiku");
     }
 
     #[test]

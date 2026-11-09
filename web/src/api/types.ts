@@ -61,7 +61,6 @@ export interface PatchRepoInput {
 
 export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
-export type TownhallModel = "sonnet" | "opus" | "haiku";
 export type ForgeKind = "github" | "gitlab";
 
 export interface ForgeAccount {
@@ -76,7 +75,6 @@ export interface Settings {
   readonly repoUnclear: RepoUnclear;
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
-  readonly townhallModel: TownhallModel;
   readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;

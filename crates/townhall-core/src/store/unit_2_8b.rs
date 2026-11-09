@@ -54,6 +54,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "0806_seed_default",
         sql: include_str!("migrations/0806_seed_default.sql"),
     },
+    Migration {
+        id: 807,
+        name: "0807_default_model",
+        sql: include_str!("migrations/0807_default_model.sql"),
+    },
 ];
 
 /// A stored row: name, source, updated_at.

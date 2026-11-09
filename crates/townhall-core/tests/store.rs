@@ -32,6 +32,77 @@ fn seeded() -> Settings {
     }
 }
 
+/// A database migrated up to the seed of `default` (0806), as an existing install has it,
+/// with the `default` row's source set to `source` (or the row deleted for `None`).
+fn at_0806(source: Option<&str>) -> Connection {
+    let mut conn = Connection::open_in_memory().unwrap();
+    let before: Vec<_> = townhall_core::store::migrate::all()
+        .into_iter()
+        .filter(|m| m.id <= 806)
+        .collect();
+    townhall_core::store::migrate::apply(&mut conn, &before).unwrap();
+    match source {
+        Some(source) => conn
+            .execute(
+                "update agents set source = ?1 where name = 'default'",
+                [source],
+            )
+            .unwrap(),
+        None => conn
+            .execute("delete from agents where name = 'default'", [])
+            .unwrap(),
+    };
+    conn
+}
+
+fn upgrade(conn: &mut Connection) {
+    townhall_core::store::migrate::apply(conn, &townhall_core::store::migrate::all()).unwrap();
+}
+
+fn default_source(conn: &Connection) -> Option<String> {
+    conn.query_row(
+        "select source from agents where name = 'default'",
+        [],
+        |r| r.get(0),
+    )
+    .ok()
+}
+
+#[test]
+fn the_default_type_with_no_model_gets_opus() {
+    let mut conn = at_0806(Some(
+        "name = \"default\"\nadapter = \"claude\"\nprompt = \"hi\"\n",
+    ));
+    upgrade(&mut conn);
+    let source = default_source(&conn).unwrap();
+    assert!(source.lines().any(|l| l == "model = \"opus\""), "{source}");
+    assert!(source.contains("prompt = \"hi\""), "{source}");
+}
+
+#[test]
+fn a_default_type_that_has_a_model_is_left_alone() {
+    let own = "name = \"default\"\nadapter = \"claude\"\nmodel = \"haiku\"\n";
+    let mut conn = at_0806(Some(own));
+    upgrade(&mut conn);
+    assert_eq!(default_source(&conn).unwrap(), own);
+}
+
+#[test]
+fn a_missing_default_type_is_not_created() {
+    let mut conn = at_0806(None);
+    upgrade(&mut conn);
+    assert_eq!(default_source(&conn), None);
+}
+
+#[test]
+fn a_fresh_database_seeds_the_default_type_with_opus() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    upgrade(&mut conn);
+    let source = default_source(&conn).unwrap();
+    assert_eq!(source.matches("model = ").count(), 1, "{source}");
+    assert!(source.lines().any(|l| l == "model = \"opus\""), "{source}");
+}
+
 #[tokio::test]
 async fn an_empty_home_gets_a_migrated_database() {
     let dir = TempDir::new().unwrap();

@@ -107,11 +107,9 @@ const detail = { conversation, entries, tasks: [task], attachments: [] } satisfi
 describe("api contract types", () => {
   it("use the same settings names and values as the settings screen", () => {
     expectTypeOf<Settings>().toEqualTypeOf<Ui.Settings>();
-    expectTypeOf<Settings["townhallModel"]>().toEqualTypeOf<Ui.TownhallModel>();
     expectTypeOf<SettingKey>().toEqualTypeOf<keyof Ui.Settings>();
     const defaults: Settings = DEFAULT_SETTINGS;
     expect("permissionMode" in defaults || "workWithoutAsking" in defaults).toBe(false);
-    expect(defaults.townhallModel).toBe("sonnet");
   });
 
   it("describe the shapes the daemon sends", () => {

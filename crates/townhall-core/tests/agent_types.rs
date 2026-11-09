@@ -187,7 +187,7 @@ async fn the_first_open_seeds_the_conversation_default() {
     let default = env.store.agent_type("default").await.unwrap().unwrap();
     assert_eq!(CONVERSATION_AGENT_TYPE, "default");
     assert_eq!(default.def.adapter, AdapterKind::Claude);
-    assert_eq!(default.def.model, None);
+    assert_eq!(default.def.model.as_deref(), Some("opus"));
     assert_eq!(default.def.permission_mode, Some(PermissionMode::Default));
     for tool in [
         "mcp__townhall__create_task",

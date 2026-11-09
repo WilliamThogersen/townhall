@@ -1,6 +1,5 @@
 export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
-export type TownhallModel = "sonnet" | "opus" | "haiku";
 
 export type ForgeKind = "github" | "gitlab";
 
@@ -16,7 +15,6 @@ export interface Settings {
   readonly repoUnclear: RepoUnclear;
   readonly sessionPanelOpen: boolean;
   readonly notifyWhen: NotifyWhen;
-  readonly townhallModel: TownhallModel;
   readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
@@ -27,7 +25,6 @@ export interface Settings {
 
 export const REPO_UNCLEAR_VALUES: readonly RepoUnclear[] = ["ask", "guess"];
 export const NOTIFY_VALUES: readonly NotifyWhen[] = ["needsYou", "failed", "everything"];
-export const TOWNHALL_MODELS: readonly TownhallModel[] = ["sonnet", "opus", "haiku"];
 export const FORGE_KINDS: readonly ForgeKind[] = ["github", "gitlab"];
 export const FORGE_ACCOUNTS_MAX = 50;
 
@@ -40,7 +37,6 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   repoUnclear: "ask",
   sessionPanelOpen: true,
   notifyWhen: "needsYou",
-  townhallModel: "sonnet",
   minFreeDiskGb: 5,
   learnAboutMe: false,
   githubAccount: "",
@@ -56,7 +52,6 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "repoUnclear",
   "sessionPanelOpen",
   "notifyWhen",
-  "townhallModel",
   "minFreeDiskGb",
   "learnAboutMe",
   "githubAccount",
@@ -120,7 +115,6 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   repoUnclear: choiceOf(REPO_UNCLEAR_VALUES),
   sessionPanelOpen: isFlag,
   notifyWhen: choiceOf(NOTIFY_VALUES),
-  townhallModel: choiceOf(TOWNHALL_MODELS),
   minFreeDiskGb: isDiskGb,
   learnAboutMe: isFlag,
   githubAccount: isGithubAccount,
@@ -150,7 +144,6 @@ export function parseSettings(raw: unknown): Settings {
     repoUnclear: pick(fields, "repoUnclear"),
     sessionPanelOpen: pick(fields, "sessionPanelOpen"),
     notifyWhen: pick(fields, "notifyWhen"),
-    townhallModel: pick(fields, "townhallModel"),
     minFreeDiskGb: pick(fields, "minFreeDiskGb"),
     learnAboutMe: pick(fields, "learnAboutMe"),
     githubAccount: pick(fields, "githubAccount"),
