@@ -56,6 +56,10 @@ export const aTask = (over: Partial<Task> = {}): Task => ({
   agent: "builder",
   blocked: null,
   prBase: null,
+  doneWhen: null,
+  check: null,
+  maxRetries: 2,
+  verify: null,
   ...over,
 });
 

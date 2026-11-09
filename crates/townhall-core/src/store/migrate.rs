@@ -254,6 +254,30 @@ mod tests {
     }
 
     #[test]
+    fn migration_0206_gives_old_tasks_the_default_retries_and_no_check() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let without: Vec<Migration> = all().into_iter().filter(|m| m.id != 206).collect();
+        apply(&mut conn, &without).unwrap();
+        conn.pragma_update(None, "foreign_keys", false).unwrap();
+        conn.execute(
+            "insert into tasks (name, conversation_id, title, prompt, repo, base_branch, after,
+             state, attachments, created_at, agent)
+             values ('a', 'c', 't', 'p', 'r', 'main', '[]', 'queued', '[]', 'x', 'builder')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 1);
+        let row: (Option<String>, Option<String>, i64, Option<String>) = conn
+            .query_row(
+                "select done_when, check_cmd, max_retries, verify from tasks",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (None, None, 2, None));
+    }
+
+    #[test]
     fn a_failing_migration_changes_nothing() {
         let mut conn = Connection::open_in_memory().unwrap();
         let bad = Migration {

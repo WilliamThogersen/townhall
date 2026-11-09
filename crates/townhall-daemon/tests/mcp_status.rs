@@ -184,6 +184,7 @@ async fn another_conversations_task_or_an_unknown_one_is_a_tool_error() {
         attachments: vec![],
         agent: "builder".into(),
         pr_base: None,
+        done: Default::default(),
     };
     m.store().create_task(&other, new).await.unwrap();
 

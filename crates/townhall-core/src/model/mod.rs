@@ -33,8 +33,8 @@ pub use settings::{
     TownhallModel, AGENTS_AT_ONCE_DEFAULT, AGENTS_AT_ONCE_MAX, AGENTS_AT_ONCE_MIN,
 };
 pub use task::{
-    Checks, CreateTaskInput, Handoff, NewTask, Pr, Task, TaskState, MAX_HANDOFFS,
-    TASK_BRANCH_PREFIX,
+    Checks, CreateTaskInput, Done, Handoff, NewTask, Pr, Task, TaskState, Verify, VerifyPhase,
+    DEFAULT_MAX_RETRIES, MAX_HANDOFFS, TASK_BRANCH_PREFIX,
 };
 pub use thread::{AgentEvent, EntryBody, RepoRule, ThreadEntry};
 

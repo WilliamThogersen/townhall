@@ -189,6 +189,14 @@ export interface Pr {
   readonly checks: Checks;
 }
 
+export type VerifyPhase = "verifying" | "retrying" | "passed" | "failed";
+
+export interface Verify {
+  readonly phase: VerifyPhase;
+  readonly retries: number;
+  readonly output: string | null;
+}
+
 export interface Task {
   readonly name: string;
   readonly title: string;
@@ -204,6 +212,10 @@ export interface Task {
   readonly agent: string;
   readonly blocked: string | null;
   readonly prBase: string | null;
+  readonly doneWhen: string | null;
+  readonly check: string | null;
+  readonly maxRetries: number;
+  readonly verify: Verify | null;
 }
 
 export interface CreateTaskInput {
@@ -213,6 +225,9 @@ export interface CreateTaskInput {
   readonly repo?: string;
   readonly baseBranch?: string;
   readonly prBase?: string;
+  readonly doneWhen?: string;
+  readonly check?: string;
+  readonly maxRetries?: number;
   readonly after?: readonly string[];
   readonly attachments?: readonly string[];
   readonly agent?: string;

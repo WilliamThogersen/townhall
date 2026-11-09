@@ -26,6 +26,7 @@ async fn setup() -> Mcp {
             attachments: vec![],
             agent: "builder".into(),
             pr_base: None,
+            done: Default::default(),
         };
         m.store().create_task(&m.id, new).await.unwrap();
     }

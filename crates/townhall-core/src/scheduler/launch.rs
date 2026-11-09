@@ -600,6 +600,7 @@ mod tests {
             repo: repos[0].name.clone(),
             base_branch: "main".into(),
             pr_base: None,
+            done: Default::default(),
             after: vec![],
             attachments: vec![],
             agent: "plain".into(),
