@@ -1,0 +1,9 @@
+{
+  "name": "agent-browser",
+  "description": "Browser automation using agent-browser CLI. Use when the user wants to automate a browser, scrape web content, interact with a web UI, test a web app, fill forms, click buttons, take screenshots, or perform any web automation task.",
+  "version": "1.0.0",
+  "author": {
+    "name": "WEXO",
+    "email": "wgt@wexo.dk"
+  }
+}

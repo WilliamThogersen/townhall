@@ -1,0 +1,7 @@
+{
+  "name": "pstack-wexo",
+  "version": "0.1.2",
+  "description": "Working skills ported from Lauren Tan's pstack for WEXO: correct, blast-radius, unslop, show-me-your-work, no-comments, arena, plus the poteto-mode router with pstack's engineering principles.",
+  "author": { "name": "WEXO" },
+  "license": "MIT"
+}

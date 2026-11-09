@@ -1,0 +1,37 @@
+{
+  "name": "release-notes",
+  "version": "0.3.0",
+  "description": "Writes release notes when a task is merged",
+  "author": { "name": "Acme", "url": "https://acme.example" },
+  "homepage": "https://github.com/acme/townhall-release-notes",
+  "license": "MIT",
+  "apiVersion": 1,
+  "minTownhall": "0.5.0",
+  "permissions": {
+    "api": ["tasks:read", "tasks:create", "storage"],
+    "hooks": ["task.merged", "pr.before_open"],
+    "claude": {
+      "hooks": { "events": ["PostToolUse"], "agentTypes": ["release-writer"] },
+      "mcp": { "servers": { "notes": ["search_notes", "add_note"] } },
+      "planner": false
+    },
+    "prompts": ["starters", "brief"],
+    "env": ["ACME_TOKEN"],
+    "ui": ["settings.group", "session.section"]
+  },
+  "contributes": {
+    "agentTypes": ["agent-types/release-writer.toml"],
+    "prompts": { "starters": "prompts/starters.json", "brief": "prompts/brief.md" },
+    "settings": "settings.schema.json",
+    "theme": "theme.css",
+    "hooks": "townhall-hooks.json",
+    "ui": [
+      { "slot": "session.section", "title": "release notes", "entry": "ui/session.html", "height": 160 },
+      { "slot": "settings.group", "title": "release notes", "entry": "ui/settings.html" }
+    ]
+  },
+  "claude": {
+    "hooks": "hooks/hooks.json",
+    "mcp": ".mcp.json"
+  }
+}
