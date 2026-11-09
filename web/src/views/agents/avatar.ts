@@ -100,7 +100,14 @@ export function headCells(head: Avatar["head"]): readonly AvatarCell[] {
   );
 }
 
-export function composeAvatar(avatar: Avatar): readonly AvatarCell[] {
+function gridCells(grid: readonly string[]): readonly AvatarCell[] {
+  return grid.flatMap((line, y) =>
+    [...line].flatMap((ch, x) => (ch === "#" ? [{ x, y, tone: "body" as const }] : ch === "o" ? [{ x, y, tone: "face" as const }] : [])),
+  );
+}
+
+export function composeAvatar(avatar: Avatar, grid: readonly string[] | null = null): readonly AvatarCell[] {
+  if (grid !== null) return gridCells(grid);
   const face = new Set([...EYES[avatar.eyes], ...MOUTHS[avatar.mouth]].map(([x, y]) => `${x},${y}`));
   const head = headCells(avatar.head).map((cell) =>
     face.has(`${cell.x},${cell.y}`) ? { ...cell, tone: "face" as const } : cell,
