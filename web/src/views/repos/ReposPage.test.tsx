@@ -599,4 +599,20 @@ describe("repo accounts", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("error: no github account `private-me` is registered");
     expect(pick(modal, "shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
   });
+
+  it("shows the forge and account a repo was given, and nothing for a repo without one", async () => {
+    vi.mocked(reposApi.listRepos).mockResolvedValue([
+      aRepo({ ...shop, gitlabAccount: "wgt" }),
+      aRepo({ ...townhall, githubAccount: "work-me", gitlabAccount: "me" }),
+      aRepo({ name: "plain", path: "/Users/me/Developer/plain" }),
+    ]);
+    renderPage();
+    await screen.findByText("shop", { selector: ".th-repo-name b" });
+    const shopPick = within(rowOf("shop")).getByText("gitlab · wgt");
+    expect(shopPick).toHaveAttribute("title", "gitlab account for shop");
+    const both = within(rowOf("townhall"));
+    expect(both.getByText("github · work-me")).toBeInTheDocument();
+    expect(both.getByText("gitlab · me")).toBeInTheDocument();
+    expect(within(rowOf("plain")).queryByText(/ · /)).toBeNull();
+  });
 });
