@@ -101,6 +101,15 @@ describe("taskBar", () => {
     expect(taskBar(review, done, null, AXIS).label).toBe("24m · in review #57");
   });
 
+  it("labels a task under a check with where the check stands", () => {
+    const under = (state: "working" | "needsYou" | "ended", phase: "verifying" | "retrying" | "failed" | "passed", retries: number) =>
+      aTask({ state, createdAt: created, check: "npm test", verify: { phase, retries, output: null } });
+    expect(taskBar(under("working", "verifying", 0), [], null, AXIS).label).toBe("52m · verifying");
+    expect(taskBar(under("working", "retrying", 1), [], null, AXIS).label).toBe("52m · retry 1/2");
+    expect(taskBar(under("needsYou", "failed", 2), [], null, AXIS).label).toBe("52m · check failed after 2 retries");
+    expect(taskBar(under("ended", "passed", 0), steps([10, 10, 30]), null, AXIS).label).toContain("check passed");
+  });
+
   it("keeps a task in ci running to now", () => {
     const ci = aTask({ state: "inCi", createdAt: created, pr: { number: 52, url: null, checks: "pending" } });
     expect(taskBar(ci, [], null, AXIS)).toMatchObject({ state: "running", label: "52m · in ci #52" });

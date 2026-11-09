@@ -7,6 +7,29 @@ const pr = (over: Partial<Pr> = {}): Pr => ({ number: 41, url: "https://git.test
 
 const named = (name: string, state: TaskState, over: Partial<Task> = {}) => aTask({ name, state, ...over });
 
+describe("taskView under a check", () => {
+  const verify = (phase: "verifying" | "retrying" | "passed" | "failed", retries: number) => ({
+    phase,
+    retries,
+    output: null,
+  });
+
+  it("words a task by where its check stands", () => {
+    const words = (state: TaskState, v: ReturnType<typeof verify>) =>
+      taskView(named("t", state, { check: "npm test", verify: v }), []).words;
+    expect(words("working", verify("verifying", 0))).toBe("verifying");
+    expect(words("working", verify("retrying", 1))).toBe("retry 1/2");
+    expect(words("queued", verify("retrying", 1))).toBe("retry 1/2");
+    expect(words("needsYou", verify("failed", 2))).toBe("check failed after 2 retries");
+    expect(words("ended", verify("passed", 0))).toBe("check passed");
+  });
+
+  it("keeps the plain words for a task without a check", () => {
+    expect(taskView(named("t", "working"), []).words).toBe("working");
+    expect(taskView(named("t", "needsYou"), []).words).toBe("needs you");
+  });
+});
+
 describe("sortTasks", () => {
   it("puts what needs you first and finished work last", () => {
     const tasks = [
