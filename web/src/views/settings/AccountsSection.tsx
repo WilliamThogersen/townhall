@@ -3,6 +3,7 @@ import type { ForgeAccount, ForgeKind } from "../../settings/settings";
 import { useSettings } from "../../settings/useSettings";
 import { Button } from "../../ui/Button";
 import { Segmented } from "../../ui/Segmented";
+import { DetectedAccounts } from "./DetectedAccounts";
 import { SettingRow } from "./SettingRow";
 import { FORGE_CHOICES, HELP } from "./settingsCopy";
 import "./accounts.css";
@@ -96,6 +97,7 @@ export function AccountsSection() {
   const remove = (gone: ForgeAccount) => update({ forgeAccounts: accounts.filter((a) => a !== gone) });
   return (
     <SettingRow wide label="accounts" help={HELP.forgeAccounts}>
+      <DetectedAccounts accounts={accounts} onAdd={(added) => update({ forgeAccounts: [...accounts, ...added] })} />
       <p className="th-cap th-account-login">
         log in first: <code>gh auth login</code> or <code>glab auth login</code>
       </p>

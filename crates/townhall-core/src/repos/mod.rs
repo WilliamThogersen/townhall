@@ -4,6 +4,7 @@
 pub mod accounts;
 mod auth_env;
 mod clone;
+pub mod detect;
 mod discard;
 mod git;
 pub mod names;
