@@ -61,7 +61,7 @@ mod tests {
             serde_json::to_value(&t).unwrap(),
             json!({"name": "b", "description": "", "adapter": "claude", "model": null,
                    "permissionMode": "acceptEdits", "tools": [], "prompt": null, "command": null,
-                   "canHandBackTo": null, "requires": [], "source": source, "updatedAt": "2026-11-05T10:00:00.000Z"})
+                   "canHandBackTo": null, "requires": [], "avatar": null, "source": source, "updatedAt": "2026-11-05T10:00:00.000Z"})
         );
         let keys: Vec<String> = serde_json::to_value(t.summary())
             .unwrap()

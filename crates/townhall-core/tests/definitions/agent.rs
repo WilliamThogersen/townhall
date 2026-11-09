@@ -209,6 +209,7 @@ fn launch_fields_drop_empty_text() {
         command: Some("cargo test".into()),
         can_hand_back_to: None,
         requires: Vec::new(),
+        avatar: None,
     };
     let fields = def.launch_fields();
     assert_eq!(fields.model, None);

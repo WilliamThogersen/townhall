@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::avatar::AvatarDef;
 use super::error::{into_result, invalid_name, DefKind, DefinitionError};
 use super::parse::{parse, Parsed};
 use super::words::{model_problem, tool_problem};
@@ -87,6 +88,9 @@ pub struct AgentDef {
     /// task's `after` chain, before a task of this type may be created or started.
     #[serde(default)]
     pub requires: Vec<String>,
+    /// The `[avatar]` table. `None`: the face derived from the name.
+    #[serde(default)]
+    pub avatar: Option<AvatarDef>,
 }
 
 /// Parse an agent definition, keeping `source` as written.
@@ -113,13 +117,19 @@ pub fn validate_agent(def: &AgentDef) -> Result<(), Vec<DefinitionError>> {
         .into_iter()
         .map(|m| error("requires", m));
     let command = command_problem(def).map(|m| error("command", m.to_string()));
+    let grid = def
+        .avatar
+        .iter()
+        .flat_map(AvatarDef::grid_problems)
+        .map(|m| error("avatar.grid", m));
     let errors = name
         .into_iter()
         .chain(model.map(|m| error("model", m)))
         .chain(tools.map(|m| error("tools", m)))
         .chain(hand_back)
         .chain(requires)
-        .chain(command);
+        .chain(command)
+        .chain(grid);
     into_result(errors.collect())
 }
 
