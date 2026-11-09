@@ -11,6 +11,7 @@ const HOME_DIR: &str = ".townhall";
 pub const WORKTREES_DIR: &str = "worktrees";
 /// Repos townhall cloned from a url live under `<home>/repos/`.
 pub const REPOS_DIR: &str = "repos";
+pub const PLUGINS_DIR: &str = "plugins";
 const LOGS_DIR: &str = "logs";
 const ARTIFACTS_DIR: &str = "artifacts";
 const CONFIG_FILE: &str = "config.json";
@@ -72,6 +73,12 @@ impl Home {
     /// `<home>/repos`, created (0700) when missing: where `git clone` puts added remotes.
     pub fn repos_dir(&self) -> Result<PathBuf> {
         let dir = self.root.join(REPOS_DIR);
+        self.create_dir(&dir)?;
+        Ok(dir)
+    }
+
+    pub fn plugins_dir(&self) -> Result<PathBuf> {
+        let dir = self.root.join(PLUGINS_DIR);
         self.create_dir(&dir)?;
         Ok(dir)
     }
@@ -209,6 +216,20 @@ mod tests {
         let mode = std::fs::metadata(&logs).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o700);
         assert_eq!(home.logs_dir().unwrap(), logs, "idempotent");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plugins_dir_is_created_private_under_the_home() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let home = Home::at(tmp.path().join("h"));
+        let plugins = home.plugins_dir().unwrap();
+        assert_eq!(plugins, tmp.path().join("h").join(PLUGINS_DIR));
+        assert_eq!(PLUGINS_DIR, "plugins");
+        let mode = std::fs::metadata(&plugins).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+        assert_eq!(home.plugins_dir().unwrap(), plugins, "idempotent");
     }
 
     #[cfg(unix)]
