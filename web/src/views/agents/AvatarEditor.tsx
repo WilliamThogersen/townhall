@@ -14,7 +14,9 @@ import {
   type ResolvedAvatar,
 } from "./avatarSpec";
 
-const PARTS = Object.keys(AVATAR_PARTS) as readonly AvatarPart[];
+const SPEC_HINT = '[avatar]\ncolor = "info"';
+
+const PARTS =Object.keys(AVATAR_PARTS) as readonly AvatarPart[];
 
 function randomSpec(): AvatarSpec {
   const pick = (part: AvatarPart) => AVATAR_PARTS[part][Math.floor(Math.random() * AVATAR_PARTS[part].length)];
@@ -32,6 +34,7 @@ export function AvatarEditor({ name, source, saved, onSaved }: AvatarEditorProps
   const initial = saved === null ? "" : formatAvatarSpec(saved);
   const [text, setText] = useState(initial);
   const [shown, setShown] = useState<ResolvedAvatar>(() => resolveAvatar(name, saved));
+  const [specOpen, setSpecOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
   const parsed = parseAvatarSpec(text);
@@ -68,25 +71,8 @@ export function AvatarEditor({ name, source, saved, onSaved }: AvatarEditorProps
 
   return (
     <div className="th-avatar-editor">
-      <AvatarFace avatar={current.avatar} grid={current.grid} scale={8} label={`${name} avatar preview`} />
+      <AvatarFace avatar={current.avatar} grid={current.grid} scale={6} label={`${name} avatar preview`} />
       <div className="th-avatar-parts">
-        <textarea
-          className="th-input th-avatar-spec"
-          aria-label="avatar spec"
-          aria-invalid={parsed.ok ? undefined : true}
-          placeholder="no [avatar] section: the face comes from the name"
-          spellCheck={false}
-          rows={7}
-          value={text}
-          onChange={(event) => edit(event.target.value)}
-        />
-        {parsed.ok ? null : (
-          <ul aria-label="avatar spec errors" className="th-avatar-errors">
-            {parsed.errors.map((message) => (
-              <li key={message}>{message}</li>
-            ))}
-          </ul>
-        )}
         {PARTS.map((part) => (
           <div key={part} role="group" aria-label={part} className="th-avatar-part">
             <span className="th-cap">{part}</span>
@@ -112,7 +98,29 @@ export function AvatarEditor({ name, source, saved, onSaved }: AvatarEditorProps
           <Button size="sm" variant="primary" disabled={spec === null || text === initial} busy={busy} onClick={save}>
             save avatar
           </Button>
+          <Button size="sm" variant="ghost" aria-expanded={specOpen} onClick={() => setSpecOpen((open) => !open)}>
+            edit spec
+          </Button>
         </div>
+        {specOpen ? (
+          <textarea
+            className="th-input th-avatar-spec"
+            aria-label="avatar spec"
+            aria-invalid={parsed.ok ? undefined : true}
+            placeholder={SPEC_HINT}
+            spellCheck={false}
+            rows={5}
+            value={text}
+            onChange={(event) => edit(event.target.value)}
+          />
+        ) : null}
+        {parsed.ok ? null : (
+          <ul aria-label="avatar spec errors" className="th-avatar-errors">
+            {parsed.errors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        )}
         {refused === null ? null : <Banner level="error">{refused}</Banner>}
       </div>
     </div>

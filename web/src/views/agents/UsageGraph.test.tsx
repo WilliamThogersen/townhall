@@ -2,6 +2,8 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/errors";
+import * as conversations from "../../api/conversations";
+import { aConversation } from "../../api/fixtures";
 import * as library from "../../api/library";
 import type { AgentUsageSeries, UsageRange } from "../../api/types";
 import { UsageGraph } from "./UsageGraph";
@@ -31,6 +33,7 @@ const series = (range: UsageRange, over: Partial<AgentUsageSeries> = {}): AgentU
 });
 
 beforeEach(() => {
+  vi.spyOn(conversations, "listConversations").mockResolvedValue([]);
   vi.spyOn(library, "getAgentUsageSeries").mockImplementation((_name, range) => Promise.resolve(series(range)));
 });
 
@@ -55,11 +58,48 @@ describe("UsageGraph", () => {
     await waitFor(() => expect(library.getAgentUsageSeries).toHaveBeenCalledWith("builder", "30d", expect.anything()));
   });
 
-  it("draws one bar per bucket for runs and for tokens", async () => {
+  it("draws one chart with a bar per bucket and switches it between tokens and runs", async () => {
     render(<UsageGraph name="builder" />);
     await screen.findByText(/^last \d+[hd]:/);
-    expect(within(screen.getByRole("group", { name: "runs over time" })).getAllByRole("button")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "tokens" })).toHaveAttribute("aria-pressed", "true");
     expect(within(screen.getByRole("group", { name: "tokens over time" })).getAllByRole("button")).toHaveLength(3);
+    expect(screen.queryByRole("group", { name: "runs over time" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "runs" }));
+    expect(screen.getByRole("button", { name: "runs" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(screen.getByRole("group", { name: "runs over time" })).getAllByRole("button")).toHaveLength(3);
+    expect(screen.queryByRole("group", { name: "tokens over time" })).not.toBeInTheDocument();
+  });
+
+  it("labels the top of the chart with the peak and the bottom with zero", async () => {
+    render(<UsageGraph name="builder" />);
+    await screen.findByText(/^last \d+[hd]:/);
+    expect(screen.getByTestId("usage-y-max")).toHaveTextContent("12.0K");
+    await userEvent.click(screen.getByRole("button", { name: "runs" }));
+    expect(screen.getByTestId("usage-y-max")).toHaveTextContent("2");
+  });
+
+  it("puts time labels under the bars", async () => {
+    render(<UsageGraph name="builder" />);
+    await screen.findByText(/^last \d+[hd]:/);
+    await userEvent.click(screen.getByRole("button", { name: "24h" }));
+    await waitFor(() => expect(library.getAgentUsageSeries).toHaveBeenCalledWith("builder", "24h", expect.anything()));
+    const axis = screen.getByTestId("usage-x-axis");
+    expect(axis).toHaveTextContent("00:00");
+    expect(axis).toHaveTextContent("02:00");
+  });
+
+  it("merges the daemon's buckets into fewer, wider bars", async () => {
+    const buckets = Array.from({ length: 30 }, (_, i) => ({
+      start: new Date(Date.UTC(2026, 9, 11 + i)).toISOString(),
+      runs: 1,
+      tokens: 10,
+    }));
+    vi.spyOn(library, "getAgentUsageSeries").mockResolvedValue(series("30d", { bucketMs: 24 * HOUR, runs: 30, tokens: 300, buckets }));
+    render(<UsageGraph name="builder" />);
+    await screen.findByText(/^last \d+[hd]:/);
+    const bars = within(screen.getByRole("group", { name: "tokens over time" })).getAllByRole("button");
+    expect(bars).toHaveLength(15);
+    expect(bars[0]).toHaveAccessibleName("2026-10-11 00:00 → 2026-10-13 00:00 UTC: 20 tokens");
   });
 
   it("shows the exact time and value of a bar on hover and goes back on leave", async () => {
@@ -75,6 +115,7 @@ describe("UsageGraph", () => {
   it("selects a bar with focus or a click and keeps a clicked one until it is clicked again", async () => {
     render(<UsageGraph name="builder" />);
     await screen.findByText(/^last \d+[hd]:/);
+    await userEvent.click(screen.getByRole("button", { name: "runs" }));
     const bars = within(screen.getByRole("group", { name: "runs over time" })).getAllByRole("button");
     await userEvent.click(bars[0]!);
     await userEvent.unhover(bars[0]!);
@@ -93,7 +134,25 @@ describe("UsageGraph", () => {
     render(<UsageGraph name="builder" />);
     await screen.findByText(/^last \d+[hd]:/);
     expect(screen.getByRole("button", { name: "2026-11-05 02:00–03:00 UTC: 12,000 tokens" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "runs" }));
     expect(screen.getByRole("button", { name: "2026-11-05 02:00–03:00 UTC: 2 runs" })).toBeInTheDocument();
+  });
+
+  it("shows a conversation by its title when it is known and by its id otherwise", async () => {
+    vi.spyOn(conversations, "listConversations").mockResolvedValue([aConversation({ id: "conv-1", title: "usage meter" })]);
+    vi.spyOn(library, "getAgentUsageSeries").mockResolvedValue(
+      series("7d", {
+        byConversation: [
+          { key: "conv-1", runs: 3, tokens: 12_000 },
+          { key: "conv-2", runs: 1, tokens: 345 },
+        ],
+      }),
+    );
+    render(<UsageGraph name="builder" />);
+    const list = within(await screen.findByRole("list", { name: "by conversation" }));
+    expect(await list.findByText("usage meter")).toBeInTheDocument();
+    expect(list.getByText("conv-2")).toBeInTheDocument();
+    expect(list.queryByText("conv-1")).not.toBeInTheDocument();
   });
 
   it("lists what used the type by task, repo and conversation", async () => {
