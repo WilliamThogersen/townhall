@@ -21,7 +21,6 @@ function parseDetected(value: unknown): DetectedAccount {
 
 export interface Detection {
   readonly accounts: readonly DetectedAccount[];
-  /** Why a program gave nothing or less than expected; empty when all went well. */
   readonly warnings: readonly string[];
 }
 
