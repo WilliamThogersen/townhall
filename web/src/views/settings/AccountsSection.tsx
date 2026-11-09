@@ -96,15 +96,21 @@ export function AccountsSection() {
   const remove = (gone: ForgeAccount) => update({ forgeAccounts: accounts.filter((a) => a !== gone) });
   return (
     <SettingRow wide label="accounts" help={HELP.forgeAccounts}>
+      <p className="th-cap th-account-login">
+        log in first: <code>gh auth login</code> or <code>glab auth login</code>
+      </p>
       <AccountList accounts={accounts} onRemove={remove} />
       <form className="th-account-add" aria-label="add account" onSubmit={submit}>
-        <Segmented
-          name="th-setting-account-forge"
-          label="Forge"
-          value={draft.forge}
-          options={FORGE_CHOICES}
-          onChange={(forge) => setDraft((current) => ({ ...current, forge }))}
-        />
+        <div className="th-account-field">
+          <span>forge</span>
+          <Segmented
+            name="th-setting-account-forge"
+            label="Forge"
+            value={draft.forge}
+            options={FORGE_CHOICES}
+            onChange={(forge) => setDraft((current) => ({ ...current, forge }))}
+          />
+        </div>
         <Field label="Login" value={draft.login} placeholder="your login" onChange={set("login")} />
         <Field label="Host" value={draft.host} placeholder={DEFAULT_HOSTS[draft.forge]} onChange={set("host")} />
         <Field label="Label" value={draft.label} placeholder="the login" onChange={set("label")} />

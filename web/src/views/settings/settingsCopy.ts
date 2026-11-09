@@ -54,7 +54,7 @@ export const HELP = {
   repoUnclear: "ask shows the candidates as buttons. guess picks the best match and says why.",
   sessionPanel: "open in new conversations. you can always fold it with s.",
   forgeAccounts:
-    "the gh and glab logins townhall may use. log in first with gh auth login or glab auth login. townhall never stores a token: it asks gh or glab each time. pick one per repo on the repos page, otherwise the first one for the repo's host is used.",
+    "the gh and glab logins townhall may use. no token is stored. pick one per repo on the repos page, else the first for the host is used.",
   theme: "dark is the default.",
   notifyWhen: "desktop notifications and toasts.",
   learnAboutMe:
