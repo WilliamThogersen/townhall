@@ -367,7 +367,7 @@ All messages are `{ th: 1, id?, type, ... }`. The host checks `event.source === 
 
 ### 8.1 The built-in official marketplace
 
-- Name `townhall-official` (reserved; adding another marketplace with that name is a `409`). Source: `github` repo `WilliamThogersen/townhall-plugins` (the owner of `origin`, `https://github.com/WilliamThogersen/townhall.git`; proposal, the repo does not exist yet, open question 1).
+- Name `townhall-official` (reserved; adding another marketplace with that name is a `409`). Source: `github` repo `WilliamThogersen/townhall-plugins` (the owner of `origin`, `https://github.com/WilliamThogersen/townhall.git`; created, still empty and needs setup, see section 12, item 1).
 - It is compiled in as a constant (`plugins::OFFICIAL`: name, source, and a pinned sha of its index), together with a snapshot of its `marketplace.json` (`include_str!`), so a first start and an offline start list its plugins with no network. On first use or on `refresh` townhall fetches the repo and fast-forwards; the index is accepted only if it parses, and plugins are still pinned by sha in the index (section 8.4).
 - It cannot be removed, only hidden (`enabled: false` on the marketplace row). Official does not mean consent is skipped: every install shows the permission prompt. Official plugins differ only in having the `official` badge and in being the default result of search.
 - First-party plugins that need no code (themes, starter prompts, a few agent types such as the `tester` and `reviewer` types the repo's own workflow uses) go there first.
@@ -530,22 +530,22 @@ Each task is one agent task: one crate area, tests first, no UI and Rust togethe
 - 4.3 Slots one by one, each its own small task: `sidebar.nav` and `page` (route `/p/:plugin/:page`), `session.section` and `task.section` (`SessionPanel.tsx`), `settings.group` iframe part, `sidebar.foot`, then `composer.action` (declarative buttons and `composer.insert`). Accept per slot: renders with a fixture plugin, receives its `context`, disappears when the plugin is disabled, existing tests of that component untouched.
 - 4.4 The SDK script and a sample plugin in the official marketplace repo, as the end to end test of phases 1 to 4. Accept: one plugin with a hook, a Claude MCP server, an agent type and a UI section installs from a fixture marketplace and works in a test run with fake `claude`.
 
-## 12. Open questions for the user
+## 12. Decisions
 
-Each with a recommendation.
+The user accepted every recommendation below on 2026-11-09. Each item states the decision and keeps its recommendation.
 
-1. Official marketplace repo. Recommendation: a new public repo `WilliamThogersen/townhall-plugins` (or an org if one is planned), index pinned by sha in the binary, first content small and declarative (a theme, starter prompts, `tester`/`reviewer` types). Moving it later is a one line change plus a migration of the stored source.
-2. Where townhall-only manifest keys live. Recommendation: the separate `.townhall-plugin/plugin.json` of section 2.1, so one repo can serve Claude Code and townhall. The alternative, a `townhall` key inside `.claude-plugin/plugin.json`, is simpler for authors with one file but depends on Claude Code tolerating unknown keys (to verify).
-3. Authentication of the daemon's own `/api`. Today anyone on the machine can call it, so plugin scopes bind only honest callers (section 10.3). Recommendation: do not block the plugin work on it, but plan a separate task that puts a per-start token on every non-GET `/api` route (the web and the desktop app get it at start), which makes the scopes binding. Decide before phase 2 ships to anyone but you.
-4. Auto update. Recommendation: off for everything in v1 (check and report only), on later as a per-plugin switch that still requires approval for any permission growth.
-5. Plugin changes to townhall's own settings. Recommendation: no in v1; a plugin may ship an `applyRecommended` suggestion the user clicks, later.
-6. Failing open or closed for hooks. Recommendation: open by default with a per-hook `failClosed` that the install prompt shows (section 4.2), because one broken plugin should not stop every task, and a security gate can opt in.
-7. Skills and slash commands from plugins into agents. Recommendation: not in phase 3. Agents today keep claude's own skills (only the planner has `--disable-slash-commands`), so enabling plugin skills means `--plugin-dir` or `--add-dir` and a second isolation question; do it after hooks and MCP prove out, as phase 5 with its own verification task.
-8. Claude hooks that can approve tool calls (`PreToolUse`). Recommendation: allowed, flagged in the prompt, and only after phase 3.1 shows `--disallowedTools` and a type's deny rules still win; otherwise leave `PreToolUse` out of v1.
-9. Plugin agent type naming `<plugin>-<name>`. Recommendation: keep it, since `create_task`'s pattern excludes `:` and `/`; the agents page can show the plugin and the short name separately.
-10. Planner access to plugin MCP tools. Recommendation: off by default and read only tools only (section 6.1); it keeps the planner's "can plan, never write" rule intact. Say no to it entirely if you would rather the planner never changes with plugins.
-11. A permission mode for a plugin type. Recommendation: refuse `bypassPermissions` (section 3.1); the user can copy the type and edit it.
-12. OS sandbox for hooks and MCP servers (macOS `sandbox-exec`, Linux bubblewrap). Recommendation: not in v1; say "runs as you" clearly instead, and revisit once the daemon token (question 3) is in.
+1. Official marketplace repo. Decided: a new public repo `WilliamThogersen/townhall-plugins` (or an org if one is planned), index pinned by sha in the binary, first content small and declarative (a theme, starter prompts, `tester`/`reviewer` types). Moving it later is a one line change plus a migration of the stored source.
+2. Where townhall-only manifest keys live. Decided: the separate `.townhall-plugin/plugin.json` of section 2.1, so one repo can serve Claude Code and townhall. The alternative, a `townhall` key inside `.claude-plugin/plugin.json`, is simpler for authors with one file but depends on Claude Code tolerating unknown keys (to verify).
+3. Authentication of the daemon's own `/api`. Today anyone on the machine can call it, so plugin scopes bind only honest callers (section 10.3). Decided: do not block the plugin work on it, but plan a separate task that puts a per-start token on every non-GET `/api` route (the web and the desktop app get it at start), which makes the scopes binding. Decide before phase 2 ships to anyone but you.
+4. Auto update. Decided: off for everything in v1 (check and report only), on later as a per-plugin switch that still requires approval for any permission growth.
+5. Plugin changes to townhall's own settings. Decided: no in v1; a plugin may ship an `applyRecommended` suggestion the user clicks, later.
+6. Failing open or closed for hooks. Decided: open by default with a per-hook `failClosed` that the install prompt shows (section 4.2), because one broken plugin should not stop every task, and a security gate can opt in.
+7. Skills and slash commands from plugins into agents. Decided: not in phase 3. Agents today keep claude's own skills (only the planner has `--disable-slash-commands`), so enabling plugin skills means `--plugin-dir` or `--add-dir` and a second isolation question; do it after hooks and MCP prove out, as phase 5 with its own verification task.
+8. Claude hooks that can approve tool calls (`PreToolUse`). Decided: allowed, flagged in the prompt, and only after phase 3.1 shows `--disallowedTools` and a type's deny rules still win; otherwise leave `PreToolUse` out of v1.
+9. Plugin agent type naming `<plugin>-<name>`. Decided: keep it, since `create_task`'s pattern excludes `:` and `/`; the agents page can show the plugin and the short name separately.
+10. Planner access to plugin MCP tools. Decided: off by default and read only tools only (section 6.1); it keeps the planner's "can plan, never write" rule intact. Say no to it entirely if you would rather the planner never changes with plugins.
+11. A permission mode for a plugin type. Decided: refuse `bypassPermissions` (section 3.1); the user can copy the type and edit it.
+12. OS sandbox for hooks and MCP servers (macOS `sandbox-exec`, Linux bubblewrap). Decided: not in v1; say "runs as you" clearly instead, and revisit once the daemon token (question 3) is in.
 
 ## 13. Notes for the builders
 
