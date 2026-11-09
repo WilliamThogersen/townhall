@@ -44,8 +44,13 @@ describe("readStoredSettings", () => {
   });
 
   it("drops invalid values", () => {
-    const raw = JSON.stringify({ permissionMode: "yolo", agentsAtOnce: 99, workWithoutAsking: "yes" });
+    const raw = JSON.stringify({ agentsAtOnce: 99, notifyWhen: "never" });
     expect(readStoredSettings(raw)).toEqual([]);
+  });
+
+  it("never reads the removed permission settings", () => {
+    const raw = JSON.stringify({ permissionMode: "bypassPermissions", workWithoutAsking: true, agentsAtOnce: 9 });
+    expect(readStoredSettings(raw)).toEqual([{ key: "agentsAtOnce", value: 9 }]);
   });
 
   it("never reads forge accounts, which a browser never held", () => {
@@ -78,8 +83,6 @@ describe("importBrowserSettings", () => {
 
   it("sends each stored value that differs from the daemon, then clears th-settings", async () => {
     store({
-      permissionMode: "bypassPermissions",
-      workWithoutAsking: false,
       agentsAtOnce: 9,
       repoUnclear: "ask",
       sessionPanelOpen: true,
@@ -88,25 +91,11 @@ describe("importBrowserSettings", () => {
     const put = fakePut();
     const d = deps(put);
     const outcome = await importBrowserSettings(DEFAULT_SETTINGS, d);
-    expect(put.mock.calls).toEqual([
-      ["permissionMode", "bypassPermissions"],
-      ["agentsAtOnce", 9],
-    ]);
-    expect(d.onSaved).toHaveBeenCalledTimes(2);
-    expect(d.onSaved).toHaveBeenLastCalledWith({
-      ...DEFAULT_SETTINGS,
-      permissionMode: "bypassPermissions",
-      agentsAtOnce: 9,
-    });
-    expect(outcome).toEqual({ sent: 2, failed: 0, message: null });
+    expect(put.mock.calls).toEqual([["agentsAtOnce", 9]]);
+    expect(d.onSaved).toHaveBeenCalledTimes(1);
+    expect(d.onSaved).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, agentsAtOnce: 9 });
+    expect(outcome).toEqual({ sent: 1, failed: 0, message: null });
     expect(stored()).toBeNull();
-  });
-
-  it("never sends a permission mode that was not stored", async () => {
-    store({ agentsAtOnce: 3 });
-    const put = fakePut();
-    await importBrowserSettings({ ...DEFAULT_SETTINGS, permissionMode: "plan" }, deps(put));
-    expect(put.mock.calls).toEqual([["agentsAtOnce", 3]]);
   });
 
   it("clears th-settings when every stored value already matches", async () => {
@@ -183,8 +172,8 @@ describe("forgetStoredSetting", () => {
   });
 
   it("clears th-settings when nothing is left", () => {
-    store({ permissionMode: "bypassPermissions", theme: "light" });
-    forgetStoredSetting(localStorage, "permissionMode");
+    store({ agentsAtOnce: 9, theme: "light" });
+    forgetStoredSetting(localStorage, "agentsAtOnce");
     expect(stored()).toBeNull();
   });
 

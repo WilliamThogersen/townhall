@@ -1,4 +1,3 @@
-export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
 export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
 export type TownhallModel = "sonnet" | "opus" | "haiku";
@@ -13,8 +12,6 @@ export interface ForgeAccount {
 }
 
 export interface Settings {
-  readonly permissionMode: PermissionMode;
-  readonly workWithoutAsking: boolean;
   readonly agentsAtOnce: number;
   readonly repoUnclear: RepoUnclear;
   readonly sessionPanelOpen: boolean;
@@ -28,13 +25,6 @@ export interface Settings {
   readonly clonesDir: string;
 }
 
-export const PERMISSION_MODES: readonly PermissionMode[] = [
-  "default",
-  "acceptEdits",
-  "plan",
-  "auto",
-  "bypassPermissions",
-];
 export const REPO_UNCLEAR_VALUES: readonly RepoUnclear[] = ["ask", "guess"];
 export const NOTIFY_VALUES: readonly NotifyWhen[] = ["needsYou", "failed", "everything"];
 export const TOWNHALL_MODELS: readonly TownhallModel[] = ["sonnet", "opus", "haiku"];
@@ -46,8 +36,6 @@ export const AGENTS_AT_ONCE_MAX = 50;
 export const DISK_GB_MAX = 100_000;
 
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
-  permissionMode: "acceptEdits",
-  workWithoutAsking: false,
   agentsAtOnce: 6,
   repoUnclear: "ask",
   sessionPanelOpen: true,
@@ -64,8 +52,6 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
 export type SettingKey = keyof Settings;
 
 export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
-  "permissionMode",
-  "workWithoutAsking",
   "agentsAtOnce",
   "repoUnclear",
   "sessionPanelOpen",
@@ -130,8 +116,6 @@ const isForgeAccounts: Check<readonly ForgeAccount[]> = (value): value is readon
   Array.isArray(value) && value.length <= FORGE_ACCOUNTS_MAX && value.every(isForgeAccount);
 
 const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
-  permissionMode: choiceOf(PERMISSION_MODES),
-  workWithoutAsking: isFlag,
   agentsAtOnce: isAgentsAtOnce,
   repoUnclear: choiceOf(REPO_UNCLEAR_VALUES),
   sessionPanelOpen: isFlag,
@@ -162,8 +146,6 @@ export function clampAgentsAtOnce(value: number): number {
 export function parseSettings(raw: unknown): Settings {
   const fields: Fields = isFields(raw) ? raw : {};
   return Object.freeze({
-    permissionMode: pick(fields, "permissionMode"),
-    workWithoutAsking: pick(fields, "workWithoutAsking"),
     agentsAtOnce: pick(fields, "agentsAtOnce"),
     repoUnclear: pick(fields, "repoUnclear"),
     sessionPanelOpen: pick(fields, "sessionPanelOpen"),

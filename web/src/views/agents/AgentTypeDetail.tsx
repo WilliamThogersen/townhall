@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import type { AgentTypeMode } from "../../api/types";
 import { useAgentRuns, useAgentType } from "../../data";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
@@ -104,6 +105,12 @@ function RecentRuns({ name, typeModel }: { readonly name: string; readonly typeM
   );
 }
 
+/** A type with no mode runs in acceptEdits; bypassPermissions is skip all, so it says so. */
+function modeText(mode: AgentTypeMode | null): string {
+  if (mode === null) return "acceptEdits";
+  return mode === "bypassPermissions" ? "bypassPermissions (skip all: never asks)" : mode;
+}
+
 export function AgentTypeDetail({ name, onSaved }: { readonly name: string; readonly onSaved: () => void }) {
   const { data, error, loading, reload } = useAgentType(name);
   if (error !== null && data === null) return <Banner level="error">{error}</Banner>;
@@ -146,7 +153,7 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
           <Field label="adapter">{data.adapter}</Field>
           <Field label="model">{data.model ?? "default"}</Field>
           {data.effort ? <Field label="effort">{data.effort}</Field> : null}
-          <Field label="permission mode">{data.permissionMode ?? "default"}</Field>
+          <Field label="permission mode">{modeText(data.permissionMode)}</Field>
           <Field label="tools">{data.tools.length > 0 ? <Chips items={data.tools} /> : "claude defaults"}</Field>
           <Field label="hands back to">
             <HandBackTo allowed={data.canHandBackTo} />

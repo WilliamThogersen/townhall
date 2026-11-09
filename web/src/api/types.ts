@@ -59,7 +59,6 @@ export interface PatchRepoInput {
   readonly moveFolder?: boolean;
 }
 
-export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
 export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
 export type TownhallModel = "sonnet" | "opus" | "haiku";
@@ -73,8 +72,6 @@ export interface ForgeAccount {
 }
 
 export interface Settings {
-  readonly permissionMode: PermissionMode;
-  readonly workWithoutAsking: boolean;
   readonly agentsAtOnce: number;
   readonly repoUnclear: RepoUnclear;
   readonly sessionPanelOpen: boolean;
@@ -247,7 +244,7 @@ export interface CreateTaskInput {
 
 export type AgentAdapterKind = "claude" | "shell";
 
-export type AgentTypeMode = "default" | "acceptEdits" | "plan";
+export type AgentTypeMode = "default" | "acceptEdits" | "plan" | "bypassPermissions";
 
 export type AgentTypeEffort = "low" | "medium" | "high" | "xhigh" | "max";
 

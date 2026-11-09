@@ -4,6 +4,7 @@ import type {
   ConversationPatch,
   CreateTaskInput,
   NewMessageInput,
+  Settings,
 } from "../api/types";
 
 const sources = import.meta.glob<string>(["/src/**/*.{ts,tsx}", "!/src/**/*.test.{ts,tsx}"], {
@@ -22,27 +23,27 @@ function filesWith(pattern: RegExp): readonly string[] {
 type Carries<T> = "permissionMode" extends keyof T ? true : false;
 
 describe("skip all", () => {
-  it("is set only through the settings endpoint client", () => {
-    expect(filesWith(/request\(\s*"[A-Z]+",\s*[`"']\/settings/)).toEqual(["/src/api/settings.ts"]);
-    expect(filesWith(/\bputSetting\b/)).toEqual(["/src/api/settings.ts", "/src/settings/settingsStore.ts"]);
+  it("is not a setting any more: only an agent type carries it", () => {
+    expect(filesWith(/\bworkWithoutAsking\b/)).toEqual([]);
+    expect(filesWith(/\/settings\/permissionMode/)).toEqual([]);
+    expectTypeOf<Carries<Settings>>().toEqualTypeOf<false>();
+    expectTypeOf<keyof Settings>().not.toEqualTypeOf<"permissionMode">();
   });
 
-  it("is chosen only on the settings screen", () => {
-    // the agent library only shows a type's own mode, read-only; the loop stage reads it to tell planners apart
+  it("is only read from an agent type, never chosen on the settings screen", () => {
+    // the agent library shows a type's own mode, read-only; the loop stage reads it to tell planners apart
     expect(filesWith(/\bpermissionMode\b/)).toEqual([
       "/src/api/fixtures.ts",
       "/src/api/library.ts",
       "/src/api/types.ts",
-      "/src/settings/settings.ts",
       "/src/tasks/stage.ts",
       "/src/views/agents/AgentTypeDetail.tsx",
       "/src/views/agents/AgentTypeRow.tsx",
-      "/src/views/settings/PermissionRow.tsx",
     ]);
     expect(filesWith(/\bbypassPermissions\b/)).toEqual([
+      "/src/api/library.ts",
       "/src/api/types.ts",
-      "/src/settings/settings.ts",
-      "/src/views/settings/settingsCopy.ts",
+      "/src/views/agents/AgentTypeDetail.tsx",
     ]);
   });
 

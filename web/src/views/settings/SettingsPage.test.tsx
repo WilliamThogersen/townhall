@@ -92,12 +92,6 @@ function HintsProbe() {
 }
 
 const group = (name: string) => within(screen.getByRole("radiogroup", { name }));
-function permissionHelp(): HTMLElement {
-  const help = screen.getByText("permissions", { selector: ".th-setting-label" }).nextElementSibling;
-  if (!(help instanceof HTMLElement)) throw new Error("permissions has no help line");
-  return help;
-}
-
 function lastPut(): unknown {
   return daemon.puts().at(-1);
 }
@@ -124,12 +118,20 @@ describe("SettingsPage", () => {
     expect(saves[0]?.closest(".th-setting-row")).toHaveTextContent("profile");
   });
 
+  it("has no permission rows: each agent type sets its own permissions", async () => {
+    await renderLoaded();
+    expect(screen.queryByRole("radiogroup", { name: "Permissions" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Work without asking" })).not.toBeInTheDocument();
+    expect(screen.queryByText("permissions", { selector: ".th-setting-label" })).not.toBeInTheDocument();
+    const agents = screen.getByRole("heading", { level: 2, name: "agents" }).closest("section");
+    const rows = [...(agents?.querySelectorAll(".th-setting-label") ?? [])].map((l) => l.textContent);
+    expect(rows).toEqual(["agents at once"]);
+  });
+
   it("renders every row", async () => {
     await renderLoaded();
     const labels = [...document.querySelectorAll(".th-setting-label")].map((label) => label.textContent);
     expect(labels).toEqual([
-      "permissions",
-      "work without asking",
       "agents at once",
       "when the repo is unclear",
       "session panel",
@@ -214,7 +216,7 @@ describe("SettingsPage", () => {
   });
 
   it("shows the defaults while the daemon answers", async () => {
-    daemon = fakeDaemon({ permissionMode: "plan" });
+    daemon = fakeDaemon({ agentsAtOnce: 9 });
     let answer: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
       answer = resolve;
@@ -228,86 +230,19 @@ describe("SettingsPage", () => {
     );
     renderPage();
     expect(document.querySelector(".th-settings")).toHaveAttribute("aria-busy", "true");
-    expect(group("Permissions").getByRole("radio", { name: "accept edits" })).toBeChecked();
+    expect(screen.getByRole("group", { name: "Agents at once" })).toHaveTextContent("6");
     answer();
-    await waitFor(() => expect(group("Permissions").getByRole("radio", { name: "plan" })).toBeChecked());
+    await waitFor(() => expect(screen.getByRole("group", { name: "Agents at once" })).toHaveTextContent("9"));
     expect(document.querySelector(".th-settings")).toHaveAttribute("aria-busy", "false");
   });
 
   it("starts from the daemon's settings", async () => {
-    daemon = fakeDaemon({ permissionMode: "plan", agentsAtOnce: 9, repoUnclear: "guess", notifyWhen: "failed" });
+    daemon = fakeDaemon({ agentsAtOnce: 9, repoUnclear: "guess", notifyWhen: "failed" });
     vi.stubGlobal("fetch", daemon.fetch);
     await renderLoaded();
-    expect(group("Permissions").getByRole("radio", { name: "plan" })).toBeChecked();
     expect(screen.getByRole("group", { name: "Agents at once" })).toHaveTextContent("9");
     expect(group("When the repo is unclear").getByRole("radio", { name: "guess" })).toBeChecked();
     expect(group("Notify me when").getByRole("radio", { name: "+ failed" })).toBeChecked();
-  });
-
-  it("changes the permission mode and its help line", async () => {
-    await renderLoaded();
-    expect(group("Permissions").getByRole("radio", { name: "accept edits" })).toBeChecked();
-    expect(permissionHelp()).toHaveTextContent("edits go through, commands ask first.");
-    const cases = [
-      ["ask", "default", "agents ask before every edit or command."],
-      ["plan", "plan", "agents plan first and change nothing."],
-      ["auto", "auto", "agents decide what needs your approval."],
-    ] as const;
-    for (const [label, mode, help] of cases) {
-      await userEvent.click(group("Permissions").getByRole("radio", { name: label }));
-      expect(permissionHelp()).toHaveTextContent(help);
-      expect(permissionHelp()).not.toHaveAttribute("data-tone");
-      await waitFor(() => expect(daemon.settings().permissionMode).toBe(mode));
-    }
-    expect(daemon.puts()).toEqual([
-      ["/api/settings/permissionMode", { value: "default" }],
-      ["/api/settings/permissionMode", { value: "plan" }],
-      ["/api/settings/permissionMode", { value: "auto" }],
-    ]);
-    expect(localStorage.getItem("th-settings")).toBeNull();
-  });
-
-  it("marks skip all as dangerous, saves it through the endpoint and explains it on demand", async () => {
-    await renderLoaded();
-    const skip = group("Permissions").getByRole("radio", { name: "skip all" });
-    expect(skip.closest("label")).toHaveAttribute("data-tone", "danger");
-    await userEvent.click(skip);
-    await waitFor(() => expect(daemon.settings().permissionMode).toBe("bypassPermissions"));
-    expect(lastPut()).toEqual(["/api/settings/permissionMode", { value: "bypassPermissions" }]);
-    expect(permissionHelp()).toHaveAttribute("data-tone", "danger");
-    expect(permissionHelp()).toHaveTextContent("agents never ask. only use on repos you trust.");
-    const more = screen.getByRole("button", { name: "more" });
-    expect(more).toHaveAttribute("aria-expanded", "false");
-    const details = document.getElementById(more.getAttribute("aria-controls") ?? "");
-    expect(details).not.toBeVisible();
-    await userEvent.click(more);
-    expect(details).toBeVisible();
-    expect(details).toHaveTextContent("--dangerously-skip-permissions");
-    expect(screen.getByRole("button", { name: "less" })).toHaveAttribute("aria-expanded", "true");
-    await userEvent.click(screen.getByRole("button", { name: "less" }));
-    expect(details).not.toBeVisible();
-  });
-
-  it("drops the danger help when leaving skip all", async () => {
-    await renderLoaded();
-    await userEvent.click(group("Permissions").getByRole("radio", { name: "skip all" }));
-    await userEvent.click(screen.getByRole("button", { name: "more" }));
-    await userEvent.click(group("Permissions").getByRole("radio", { name: "ask" }));
-    expect(screen.queryByRole("button", { name: /more|less/ })).not.toBeInTheDocument();
-    expect(screen.queryByText(/--dangerously-skip-permissions/)).not.toBeInTheDocument();
-    await userEvent.click(group("Permissions").getByRole("radio", { name: "skip all" }));
-    expect(screen.getByRole("button", { name: "more" })).toHaveAttribute("aria-expanded", "false");
-    await waitFor(() => expect(daemon.puts()).toHaveLength(3));
-  });
-
-  it("switches work without asking", async () => {
-    await renderLoaded();
-    const toggle = screen.getByRole("switch", { name: "Work without asking" });
-    expect(toggle).toHaveAttribute("aria-checked", "false");
-    await userEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-checked", "true");
-    await waitFor(() => expect(daemon.settings().workWithoutAsking).toBe(true));
-    expect(lastPut()).toEqual(["/api/settings/workWithoutAsking", { value: true }]);
   });
 
   it("steps agents at once", async () => {
@@ -374,7 +309,7 @@ describe("SettingsPage", () => {
     renderPage();
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(`error: settings not loaded: ${HELD}`);
-    expect(group("Permissions").getByRole("radio", { name: "accept edits" })).toBeChecked();
+    expect(screen.getByRole("group", { name: "Agents at once" })).toHaveTextContent("6");
     daemon.failing.delete("GET");
     await userEvent.click(within(alert).getByRole("button", { name: "retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());

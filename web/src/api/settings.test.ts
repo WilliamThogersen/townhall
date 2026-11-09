@@ -4,8 +4,6 @@ import { getSettings, parseSettingsData, putSetting } from "./settings";
 import type { Settings } from "./types";
 
 const daemon: Settings = {
-  permissionMode: "plan",
-  workWithoutAsking: true,
   agentsAtOnce: 9,
   repoUnclear: "guess",
   sessionPanelOpen: false,
@@ -94,14 +92,6 @@ describe("putSetting", () => {
     expect(JSON.parse(init.body as string)).toEqual({ value: accounts });
   });
 
-  it("sends skip all as bypassPermissions", async () => {
-    const fn = mockFetch(200, ok({ ...daemon, permissionMode: "bypassPermissions" }));
-    await putSetting("permissionMode", "bypassPermissions");
-    const [url, init] = fn.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/settings/permissionMode");
-    expect(JSON.parse(init.body as string)).toEqual({ value: "bypassPermissions" });
-  });
-
   it("maps a 400 for an invalid value to an http ApiError", async () => {
     mockFetch(400, { success: false, data: null, error: "agentsAtOnce must be 1 to 50" });
     await expect(putSetting("agentsAtOnce", 6)).rejects.toMatchObject({
@@ -118,8 +108,13 @@ describe("putSetting", () => {
 });
 
 describe("parseSettingsData", () => {
-  it("keeps the six settings and drops anything else", () => {
-    const parsed = parseSettingsData({ ...daemon, theme: "light" });
+  it("keeps the known settings and drops anything else, the removed permission ones included", () => {
+    const parsed = parseSettingsData({
+      ...daemon,
+      theme: "light",
+      permissionMode: "bypassPermissions",
+      workWithoutAsking: true,
+    });
     expect(parsed).toEqual(daemon);
     expect(Object.isFrozen(parsed)).toBe(true);
   });
@@ -129,8 +124,6 @@ describe("parseSettingsData", () => {
   });
 
   it.each([
-    ["permissionMode", "yolo"],
-    ["workWithoutAsking", "yes"],
     ["agentsAtOnce", 2.5],
     ["repoUnclear", undefined],
     ["sessionPanelOpen", null],
