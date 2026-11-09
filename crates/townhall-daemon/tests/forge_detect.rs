@@ -150,3 +150,62 @@ async fn one_missing_binary_does_not_hide_the_other() {
     assert_eq!(got[0]["login"], "gl-me");
     assert_eq!(got.as_array().unwrap().len(), 1);
 }
+
+const REAL_GH_JSON: &str = r#"{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"WilliamThogersen","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"},{"state":"success","active":false,"host":"github.com","login":"wexowgt","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"}]}}"#;
+
+const REAL_GH_TEXT: &str = "github.com
+  ✓ Logged in to github.com account WilliamThogersen (keyring)
+  - Active account: true
+  - Git operations protocol: https
+
+  ✓ Logged in to github.com account wexowgt (keyring)
+  - Active account: false
+  - Git operations protocol: https
+";
+
+fn both_real_accounts() -> Value {
+    json!([
+        {"forge": "github", "login": "WilliamThogersen", "host": "github.com", "registered": false},
+        {"forge": "github", "login": "wexowgt", "host": "github.com", "registered": false}
+    ])
+}
+
+#[tokio::test]
+async fn real_gh_2_101_json_lists_the_active_and_the_inactive_account() {
+    let _guard = ENV_LOCK.lock().await;
+    let env = Env::new("alpha").await;
+    let dir = env.root.path();
+    let gh = format!(
+        "if [ \"$1 $2 $3 $4\" = \"auth status --json hosts\" ]; then cat <<'EOF'\n{REAL_GH_JSON}\nEOF\nexit 0; fi; exit 1"
+    );
+    point_at(&stub(dir, "gh", &gh), &stub(dir, "glab", "exit 1"));
+    assert_eq!(detected(&env).await, both_real_accounts());
+}
+
+#[tokio::test]
+async fn real_gh_2_101_text_lists_both_accounts_when_json_is_unavailable() {
+    let _guard = ENV_LOCK.lock().await;
+    let env = Env::new("alpha").await;
+    let dir = env.root.path();
+    let gh = format!(
+        "if [ \"$3\" = \"--json\" ]; then echo 'unknown flag: --json' >&2; exit 1; fi\ncat <<'EOF'\n{REAL_GH_TEXT}EOF"
+    );
+    point_at(&stub(dir, "gh", &gh), &stub(dir, "glab", "exit 1"));
+    assert_eq!(detected(&env).await, both_real_accounts());
+}
+
+#[tokio::test]
+async fn glab_status_on_stderr_with_two_hosts_lists_both_even_when_it_exits_non_zero() {
+    let _guard = ENV_LOCK.lock().await;
+    let env = Env::new("alpha").await;
+    let dir = env.root.path();
+    let glab = "cat >&2 <<'EOF'\ngitlab.com\n  ✓ Logged in to gitlab.com as gl-me (/home/me/.config/glab-cli/config.yml)\n  ✓ Token found: **********\ngitlab.corp.io\n  x gitlab.corp.io: API call failed: 401 Unauthorized\n  ✓ Logged in to gitlab.corp.io as corp-me (config)\nEOF\nexit 1";
+    point_at(&stub(dir, "gh", "exit 1"), &stub(dir, "glab", glab));
+    assert_eq!(
+        detected(&env).await,
+        json!([
+            {"forge": "gitlab", "login": "gl-me", "host": "gitlab.com", "registered": false},
+            {"forge": "gitlab", "login": "corp-me", "host": "gitlab.corp.io", "registered": false}
+        ])
+    );
+}

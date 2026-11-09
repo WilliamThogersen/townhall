@@ -219,6 +219,29 @@ mod tests {
         assert_eq!(from_text("You are not logged into any hosts"), vec![]);
     }
 
+    const REAL_GH_JSON: &str = r#"{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"WilliamThogersen","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"},{"state":"success","active":false,"host":"github.com","login":"wexowgt","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow","gitProtocol":"https"}]}}"#;
+
+    const REAL_GH_TEXT: &str = "github.com\n  ✓ Logged in to github.com account WilliamThogersen (keyring)\n  - Active account: true\n  - Git operations protocol: https\n\n  ✓ Logged in to github.com account wexowgt (keyring)\n  - Active account: false\n  - Git operations protocol: https\n";
+
+    #[test]
+    fn real_gh_2_101_output_yields_both_accounts_in_json_and_text() {
+        let both = pairs(&[
+            ("github.com", "WilliamThogersen"),
+            ("github.com", "wexowgt"),
+        ]);
+        assert_eq!(from_json(REAL_GH_JSON), Some(both.clone()));
+        assert_eq!(from_text(REAL_GH_TEXT), both);
+    }
+
+    #[test]
+    fn glab_text_with_several_hosts_is_read() {
+        let text = "gitlab.com\n  ✓ Logged in to gitlab.com as gl-me (/home/me/.config/glab-cli/config.yml)\n  ✓ Token found: **********\ngitlab.corp.io\n  ✓ Logged in to gitlab.corp.io as corp.me (config)\n";
+        assert_eq!(
+            from_text(text),
+            pairs(&[("gitlab.com", "gl-me"), ("gitlab.corp.io", "corp.me")])
+        );
+    }
+
     #[test]
     fn json_keeps_working_accounts_only_and_rejects_other_shapes() {
         let ok =
