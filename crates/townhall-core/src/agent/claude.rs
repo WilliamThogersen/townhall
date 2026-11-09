@@ -1,7 +1,7 @@
 //! `ClaudeCodeAdapter`: the `claude` command line for one agent.
 //!
 //! `env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT
-//! -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
+//! -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT claude [--model=M] [--effort=E] [--permission-mode=MODE | --dangerously-skip-permissions]
 //! [--append-system-prompt=P] [--session-id=ID] [--tools=B1,B2 --allowedTools=T1,T2] [--add-dir=D ...]
 //! --setting-sources= --settings=S --strict-mcp-config [--mcp-config=JSON] [-- PROMPT]`
 //!
@@ -88,6 +88,14 @@ fn model(options: &LaunchOptions) -> Result<Vec<String>> {
         Some(m) => plain("model", m).map(|()| vec![format!("--model={m}")]),
         None => Ok(vec![]),
     }
+}
+
+fn effort(options: &LaunchOptions) -> Vec<String> {
+    options
+        .effort
+        .map(|e| format!("--effort={}", e.as_str()))
+        .into_iter()
+        .collect()
 }
 
 /// `--permission-mode=<mode>`, or `--dangerously-skip-permissions` for `skip all`. An agent
@@ -264,6 +272,7 @@ impl ClaudeCodeAdapter {
         let unlisted: Vec<&str> = mcp.iter().chain(&extra).copied().collect();
         Ok([
             model(options)?,
+            effort(options),
             permission(options, &listed),
             system_prompt(options, &listed),
             session(options)?,

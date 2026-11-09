@@ -94,6 +94,7 @@ name = "builder"
 description = "implements a task, tests first"
 adapter = "claude"
 model = "sonnet"
+effort = "medium"
 permission_mode = "acceptEdits"
 prompt = """
 You implement the task in your brief.
@@ -197,10 +198,10 @@ Only townhall's own planner session ever reads it: when `learnAboutMe` is on and
 
 ## Permission mode
 
-`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, allowed_tools, system_prompt, add_dirs, mcp_config, mcp_tools, env`. `env` (from the agent type's `[env]`) becomes one shell-quoted `NAME=value` word after the `env -u ...` words for `claude`, and `export 'NAME=value'; <command>` in front of a `shell` type's command; an empty name or one holding `=` is refused (`InvalidInput`). `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
+`LaunchOptions` (`townhall_core::agent`) has `prompt, command, permission_mode, session_id, model, effort, allowed_tools, system_prompt, add_dirs, mcp_config, mcp_tools, env`. `env` (from the agent type's `[env]`) becomes one shell-quoted `NAME=value` word after the `env -u ...` words for `claude`, and `export 'NAME=value'; <command>` in front of a `shell` type's command; an empty name or one holding `=` is refused (`InvalidInput`). `ClaudeCodeAdapter` (`agent/claude.rs`) builds this argv:
 
 ```
-claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
+claude [--model=M] [--effort=E] [--permission-mode=MODE | --dangerously-skip-permissions]
        [--append-system-prompt=P] [--session-id=ID] [--allowedTools=T1,T2]
        [--add-dir=D ...] [--mcp-config=JSON] [-- PROMPT]
 ```
@@ -211,6 +212,7 @@ claude [--model=M] [--permission-mode=MODE | --dangerously-skip-permissions]
 - `claude` still runs a subcommand when the first positional equals its name, even after `--` (`claude -- mcp` runs `claude mcp`). A prompt without any whitespace therefore gets a trailing newline; no subcommand name has one.
 - `add_dirs` are folders outside the worktree claude may read without a permission prompt (in `default`, `acceptEdits` and `plan` its Read asks for anything outside the working directory and `--add-dir` folders): one `--add-dir=<folder>` each, refused unless absolute and UTF-8, and when it starts with `-` or holds control characters.
 - `model`, `session_id` (a UUID) and each `allowed_tools` entry are refused (`InvalidInput`) when they start with `-` or hold control characters; a tool may not hold a comma. The system prompt may hold anything, since it sits inside its own `--append-system-prompt=` element. Blank values add no flag; no prompt means no `--`.
+- `effort` (agent type TOML `effort`): one of `low`, `medium`, `high`, `xhigh`, `max`, the values `claude --effort` lists; anything else is refused when the type is checked. It becomes `--effort=<level>` right after `--model`, and unset adds no flag, so claude keeps its own default. The agent type list and `read_agent_type` show it as `effort` (`null` when unset).
 - `permission_mode`: `default`, `acceptEdits`, `plan` and `auto` become `--permission-mode=<mode>`; `bypassPermissions` becomes `--dangerously-skip-permissions`. `claude` 2.1.318 lists `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` and no longer lists `default`, but still accepts it, so `default` is passed as is for now.
 - Checked against the installed `claude` 2.1.318 (empty environment, throwaway `HOME`, an invalid `--session-id` so it stops right after parsing): `-- --no-such-flag` reaches the session-id check while `--no-such-flag` alone is `unknown option`, and `--allowedTools=Read,Bash(git diff:*),Edit` and the `--name=value` forms parse.
 - The launch command puts `env -u <name>` for each of `agent::OUTER_SESSION_ENV` in front of `claude` (see Environment below). `ClaudeCodeAdapter::args(&options)` returns the argv after the program unquoted, without that prefix, for a caller that spawns `claude` without a shell (2.2's runner, which removes the same variables itself).

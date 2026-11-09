@@ -240,11 +240,14 @@ export type AgentAdapterKind = "claude" | "shell";
 
 export type AgentTypeMode = "default" | "acceptEdits" | "plan";
 
+export type AgentTypeEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
 export interface AgentTypeSummary {
   readonly name: string;
   readonly description: string;
   readonly adapter: AgentAdapterKind;
   readonly model: string | null;
+  readonly effort?: AgentTypeEffort | null;
   readonly permissionMode: AgentTypeMode | null;
   readonly avatar: AvatarSpec | null;
   readonly updatedAt: string;
@@ -299,6 +302,7 @@ export interface AgentType {
   readonly description: string;
   readonly adapter: AgentAdapterKind;
   readonly model: string | null;
+  readonly effort?: AgentTypeEffort | null;
   readonly permissionMode: AgentTypeMode | null;
   readonly tools: readonly string[];
   readonly prompt: string | null;
