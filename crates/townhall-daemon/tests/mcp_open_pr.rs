@@ -233,7 +233,10 @@ async fn a_new_install_falls_back_to_the_old_github_account() {
     let m = Mcp::new().await;
     let (got, line) = opened_as(&m, "fall-back").await;
     assert!(line.ends_with("GH_TOKEN=tok-WilliamThogersen"), "{line}");
-    assert_eq!(got["account"], json!({"login": "WilliamThogersen", "host": "github.com"}));
+    assert_eq!(
+        got["account"],
+        json!({"login": "WilliamThogersen", "host": "github.com"})
+    );
 }
 
 #[tokio::test]
@@ -253,7 +256,10 @@ async fn the_repos_registered_account_is_the_one_gh_runs_as() {
     m.store().set_repo_accounts(&repo.name, put).await.unwrap();
     let (got, line) = opened_as(&m, "pick-one").await;
     assert!(line.ends_with("GH_TOKEN=tok-private-me"), "{line}");
-    assert_eq!(got["account"], json!({"login": "private-me", "host": "github.com"}));
+    assert_eq!(
+        got["account"],
+        json!({"login": "private-me", "host": "github.com"})
+    );
 }
 
 #[tokio::test]

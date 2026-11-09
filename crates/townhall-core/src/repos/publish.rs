@@ -88,7 +88,7 @@ pub struct PrRequest<'a> {
 /// Environment variables for one child, token included: fetched per spawn, never stored.
 type Session = Vec<(String, String)>;
 
-fn with_session<'a>(session: &'a Session) -> Vec<(&'a str, &'a str)> {
+fn with_session(session: &Session) -> Vec<(&str, &str)> {
     let mut envs = remote_env();
     envs.extend(session.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     envs

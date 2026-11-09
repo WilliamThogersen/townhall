@@ -335,7 +335,10 @@ async fn the_account_runs_gh_by_token_and_becomes_the_git_identity() {
         log.contains(&format!("auth token --user {ME} --hostname github.com")),
         "{log}"
     );
-    assert!(!log.contains("auth switch"), "gh's own state is never changed: {log}");
+    assert!(
+        !log.contains("auth switch"),
+        "gh's own state is never changed: {log}"
+    );
     let ran = read(env.log("gh.env"));
     assert!(ran.contains(&format!("GH_TOKEN=tok-{ME} ")), "{ran}");
     assert!(ran.contains("GH_HOST=github.com"), "{ran}");
@@ -379,7 +382,10 @@ async fn a_self_hosted_github_gets_the_enterprise_token_variable_and_its_host() 
     };
     env.run_with(&programs(&gh, &gh), &accounts).unwrap();
     let log = read(env.log("gh"));
-    assert!(log.contains("auth token --user corp-me --hostname github.corp.io"), "{log}");
+    assert!(
+        log.contains("auth token --user corp-me --hostname github.corp.io"),
+        "{log}"
+    );
     let ran = read(env.log("gh.env"));
     assert!(ran.contains("GH_ENTERPRISE_TOKEN=tok-corp-me "), "{ran}");
     assert!(ran.contains("GH_HOST=github.corp.io"), "{ran}");
@@ -425,7 +431,10 @@ async fn a_repo_pick_that_is_not_registered_for_the_host_fails_before_any_call()
         .run_with(&programs(&gh, &gh), &accounts)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("private-me") && err.contains("github.com"), "{err}");
+    assert!(
+        err.contains("private-me") && err.contains("github.com"),
+        "{err}"
+    );
     assert!(!env.log("gh").exists());
     assert!(env.pushed().await.is_empty());
 }
@@ -459,9 +468,21 @@ async fn a_gitlab_account_runs_glab_with_the_hosts_token() {
     let got = env
         .run_with(&programs(Path::new("/nonexistent/gh"), &glab), &accounts)
         .unwrap();
-    assert!(matches!(got, Published::Opened { number: Some(12), .. }), "{got:?}");
+    assert!(
+        matches!(
+            got,
+            Published::Opened {
+                number: Some(12),
+                ..
+            }
+        ),
+        "{got:?}"
+    );
     let log = read(env.log("glab"));
-    assert!(log.contains("config get token --host gitlab.example.com"), "{log}");
+    assert!(
+        log.contains("config get token --host gitlab.example.com"),
+        "{log}"
+    );
     let ran = read(env.log("glab.env"));
     assert!(
         ran.contains("GITLAB_TOKEN=glpat-gitlab.example.com GITLAB_HOST=gitlab.example.com"),

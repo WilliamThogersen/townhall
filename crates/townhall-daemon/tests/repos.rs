@@ -88,7 +88,10 @@ async fn a_repo_picks_its_accounts_from_the_registered_ones() {
     let (s, v) = call(&app, "PUT", uri, Some(json!({"githubAccount": null}))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v["data"]["githubAccount"], json!(null));
-    assert_eq!(v["data"]["gitlabAccount"], "me", "a missing key is left alone");
+    assert_eq!(
+        v["data"]["gitlabAccount"], "me",
+        "a missing key is left alone"
+    );
 }
 
 #[tokio::test]
