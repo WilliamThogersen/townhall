@@ -220,10 +220,10 @@ mod tests {
 
     #[test]
     fn an_https_clone_that_cannot_log_in_suggests_ssh() {
-        let stderr = "fatal: could not read Username for 'https://gitlab.wexo.io': terminal prompts disabled";
-        let https = clone_failed("https://gitlab.wexo.io/konpap/vines.git", stderr).to_string();
+        let stderr = "fatal: could not read Username for 'https://gitlab.example.com': terminal prompts disabled";
+        let https = clone_failed("https://gitlab.example.com/konpap/vines.git", stderr).to_string();
         assert!(https.contains("switch to ssh"), "{https}");
-        let ssh = clone_failed("git@gitlab.wexo.io:konpap/vines.git", stderr).to_string();
+        let ssh = clone_failed("git@gitlab.example.com:konpap/vines.git", stderr).to_string();
         assert!(!ssh.contains("switch to ssh"), "{ssh}");
     }
 }

@@ -12,7 +12,7 @@ You orchestrate. You do not write product code yourself.
 4. Check every finished unit with a separate Sonnet verifier that did not build it.
 5. Merge verified units, then report per phase.
 
-Track each phase as a WEXO MCP task (project `townhall`, create it if missing) with the units as its todo list.
+Track each phase as an MCP task (project `townhall`, create it if missing) with the units as its todo list.
 
 ## Read first
 

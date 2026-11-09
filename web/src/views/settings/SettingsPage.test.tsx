@@ -473,7 +473,7 @@ describe("detected forge accounts", () => {
     daemon.fetch.mockImplementation(async (url: string) =>
       url === "/api/forge-accounts/detected"
         ? new Response(
-            '{"success":true,"data":[{"forge":"github","login":"WilliamThogersen","host":"github.com","registered":false},{"forge":"github","login":"wexowgt","host":"github.com","registered":false}],"error":null}',
+            '{"success":true,"data":[{"forge":"github","login":"WilliamThogersen","host":"github.com","registered":false},{"forge":"github","login":"alice","host":"github.com","registered":false}],"error":null}',
           )
         : Response.json({ success: true, data: DEFAULT_SETTINGS, error: null }),
     );
@@ -482,7 +482,7 @@ describe("detected forge accounts", () => {
     const offer = await screen.findByRole("group", { name: "Detected accounts" });
     expect(offer).toHaveAttribute("data-prominent", "true");
     expect(within(offer).getByRole("button", { name: "add WilliamThogersen@github.com" })).toBeInTheDocument();
-    expect(within(offer).getByRole("button", { name: "add wexowgt@github.com" })).toBeInTheDocument();
+    expect(within(offer).getByRole("button", { name: "add alice@github.com" })).toBeInTheDocument();
     expect(within(offer).getByRole("button", { name: "add all" })).toBeInTheDocument();
   });
 

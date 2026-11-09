@@ -41,7 +41,7 @@ export const CONVERSATIONS = [
     key: "i18n",
     minutesAgo: 62,
     spanMinutes: 20,
-    messages: [{ text: "clean up unused i18n keys in wexo-access, en and da" }],
+    messages: [{ text: "clean up unused i18n keys in acme-access, en and da" }],
   },
   {
     key: "export",

@@ -5,7 +5,7 @@ const HOME = "/Users/me";
 
 describe("shortRepoPath", () => {
   it("shows home as ~ with the first folder, … and the last two", () => {
-    expect(shortRepoPath("/Users/me/Developer/wexo/work/clients/shop", HOME)).toBe("~/Developer/…/clients/shop");
+    expect(shortRepoPath("/Users/me/Developer/acme/work/clients/shop", HOME)).toBe("~/Developer/…/clients/shop");
     expect(shortRepoPath("/Users/me/Developer/a/b/c/hive", HOME)).toBe("~/Developer/…/c/hive");
   });
 
@@ -29,12 +29,12 @@ describe("shortRepoPath", () => {
   });
 
   it("ignores trailing slashes on the path and on home", () => {
-    expect(shortRepoPath("/Users/me/Developer/wexo/work/clients/shop/", "/Users/me/")).toBe("~/Developer/…/clients/shop");
+    expect(shortRepoPath("/Users/me/Developer/acme/work/clients/shop/", "/Users/me/")).toBe("~/Developer/…/clients/shop");
     expect(shortRepoPath("/Users/me/Developer/townhall/", HOME)).toBe("~/Developer/townhall");
   });
 
   it("works without a known home", () => {
-    expect(shortRepoPath("/Users/me/Developer/wexo/work/clients/shop", null)).toBe("/Users/…/clients/shop");
+    expect(shortRepoPath("/Users/me/Developer/acme/work/clients/shop", null)).toBe("/Users/…/clients/shop");
   });
 
   it("keeps the root whole", () => {

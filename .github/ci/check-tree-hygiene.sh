@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root_list="${MERGE_CHECKS_ROOT_ALLOW_LIST:-.wexo/root-allow-list.txt}"
-vendor_list="${MERGE_CHECKS_TREE_VENDOR_ALLOW_LIST:-.wexo/tree-hygiene-vendor-allow.txt}"
-size_list="${MERGE_CHECKS_TREE_SIZE_ALLOW_LIST:-.wexo/tree-hygiene-size-allow.txt}"
-deny_list="${MERGE_CHECKS_TREE_DENY_LIST:-.wexo/tree-hygiene-deny.txt}"
+root_list="${MERGE_CHECKS_ROOT_ALLOW_LIST:-.merge-checks/root-allow-list.txt}"
+vendor_list="${MERGE_CHECKS_TREE_VENDOR_ALLOW_LIST:-.merge-checks/tree-hygiene-vendor-allow.txt}"
+size_list="${MERGE_CHECKS_TREE_SIZE_ALLOW_LIST:-.merge-checks/tree-hygiene-size-allow.txt}"
+deny_list="${MERGE_CHECKS_TREE_DENY_LIST:-.merge-checks/tree-hygiene-deny.txt}"
 max_bytes="${MERGE_CHECKS_TREE_MAX_BYTES:-10485760}"
 max_listed="${MERGE_CHECKS_TREE_MAX_LISTED:-50}"
 
