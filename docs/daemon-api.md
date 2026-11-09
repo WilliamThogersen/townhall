@@ -64,8 +64,8 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/tasks/{name}/artifacts` | | `Artifact[]` of the task, oldest first | 404 | 2.9 |
 | GET | `/tasks/{name}/artifacts/{id}` | | the bytes with the stored `content-type` (not the envelope); `inline` for a raster image or text, a download otherwise; `nosniff` and `sandbox; default-src 'none'` | 400 bad id, 404 | 2.9 |
 | GET | `/library/agents` | | `AgentTypeSummary[]` by name, ignoring case | | 2.12 |
-| GET | `/library/agents/usage` | | `AgentUsage[]` = `{ agent, runs, tokens }` per agent type, by name | | 2.12 |
-| GET | `/library/agents/{name}/runs` | | `TaskRun[]`: the tasks of that type (name matched ignoring case), newest first, at most 50. `200 []` when there is none, also for a deleted type | | 2.12 |
+| GET | `/library/agents/usage` | | `AgentUsage[]` = `{ agent, runs, tokens }` per agent type, by name. Every conversation turn that ran claude counts as one run of `default`, with its input plus output tokens (cache tokens left out, like a task's) | | 2.12 |
+| GET | `/library/agents/{name}/runs` | | `TaskRun[]` = `{ kind, conversationId, task, repo, state, model, tokens, createdAt, endedAt }`: the tasks of that type (name matched ignoring case), newest first, at most 50. `default` also lists its conversation turns: `kind` is `turn`, `task` is the conversation's title, `repo` its linked repo (`""` when none), `state` is `done`, `failed` or `stopped`, `model` is null, and `conversationId` is the conversation to open. A task has `kind` `task` and the `conversationId` it was made in. `200 []` when there is none, also for a deleted type | | 2.12 |
 | GET | `/library/agents/{name}` | | `AgentType` (ignoring case) | 404 | 2.12 |
 | PUT | `/library/agents/{name}` | the TOML text, `content-type: text/plain` or `application/toml` | `201 AgentType` new, `200 AgentType` replaced (ignoring case, the new spelling wins) | 400 wrong content type, not UTF-8, the error list (below), its `name` is not the path's | 2.12 |
 | DELETE | `/library/agents/{name}` | | the deleted type's name | 404; 409 it is the last type for tasks, or `default` | 2.12 |

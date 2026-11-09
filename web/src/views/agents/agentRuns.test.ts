@@ -3,6 +3,8 @@ import type { AgentRun } from "../../api/types";
 import { RUNS_SHOWN, runModel, shownRuns, showsModelColumn } from "./agentRuns";
 
 const run = (task: string, model: string | null = null): AgentRun => ({
+  kind: "task",
+  conversationId: "c1",
   task,
   repo: "alpha",
   state: "ended",
