@@ -11,14 +11,14 @@ function Blocks({ text }: { readonly text: string }) {
       {parseBlocks(text).map((block, index) => {
         if (block.kind === "paragraph") {
           return (
-            <p key={index} className="th-prompt-text">
+            <p key={index} className="th-agent-prompt-text">
               {block.text}
             </p>
           );
         }
         const List = block.ordered ? "ol" : "ul";
         return (
-          <List key={index} className="th-prompt-list">
+          <List key={index} className="th-agent-prompt-list">
             {block.items.map((item, i) => (
               <li key={i}>{item}</li>
             ))}
@@ -36,12 +36,12 @@ function PromptView({ prompt }: { readonly prompt: string }) {
   const setAll = (value: boolean) => setOpen(parsed.sections.map(() => value));
   const toggle = (index: number) => setOpen((current) => current.map((value, i) => (i === index ? !value : value)));
   return (
-    <div className="th-prompt">
-      <div className="th-prompt-bar">
+    <div className="th-agent-prompt">
+      <div className="th-agent-prompt-bar">
         <span className="th-cap">
           {`${stats.chars} chars · ~${stats.tokens} tokens · ${stats.sections} ${stats.sections === 1 ? "section" : "sections"}`}
         </span>
-        <span className="th-prompt-actions">
+        <span className="th-agent-prompt-actions">
           {parsed.sections.length > 0 ? (
             <>
               <Button size="sm" variant="ghost" onClick={() => setAll(true)}>
@@ -56,20 +56,20 @@ function PromptView({ prompt }: { readonly prompt: string }) {
         </span>
       </div>
       {parsed.intro === "" ? null : (
-        <div className="th-prompt-intro">
+        <div className="th-agent-prompt-intro">
           <Blocks text={parsed.intro} />
         </div>
       )}
       {parsed.sections.map((section, index) => (
-        <div key={index} className="th-prompt-section" data-open={open[index] || undefined}>
-          <div className="th-prompt-section-head">
-            <button type="button" className="th-prompt-toggle" aria-expanded={open[index] === true} onClick={() => toggle(index)}>
+        <div key={index} className="th-agent-prompt-section" data-open={open[index] || undefined}>
+          <div className="th-agent-prompt-section-head">
+            <button type="button" className="th-agent-prompt-toggle" aria-expanded={open[index] === true} onClick={() => toggle(index)}>
               {section.tag === "" ? UNTAGGED_LABEL : section.tag}
             </button>
             {section.closed ? null : <span className="th-cap">not closed</span>}
           </div>
           {open[index] === true ? (
-            <div className="th-prompt-body">
+            <div className="th-agent-prompt-body">
               <Blocks text={section.body} />
             </div>
           ) : null}

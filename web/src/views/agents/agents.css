@@ -531,7 +531,8 @@
   white-space: pre;
 }
 
-.th-prompt {
+/* named th-agent-prompt, not th-prompt: terminal.css owns th-prompt (the composer row) */
+.th-agent-prompt {
   display: flex;
   flex-direction: column;
   gap: var(--th-space-2);
@@ -539,36 +540,35 @@
   font-size: var(--th-text-sm);
 }
 
-.th-prompt-bar {
+.th-agent-prompt-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--th-space-2);
+  gap: var(--th-space-2) var(--th-space-4);
 }
 
-.th-prompt-actions {
+.th-agent-prompt-actions {
   display: inline-flex;
   gap: var(--th-space-1);
 }
 
-.th-prompt-intro,
-.th-prompt-section {
+.th-agent-prompt-intro,
+.th-agent-prompt-section {
   border: var(--th-border) solid var(--th-line);
   background: var(--th-surface);
 }
 
-.th-prompt-intro {
+.th-agent-prompt-intro {
   padding: var(--th-space-2) var(--th-space-3);
 }
 
-.th-prompt-section-head {
+.th-agent-prompt-section-head {
   display: flex;
   align-items: center;
   gap: var(--th-space-2);
 }
 
-.th-prompt-toggle {
+.th-agent-prompt-toggle {
   flex: 1;
   padding: var(--th-space-1) var(--th-space-3);
   border: 0;
@@ -579,37 +579,37 @@
   cursor: pointer;
 }
 
-.th-prompt-toggle::before {
+.th-agent-prompt-toggle::before {
   content: "▸ ";
 }
 
-.th-prompt-toggle[aria-expanded="true"]::before {
+.th-agent-prompt-toggle[aria-expanded="true"]::before {
   content: "▾ ";
 }
 
-.th-prompt-toggle:focus-visible {
+.th-agent-prompt-toggle:focus-visible {
   outline: 2px solid var(--th-accent);
   outline-offset: -2px;
 }
 
-.th-prompt-body {
+.th-agent-prompt-body {
   padding: var(--th-space-1) var(--th-space-3) var(--th-space-2);
 }
 
-.th-prompt-text {
+.th-agent-prompt-text {
   margin: 0 0 var(--th-space-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.th-prompt-list {
+.th-agent-prompt-list {
   margin: 0 0 var(--th-space-2);
   padding-left: var(--th-space-5);
   overflow-wrap: anywhere;
 }
 
-.th-prompt-body > :last-child,
-.th-prompt-intro > :last-child {
+.th-agent-prompt-body > :last-child,
+.th-agent-prompt-intro > :last-child {
   margin-bottom: 0;
 }
 
