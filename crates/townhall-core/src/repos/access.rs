@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use super::accounts::Picked;
-use super::detect::{capture_env, Detected};
+use super::detect::{capture_env, detect_blocking, Detected};
 use super::publish::{github_session, gitlab_session, Programs};
 use super::source::split_remote;
 use crate::model::{ForgeAccount, ForgeKind};
@@ -15,17 +15,39 @@ pub struct Located {
     pub path: String,
 }
 
-pub fn locate(url: &str, gitlab_hosts: &[String]) -> Option<Located> {
+fn parts(url: &str) -> Option<(String, String)> {
     let (scheme, host, path) = split_remote(url.trim())?;
     if scheme.eq_ignore_ascii_case("file") || host.is_empty() {
         return None;
     }
-    let host = host.to_ascii_lowercase();
     let path = path.trim_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
     if path.split('/').count() < 2 || path.split('/').any(str::is_empty) {
         return None;
     }
+    Some((host.to_ascii_lowercase(), path.to_string()))
+}
+
+pub fn discover(
+    programs: &Programs,
+    url: &str,
+    registered: &[ForgeAccount],
+) -> Option<(Located, Outcome)> {
+    parts(url)?;
+    let detection = detect_blocking(programs, registered);
+    let gitlab_hosts: Vec<String> = detection
+        .accounts
+        .iter()
+        .filter(|d| d.forge == ForgeKind::Gitlab)
+        .map(|d| d.host.clone())
+        .collect();
+    let located = locate(url, &gitlab_hosts)?;
+    let outcome = find_account(programs, &located, registered, &detection.accounts);
+    Some((located, outcome))
+}
+
+pub fn locate(url: &str, gitlab_hosts: &[String]) -> Option<Located> {
+    let (host, path) = parts(url)?;
     let listed = gitlab_hosts.iter().any(|h| h.eq_ignore_ascii_case(&host));
     let forge = if host == ForgeKind::Github.default_host() {
         ForgeKind::Github
@@ -34,11 +56,7 @@ pub fn locate(url: &str, gitlab_hosts: &[String]) -> Option<Located> {
     } else {
         return None;
     };
-    Some(Located {
-        forge,
-        host,
-        path: path.to_string(),
-    })
+    Some(Located { forge, host, path })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +69,20 @@ pub struct Found {
 pub struct Outcome {
     pub found: Option<Found>,
     pub tried: Vec<Picked>,
+}
+
+impl Outcome {
+    pub fn none_could_see(&self) -> Option<String> {
+        if self.found.is_some() || self.tried.is_empty() {
+            return None;
+        }
+        let who: Vec<String> = self
+            .tried
+            .iter()
+            .map(|p| format!("{} on {}", p.login, p.host))
+            .collect();
+        Some(format!("no account could see it, tried {}", who.join(", ")))
+    }
 }
 
 pub fn find_account(
@@ -87,7 +119,9 @@ fn candidates(
         .iter()
         .filter(|d| d.forge == located.forge && d.host.eq_ignore_ascii_case(&located.host))
     {
-        let known = list.iter().any(|(p, _)| p.login.eq_ignore_ascii_case(&d.login));
+        let known = list
+            .iter()
+            .any(|(p, _)| p.login.eq_ignore_ascii_case(&d.login));
         if !known {
             list.push((picked(&d.login, &located.host), false));
         }

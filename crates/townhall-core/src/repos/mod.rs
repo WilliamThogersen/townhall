@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 pub(crate) use auth_env::remote_env;
 use clone::{clone_into_base, clone_or_reuse};
+use publish::Programs;
 use source::{Remote, Source};
 
 pub use git::{
@@ -25,9 +26,12 @@ pub use git::{
 };
 
 use crate::home::WORKTREES_DIR;
-use crate::model::{AddRepo, PatchRepo, Repo};
+use crate::model::{
+    AddRepo, ForgeAccount, ForgeKind, PatchRepo, PutRepoAccounts, Repo, SettingKey,
+};
 use crate::store::Store;
 use crate::{Error, Home, Result};
+use accounts::Picked;
 
 /// A typed path: trimmed, `~` expanded, absolute, existing, canonical, a folder.
 pub fn resolve_path(input: &str) -> Result<PathBuf> {
@@ -122,11 +126,19 @@ where
 #[derive(Debug, Clone)]
 pub struct RepoRegistry {
     store: Store,
+    programs: Programs,
 }
 
 impl RepoRegistry {
     pub fn new(store: Store) -> Self {
-        Self { store }
+        Self {
+            store,
+            programs: Programs::from_env(),
+        }
+    }
+
+    pub fn with_programs(self, programs: Programs) -> Self {
+        Self { programs, ..self }
     }
 
     /// Every registered repo, in the order they were added.
@@ -166,17 +178,74 @@ impl RepoRegistry {
             )));
         }
         let clone_base = self.clone_base(req.clone_dir.as_deref()).await?;
+        let registered = self.store.settings().await?.forge_accounts;
+        let (programs, url) = (self.programs.clone(), remote.url.clone());
+        let known_accounts = registered.clone();
+        let access =
+            blocking(move || Ok(access::discover(&programs, &url, &known_accounts))).await?;
+        let note = access
+            .as_ref()
+            .and_then(|(_, outcome)| outcome.none_could_see());
         let (remote, base) = (remote.clone(), req.base_branch.clone());
         let home = self.store.home().clone();
         let repo = blocking(move || {
-            let path = match clone_base {
-                Some(dir) => clone_into_base(&dir, &remote)?,
-                None => clone_or_reuse(&home, &remote)?,
+            let cloned = match clone_base {
+                Some(dir) => clone_into_base(&dir, &remote),
+                None => clone_or_reuse(&home, &remote),
+            };
+            let path = match (cloned, note) {
+                (Err(Error::InvalidInput(why)), Some(note)) => {
+                    return Err(Error::InvalidInput(format!("{why} ({note})")))
+                }
+                (cloned, _) => cloned?,
             };
             inspect(&home, &path, name, base.as_deref())
         })
         .await?;
-        self.store.add_repo(repo).await
+        let repo = self.store.add_repo(repo).await?;
+        let found = access.and_then(|(located, outcome)| outcome.found.map(|f| (located, f)));
+        match found {
+            Some((located, found)) => {
+                self.keep_account(repo, located.forge, found, registered)
+                    .await
+            }
+            None => Ok(repo),
+        }
+    }
+
+    async fn keep_account(
+        &self,
+        repo: Repo,
+        forge: ForgeKind,
+        found: access::Found,
+        mut registered: Vec<ForgeAccount>,
+    ) -> Result<Repo> {
+        let Picked { login, host } = found.account;
+        if !found.registered {
+            registered.push(ForgeAccount {
+                forge,
+                login: login.clone(),
+                host,
+                label: login.clone(),
+            });
+            let value = serde_json::to_value(&registered)
+                .map_err(|e| Error::InvalidInput(format!("forge accounts: {e}")))?;
+            self.store
+                .set_setting(SettingKey::ForgeAccounts, value)
+                .await?;
+        }
+        let pick = Some(Some(login));
+        let put = match forge {
+            ForgeKind::Github => PutRepoAccounts {
+                github_account: pick,
+                ..PutRepoAccounts::default()
+            },
+            ForgeKind::Gitlab => PutRepoAccounts {
+                gitlab_account: pick,
+                ..PutRepoAccounts::default()
+            },
+        };
+        self.store.set_repo_accounts(&repo.name, put).await
     }
 
     /// The folder to clone into: the request's, else the `clonesDir` setting; `None` means

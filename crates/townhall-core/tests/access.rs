@@ -111,7 +111,10 @@ fn the_first_account_that_can_see_the_repo_wins() {
     );
     assert_eq!(
         got.tried,
-        vec![picked("first", "github.com"), picked("second", "github.com")]
+        vec![
+            picked("first", "github.com"),
+            picked("second", "github.com")
+        ]
     );
     let log = stubs.log("gh");
     assert!(
@@ -131,7 +134,10 @@ fn no_account_seeing_the_repo_leaves_it_unpicked_and_lists_who_was_tried() {
     assert_eq!(got.found, None);
     assert_eq!(
         got.tried,
-        vec![picked("first", "github.com"), picked("second", "github.com")]
+        vec![
+            picked("first", "github.com"),
+            picked("second", "github.com")
+        ]
     );
 }
 
@@ -196,7 +202,11 @@ fn a_gitlab_project_is_asked_by_its_encoded_path_on_its_host() {
 fn a_detected_gitlab_login_wins_when_nothing_is_registered() {
     let stubs = Stubs::new();
     let programs = programs(&stubs.gh(&[]), &stubs.glab(true));
-    let located = locate("https://code.example.com/g/app", &["code.example.com".into()]).unwrap();
+    let located = locate(
+        "https://code.example.com/g/app",
+        &["code.example.com".into()],
+    )
+    .unwrap();
     let seen = [detected(ForgeKind::Gitlab, "wgt", "code.example.com")];
     let got = find_account(&programs, &located, &[], &seen);
     assert_eq!(
