@@ -38,6 +38,14 @@ interface for them works; polish comes next.
 - live terminal streaming to the ui
 - custom behaviour lives in plugins, not in core
 
+## install
+
+```sh
+brew install --cask WilliamThogersen/tap/townhall
+```
+
+Versions and releases are in [`docs/versioning.md`](docs/versioning.md).
+
 ## run it
 
 You need Rust, Node, git and tmux. Install the web dependencies once:
@@ -149,6 +157,7 @@ crates/townhall-daemon   http and websocket api
 src-tauri                desktop app: daemon in-process, tray, notifications, repo settings
 web                      react ui (vite)
 docs/style-guide         design: tokens, components, preview.html
+docs/versioning.md       versions and how to release
 ```
 
 ## design
