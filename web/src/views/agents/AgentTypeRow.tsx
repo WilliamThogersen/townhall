@@ -1,5 +1,4 @@
 import type { AgentTypeSummary } from "../../api/types";
-import { compactNumber } from "../home/format";
 import { AgentAvatar } from "./AgentAvatar";
 import { pipelineStep, type Usage } from "./agentTypes";
 
@@ -19,7 +18,7 @@ export function StepBadge({ name }: { readonly name: string }) {
 export function AgentTypeRow({ type, isDefault, selected, usage, onSelect }: AgentTypeRowProps) {
   return (
     <button type="button" className="th-agent-row" aria-pressed={selected} onClick={() => onSelect(type.name)}>
-      <AgentAvatar name={type.name} scale={3} />
+      <AgentAvatar name={type.name} spec={type.avatar} scale={3} />
       <span className="th-agent-row-body">
         <span className="th-agent-row-head">
           <b>{type.name}</b>
@@ -31,12 +30,7 @@ export function AgentTypeRow({ type, isDefault, selected, usage, onSelect }: Age
           <span>{type.adapter}</span>
           {type.model ? <span>{type.model}</span> : null}
           {type.permissionMode ? <span className="th-agent-mode">{type.permissionMode}</span> : null}
-          {usage === null ? null : (
-            <>
-              <span>{usage.runs === 1 ? "1 run" : `${usage.runs} runs`}</span>
-              <span>{`${compactNumber(usage.tokens)} tokens`}</span>
-            </>
-          )}
+          {usage === null ? null : <span>{usage.runs === 1 ? "1 run" : `${usage.runs} runs`}</span>}
         </span>
       </span>
     </button>

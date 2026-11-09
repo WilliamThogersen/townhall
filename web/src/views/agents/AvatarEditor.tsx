@@ -1,52 +1,119 @@
 import { useState } from "react";
+import { saveAgentType } from "../../api/library";
+import type { AgentType } from "../../api/types";
+import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
-import { AVATAR_PARTS, cyclePart, defaultAvatar, type Avatar, type AvatarPart } from "./avatar";
+import { AVATAR_PARTS, cyclePart, type AvatarPart } from "./avatar";
 import { AvatarFace } from "./AgentAvatar";
-import { clearAvatar, saveAvatar, useAvatar } from "./avatarPrefs";
+import {
+  formatAvatarSpec,
+  parseAvatarSpec,
+  resolveAvatar,
+  withAvatarSection,
+  type AvatarSpec,
+  type ResolvedAvatar,
+} from "./avatarSpec";
 
 const PARTS = Object.keys(AVATAR_PARTS) as readonly AvatarPart[];
 
-const sameAvatar = (a: Avatar, b: Avatar) => PARTS.every((part) => a[part] === b[part]);
-
-function randomAvatar(): Avatar {
+function randomSpec(): AvatarSpec {
   const pick = (part: AvatarPart) => AVATAR_PARTS[part][Math.floor(Math.random() * AVATAR_PARTS[part].length)];
-  return Object.fromEntries(PARTS.map((part) => [part, pick(part)])) as unknown as Avatar;
+  return Object.fromEntries(PARTS.map((part) => [part, pick(part)])) as AvatarSpec;
 }
 
-export function AvatarEditor({ name }: { readonly name: string }) {
-  const avatar = useAvatar(name);
-  const [notSaved, setNotSaved] = useState(false);
-  const customised = !sameAvatar(avatar, defaultAvatar(name));
-  const commit = (saved: boolean) => setNotSaved(!saved);
+export interface AvatarEditorProps {
+  readonly name: string;
+  readonly source: string;
+  readonly saved: AvatarSpec | null;
+  readonly onSaved: (type: AgentType) => void;
+}
+
+export function AvatarEditor({ name, source, saved, onSaved }: AvatarEditorProps) {
+  const initial = saved === null ? "" : formatAvatarSpec(saved);
+  const [text, setText] = useState(initial);
+  const [shown, setShown] = useState<ResolvedAvatar>(() => resolveAvatar(name, saved));
+  const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+  const parsed = parseAvatarSpec(text);
+  const spec = parsed.ok ? parsed.spec : null;
+  const current = spec === null ? shown : resolveAvatar(name, spec);
+
+  const edit = (next: string) => {
+    setText(next);
+    setRefused(null);
+    const result = parseAvatarSpec(next);
+    if (result.ok) setShown(resolveAvatar(name, result.spec));
+  };
+
+  const pickPart = (part: AvatarPart, step: 1 | -1) => {
+    if (spec === null) return;
+    const next = cyclePart(current.avatar, part, step)[part];
+    edit(formatAvatarSpec({ ...spec, [part]: next }));
+  };
+
+  const save = () => {
+    setBusy(true);
+    setRefused(null);
+    saveAgentType(name, withAvatarSection(source, text)).then(
+      (type) => {
+        setBusy(false);
+        onSaved(type);
+      },
+      (error: unknown) => {
+        setBusy(false);
+        setRefused(error instanceof Error ? error.message : String(error));
+      },
+    );
+  };
+
   return (
     <div className="th-avatar-editor">
-      <AvatarFace avatar={avatar} scale={8} label={`${name} avatar preview`} />
+      <AvatarFace avatar={current.avatar} grid={current.grid} scale={8} label={`${name} avatar preview`} />
       <div className="th-avatar-parts">
+        <textarea
+          className="th-input th-avatar-spec"
+          aria-label="avatar spec"
+          aria-invalid={parsed.ok ? undefined : true}
+          placeholder="no [avatar] section: the face comes from the name"
+          spellCheck={false}
+          rows={7}
+          value={text}
+          onChange={(event) => edit(event.target.value)}
+        />
+        {parsed.ok ? null : (
+          <ul aria-label="avatar spec errors" className="th-avatar-errors">
+            {parsed.errors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        )}
         {PARTS.map((part) => (
           <div key={part} role="group" aria-label={part} className="th-avatar-part">
             <span className="th-cap">{part}</span>
-            <Button size="sm" variant="ghost" aria-label={`previous ${part}`} onClick={() => commit(saveAvatar(name, cyclePart(avatar, part, -1)))}>
+            <Button size="sm" variant="ghost" aria-label={`previous ${part}`} disabled={spec === null} onClick={() => pickPart(part, -1)}>
               ‹
             </Button>
-            <span className="th-avatar-part-value">{avatar[part]}</span>
-            <Button size="sm" variant="ghost" aria-label={`next ${part}`} onClick={() => commit(saveAvatar(name, cyclePart(avatar, part, 1)))}>
+            <span className="th-avatar-part-value">{current.avatar[part]}</span>
+            <Button size="sm" variant="ghost" aria-label={`next ${part}`} disabled={spec === null} onClick={() => pickPart(part, 1)}>
               ›
             </Button>
           </div>
         ))}
+        {current.grid === null ? null : (
+          <p className="th-cap">grid is set: head, eyes, mouth and accessory are ignored</p>
+        )}
         <div className="th-avatar-actions">
-          <Button size="sm" variant="ghost" onClick={() => commit(saveAvatar(name, randomAvatar()))}>
+          <Button size="sm" variant="ghost" disabled={spec === null} onClick={() => edit(formatAvatarSpec(randomSpec()))}>
             shuffle
           </Button>
-          <Button size="sm" variant="ghost" disabled={!customised} onClick={() => commit(clearAvatar(name))}>
+          <Button size="sm" variant="ghost" disabled={text.trim() === ""} onClick={() => edit("")}>
             reset
           </Button>
+          <Button size="sm" variant="primary" disabled={spec === null || text === initial} busy={busy} onClick={save}>
+            save avatar
+          </Button>
         </div>
-        {notSaved ? (
-          <p role="status" className="th-cap">
-            not saved: browser storage refused the write
-          </p>
-        ) : null}
+        {refused === null ? null : <Banner level="error">{refused}</Banner>}
       </div>
     </div>
   );

@@ -1,10 +1,10 @@
 import { composeAvatar, GRID, type Avatar } from "./avatar";
-import { useAvatar } from "./avatarPrefs";
+import { resolveAvatar, type AvatarSpec } from "./avatarSpec";
 import "./avatar.css";
 
 export interface AvatarFaceProps {
   readonly avatar: Avatar;
-  /** Pixels per grid cell. Whole numbers only, so every cell stays a sharp square. */
+  readonly grid?: readonly string[] | null;
   readonly scale?: number;
   readonly label?: string;
 }
@@ -13,8 +13,8 @@ function squares(cells: readonly { readonly x: number; readonly y: number }[]): 
   return cells.map(({ x, y }) => `M${x} ${y}h1v1h-1z`).join("");
 }
 
-export function AvatarFace({ avatar, scale = 2, label }: AvatarFaceProps) {
-  const cells = composeAvatar(avatar);
+export function AvatarFace({ avatar, grid = null, scale = 2, label }: AvatarFaceProps) {
+  const cells = composeAvatar(avatar, grid);
   const labelled = label === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": label };
   return (
     <svg
@@ -33,10 +33,12 @@ export function AvatarFace({ avatar, scale = 2, label }: AvatarFaceProps) {
 
 export interface AgentAvatarProps {
   readonly name: string;
+  readonly spec: AvatarSpec | null;
   readonly scale?: number;
   readonly label?: string;
 }
 
-export function AgentAvatar({ name, scale, label }: AgentAvatarProps) {
-  return <AvatarFace avatar={useAvatar(name)} scale={scale} label={label} />;
+export function AgentAvatar({ name, spec, scale, label }: AgentAvatarProps) {
+  const { avatar, grid } = resolveAvatar(name, spec);
+  return <AvatarFace avatar={avatar} grid={grid} scale={scale} label={label} />;
 }

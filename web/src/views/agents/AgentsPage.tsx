@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useAgentTypes, useAgentUsage } from "../../data";
 import { Banner } from "../../ui/Banner";
 import { DRAG_REGION } from "../../ui/dragRegion";
@@ -7,14 +7,16 @@ import { Loading } from "../../ui/Loading";
 import { AgentTypeDetail } from "./AgentTypeDetail";
 import { AgentTypeRow } from "./AgentTypeRow";
 import { defaultTypeName, filterTypes, sortTypes, usageOf } from "./agentTypes";
+import { dropLegacyAvatarPrefs } from "./legacyAvatarPrefs";
 import "../settings/cap.css";
 import "./agents.css";
 
 const ROW_STEPS: Readonly<Record<string, number>> = { ArrowDown: 1, ArrowUp: -1 };
 
 export function AgentsPage() {
-  const { data, loading, error } = useAgentTypes();
+  const { data, loading, error, reload } = useAgentTypes();
   const usage = useAgentUsage().data;
+  useEffect(dropLegacyAvatarPrefs, []);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
@@ -94,7 +96,7 @@ export function AgentsPage() {
             {selected === null ? (
               <EmptyState title="pick an agent type to see its TOML" />
             ) : (
-              <AgentTypeDetail key={selected} name={selected} usage={usageOf(usage, selected)} />
+              <AgentTypeDetail key={selected} name={selected} onSaved={reload} />
             )}
           </div>
         ) : null}

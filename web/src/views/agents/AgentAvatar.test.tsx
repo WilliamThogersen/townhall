@@ -1,14 +1,21 @@
-import { act, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { composeAvatar, defaultAvatar, GRID, type Avatar } from "./avatar";
 import { AgentAvatar, AvatarFace } from "./AgentAvatar";
-import { saveAvatar } from "./avatarPrefs";
-
-vi.mock("../../log/report", () => ({ logWarn: vi.fn() }));
 
 const avatar: Avatar = { head: "square", eyes: "dots", mouth: "flat", accessory: "antenna", color: "ok" };
 
-afterEach(() => localStorage.clear());
+const ROWS = [
+  "#.......#",
+  ".#.....#.",
+  "..#...#..",
+  "...#.#...",
+  "....#....",
+  "...#.#...",
+  "..#...#..",
+  ".#.....#.",
+  "#.......#",
+];
 
 const pathOf = (container: HTMLElement, tone: "body" | "face") =>
   container.querySelector(`path[data-tone="${tone}"]`)?.getAttribute("d") ?? "";
@@ -23,6 +30,12 @@ describe("AvatarFace", () => {
     const cells = composeAvatar(avatar);
     expect(squares(pathOf(container, "body"))).toBe(cells.filter((c) => c.tone === "body").length);
     expect(squares(pathOf(container, "face"))).toBe(cells.filter((c) => c.tone === "face").length);
+  });
+
+  it("draws a literal grid instead of the parts", () => {
+    const { container } = render(<AvatarFace avatar={avatar} grid={ROWS} />);
+    expect(squares(pathOf(container, "body"))).toBe(17);
+    expect(squares(pathOf(container, "face"))).toBe(0);
   });
 
   it("is decorative unless it has a label", () => {
@@ -44,15 +57,23 @@ describe("AvatarFace", () => {
 });
 
 describe("AgentAvatar", () => {
-  it("shows the hash default and follows a saved choice", () => {
-    const first = defaultAvatar("planner");
-    const { container } = render(<AgentAvatar name="planner" />);
-    expect(pathOf(container, "body")).toBe(render(<AvatarFace avatar={first} />).container.querySelector('path[data-tone="body"]')?.getAttribute("d"));
-    const before = pathOf(container, "body");
-    act(() => {
-      saveAvatar("planner", { head: "tapered", eyes: "cyclops", mouth: "open", accessory: "crest", color: "info" });
-    });
-    expect(pathOf(container, "body")).not.toBe(before);
+  it("shows the name hash default without a spec", () => {
+    const { container } = render(<AgentAvatar name="planner" spec={null} />);
+    const expected = render(<AvatarFace avatar={defaultAvatar("planner")} />).container;
+    expect(pathOf(container, "body")).toBe(pathOf(expected, "body"));
+    expect(container.querySelector("svg")).toHaveClass(`th-avatar--${defaultAvatar("planner").color}`);
+  });
+
+  it("follows the spec it is given and fills the keys it leaves out from the default", () => {
+    const { container } = render(<AgentAvatar name="planner" spec={{ color: "info", eyes: "cyclops" }} />);
     expect(container.querySelector("svg")).toHaveClass("th-avatar--info");
+    const expected = render(<AvatarFace avatar={{ ...defaultAvatar("planner"), color: "info", eyes: "cyclops" }} />).container;
+    expect(pathOf(container, "body")).toBe(pathOf(expected, "body"));
+    expect(pathOf(container, "face")).toBe(pathOf(expected, "face"));
+  });
+
+  it("draws the spec's grid", () => {
+    const { container } = render(<AgentAvatar name="planner" spec={{ grid: ROWS }} />);
+    expect(squares(pathOf(container, "body"))).toBe(17);
   });
 });

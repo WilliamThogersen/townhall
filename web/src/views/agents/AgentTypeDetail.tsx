@@ -3,11 +3,10 @@ import { useAgentType } from "../../data";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Loading } from "../../ui/Loading";
-import { compactNumber } from "../home/format";
 import { AgentAvatar } from "./AgentAvatar";
-import type { Usage } from "./agentTypes";
 import { AvatarEditor } from "./AvatarEditor";
 import { StepBadge } from "./AgentTypeRow";
+import { UsageGraph } from "./UsageGraph";
 
 const COPIED_MS = 1500;
 
@@ -66,8 +65,8 @@ function HandBackTo({ allowed }: { readonly allowed: readonly string[] | null })
   return allowed.length > 0 ? <Chips items={allowed} /> : <>nobody</>;
 }
 
-export function AgentTypeDetail({ name, usage }: { readonly name: string; readonly usage: Usage | null }) {
-  const { data, error, loading } = useAgentType(name);
+export function AgentTypeDetail({ name, onSaved }: { readonly name: string; readonly onSaved: () => void }) {
+  const { data, error, loading, reload } = useAgentType(name);
   if (error !== null && data === null) return <Banner level="error">{error}</Banner>;
   if (data === null || loading) {
     return (
@@ -79,7 +78,7 @@ export function AgentTypeDetail({ name, usage }: { readonly name: string; readon
   return (
     <section className="th-agent-detail" aria-label={data.name}>
       <header className="th-agent-detail-head">
-        <AgentAvatar name={data.name} scale={4} />
+        <AgentAvatar name={data.name} spec={data.avatar} scale={4} />
         <h2>{data.name}</h2>
         <StepBadge name={data.name} />
         <div className="th-page-head-actions">
@@ -97,16 +96,20 @@ export function AgentTypeDetail({ name, usage }: { readonly name: string; readon
           </Field>
         </dl>
       </Section>
-      {usage === null ? null : (
-        <Section title="usage">
-          <dl className="th-agent-fields">
-            <Field label="runs">{String(usage.runs)}</Field>
-            <Field label="tokens">{compactNumber(usage.tokens)}</Field>
-          </dl>
-        </Section>
-      )}
+      <Section title="usage">
+        <UsageGraph name={data.name} />
+      </Section>
       <Section title="avatar">
-        <AvatarEditor name={data.name} />
+        <AvatarEditor
+          key={`${data.updatedAt}:${data.source}`}
+          name={data.name}
+          source={data.source}
+          saved={data.avatar}
+          onSaved={() => {
+            reload();
+            onSaved();
+          }}
+        />
       </Section>
       <details className="th-agent-toml">
         <summary>toml</summary>
