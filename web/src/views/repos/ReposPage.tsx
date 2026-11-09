@@ -16,7 +16,6 @@ import { DRAG_REGION } from "../../ui/dragRegion";
 import { EmptyState } from "../../ui/EmptyState";
 import { Loading } from "../../ui/Loading";
 import { AddRepoModal } from "./AddRepoModal";
-import { DefaultCloneDir } from "./DefaultCloneDir";
 import type { PickAccount } from "./RepoAccounts";
 import { RepoRow } from "./RepoRow";
 import { useRepoKeys } from "./useRepoKeys";
@@ -111,7 +110,6 @@ function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, onEdit, 
   }
   return (
     <>
-      <DefaultCloneDir />
       {form}
       {summaries.length === 0 && !flow.formOpen ? <EmptyState title="no repos yet">{NO_REPOS_TEXT}</EmptyState> : null}
       {summaries.length > 0 ? (
