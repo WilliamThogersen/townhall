@@ -44,16 +44,19 @@ pub fn tools() -> Vec<ToolDef> {
             name: LIST_AGENT_TYPES,
             description: "The saved agent types: name, description, adapter, model and permission mode, plus the default create_task uses. Every task runs as one of them; reuse a type before you design a new one.",
             input_schema: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+            read_only: true,
         },
         ToolDef {
             name: READ_AGENT_TYPE,
             description: "One saved agent type: its TOML as written (`source`) and the parsed fields.",
             input_schema: read_schema(),
+            read_only: true,
         },
         ToolDef {
             name: SAVE_AGENT_TYPE,
             description: "Save an agent type written as TOML. Returns its errors to fix, `saved`, or `asked`: townhall showed the user the TOML and asked them to confirm, so end your turn and wait. Once they say yes, call it again with the same source and `confirmed: true`.",
             input_schema: save_schema(),
+            read_only: false,
         },
     ]
 }
