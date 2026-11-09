@@ -4,10 +4,14 @@
 //! for 2.8c and still answer `501`.
 
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use std::time::SystemTime;
+
+use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use townhall_core::agent_usage::UsageRange;
+use townhall_core::clock;
 use townhall_core::definitions::{AgentDef, DefKind, DefinitionError, Parsed};
 use townhall_core::model::{AgentType, AgentTypeSummary};
 use townhall_core::store::Store;
@@ -88,6 +92,30 @@ pub async fn list_agents(State(state): State<AppState>) -> Result<Response, ApiE
 
 pub async fn agent_usage(State(state): State<AppState>) -> Result<Response, ApiError> {
     Ok(ok(state.ctx().store()?.agent_usage().await?))
+}
+
+#[derive(serde::Deserialize)]
+pub struct UsageQuery {
+    range: Option<String>,
+}
+
+/// `AgentUsageSeries` of one type: `?range=24h|7d|30d`, `24h` when left out.
+pub async fn agent_usage_series(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Query(q): Query<UsageQuery>,
+) -> Result<Response, ApiError> {
+    let label = q.range.as_deref().unwrap_or("24h");
+    let range = UsageRange::parse(label).ok_or_else(|| {
+        ApiError::BadRequest(format!("range \"{label}\" is not one of 24h, 7d, 30d"))
+    })?;
+    let now_ms = clock::unix_millis(SystemTime::now());
+    let series = state
+        .ctx()
+        .store()?
+        .agent_usage_series(&name, range, now_ms)
+        .await?;
+    Ok(ok(series))
 }
 
 /// `AgentType`: the parsed definition plus `source` and `updatedAt`. `404` when unknown.

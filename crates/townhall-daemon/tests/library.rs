@@ -217,3 +217,58 @@ async fn usage_sums_runs_and_tokens_per_agent_type() {
         json!([{"agent": "builder", "runs": 2, "tokens": 1500}])
     );
 }
+
+#[tokio::test]
+async fn one_types_usage_series_is_served_by_range() {
+    let env = Env::new("alpha").await;
+    let (state, app) = env.start();
+    let store = state.ctx().store().unwrap();
+    let c = store.create_conversation().await.unwrap().id;
+    let task = townhall_core::model::NewTask {
+        name: "one".into(),
+        title: "do one".into(),
+        prompt: "the brief".into(),
+        repo: "alpha".into(),
+        base_branch: "main".into(),
+        after: vec![],
+        attachments: vec![],
+        agent: "builder".into(),
+        pr_base: None,
+    };
+    store.create_task(&c, task).await.unwrap();
+    store.set_task_tokens("one", 1200).await.unwrap();
+
+    let (s, v) = call(
+        &app,
+        "GET",
+        "/api/library/agents/Builder/usage?range=7d",
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let data = &v["data"];
+    assert_eq!(data["agent"], json!("builder"));
+    assert_eq!(data["range"], json!("7d"));
+    assert_eq!(data["runs"], json!(1));
+    assert_eq!(data["tokens"], json!(1200));
+    assert_eq!(data["buckets"].as_array().unwrap().len(), 28);
+    assert_eq!(
+        data["byTask"],
+        json!([{"key": "one", "runs": 1, "tokens": 1200}])
+    );
+    assert_eq!(data["byRepo"][0]["key"], json!("alpha"));
+
+    let (s, v) = call(&app, "GET", "/api/library/agents/builder/usage", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["data"]["range"], json!("24h"));
+
+    let (s, v) = call(
+        &app,
+        "GET",
+        "/api/library/agents/builder/usage?range=1y",
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("24h"), "{v}");
+}
