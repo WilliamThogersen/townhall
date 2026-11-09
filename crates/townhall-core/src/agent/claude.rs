@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use super::adapter::{shell_quote, shell_word, AgentAdapter, LaunchOptions};
+use super::adapter::{env_words, shell_quote, shell_word, AgentAdapter, LaunchOptions};
 use crate::ids::is_session_id;
 use crate::model::PermissionMode;
 use crate::{Error, Result};
@@ -286,6 +286,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
     fn launch_command(&self, options: &LaunchOptions) -> Result<String> {
         let words: Vec<String> = without_outer_session()
             .into_iter()
+            .chain(env_words(options)?)
             .chain([shell_word(&self.bin)])
             .chain(Self::args(options)?.iter().map(|a| shell_quote(a)))
             .collect();
