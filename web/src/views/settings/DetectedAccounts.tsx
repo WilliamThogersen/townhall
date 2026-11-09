@@ -29,6 +29,14 @@ export function DetectedAccounts({ accounts, onAdd }: Props) {
   if (problem !== null) return <p className="th-cap">could not look for logged-in accounts: {problem}</p>;
   if (found === null) return null;
   const pending = found.filter((d) => !accounts.some((a) => same(a, d)));
+  if (found.length === 0) {
+    return (
+      <p className="th-cap">
+        no logged-in accounts found: <code>gh auth status</code> and <code>glab auth status</code> listed none, or
+        neither program was found on this machine
+      </p>
+    );
+  }
   if (pending.length === 0) return null;
   const first = accounts.length === 0;
   const count = `${pending.length} account${pending.length === 1 ? "" : "s"}`;
