@@ -18,3 +18,15 @@
   flex-wrap: wrap;
   gap: var(--th-space-2);
 }
+
+.th-detected-warnings {
+  display: grid;
+  gap: var(--th-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.th-detected-warnings > li {
+  overflow-wrap: anywhere;
+}

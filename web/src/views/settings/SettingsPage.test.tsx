@@ -16,8 +16,8 @@ interface Call {
   readonly body: unknown;
 }
 
-function reply(status: number, data: unknown, error: string | null): Response {
-  return Response.json({ success: status < 400, data, error }, { status });
+function reply(status: number, data: unknown, error: string | null, warnings: readonly string[] = []): Response {
+  return Response.json({ success: status < 400, data, error, ...(warnings.length === 0 ? {} : { warnings }) }, { status });
 }
 
 interface Found {
@@ -31,6 +31,7 @@ function fakeDaemon(initial: Partial<Settings> = {}, found: readonly Found[] = [
   let calls: readonly Call[] = [];
   let profile = "";
   const failing = new Set<string>();
+  const warnings: string[] = [];
   const answer = (method: string, url: string, body: { value?: unknown; text?: string } | undefined): Response => {
     if (url === "/api/forge-accounts/detected") {
       if (failing.has("detected")) return reply(400, null, "`gh` did not answer within 15 seconds");
@@ -38,7 +39,7 @@ function fakeDaemon(initial: Partial<Settings> = {}, found: readonly Found[] = [
         settings.forgeAccounts.some(
           (a) => a.forge === f.forge && a.host === f.host && a.login.toLowerCase() === f.login.toLowerCase(),
         );
-      return reply(200, found.map((f) => ({ ...f, registered: registered(f) })), null);
+      return reply(200, found.map((f) => ({ ...f, registered: registered(f) })), null, warnings);
     }
     if (url === "/api/profile") {
       if (failing.has("profile")) return reply(503, null, HELD);
@@ -65,6 +66,7 @@ function fakeDaemon(initial: Partial<Settings> = {}, found: readonly Found[] = [
   return {
     fetch,
     failing,
+    warnings,
     settings: () => settings,
     profile: () => profile,
     puts: () => calls.filter((call) => call.method === "PUT").map((call) => [call.url, call.body]),
@@ -531,9 +533,49 @@ describe("detected forge accounts", () => {
     await waitFor(() => expect(daemon.settings().forgeAccounts).toEqual(found.map(entry)));
   });
 
+  it("shows the two accounts of the real daemon answer as chips with add all, in the prominent box", async () => {
+    daemon = fakeDaemon({}, []);
+    daemon.fetch.mockImplementation(async (url: string) =>
+      url === "/api/forge-accounts/detected"
+        ? new Response(
+            '{"success":true,"data":[{"forge":"github","login":"WilliamThogersen","host":"github.com","registered":false},{"forge":"github","login":"wexowgt","host":"github.com","registered":false}],"error":null}',
+          )
+        : Response.json({ success: true, data: DEFAULT_SETTINGS, error: null }),
+    );
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+    const offer = await screen.findByRole("group", { name: "Detected accounts" });
+    expect(offer).toHaveAttribute("data-prominent", "true");
+    expect(within(offer).getByRole("button", { name: "add WilliamThogersen@github.com" })).toBeInTheDocument();
+    expect(within(offer).getByRole("button", { name: "add wexowgt@github.com" })).toBeInTheDocument();
+    expect(within(offer).getByRole("button", { name: "add all" })).toBeInTheDocument();
+  });
+
+  it("says it is looking while the daemon has not answered, instead of leaving a gap", async () => {
+    daemon = fakeDaemon({}, found);
+    daemon.fetch.mockImplementation(async (url: string) =>
+      url === "/api/forge-accounts/detected"
+        ? new Promise<Response>(() => undefined)
+        : Response.json({ success: true, data: DEFAULT_SETTINGS, error: null }),
+    );
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+    expect(screen.getByText(/looking for accounts logged in/)).toBeInTheDocument();
+  });
+
+  it("shows why a program found nothing next to the accounts that were found", async () => {
+    daemon = fakeDaemon({}, [found[0]]);
+    daemon.warnings.push("glab: no glab config at /home/me/.config/glab-cli/config.yml");
+    vi.stubGlobal("fetch", daemon.fetch);
+    await renderLoaded();
+    const list = await screen.findByRole("list", { name: "Detection warnings" });
+    expect(list).toHaveTextContent("glab: no glab config at /home/me/.config/glab-cli/config.yml");
+    expect(screen.getByRole("group", { name: "Detected accounts" })).toBeInTheDocument();
+  });
+
   it("says so when nobody is logged in", async () => {
     await start([], []);
-    expect(await screen.findByText(/no logged-in accounts found/)).toHaveTextContent("gh auth status");
+    expect(await screen.findByText(/no logged-in accounts found/)).toHaveTextContent("gh auth login");
     expect(screen.getByText(/no accounts yet/)).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Detected accounts" })).not.toBeInTheDocument();
   });
