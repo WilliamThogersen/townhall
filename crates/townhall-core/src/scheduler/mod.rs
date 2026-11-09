@@ -22,6 +22,7 @@ mod merged;
 mod plan;
 pub mod report;
 pub mod requires;
+mod verify;
 
 use std::time::Duration;
 
@@ -60,6 +61,8 @@ pub struct Pass {
     /// Queued tasks held back by their agent type's `requires` (`gate.rs`).
     pub blocked: Vec<String>,
     pub merged: Vec<String>,
+    /// Tasks whose check this pass started (`verify.rs`).
+    pub verifying: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -116,9 +119,11 @@ fn report(result: Result<Pass>, last: String) -> String {
 /// One pass: start what may start, then tell merges. Tests call it directly.
 pub async fn run_once(ctx: &Context) -> Result<Pass> {
     let tasks = ctx.store()?.all_tasks().await?;
+    let verifying = verify::start(ctx, &tasks);
     let pass = launch::start_ready(ctx, &tasks).await?;
     let (merged, warnings) = merged::detect(ctx, &tasks).await?;
     Ok(Pass {
+        verifying,
         merged,
         warnings: [pass.warnings.clone(), warnings].concat(),
         ..pass

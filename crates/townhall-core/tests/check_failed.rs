@@ -44,7 +44,11 @@ async fn verifying(env: &common::StoreEnv, max_retries: u32, retries: u32) -> (S
 async fn a_failed_check_queues_the_task_again_with_the_output_in_its_hand_backs() {
     let env = store_env();
     let (cid, name) = verifying(&env, 2, 0).await;
-    let task = env.store.check_failed(&name, "1 test failed").await.unwrap();
+    let task = env
+        .store
+        .check_failed(&name, "1 test failed")
+        .await
+        .unwrap();
     assert_eq!(task.state, TaskState::Queued);
     assert_eq!(task.agent, "coder");
     assert_eq!(
