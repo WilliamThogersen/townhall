@@ -73,8 +73,11 @@ Output lands under `target/`. How it behaves:
   there and on the repos page opens a native folder picker; the folder must be the top
   folder of a git repo, or a plain folder (townhall runs `git init` and commits what is in
   it), and is added through `POST /api/repos`, so the daemon keeps running. In a browser the
-  same field also takes a GitHub or GitLab link, which townhall clones into
-  `~/.townhall/repos/`.
+  same field also takes a GitHub or GitLab link (https, `git@host:owner/repo.git` or
+  `ssh://`), which townhall clones into `~/.townhall/repos/`. The `ssh | https` choice, ssh
+  by default, decides how it is cloned whatever form you paste: ssh clones
+  `git@host:owner/repo.git`, https clones `https://host/owner/repo.git`. A link with a port
+  is cloned as written.
   A repo chosen by an older version (saved in `~/.townhall/townhall.db`, or imported from an
   old `settings.json` or `config.json`) stays the daemon's startup repo.
 - **Port 7777 taken** (a daemon running separately): the app uses that daemon, and

@@ -25,6 +25,24 @@ function linkPath(link: string): string {
   return trimmed.endsWith(".git") ? trimmed.slice(0, -4) : trimmed;
 }
 
+export type CloneProtocol = "ssh" | "https";
+
+export const DEFAULT_PROTOCOL: CloneProtocol = "ssh";
+
+function linkHost(link: string): string {
+  const authority = link.includes("://") ? link.slice(link.indexOf("://") + 3).split("/")[0] ?? "" : link.split(":")[0] ?? "";
+  return authority.slice(authority.lastIndexOf("@") + 1);
+}
+
+export function withProtocol(input: string, protocol: CloneProtocol): string {
+  const link = input.trim();
+  if (!isLink(link) || linkProblem(link) !== null) return link;
+  const host = linkHost(link);
+  if (host === "" || (link.includes("://") && host.includes(":"))) return link;
+  const path = linkPath(link);
+  return protocol === "ssh" ? `git@${host}:${path}.git` : `https://${host}/${path}.git`;
+}
+
 export function linkProblem(input: string): string | null {
   const link = input.trim();
   if (!isLink(link)) return null;
@@ -61,12 +79,12 @@ export function addProgress(draft: AddRepoDraft): string {
   return isLink(draft.path) ? "cloning…" : "initialising…";
 }
 
-export function draftToInput(draft: AddRepoDraft): AddRepoInput {
+export function draftToInput(draft: AddRepoDraft, protocol: CloneProtocol = DEFAULT_PROTOCOL): AddRepoInput {
   const name = draft.name.trim();
   const baseBranch = draft.baseBranch.trim();
   const cloneDir = draft.cloneDir.trim();
   return {
-    path: draft.path.trim(),
+    path: withProtocol(draft.path, protocol),
     ...(name === "" ? {} : { name }),
     ...(baseBranch === "" ? {} : { baseBranch }),
     ...(cloneDir === "" || !isLink(draft.path) ? {} : { cloneDir }),
