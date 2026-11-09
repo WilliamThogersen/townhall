@@ -50,9 +50,9 @@ describe("FirstRunSlot", () => {
     renderFirstRun();
     await waitFor(() => expect(reposApi.listRepos).toHaveBeenCalled());
     await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
-    const form = screen.getByRole("form", { name: "add repository" });
-    expect(form).toHaveAttribute("data-layout", "stack");
-    await userEvent.type(screen.getByRole("textbox", { name: "folder or link" }), "~/code/shop");
+    expect(screen.getByRole("dialog", { name: "add repository" })).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "add repository" })).toHaveAttribute("data-layout", "stack");
+    await userEvent.type(screen.getByRole("textbox", { name: "folder" }), "~/code/shop");
     await userEvent.type(screen.getByRole("textbox", { name: "name" }), "shop");
     await userEvent.click(screen.getByRole("button", { name: "add" }));
     expect(add).toHaveBeenCalledWith({ path: "~/code/shop", name: "shop" });
@@ -63,11 +63,19 @@ describe("FirstRunSlot", () => {
     renderFirstRun();
     await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
     await userEvent.click(screen.getByRole("button", { name: "cancel" }));
-    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "add repository…" })).toBeInTheDocument();
   });
 
-  it("opens the folder picker in the desktop app and shows a refusal under the button", async () => {
+  it("closes the modal with esc", async () => {
+    renderFirstRun();
+    await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
+    expect(screen.getByRole("textbox", { name: "folder" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("offers folder or url in the desktop app and only opens the folder picker on browse", async () => {
     vi.stubGlobal("__TAURI_INTERNALS__", {});
     pickFolder.mockResolvedValue("/Users/me/Downloads");
     vi.spyOn(reposApi, "addRepo").mockRejectedValue(
@@ -75,8 +83,25 @@ describe("FirstRunSlot", () => {
     );
     renderFirstRun();
     await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("error: /Users/me/Downloads is not the top folder of a git repo");
-    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(pickFolder).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: "folder" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "url" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "browse…" }));
     expect(pickFolder).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("error: /Users/me/Downloads is not the top folder of a git repo");
+    expect(screen.getByRole("dialog", { name: "add repository" })).toBeInTheDocument();
+  });
+
+  it("clones from a url in the desktop app", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    const add = vi.spyOn(reposApi, "addRepo").mockResolvedValue(aRepo({ name: "shop" }));
+    renderFirstRun();
+    await userEvent.click(screen.getByRole("button", { name: "add repository…" }));
+    await userEvent.click(screen.getByRole("radio", { name: "url" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "git url" }), "https://github.com/acme/shop");
+    await userEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(add).toHaveBeenCalledWith({ path: "https://github.com/acme/shop" });
+    expect(pickFolder).not.toHaveBeenCalled();
   });
 });
