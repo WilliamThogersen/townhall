@@ -226,11 +226,7 @@ impl Settings {
             min_free_disk_gb: field(raw, SettingKey::MinFreeDiskGb, d.min_free_disk_gb),
             learn_about_me: field(raw, SettingKey::LearnAboutMe, d.learn_about_me),
             github_account: field(raw, SettingKey::GithubAccount, d.github_account),
-            reflect_after_tasks: field(
-                raw,
-                SettingKey::ReflectAfterTasks,
-                d.reflect_after_tasks,
-            ),
+            reflect_after_tasks: field(raw, SettingKey::ReflectAfterTasks, d.reflect_after_tasks),
         }
     }
 

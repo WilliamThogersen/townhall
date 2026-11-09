@@ -131,7 +131,7 @@ fn allowed(own: Option<&crate::model::AgentType>, task: &Task, names: &[String])
     }
 }
 
-async fn summary_of(ctx: &Context, task: &Task, told: Option<&str>) -> String {
+pub(crate) async fn summary_of(ctx: &Context, task: &Task, told: Option<&str>) -> String {
     let told = told.map(str::trim).filter(|s| !s.is_empty());
     let commits = commits(ctx, task).await.unwrap_or_default();
     let log = match commits.is_empty() {
@@ -152,7 +152,7 @@ async fn summary_of(ctx: &Context, task: &Task, told: Option<&str>) -> String {
         .join("\n\n")
 }
 
-pub(super) async fn worktree_of(ctx: &Context, task: &Task) -> Option<PathBuf> {
+pub(crate) async fn worktree_of(ctx: &Context, task: &Task) -> Option<PathBuf> {
     let repo = ctx.repo(&task.repo).await.ok()?;
     let ws = ctx.workspace(&repo).ok()?;
     let tree = worktree::list(&ws)
