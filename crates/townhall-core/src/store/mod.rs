@@ -28,6 +28,7 @@ mod unit_2_7;
 mod unit_2_8b;
 mod unit_2_8c;
 mod unit_2_9;
+mod unit_plugins;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -39,6 +40,7 @@ pub use import::IMPORTED_SUFFIX;
 pub use lock::LOCK_FILE;
 pub use migrate::Migration;
 pub use settings::MAX_PROFILE_CHARS;
+pub use unit_plugins::{Marketplace, Plugin};
 
 use crate::events::EventBus;
 use crate::{Error, Home, Result};
