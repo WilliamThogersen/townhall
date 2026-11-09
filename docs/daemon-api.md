@@ -109,7 +109,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 - `Repo { name, path, baseBranch }`. `name`: `[A-Za-z0-9._-]`, starts with a letter or digit, at most 64, unique ignoring case, the folder name by default. `path`: canonical, the top folder of a git work tree, never one of townhall's own worktrees. `baseBranch`: origin's HEAD branch (the local branch when it exists, else `origin/x`), else the current branch, else `HEAD`.
 - `AgentInfo { name, repo, kind, branch, worktree, alive, state }`: phase 1's `Agent` plus `repo` and `state`. `AgentState`: `{ kind: "working" }`, `{ kind: "waiting", question }`, `{ kind: "error", exitCode: number | null }`, `{ kind: "ended" }`.
 - `AgentKey`: `up`, `down`, `enter`, `escape`, `tab`, the `key` of `POST /agents/{name}/send` (`AgentKey::symbol` is how a `sent` entry shows it).
-- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel, minFreeDiskGb, learnAboutMe, githubAccount }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11) and `githubAccount` have no row on the settings page yet.
+- `Settings { permissionMode, workWithoutAsking, agentsAtOnce, repoUnclear, sessionPanelOpen, notifyWhen, townhallModel, minFreeDiskGb, learnAboutMe, githubAccount, reflectAfterTasks }`, the same names, values and defaults as `web/src/settings/settings.ts` (a type test checks it). `townhallModel` (2.11), `githubAccount` and `reflectAfterTasks` have no row on the settings page yet.
 - `Conversation { id, sessionId, sessionStarted, title, status: "thinking" | "yourTurn", tasks: string[] (task names, oldest first), linkedRepo: string | null, ended, context: { used, limit } | null, createdAt, updatedAt }`. `title` starts as `new conversation`. `sessionStarted` is false until the first turn went through (that turn uses `--session-id`, later ones `--resume`).
 - `ThreadEntry { id, at } & EntryBody`. `id` counts 1, 2, 3 ... per conversation. `EntryBody` is tagged by `kind`:
 
@@ -163,7 +163,17 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | `learnAboutMe` | boolean: while on, the profile text (below) is added to townhall's own session prompt. Nothing learns into the profile automatically yet | `false` |
 | `githubAccount` | a GitHub login, or empty for none: `open_pr` switches `gh` to it (failing clearly when `gh` has no login for it) and sets the worktree's git author and committer to it before pushing | `WilliamThogersen` on a new database (migration 0003), empty when the row is missing or invalid |
 
+| `reflectAfterTasks` | boolean: while on, a task that ended is handed on once to the `reflector` agent type, which records lessons in the repo's memory files (Reflect step, below) | `false` |
+
 A missing or invalid stored value reads as its default. The store also keeps `desktop.repo` (the desktop app's chosen repo, a path); it is not a setting and not in the API.
+
+## Reflect step
+
+Off by default (`reflectAfterTasks`, `scheduler/reflect.rs`). While it is on, each scheduler pass hands every `ended` task on to the agent type `reflector` once: the same hand back an agent makes (`Store::hand_on`, a `handoff` entry in the thread, counted in `MAX_HANDOFFS`), so the task is queued again as `reflector` in its own worktree and branch, and its brief says what the task was and how to see its changes (`git diff <start commit>..HEAD`, plus its commits). The reflector reads that and adds at most five short, deduplicated bullets under a `Lessons` heading in `CLAUDE.md` (or in `docs/lessons.md`, linked from `CLAUDE.md`, when `CLAUDE.md` is missing or long) and commits them on the task's branch. It never pushes.
+
+- The shipped type is `REFLECTOR_SOURCE`: model `haiku`, permission mode `default`, no hand backs, and tools that name only `Edit` and `Write` for those two files, read-only git commands, and `git add` of those two files and `git commit -m`. Townhall saves it when the step first needs it and no `reflector` is saved; a saved one, edited or not, is never replaced (delete it while the setting is on and it comes back).
+- A task is reflected on once: never when its type is `reflector`, never when any earlier hand back went to `reflector`, never after `MAX_HANDOFFS` hand backs, and only while its worktree still exists (the reaper keeps an ended task's agent for a grace period first).
+- Agents run with `--setting-sources=`, so claude does not load a repo's `CLAUDE.md` for them by itself. A task's brief has to tell its agent to read it for the lessons to reach it.
 
 ## Disk use
 
