@@ -511,9 +511,9 @@ describe("detected forge accounts", () => {
     await waitFor(() => expect(daemon.settings().forgeAccounts).toEqual(found.map(entry)));
   });
 
-  it("shows nothing when nobody is logged in, or everyone is registered already", async () => {
+  it("says so when nobody is logged in", async () => {
     await start([], []);
-    await waitFor(() => expect(daemon.fetch).toHaveBeenCalledWith("/api/forge-accounts/detected", expect.anything()));
+    expect(await screen.findByText(/no logged-in accounts found/)).toHaveTextContent("gh auth status");
     expect(screen.getByText(/no accounts yet/)).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Detected accounts" })).not.toBeInTheDocument();
   });
@@ -521,6 +521,7 @@ describe("detected forge accounts", () => {
   it("hides the offer once every detected account is registered", async () => {
     await start(found.map(entry));
     await waitFor(() => expect(daemon.fetch).toHaveBeenCalledWith("/api/forge-accounts/detected", expect.anything()));
+    expect(screen.queryByText(/no logged-in accounts found/)).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Detected accounts" })).not.toBeInTheDocument();
   });
 
