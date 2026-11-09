@@ -52,6 +52,17 @@ describe("library api", () => {
     expect(await listAgentTypes()).toHaveLength(1);
   });
 
+  it("reads effort on the list and the detail, null when unset, and refuses an unknown level", async () => {
+    mockFetch(200, [anAgentTypeSummary({ effort: "high" })]);
+    expect((await listAgentTypes())[0]?.effort).toBe("high");
+    mockFetch(200, anAgentType({ effort: "max" }));
+    expect((await getAgentType("builder")).effort).toBe("max");
+    mockFetch(200, anAgentType());
+    expect((await getAgentType("builder")).effort).toBeNull();
+    mockFetch(200, [{ ...anAgentTypeSummary(), effort: "extreme" }]);
+    await expect(listAgentTypes()).rejects.toMatchObject({ kind: "protocol" });
+  });
+
   it("refuses an unknown adapter", async () => {
     mockFetch(200, [{ ...anAgentTypeSummary(), adapter: "gpt" }]);
     await expect(listAgentTypes()).rejects.toMatchObject({ kind: "protocol" });

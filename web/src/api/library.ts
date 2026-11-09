@@ -6,6 +6,7 @@ import type {
   AgentAdapterKind,
   AgentRun,
   AgentType,
+  AgentTypeEffort,
   AgentTypeMode,
   AgentTypeSummary,
   AgentUsage,
@@ -17,6 +18,7 @@ import type {
 
 const adapter = oneOf<AgentAdapterKind>(["claude", "shell"]);
 const mode = oneOf<AgentTypeMode>(["default", "acceptEdits", "plan"]);
+const effort = oneOf<AgentTypeEffort>(["low", "medium", "high", "xhigh", "max"]);
 const range = oneOf<UsageRange>(["24h", "7d", "30d"]);
 
 const PART_NAMES = Object.keys(AVATAR_PARTS) as readonly AvatarPart[];
@@ -38,6 +40,7 @@ function parseSummary(value: unknown): AgentTypeSummary {
     description: str(r.description, "agentType.description"),
     adapter: adapter(r.adapter, "agentType.adapter"),
     model: nullable(r.model, "agentType.model", str),
+    effort: nullable(r.effort, "agentType.effort", effort),
     permissionMode: nullable(r.permissionMode, "agentType.permissionMode", mode),
     avatar: nullable(r.avatar, "agentType.avatar", parseAvatar),
     updatedAt: str(r.updatedAt, "agentType.updatedAt"),
