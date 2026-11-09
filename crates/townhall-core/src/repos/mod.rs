@@ -6,6 +6,7 @@ mod auth_env;
 mod clone;
 pub mod detect;
 mod discard;
+pub mod edit;
 mod git;
 pub mod names;
 pub mod publish;
@@ -23,7 +24,7 @@ pub use git::{
 };
 
 use crate::home::WORKTREES_DIR;
-use crate::model::{AddRepo, Repo};
+use crate::model::{AddRepo, PatchRepo, Repo};
 use crate::store::Store;
 use crate::{Error, Home, Result};
 
@@ -210,6 +211,45 @@ impl RepoRegistry {
         })
         .await?;
         self.store.add_repo(repo).await
+    }
+
+    /// `PATCH /api/repos/{name}`: renames, changes the base branch, points the repo at a new
+    /// path or moves its folder (see `edit`). Every check runs before anything changes; the
+    /// registry row is saved last, and a folder move is undone when that save fails.
+    pub async fn edit(&self, name: &str, patch: &PatchRepo) -> Result<Repo> {
+        let known = self.list().await?;
+        let current = known
+            .iter()
+            .find(|r| names::same(&r.name, name))
+            .cloned()
+            .ok_or_else(|| Error::missing("repo", name))?;
+        let home_dir = std::env::var_os("HOME").map(PathBuf::from);
+        let plan = edit::plan(&known, &current, patch, home_dir.as_deref())?;
+        let others: Vec<Repo> = known
+            .into_iter()
+            .filter(|r| !names::same(&r.name, &current.name))
+            .collect();
+        let (home, old, wanted) = (self.store.home().clone(), current.clone(), plan.clone());
+        let applied = blocking(move || edit::apply_disk(&home, &old, &wanted, &others)).await?;
+        let next = Repo {
+            name: plan.name.clone(),
+            path: applied.path.clone(),
+            base_branch: applied.base_branch,
+            ..current.clone()
+        };
+        match self.store.update_repo(&current.name, next).await {
+            Ok(saved) => Ok(saved),
+            Err(saved_err) if plan.move_folder && applied.path != current.path => {
+                match std::fs::rename(&applied.path, &current.path) {
+                    Ok(()) => Err(saved_err),
+                    Err(undo) => Err(Error::InvalidInput(format!(
+                        "{saved_err}; the folder is now at {} and could not be moved back: {undo}",
+                        applied.path.display()
+                    ))),
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// The entry for `path`, registering it under a free name when it is missing.

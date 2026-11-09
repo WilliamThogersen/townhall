@@ -32,6 +32,24 @@ pub struct PutRepoAccounts {
     pub gitlab_account: Option<Option<String>>,
 }
 
+/// `PATCH /api/repos/{name}` body: a missing key leaves that field as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PatchRepo {
+    /// The new name; tasks and conversations that mention the repo follow it.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The new base branch: it must exist in the repo.
+    #[serde(default)]
+    pub base_branch: Option<String>,
+    /// Without `moveFolder`: where the repo is now (same git repo, new place). With it: where
+    /// townhall moves the folder to (must not exist yet).
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub move_folder: bool,
+}
+
 /// `POST /api/repos` body.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
