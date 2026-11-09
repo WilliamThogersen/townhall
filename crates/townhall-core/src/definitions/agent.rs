@@ -64,6 +64,47 @@ impl TryFrom<String> for PermissionMode {
     }
 }
 
+/// The effort levels `claude --effort` takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", try_from = "String")]
+pub enum Effort {
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
+impl Effort {
+    /// The value `claude --effort` takes.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Effort::Low => "low",
+            Effort::Medium => "medium",
+            Effort::High => "high",
+            Effort::Xhigh => "xhigh",
+            Effort::Max => "max",
+        }
+    }
+}
+
+impl TryFrom<String> for Effort {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "low" => Ok(Effort::Low),
+            "medium" => Ok(Effort::Medium),
+            "high" => Ok(Effort::High),
+            "xhigh" => Ok(Effort::Xhigh),
+            "max" => Ok(Effort::Max),
+            _ => Err(format!(
+                "effort \"{value}\" is not one of low, medium, high, xhigh, max"
+            )),
+        }
+    }
+}
+
 /// How one worker runs. TOML keys are snake_case, JSON output is camelCase.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all(serialize = "camelCase"))]
@@ -74,6 +115,8 @@ pub struct AgentDef {
     pub adapter: AdapterKind,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<Effort>,
     #[serde(default)]
     pub permission_mode: Option<PermissionMode>,
     #[serde(default)]

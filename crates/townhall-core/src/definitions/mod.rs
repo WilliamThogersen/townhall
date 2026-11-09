@@ -15,7 +15,9 @@ mod vars;
 mod words;
 mod workflow;
 
-pub use agent::{check_agent, parse_agent, validate_agent, AdapterKind, AgentDef, PermissionMode};
+pub use agent::{
+    check_agent, parse_agent, validate_agent, AdapterKind, AgentDef, Effort, PermissionMode,
+};
 pub use avatar::{Accessory, AvatarColor, AvatarDef, Eyes, Head, Mouth, GRID_SIZE};
 pub use error::{DefKind, DefinitionError};
 pub use launch::LaunchFields;

@@ -1,4 +1,4 @@
-use townhall_core::definitions::{AdapterKind, PermissionMode};
+use townhall_core::definitions::{AdapterKind, Effort, PermissionMode};
 use townhall_core::store::Store;
 use townhall_core::Error;
 
@@ -44,6 +44,19 @@ async fn a_saved_type_keeps_its_toml_and_reads_back_parsed() {
         ),
         ("runner", None, None)
     );
+}
+
+#[tokio::test]
+async fn effort_round_trips_through_save_and_read() {
+    let env = store_env();
+    let source = "name = \"calm\"\nadapter = \"claude\"\neffort = \"medium\"\n";
+    let (saved, _) = env.store.save_agent_type(source).await.unwrap();
+    assert_eq!(saved.def.effort, Some(Effort::Medium));
+    let got = env.store.agent_type("calm").await.unwrap().unwrap();
+    assert_eq!(got, saved);
+    assert_eq!(got.summary().effort, Some(Effort::Medium));
+    let plain = env.store.save_agent_type(RUNNER).await.unwrap().0;
+    assert_eq!(plain.def.effort, None);
 }
 
 #[tokio::test]

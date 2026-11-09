@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::agent::{AgentDef, PermissionMode};
+use super::agent::{AgentDef, Effort, PermissionMode};
 use crate::agent::LaunchOptions;
 use crate::model;
 
@@ -9,6 +9,8 @@ use crate::model;
 pub struct LaunchFields {
     /// `claude --model`.
     pub model: Option<String>,
+    /// `claude --effort`. `None` keeps the CLI's own default.
+    pub effort: Option<Effort>,
     /// `claude --permission-mode`. `None` means the default from settings.
     pub permission_mode: Option<PermissionMode>,
     /// `claude --allowedTools`.
@@ -38,6 +40,7 @@ impl AgentDef {
     pub fn launch_fields(&self) -> LaunchFields {
         LaunchFields {
             model: non_blank(&self.model),
+            effort: self.effort,
             permission_mode: self.permission_mode,
             allowed_tools: self.tools.clone(),
             system_prompt: non_blank(&self.prompt),
@@ -58,6 +61,7 @@ impl AgentDef {
             permission_mode,
             command: fields.command,
             model: fields.model,
+            effort: fields.effort,
             allowed_tools: fields.allowed_tools,
             system_prompt: fields.system_prompt,
             env: fields.env,
