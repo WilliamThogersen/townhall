@@ -568,10 +568,7 @@ mod tests {
 
     #[test]
     fn real_gh_2_101_output_yields_both_accounts_in_json_and_text() {
-        let both = pairs(&[
-            ("github.com", "WilliamThogersen"),
-            ("github.com", "alice"),
-        ]);
+        let both = pairs(&[("github.com", "WilliamThogersen"), ("github.com", "alice")]);
         assert_eq!(from_json(REAL_GH_JSON), Some(both.clone()));
         assert_eq!(from_text(REAL_GH_TEXT), both);
     }

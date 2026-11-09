@@ -135,7 +135,7 @@ async fn a_registered_account_that_can_see_the_repo_is_stored_on_the_repo() {
     let env = env();
     serve("team/sub/app").await;
     env.register(json!([
-        {"forge": "gitlab", "login": "wgt", "host": "gitlab.test"}
+        {"forge": "gitlab", "login": "alice", "host": "gitlab.test"}
     ]))
     .await;
     let req = AddRepo {
@@ -143,7 +143,7 @@ async fn a_registered_account_that_can_see_the_repo_is_stored_on_the_repo() {
         ..add("git@gitlab.test:team/sub/app.git")
     };
     let repo = env.registry(true).add(&req).await.unwrap();
-    assert_eq!(repo.gitlab_account.as_deref(), Some("wgt"));
+    assert_eq!(repo.gitlab_account.as_deref(), Some("alice"));
     assert_eq!(repo.github_account, None);
 }
 
@@ -165,7 +165,7 @@ async fn when_no_account_can_see_the_repo_it_is_added_unpicked() {
     let env = env();
     serve("team/open").await;
     env.register(json!([
-        {"forge": "gitlab", "login": "wgt", "host": "gitlab.test"}
+        {"forge": "gitlab", "login": "alice", "host": "gitlab.test"}
     ]))
     .await;
     let req = AddRepo {
@@ -174,14 +174,14 @@ async fn when_no_account_can_see_the_repo_it_is_added_unpicked() {
     };
     let repo = env.registry(false).add(&req).await.unwrap();
     assert_eq!(repo.gitlab_account, None);
-    assert_eq!(accounts_of(&env).await, vec!["gitlab:wgt@gitlab.test"]);
+    assert_eq!(accounts_of(&env).await, vec!["gitlab:alice@gitlab.test"]);
 }
 
 #[tokio::test]
 async fn a_failed_clone_names_the_accounts_that_were_tried() {
     let env = env();
     env.register(json!([
-        {"forge": "gitlab", "login": "wgt", "host": "gitlab.test"},
+        {"forge": "gitlab", "login": "alice", "host": "gitlab.test"},
         {"forge": "gitlab", "login": "other", "host": "gitlab.test"}
     ]))
     .await;
@@ -192,7 +192,7 @@ async fn a_failed_clone_names_the_accounts_that_were_tried() {
     let err = env.registry(false).add(&req).await.unwrap_err().to_string();
     assert!(err.contains("could not clone"), "{err}");
     assert!(err.contains("no account could see it"), "{err}");
-    assert!(err.contains("wgt") && err.contains("other"), "{err}");
+    assert!(err.contains("alice") && err.contains("other"), "{err}");
     assert!(!err.contains("glpat"), "{err}");
 }
 

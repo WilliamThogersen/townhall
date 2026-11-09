@@ -602,13 +602,13 @@ describe("repo accounts", () => {
 
   it("shows the forge and account a repo was given, and nothing for a repo without one", async () => {
     vi.mocked(reposApi.listRepos).mockResolvedValue([
-      aRepo({ ...shop, gitlabAccount: "wgt" }),
+      aRepo({ ...shop, gitlabAccount: "alice" }),
       aRepo({ ...townhall, githubAccount: "work-me", gitlabAccount: "me" }),
       aRepo({ name: "plain", path: "/Users/me/Developer/plain" }),
     ]);
     renderPage();
     await screen.findByText("shop", { selector: ".th-repo-name b" });
-    const shopPick = within(rowOf("shop")).getByText("gitlab · wgt");
+    const shopPick = within(rowOf("shop")).getByText("gitlab · alice");
     expect(shopPick).toHaveAttribute("title", "gitlab account for shop");
     const both = within(rowOf("townhall"));
     expect(both.getByText("github · work-me")).toBeInTheDocument();
