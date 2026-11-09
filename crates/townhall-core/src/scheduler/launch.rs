@@ -401,6 +401,7 @@ async fn launch(ctx: &Context, task: &Task, start_commit: &str) -> Result<TaskLa
         prompt: Some(brief::order(&brief)),
         session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
+        extra_allowed: agent_type::own_rules(&ws.worktrees_dir().join(&task.name)),
         ..launcher.options
     };
     let adapter = launcher.adapter.as_ref();
@@ -459,6 +460,7 @@ async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch>
         prompt: Some(brief::order(&brief)),
         session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
+        extra_allowed: agent_type::own_rules(&dir),
         ..launcher.options
     };
     agent::restart(&ws, &task.name, launcher.adapter.as_ref(), &options).await?;

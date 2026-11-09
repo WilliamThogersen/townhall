@@ -1,6 +1,8 @@
 //! The agent type a task runs as (2.12): its adapter and launch options. The type's
 //! permission mode only ever narrows the saved setting (`AgentDef::launch_options`).
 
+use std::path::Path;
+
 use crate::agent::{AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter};
 use crate::context::Context;
 use crate::definitions::AdapterKind;
@@ -58,6 +60,19 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
     })
 }
 
+/// Rules every claude agent gets besides its type's: `cd` into its own worktree (and
+/// `pwd`), and reading the plan files claude keeps under `~/.claude/plans`. Read only:
+/// nothing here writes, runs another program or reaches outside those two places.
+pub(super) fn own_rules(worktree: &Path) -> Vec<String> {
+    let dir = worktree.display();
+    vec![
+        format!("Bash(cd {dir})"),
+        format!("Bash(cd {dir}/*)"),
+        "Bash(pwd)".into(),
+        "Read(~/.claude/plans/*)".into(),
+    ]
+}
+
 /// The type's own prompt, then what the agent may hand back to.
 fn with_hand_back(own: Option<String>, targets: &[String]) -> String {
     let line = format!(
@@ -67,5 +82,38 @@ fn with_hand_back(own: Option<String>, targets: &[String]) -> String {
     match own.filter(|p| !p.trim().is_empty()) {
         Some(own) => format!("{own}\n\n{line}"),
         None => line,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_agent_may_cd_in_its_worktree_and_read_its_plans_and_no_more() {
+        let rules = own_rules(Path::new("/h/worktrees/t1/fix"));
+        assert_eq!(
+            rules,
+            [
+                "Bash(cd /h/worktrees/t1/fix)",
+                "Bash(cd /h/worktrees/t1/fix/*)",
+                "Bash(pwd)",
+                "Read(~/.claude/plans/*)",
+            ]
+        );
+        for rule in &rules {
+            let wide = [
+                "Bash(*", "Bash)", "Write", "Edit", "WebFetch", "Read(*", "Read(/",
+            ];
+            assert!(!wide.iter().any(|w| rule.starts_with(w)), "{rule}");
+            assert!(!rule.contains("rm") && !rule.contains("git"), "{rule}");
+        }
+    }
+
+    #[test]
+    fn the_hand_back_tools_are_always_in_the_task_allow_list() {
+        let tools = mcp::task_allowed_tools();
+        assert!(tools.contains(&"mcp__townhall__hand_back".to_string()));
+        assert!(tools.iter().all(|t| t.starts_with("mcp__townhall__")));
     }
 }

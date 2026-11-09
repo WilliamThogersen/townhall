@@ -31,6 +31,9 @@ pub struct LaunchOptions {
     /// Extra environment variables for the process, set after the ones townhall unsets.
     /// Names are checked and values quoted when the command is built; values are never logged.
     pub env: BTreeMap<String, String>,
+    /// Allow rules townhall adds for every agent (`cd` in its worktree, reading its plan
+    /// files). Only `--allowedTools`: they never add a built-in tool or make a tool list.
+    pub extra_allowed: Vec<String>,
 }
 
 /// Knows how to turn launch options into the shell command run inside tmux.

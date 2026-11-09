@@ -67,9 +67,17 @@ async fn the_agent_reads_its_brief_with_the_settings_permission_mode() {
         .chain(townhall_core::agent::AGENT_ISOLATION)
         .chain([mcp.as_str(), "--", order.as_str()])
         .collect();
+    let tree = s.worktree(&name);
+    let tree = tree.display();
     assert_eq!(
         lines[3],
-        "--allowedTools=mcp__townhall__hand_back,mcp__townhall__open_pr,mcp__townhall__add_artifact,mcp__townhall__list_artifacts"
+        format!(
+            "--allowedTools=mcp__townhall__hand_back,mcp__townhall__open_pr,mcp__townhall__add_artifact,mcp__townhall__list_artifacts,Bash(cd {tree}),Bash(cd {tree}/*),Bash(pwd),Read(~/.claude/plans/*)"
+        )
+    );
+    assert!(
+        !args.contains("--tools="),
+        "a type with no tool list stays unrestricted: {args}"
     );
     assert_eq!(lines[4..], rest);
     let text = std::fs::read_to_string(&brief).unwrap();
