@@ -320,38 +320,7 @@ function wireSessionToggle() {
   apply();
 }
 
-const PERMISSION_HELP = {
-  ask: "agents ask before every edit or command.",
-  edits: "edits go through, commands ask first.",
-  plan: "agents plan first and change nothing.",
-  auto: "agents decide what needs your approval.",
-  skip: "agents never ask. only use on repos you trust.",
-};
-
 function wireSettings() {
-  const help = document.getElementById("pv-perm-help");
-  const more = document.getElementById("pv-perm-more");
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "th-setting-more-toggle";
-  toggle.setAttribute("aria-controls", "pv-perm-more");
-  toggle.addEventListener("click", () => {
-    more.hidden = !more.hidden;
-    toggle.textContent = more.hidden ? "more" : "less";
-    toggle.setAttribute("aria-expanded", String(!more.hidden));
-  });
-  const show = (mode) => {
-    const danger = mode === "skip";
-    help.dataset.tone = danger ? "danger" : "";
-    help.textContent = `${PERMISSION_HELP[mode]} `;
-    more.hidden = true;
-    if (danger) {
-      toggle.textContent = "more";
-      toggle.setAttribute("aria-expanded", "false");
-      help.append(toggle);
-    }
-  };
-  document.querySelectorAll('input[name="pv-perm"]').forEach((input) => input.addEventListener("change", () => show(input.value)));
   document.querySelectorAll(".th-switch").forEach((sw) => sw.addEventListener("click", () => {
     sw.setAttribute("aria-checked", String(sw.getAttribute("aria-checked") !== "true"));
   }));

@@ -66,4 +66,4 @@ Picked so the guide could be concrete. Each says what it costs to change.
 | 13 | Five agent states (alive, working, waiting, error, dead). The daemon reports only alive and dead today | Ship alive and dead only | None to the design |
 | 14 | Attachments: images, text, code and pdf, up to 20 MB each; images go to townhall as images, files are stored per conversation and handed to tasks | Images only | Small |
 | 15 | The pixel town hall is the logo: sidebar, favicon and the app icons in `src-tauri/icons` (near-black rounded square, pixel-exact at 32 to 512px) | Keep the old line-art icon | Small |
-| 16 | Agent permissions use Hive's five modes, default `accept edits`; `skip all` only from the settings page | Always ask | One setting |
+| 16 | Agent permissions are set per agent type (`permission_mode`), `accept edits` when a type sets none; `skip all` (`bypassPermissions`) is allowed in a type, and saving it always asks | A global setting | One setting for every type |
