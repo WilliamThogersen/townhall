@@ -105,7 +105,6 @@ const GITHUB_LOGIN = /^(?!-)[A-Za-z0-9-]{0,39}$/;
 const isGithubAccount: Check<string> = (value): value is string =>
   typeof value === "string" && GITHUB_LOGIN.test(value);
 
-/** Empty (townhall's own folder), `~`, `~/...` or an absolute path: as the daemon checks it. */
 export const isClonesDirText = (value: string): boolean =>
   value === "" || value === "~" || value.startsWith("~/") || value.startsWith("/");
 

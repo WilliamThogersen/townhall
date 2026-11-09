@@ -12,7 +12,6 @@ export interface RepoEditProps {
   readonly onCancel: () => void;
 }
 
-/** Edits one repo in place of its row: name, base branch and where its folder is. */
 export function RepoEdit({ repo, onSave, onCancel }: RepoEditProps) {
   const [draft, setDraft] = useState<EditRepoDraft>(() => draftOf(repo));
   const [busy, setBusy] = useState(false);

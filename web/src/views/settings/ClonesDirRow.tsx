@@ -7,7 +7,6 @@ import { HELP } from "./settingsCopy";
 
 const BAD = "use ~, ~/folder or an absolute path";
 
-/** The folder repos added by link are cloned into. Saved when the field loses focus or on enter. */
 function ClonesDirInput({ saved, onSave }: { readonly saved: string; readonly onSave: (dir: string) => void }) {
   const [text, setText] = useState(saved);
   const [seen, setSeen] = useState(saved);

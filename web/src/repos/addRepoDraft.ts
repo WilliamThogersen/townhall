@@ -9,7 +9,6 @@ export interface AddRepoDraft {
 
 export const EMPTY_DRAFT: AddRepoDraft = { path: "", name: "", baseBranch: "", cloneDir: "" };
 
-/** Where the daemon clones when neither the form nor the `clonesDir` setting names a folder. */
 export const DEFAULT_CLONES_DIR = "~/.townhall/repos";
 
 const LINK = /^(https?:\/\/|ssh:\/\/|git:\/\/|git@)/i;
@@ -18,14 +17,12 @@ export function isLink(input: string): boolean {
   return LINK.test(input.trim());
 }
 
-/** The `owner/repo` part of a link: what follows the host, `.git` and slashes dropped. */
 function linkPath(link: string): string {
   const afterScheme = link.includes("://") ? link.slice(link.indexOf("://") + 3).split("/").slice(1).join("/") : link.split(":").slice(1).join(":");
   const trimmed = afterScheme.replace(/^\/+|\/+$/g, "");
   return trimmed.endsWith(".git") ? trimmed.slice(0, -4) : trimmed;
 }
 
-/** Why a link cannot name a repo, as the daemon would refuse it; null for a folder or a good link. */
 export function linkProblem(input: string): string | null {
   const link = input.trim();
   if (!isLink(link)) return null;
@@ -35,14 +32,12 @@ export function linkProblem(input: string): string | null {
   return bad ? "expected host/owner/repo" : null;
 }
 
-/** The folder name the daemon gives a clone: the repo's last path segment, made safe. */
 function linkName(link: string): string {
   const last = linkPath(link).split("/").at(-1) ?? "";
   const safe = last.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[^A-Za-z0-9]+/, "");
   return safe.slice(0, 64) || "repo";
 }
 
-/** Where a link would be cloned, for the preview under the form; null for a folder or a bad link. */
 export function cloneTargetOf(draft: AddRepoDraft, defaultDir: string): string | null {
   const link = draft.path.trim();
   if (!isLink(link) || linkProblem(link) !== null) return null;

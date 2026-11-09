@@ -28,7 +28,6 @@ export function Field({ label, value, placeholder, className, inputRef, onChange
   );
 }
 
-/** A ref that focuses its input on mount and whenever `token` changes. */
 export function useFocusOn(token: number) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {

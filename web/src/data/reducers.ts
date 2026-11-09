@@ -90,10 +90,6 @@ export function reduceAgents(list: readonly AgentInfo[], event: ServerEvent): re
   return event.type === "agentUpdated" ? upsertAgent(list, event.agent) : list;
 }
 
-/**
- * The repo `oldName` as the daemon saved it after an edit. The daemon also renames the repo in its
- * tasks, conversations and agent states, so the lists here follow without a reload.
- */
 export function applyRepoEdited(state: DataState, oldName: string, repo: Repo): DataState {
   const rename = sameName(oldName, repo.name) ? null : { from: oldName, to: repo.name };
   const base: DataState = {

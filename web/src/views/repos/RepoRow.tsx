@@ -20,7 +20,6 @@ export interface RepoRowProps {
   readonly onRemove: (name: string, deleteClone?: boolean) => Promise<void>;
   readonly accounts?: readonly ForgeAccount[];
   readonly onPickAccount?: PickAccount;
-  /** Saves an edit; rejects with the daemon's reason, which the edit form shows. */
   readonly onEdit?: (name: string, input: PatchRepoInput) => Promise<unknown>;
 }
 

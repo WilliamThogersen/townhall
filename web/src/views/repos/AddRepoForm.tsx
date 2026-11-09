@@ -22,7 +22,6 @@ export interface AddRepoFormProps {
   readonly error: string | null;
   readonly focusToken: number;
   readonly layout?: AddRepoLayout;
-  /** The `clonesDir` setting: where a link is cloned when the form names no folder. */
   readonly defaultCloneDir?: string;
   readonly onSubmit: (input: AddRepoInput) => void;
   readonly onCancel: () => void;
