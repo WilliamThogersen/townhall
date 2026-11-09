@@ -44,7 +44,7 @@
   overflow-y: auto;
 }
 
-/* ---------- list rows: one height, two-line description, one-line stats ---------- */
+/* ---------- list rows: description clamped to two lines, one-line stats, no reserved gap ---------- */
 
 .th-agent-row {
   display: flex;
@@ -96,7 +96,6 @@
 
 .th-agent-row-desc {
   display: -webkit-box;
-  min-height: calc(2 * var(--th-leading-sm));
   overflow: hidden;
   color: var(--th-fg-muted);
   line-height: var(--th-leading-sm);
@@ -210,19 +209,25 @@
   gap: var(--th-space-4);
 }
 
+/* part pickers flow into a grid; everything else in the column spans the full width */
 .th-avatar-parts {
-  display: flex;
+  display: grid;
   flex: 1;
-  flex-direction: column;
-  gap: 2px;
+  grid-template-columns: repeat(auto-fill, minmax(24ch, 1fr));
+  align-items: center;
+  gap: 0 var(--th-space-4);
   min-width: 0;
+}
+
+.th-avatar-parts > :not(.th-avatar-part) {
+  grid-column: 1 / -1;
 }
 
 .th-avatar-part {
   display: grid;
-  grid-template-columns: 9ch max-content 10ch max-content;
+  grid-template-columns: 8ch max-content minmax(0, 1fr) max-content;
   align-items: center;
-  gap: var(--th-space-2);
+  gap: var(--th-space-1);
   height: var(--th-control-sm);
 }
 
@@ -397,38 +402,37 @@
   list-style: none;
 }
 
+/* key left, value right, a thin proportional bar underneath: all in normal flow */
 .th-usage-share {
-  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: var(--th-leading-md) 2px;
   align-items: center;
   column-gap: var(--th-space-3);
-  height: var(--th-leading-md);
-  padding: 0 var(--th-space-2);
+  padding: 0 0 var(--th-space-1);
   min-width: 0;
 }
 
 .th-usage-share-bar {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  background: var(--th-accent-tint);
-  box-shadow: inset 2px 0 0 var(--th-accent);
-}
-
-.th-usage-share-key,
-.th-usage-share-value {
-  position: relative;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-self: stretch;
+  min-width: 1px;
+  background: var(--th-accent);
+  opacity: 0.6;
 }
 
 .th-usage-share-key {
+  grid-column: 1;
+  grid-row: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .th-usage-share-value {
+  grid-column: 2;
+  grid-row: 1;
   color: var(--th-fg-faint);
   font-size: var(--th-text-xs);
   white-space: nowrap;
@@ -540,6 +544,10 @@
   font-size: var(--th-text-sm);
 }
 
+.th-agent-prompt > .th-cap {
+  margin: 0;
+}
+
 .th-agent-prompt-bar {
   display: flex;
   flex-wrap: wrap;
@@ -640,10 +648,6 @@
 
   .th-avatar-editor {
     flex-direction: column;
-  }
-
-  .th-avatar-part {
-    grid-template-columns: 9ch max-content minmax(8ch, 1fr) max-content;
   }
 
   .th-usage-chart {
