@@ -7,7 +7,7 @@ export function useRepos(): ReposState {
   const store = useDataStore();
   const { data, loading, error } = useResource(REPOS_KEY, (state) => state.repos);
   return useMemo(
-    () => ({ repos: data, loading, error, add: store.addRepo, remove: store.removeRepo }),
+    () => ({ repos: data, loading, error, add: store.addRepo, remove: store.removeRepo, setAccounts: store.setRepoAccounts }),
     [data, loading, error, store],
   );
 }

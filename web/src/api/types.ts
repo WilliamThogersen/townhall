@@ -34,6 +34,13 @@ export interface Repo {
   readonly name: string;
   readonly path: string;
   readonly baseBranch: string;
+  readonly githubAccount: string | null;
+  readonly gitlabAccount: string | null;
+}
+
+export interface PutRepoAccountsInput {
+  readonly githubAccount?: string | null;
+  readonly gitlabAccount?: string | null;
 }
 
 export interface AddRepoInput {
@@ -46,6 +53,14 @@ export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypa
 export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
 export type TownhallModel = "sonnet" | "opus" | "haiku";
+export type ForgeKind = "github" | "gitlab";
+
+export interface ForgeAccount {
+  readonly forge: ForgeKind;
+  readonly login: string;
+  readonly host: string;
+  readonly label: string;
+}
 
 export interface Settings {
   readonly permissionMode: PermissionMode;
@@ -58,6 +73,7 @@ export interface Settings {
   readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
+  readonly forgeAccounts: readonly ForgeAccount[];
   readonly reflectAfterTasks: boolean;
 }
 

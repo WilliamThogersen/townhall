@@ -256,7 +256,7 @@ An agent's terminal, opened from a task row, a task block or a control center ro
 
 ## Repos page
 
-`.th-page` with a header (`repos`, count, primary `add repository…`) and one `.th-repo` row per repo: bold name with the short path under it (`~/Developer/…/clients/shop`, Hive's `shortRepoPath`), base branch, conversation count, agent glyphs, ghost `new conversation`. Removing a repo asks first and says the folder and worktrees stay on disk. New.
+`.th-page` with a header (`repos`, count, primary `add repository…`) and one `.th-repo` row per repo: bold name with the short path under it (`~/Developer/…/clients/shop`, Hive's `shortRepoPath`), base branch, conversation count, agent glyphs, ghost `new conversation`. Removing a repo asks first and says the folder and worktrees stay on disk. While `forge accounts` (settings) lists any, each row gets a second line `.th-repo-accounts` (`data-accounts="true"` on the row): per forge that has an account, a faint `github account` or `gitlab account` and a `.th-segmented` of `auto` plus one choice per registered login, saved at once; `auto` is the first account for the repo's host. A pick whose account was removed shows as `<login> (not registered)`. New.
 
 ## Settings
 
@@ -276,6 +276,8 @@ An agent's terminal, opened from a task row, a task block or a control center ro
 - Only this page can choose `skip all`. Townhall's own tools and agents may set the other four, never this one (as in Hive).
 
 **Other rows**: `work without asking` (switch), `agents at once` (stepper, 1 to 50), `when the repo is unclear` (`ask` or `guess`), `session panel` open by default (switch), `theme` (`dark`, `light`, `system`), `notify me when` (`needs you`, `+ failed`, `everything`), `learn about me` (switch, off by default), `profile` (full-width row: textarea, `save`, `reset` with an inline confirm; `no profile yet` when empty; the help line says it is not used while the switch is off).
+
+**Forge accounts** (group between `conversations` and `appearance and notifications`, one full-width `accounts` row): a `.th-accounts` list, one `.th-account` per registered login (bold label, faint `github · login@host`, ghost `remove`, no confirm: adding it again is one step), or `no accounts yet: gh and glab run as whoever is logged in`. Under it a `.th-account-add` form: a `github` or `gitlab` segmented, `login`, `host` (placeholder `github.com` or `gitlab.com`, any self-hosted name) and `label` fields (the same faint-caption-over-`.th-input` as the add repository form) and `add`. A refused entry (not a login, a bad host, already registered) shows as a `.th-field-error` line under the form; the rest saves at once like every row. Tokens are never entered or shown here: townhall asks `gh` or `glab` for them when it runs a command.
 
 **Controls**:
 

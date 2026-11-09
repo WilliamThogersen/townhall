@@ -3,6 +3,15 @@ export type RepoUnclear = "ask" | "guess";
 export type NotifyWhen = "needsYou" | "failed" | "everything";
 export type TownhallModel = "sonnet" | "opus" | "haiku";
 
+export type ForgeKind = "github" | "gitlab";
+
+export interface ForgeAccount {
+  readonly forge: ForgeKind;
+  readonly login: string;
+  readonly host: string;
+  readonly label: string;
+}
+
 export interface Settings {
   readonly permissionMode: PermissionMode;
   readonly workWithoutAsking: boolean;
@@ -14,6 +23,7 @@ export interface Settings {
   readonly minFreeDiskGb: number;
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
+  readonly forgeAccounts: readonly ForgeAccount[];
   readonly reflectAfterTasks: boolean;
 }
 
@@ -27,6 +37,8 @@ export const PERMISSION_MODES: readonly PermissionMode[] = [
 export const REPO_UNCLEAR_VALUES: readonly RepoUnclear[] = ["ask", "guess"];
 export const NOTIFY_VALUES: readonly NotifyWhen[] = ["needsYou", "failed", "everything"];
 export const TOWNHALL_MODELS: readonly TownhallModel[] = ["sonnet", "opus", "haiku"];
+export const FORGE_KINDS: readonly ForgeKind[] = ["github", "gitlab"];
+export const FORGE_ACCOUNTS_MAX = 50;
 
 export const AGENTS_AT_ONCE_MIN = 1;
 export const AGENTS_AT_ONCE_MAX = 50;
@@ -43,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   minFreeDiskGb: 5,
   learnAboutMe: false,
   githubAccount: "",
+  forgeAccounts: Object.freeze([]),
   reflectAfterTasks: false,
 });
 
@@ -59,6 +72,7 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "minFreeDiskGb",
   "learnAboutMe",
   "githubAccount",
+  "forgeAccounts",
   "reflectAfterTasks",
 ]);
 
@@ -88,6 +102,25 @@ const GITHUB_LOGIN = /^(?!-)[A-Za-z0-9-]{0,39}$/;
 const isGithubAccount: Check<string> = (value): value is string =>
   typeof value === "string" && GITHUB_LOGIN.test(value);
 
+const ACCOUNT_KEYS = ["forge", "login", "host", "label"];
+
+function isForgeAccount(value: unknown): value is ForgeAccount {
+  if (!isFields(value)) return false;
+  const { forge, login, host, label } = value;
+  return (
+    Object.keys(value).every((key) => ACCOUNT_KEYS.includes(key)) &&
+    choiceOf(FORGE_KINDS)(forge) &&
+    typeof login === "string" &&
+    login !== "" &&
+    typeof host === "string" &&
+    host !== "" &&
+    typeof label === "string"
+  );
+}
+
+const isForgeAccounts: Check<readonly ForgeAccount[]> = (value): value is readonly ForgeAccount[] =>
+  Array.isArray(value) && value.length <= FORGE_ACCOUNTS_MAX && value.every(isForgeAccount);
+
 const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   permissionMode: choiceOf(PERMISSION_MODES),
   workWithoutAsking: isFlag,
@@ -99,6 +132,7 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   minFreeDiskGb: isDiskGb,
   learnAboutMe: isFlag,
   githubAccount: isGithubAccount,
+  forgeAccounts: isForgeAccounts,
   reflectAfterTasks: isFlag,
 };
 
@@ -129,6 +163,7 @@ export function parseSettings(raw: unknown): Settings {
     minFreeDiskGb: pick(fields, "minFreeDiskGb"),
     learnAboutMe: pick(fields, "learnAboutMe"),
     githubAccount: pick(fields, "githubAccount"),
+    forgeAccounts: pick(fields, "forgeAccounts"),
     reflectAfterTasks: pick(fields, "reflectAfterTasks"),
   });
 }

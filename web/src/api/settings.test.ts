@@ -14,6 +14,7 @@ const daemon: Settings = {
   minFreeDiskGb: 10,
   learnAboutMe: true,
   githubAccount: "octocat",
+  forgeAccounts: [{ forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "work" }],
   reflectAfterTasks: true,
 };
 
@@ -83,6 +84,15 @@ describe("putSetting", () => {
     expect(JSON.parse(init.body as string)).toEqual({ value: 12 });
   });
 
+  it("sends the whole account list for forgeAccounts", async () => {
+    const accounts = [{ forge: "github", login: "work-me", host: "github.com", label: "work" }] as const;
+    const fn = mockFetch(200, ok({ ...daemon, forgeAccounts: accounts }));
+    expect((await putSetting("forgeAccounts", accounts)).forgeAccounts).toEqual(accounts);
+    const [url, init] = fn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/settings/forgeAccounts");
+    expect(JSON.parse(init.body as string)).toEqual({ value: accounts });
+  });
+
   it("sends skip all as bypassPermissions", async () => {
     const fn = mockFetch(200, ok({ ...daemon, permissionMode: "bypassPermissions" }));
     await putSetting("permissionMode", "bypassPermissions");
@@ -124,6 +134,8 @@ describe("parseSettingsData", () => {
     ["repoUnclear", undefined],
     ["sessionPanelOpen", null],
     ["notifyWhen", "never"],
+    ["forgeAccounts", [{ forge: "github", login: "me" }]],
+    ["forgeAccounts", undefined],
   ])("rejects an invalid %s", (key, value) => {
     expect(() => parseSettingsData({ ...daemon, [key]: value })).toThrow(`settings.${key}`);
   });

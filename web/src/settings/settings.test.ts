@@ -3,6 +3,7 @@ import {
   AGENTS_AT_ONCE_MAX,
   AGENTS_AT_ONCE_MIN,
   DEFAULT_SETTINGS,
+  FORGE_ACCOUNTS_MAX,
   isSettingValue,
   parseSettings,
   SETTING_KEYS,
@@ -20,6 +21,10 @@ const custom: Settings = {
   minFreeDiskGb: 20,
   learnAboutMe: true,
   githubAccount: "octocat",
+  forgeAccounts: [
+    { forge: "github", login: "work-me", host: "github.com", label: "work" },
+    { forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "me" },
+  ],
   reflectAfterTasks: true,
 };
 
@@ -36,6 +41,7 @@ describe("DEFAULT_SETTINGS", () => {
       minFreeDiskGb: 5,
       learnAboutMe: false,
       githubAccount: "",
+      forgeAccounts: [],
       reflectAfterTasks: false,
     });
   });
@@ -143,5 +149,24 @@ describe("isSettingValue", () => {
     [0, 51, 2.5, "6", Number.NaN].forEach((value) => {
       expect(isSettingValue("agentsAtOnce", value)).toBe(false);
     });
+  });
+
+  it("accepts a list of complete forge accounts and refuses anything else", () => {
+    const one = { forge: "github", login: "me", host: "github.com", label: "me" };
+    expect(isSettingValue("forgeAccounts", [])).toBe(true);
+    expect(isSettingValue("forgeAccounts", [one])).toBe(true);
+    expect(isSettingValue("forgeAccounts", "me")).toBe(false);
+    expect(isSettingValue("forgeAccounts", [{ ...one, forge: "bitbucket" }])).toBe(false);
+    expect(isSettingValue("forgeAccounts", [{ ...one, login: "" }])).toBe(false);
+    expect(isSettingValue("forgeAccounts", [{ ...one, host: undefined }])).toBe(false);
+    expect(isSettingValue("forgeAccounts", [{ forge: "github", login: "me" }])).toBe(false);
+    expect(isSettingValue("forgeAccounts", [{ ...one, token: "ghp_x" }])).toBe(false);
+    expect(isSettingValue("forgeAccounts", [one, null])).toBe(false);
+    expect(isSettingValue("forgeAccounts", Array.from({ length: FORGE_ACCOUNTS_MAX + 1 }, () => one))).toBe(false);
+  });
+
+  it("falls back to no accounts when the stored list is invalid", () => {
+    expect(parseSettings({ forgeAccounts: "me" }).forgeAccounts).toEqual([]);
+    expect(parseSettings({ ...custom }).forgeAccounts).toEqual(custom.forgeAccounts);
   });
 });

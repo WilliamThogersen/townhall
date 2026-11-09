@@ -133,6 +133,17 @@ describe("useRepos", () => {
     expect(add).toHaveBeenCalledWith({ path: "/code/admin" });
     expect(remove).toHaveBeenCalledWith("shop");
   });
+
+  it("picks a repo's accounts", async () => {
+    vi.spyOn(reposApi, "listRepos").mockResolvedValue([aRepo()]);
+    const picked = aRepo({ gitlabAccount: "me" });
+    const put = vi.spyOn(reposApi, "putRepoAccounts").mockResolvedValue(picked);
+    const { result } = renderHook(() => useRepos(), { wrapper });
+    await waitFor(() => expect(result.current.repos).toEqual([aRepo()]));
+    await act(() => result.current.setAccounts("shop", { gitlabAccount: "me" }));
+    await waitFor(() => expect(result.current.repos).toEqual([picked]));
+    expect(put).toHaveBeenCalledWith("shop", { gitlabAccount: "me" });
+  });
 });
 
 describe("useStats", () => {

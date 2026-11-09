@@ -79,6 +79,8 @@ export function parseRepo(value: unknown): Repo {
     name: str(r.name, "repo.name"),
     path: str(r.path, "repo.path"),
     baseBranch: str(r.baseBranch, "repo.baseBranch"),
+    githubAccount: nullable(r.githubAccount, "repo.githubAccount", str),
+    gitlabAccount: nullable(r.gitlabAccount, "repo.gitlabAccount", str),
   };
 }
 

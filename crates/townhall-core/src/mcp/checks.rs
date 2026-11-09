@@ -315,6 +315,8 @@ mod tests {
             name: name.into(),
             path: PathBuf::from("/r"),
             base_branch: "main".into(),
+            github_account: None,
+            gitlab_account: None,
         };
         assert_eq!(repo_list(&[repo("shop"), repo("Admin")]), "Admin, shop");
         assert!(repo_list(&[]).starts_with("none"));

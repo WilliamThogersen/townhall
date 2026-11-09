@@ -1,6 +1,7 @@
 //! The repo registry: the `repos` table plus the git checks around it.
 //! Removing a repo only unregisters it: the folder, its worktrees and branches stay.
 
+pub mod accounts;
 mod auth_env;
 mod clone;
 mod discard;
@@ -75,6 +76,8 @@ pub fn inspect(home: &Home, path: &Path, name: String, base_branch: Option<&str>
         name,
         path: path.to_path_buf(),
         base_branch,
+        github_account: None,
+        gitlab_account: None,
     })
 }
 
