@@ -22,9 +22,27 @@
 }
 
 .th-repo-confirm {
-  grid-column: 2 / -1;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
   justify-content: flex-end;
   font-size: var(--th-text-sm);
+}
+
+.th-repo-search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border-width: 0 0 var(--th-border);
+  border-color: var(--th-line);
+}
+
+.th-repo-search:focus-visible {
+  border-color: var(--th-accent);
+  box-shadow: none;
+}
+
+.th-repo-remove {
+  margin-right: auto;
 }
 
 .th-repo-add {
@@ -137,33 +155,13 @@
   min-width: 0;
 }
 
-.th-repo[data-accounts="true"] > .th-repo-accounts {
-  grid-area: auto;
+.th-repo-add[data-layout="stack"] .th-repo-accounts {
   grid-column: 1 / -1;
-  grid-row: 2;
-  margin-right: 0;
-  padding: var(--th-space-1) 0 var(--th-space-1);
-}
-
-.th-repo[data-accounts="true"] > .th-repo-actions {
-  grid-area: 1 / -2;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 @media (max-width: 1023px) {
-  .th-repo[data-accounts="true"] > .th-repo-actions {
-    grid-area: 1 / 2;
-  }
-
-  .th-repo[data-accounts="true"] > .th-repo-accounts {
-    grid-area: 3 / 1 / 4 / -1;
-  }
-
-  .th-repo[data-confirm="true"] > .th-repo-confirm {
-    grid-area: 2 / 1 / 3 / -1;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
   .th-repo-add {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

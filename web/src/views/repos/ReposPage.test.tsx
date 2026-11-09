@@ -242,16 +242,31 @@ describe("ReposPage", () => {
   });
 
   describe("editing a repo", () => {
-    const form = () => screen.getByRole("form", { name: "edit shop" });
+    const modal = () => screen.getByRole("dialog", { name: "edit shop" });
+    const openEdit = async (name = "shop") => {
+      await screen.findByText(name, { selector: ".th-repo-name b" });
+      await userEvent.click(within(rowOf(name)).getByRole("button", { name: `edit ${name}` }));
+    };
+
+    it("keeps the row to the facts and two actions", async () => {
+      renderPage(createFakeEvents(), [{ forge: "github", login: "me", host: "github.com", label: "me" }]);
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      const row = within(rowOf("shop"));
+      expect(row.getByRole("button", { name: "edit shop" })).toBeInTheDocument();
+      expect(row.getByRole("link", { name: "new conversation" })).toBeInTheDocument();
+      expect(row.queryByRole("button", { name: /remove/ })).not.toBeInTheDocument();
+      expect(row.queryByRole("radiogroup")).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
 
     it("renames it, changes its base branch and shows the saved repo at once", async () => {
       const saved = aRepo({ ...shop, name: "store", baseBranch: "main" });
       const patch = vi.spyOn(reposApi, "patchRepo").mockResolvedValue(saved);
       renderPage();
-      await screen.findByText("shop", { selector: ".th-repo-name b" });
-      await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "edit shop" }));
-      const f = within(form());
+      await openEdit();
+      const f = within(modal());
       expect(f.getByRole("textbox", { name: "name" })).toHaveValue("shop");
+      expect(f.getByRole("textbox", { name: "name" })).toHaveFocus();
       expect(f.getByRole("textbox", { name: "base branch" })).toHaveValue("develop");
       expect(f.getByRole("textbox", { name: "folder" })).toHaveValue(shop.path);
       expect(f.getByRole("button", { name: "save" })).toBeDisabled();
@@ -262,15 +277,14 @@ describe("ReposPage", () => {
       expect(patch).toHaveBeenCalledWith("shop", { name: "store", baseBranch: "main" });
       expect(await screen.findByText("store", { selector: ".th-repo-name b" })).toBeInTheDocument();
       expect(screen.queryByText("shop", { selector: ".th-repo-name b" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("form", { name: "edit shop" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
     it("points the repo at a new folder, or moves the folder when asked", async () => {
       const patch = vi.spyOn(reposApi, "patchRepo").mockResolvedValue(aRepo({ ...shop, path: "/code/shop" }));
       renderPage();
-      await screen.findByText("shop", { selector: ".th-repo-name b" });
-      await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "edit shop" }));
-      const f = within(form());
+      await openEdit();
+      const f = within(modal());
       expect(f.queryByRole("checkbox")).not.toBeInTheDocument();
       await userEvent.clear(f.getByRole("textbox", { name: "folder" }));
       await userEvent.type(f.getByRole("textbox", { name: "folder" }), "/code/shop");
@@ -279,28 +293,149 @@ describe("ReposPage", () => {
       expect(patch).toHaveBeenCalledWith("shop", { path: "/code/shop", moveFolder: true });
     });
 
-    it("keeps the form open with the daemon's reason when it refuses", async () => {
+    it("keeps the modal open with the daemon's reason when it refuses", async () => {
       vi.spyOn(reposApi, "patchRepo").mockRejectedValue(new ApiError("http", "a repo named `townhall` already exists", 409));
       renderPage();
-      await screen.findByText("shop", { selector: ".th-repo-name b" });
-      await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "edit shop" }));
-      await userEvent.clear(within(form()).getByRole("textbox", { name: "name" }));
-      await userEvent.type(within(form()).getByRole("textbox", { name: "name" }), "townhall{Enter}");
-      expect(await within(form()).findByRole("alert")).toHaveTextContent("error: a repo named `townhall` already exists");
-      expect(within(form()).getByRole("textbox", { name: "name" })).toHaveValue("townhall");
+      await openEdit();
+      await userEvent.clear(within(modal()).getByRole("textbox", { name: "name" }));
+      await userEvent.type(within(modal()).getByRole("textbox", { name: "name" }), "townhall{Enter}");
+      expect(await within(modal()).findByRole("alert")).toHaveTextContent("error: a repo named `townhall` already exists");
+      expect(within(modal()).getByRole("textbox", { name: "name" })).toHaveValue("townhall");
     });
 
     it("does not save a name the daemon would refuse, and cancels with escape", async () => {
       const patch = vi.spyOn(reposApi, "patchRepo");
       renderPage();
-      await screen.findByText("shop", { selector: ".th-repo-name b" });
-      await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "edit shop" }));
-      await userEvent.type(within(form()).getByRole("textbox", { name: "name" }), " x");
-      expect(within(form()).getByRole("button", { name: "save" })).toBeDisabled();
+      await openEdit();
+      await userEvent.type(within(modal()).getByRole("textbox", { name: "name" }), " x");
+      expect(within(modal()).getByRole("button", { name: "save" })).toBeDisabled();
       await userEvent.keyboard("{Escape}");
-      expect(screen.queryByRole("form", { name: "edit shop" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(patch).not.toHaveBeenCalled();
       expect(screen.getByText("shop", { selector: ".th-repo-name b" })).toBeInTheDocument();
+    });
+
+    it("closes with cancel and returns focus to the edit button", async () => {
+      renderPage();
+      await openEdit();
+      await userEvent.click(within(modal()).getByRole("button", { name: "cancel" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(within(rowOf("shop")).getByRole("button", { name: "edit shop" })).toHaveFocus();
+    });
+
+    it("does not open the add modal on top when a is pressed inside it", async () => {
+      renderPage();
+      await openEdit();
+      within(modal()).getByRole("button", { name: "cancel" }).focus();
+      await userEvent.keyboard("a");
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      expect(modal()).toBeInTheDocument();
+    });
+
+    it("asks before removing a repo and can be cancelled", async () => {
+      const remove = vi.spyOn(reposApi, "removeRepo");
+      renderPage();
+      await openEdit();
+      await userEvent.click(within(modal()).getByRole("button", { name: "remove shop" }));
+      expect(within(modal()).getByText("remove shop? the folder and its worktrees stay on disk")).toBeInTheDocument();
+      const confirm = within(screen.getByRole("group", { name: "remove shop" }));
+      expect(confirm.getByRole("button", { name: "cancel" })).toHaveFocus();
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByText(/the folder and its worktrees stay on disk/)).not.toBeInTheDocument();
+      expect(modal()).toBeInTheDocument();
+      expect(within(modal()).getByRole("button", { name: "remove shop" })).toHaveFocus();
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    it("removes a repo once confirmed", async () => {
+      const remove = vi.spyOn(reposApi, "removeRepo").mockResolvedValue(shop);
+      renderPage();
+      await openEdit();
+      await userEvent.click(within(modal()).getByRole("button", { name: "remove shop" }));
+      await userEvent.click(within(screen.getByRole("group", { name: "remove shop" })).getByRole("button", { name: "remove" }));
+      expect(remove).toHaveBeenCalledWith("shop");
+      expect(screen.queryByText("shop", { selector: ".th-repo-name b" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByText("1", { selector: ".th-page-head .th-cap" })).toBeInTheDocument();
+    });
+
+    it("offers to delete the clone only for repos cloned into the managed folder", async () => {
+      const clone = aRepo({ name: "hub", path: "/Users/me/.townhall/repos/hub", baseBranch: "main" });
+      vi.mocked(reposApi.listRepos).mockResolvedValue([shop, clone]);
+      const remove = vi.spyOn(reposApi, "removeRepo").mockResolvedValue(clone);
+      renderPage();
+      await openEdit();
+      await userEvent.click(within(modal()).getByRole("button", { name: "remove shop" }));
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+      await userEvent.keyboard("{Escape}{Escape}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      await openEdit("hub");
+      const hub = within(screen.getByRole("dialog", { name: "edit hub" }));
+      await userEvent.click(hub.getByRole("button", { name: "remove hub" }));
+      await userEvent.click(hub.getByRole("checkbox", { name: "also delete the clone" }));
+      await userEvent.click(within(screen.getByRole("group", { name: "remove hub" })).getByRole("button", { name: "remove" }));
+      expect(remove).toHaveBeenCalledWith("hub", true);
+    });
+
+    it("shows the daemon's conflict as is, closes the modal and lets you dismiss it", async () => {
+      vi.spyOn(reposApi, "removeRepo").mockRejectedValue(
+        new ApiError("http", "repo `shop` has 2 running agents: stop them first", 409),
+      );
+      renderPage();
+      await openEdit();
+      await userEvent.click(within(modal()).getByRole("button", { name: "remove shop" }));
+      await userEvent.click(within(screen.getByRole("group", { name: "remove shop" })).getByRole("button", { name: "remove" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("error: repo `shop` has 2 running agents: stop them first");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "dismiss" }));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("searching repos", () => {
+    const search = () => screen.getByRole("searchbox", { name: "search repos" });
+    const names = () => screen.queryAllByText(/^(townhall|shop)$/, { selector: ".th-repo-name b" }).map((b) => b.textContent);
+
+    it("filters live by name, case-insensitively", async () => {
+      renderPage();
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      expect(names()).toEqual(["townhall", "shop"]);
+      await userEvent.type(search(), "SHO");
+      expect(names()).toEqual(["shop"]);
+    });
+
+    it("filters by path too", async () => {
+      renderPage();
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      await userEvent.type(search(), "wexo/work");
+      expect(names()).toEqual(["shop"]);
+    });
+
+    it("says when nothing matches and shows all again once cleared", async () => {
+      renderPage();
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      await userEvent.type(search(), "zzz");
+      expect(names()).toEqual([]);
+      expect(screen.getByRole("heading", { name: 'no repos match "zzz"' })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "no repos yet" })).not.toBeInTheDocument();
+      await userEvent.clear(search());
+      expect(names()).toEqual(["townhall", "shop"]);
+    });
+
+    it("keeps the header count at the total and does not open the add modal while typing a", async () => {
+      renderPage();
+      await screen.findByText("shop", { selector: ".th-repo-name b" });
+      await userEvent.type(search(), "sha");
+      expect(screen.getByText("2", { selector: ".th-page-head .th-cap" })).toBeInTheDocument();
+      expect(search()).toHaveValue("sha");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("is not shown before there are repos", async () => {
+      vi.mocked(reposApi.listRepos).mockResolvedValue([]);
+      renderPage();
+      await screen.findByRole("heading", { name: "no repos yet" });
+      expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
     });
   });
 
@@ -393,57 +528,6 @@ describe("ReposPage", () => {
     });
   });
 
-  it("asks before removing a repo and can be cancelled", async () => {
-    const remove = vi.spyOn(reposApi, "removeRepo");
-    renderPage();
-    await screen.findByText("shop", { selector: ".th-repo-name b" });
-    const removeButton = screen.getByRole("button", { name: "remove shop" });
-    await userEvent.click(removeButton);
-    expect(screen.getByText("remove shop? the folder and its worktrees stay on disk")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "cancel" })).toHaveFocus();
-    await userEvent.keyboard("{Escape}");
-    expect(screen.queryByText(/the folder and its worktrees stay on disk/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "remove shop" })).toHaveFocus();
-    expect(remove).not.toHaveBeenCalled();
-  });
-
-  it("removes a repo once confirmed", async () => {
-    const remove = vi.spyOn(reposApi, "removeRepo").mockResolvedValue(shop);
-    renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "remove shop" }));
-    await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "remove" }));
-    expect(remove).toHaveBeenCalledWith("shop");
-    expect(screen.queryByText("shop", { selector: ".th-repo-name b" })).not.toBeInTheDocument();
-    expect(screen.getByText("1", { selector: ".th-page-head .th-cap" })).toBeInTheDocument();
-  });
-
-  it("offers to delete the clone only for repos cloned into the managed folder", async () => {
-    const clone = aRepo({ name: "hub", path: "/Users/me/.townhall/repos/hub", baseBranch: "main" });
-    vi.mocked(reposApi.listRepos).mockResolvedValue([shop, clone]);
-    const remove = vi.spyOn(reposApi, "removeRepo").mockResolvedValue(clone);
-    renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "remove shop" }));
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-    await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "cancel" }));
-    await userEvent.click(screen.getByRole("button", { name: "remove hub" }));
-    await userEvent.click(within(rowOf("hub")).getByRole("checkbox", { name: "also delete the clone" }));
-    await userEvent.click(within(rowOf("hub")).getByRole("button", { name: "remove" }));
-    expect(remove).toHaveBeenCalledWith("hub", true);
-  });
-
-  it("shows the daemon's conflict as is and lets you dismiss it", async () => {
-    vi.spyOn(reposApi, "removeRepo").mockRejectedValue(
-      new ApiError("http", "repo `shop` has 2 running agents: stop them first", 409),
-    );
-    renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: "remove shop" }));
-    await userEvent.click(within(rowOf("shop")).getByRole("button", { name: "remove" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("error: repo `shop` has 2 running agents: stop them first");
-    expect(rowOf("shop")).not.toHaveAttribute("data-confirm");
-    await userEvent.click(screen.getByRole("button", { name: "dismiss" }));
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-
   it("follows live agent updates", async () => {
     const events = createFakeEvents();
     renderPage(events);
@@ -458,34 +542,35 @@ describe("repo accounts", () => {
   const work: ForgeAccount = { forge: "github", login: "work-me", host: "github.com", label: "work" };
   const mine: ForgeAccount = { forge: "github", login: "private-me", host: "github.com", label: "private" };
   const glab: ForgeAccount = { forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "corp gitlab" };
-  const pick = (name: string, forge: "GitHub" | "GitLab") =>
-    within(within(rowOf(name)).getByRole("radiogroup", { name: `${forge} account for ${name}` }));
+  const editing = async (name = "shop") => {
+    await screen.findByText(name, { selector: ".th-repo-name b" });
+    await userEvent.click(within(rowOf(name)).getByRole("button", { name: `edit ${name}` }));
+    return within(screen.getByRole("dialog", { name: `edit ${name}` }));
+  };
+  const pick = (modal: ReturnType<typeof within>, name: string, forge: "GitHub" | "GitLab") =>
+    within(modal.getByRole("radiogroup", { name: `${forge} account for ${name}` }));
 
   it("shows no account choice while no account is registered", async () => {
     renderPage();
-    await screen.findByText("shop", { selector: ".th-repo-name b" });
-    expect(screen.queryByRole("radiogroup", { name: /account for/ })).not.toBeInTheDocument();
+    const modal = await editing();
+    expect(modal.queryByRole("radiogroup", { name: /account for/ })).not.toBeInTheDocument();
   });
 
   it("offers auto and each registered account, only for the forges that have one", async () => {
     renderPage(createFakeEvents(), [work, mine]);
-    await screen.findByText("shop", { selector: ".th-repo-name b" });
-    await within(rowOf("shop")).findByRole("radiogroup", { name: "GitHub account for shop" });
-    const labels = pick("shop", "GitHub").getAllByRole("radio").map((radio) => radio.closest("label")?.textContent);
+    const modal = await editing();
+    const labels = pick(modal, "shop", "GitHub").getAllByRole("radio").map((radio) => radio.closest("label")?.textContent);
     expect(labels).toEqual(["auto", "work", "private"]);
-    expect(pick("shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
-    expect(within(rowOf("shop")).queryByRole("radiogroup", { name: /GitLab/ })).not.toBeInTheDocument();
-    expect(within(rowOf("townhall")).getByRole("radiogroup", { name: "GitHub account for townhall" })).toBeInTheDocument();
+    expect(pick(modal, "shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
+    expect(modal.queryByRole("radiogroup", { name: /GitLab/ })).not.toBeInTheDocument();
   });
 
   it("shows the account a repo already uses and the gitlab choice when one is registered", async () => {
     vi.mocked(reposApi.listRepos).mockResolvedValue([aRepo({ ...shop, githubAccount: "private-me", gitlabAccount: "me" })]);
     renderPage(createFakeEvents(), [work, mine, glab]);
-    await within(await screen.findByText("shop", { selector: ".th-repo-name b" }).then(() => rowOf("shop"))).findByRole("radiogroup", {
-      name: "GitHub account for shop",
-    });
-    expect(pick("shop", "GitHub").getByRole("radio", { name: "private" })).toBeChecked();
-    expect(pick("shop", "GitLab").getByRole("radio", { name: "corp gitlab" })).toBeChecked();
+    const modal = await editing();
+    expect(pick(modal, "shop", "GitHub").getByRole("radio", { name: "private" })).toBeChecked();
+    expect(pick(modal, "shop", "GitLab").getByRole("radio", { name: "corp gitlab" })).toBeChecked();
   });
 
   it("picks an account for the repo, and auto clears the pick", async () => {
@@ -494,26 +579,22 @@ describe("repo accounts", () => {
       .mockResolvedValueOnce(aRepo({ ...shop, githubAccount: "private-me" }))
       .mockResolvedValueOnce(aRepo({ ...shop, githubAccount: null }));
     renderPage(createFakeEvents(), [work, mine]);
-    await within(await screen.findByText("shop", { selector: ".th-repo-name b" }).then(() => rowOf("shop"))).findByRole("radiogroup", {
-      name: "GitHub account for shop",
-    });
-    await userEvent.click(pick("shop", "GitHub").getByRole("radio", { name: "private" }));
+    const modal = await editing();
+    await userEvent.click(pick(modal, "shop", "GitHub").getByRole("radio", { name: "private" }));
     expect(put).toHaveBeenLastCalledWith("shop", { githubAccount: "private-me" });
     await screen.findByRole("radio", { name: "private", checked: true });
-    await userEvent.click(pick("shop", "GitHub").getByRole("radio", { name: "auto" }));
+    await userEvent.click(pick(modal, "shop", "GitHub").getByRole("radio", { name: "auto" }));
     expect(put).toHaveBeenLastCalledWith("shop", { githubAccount: null });
     await screen.findAllByRole("radio", { name: "auto", checked: true });
-    expect(pick("shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
+    expect(pick(modal, "shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
   });
 
   it("shows the daemon's refusal and keeps the old pick", async () => {
     vi.spyOn(reposApi, "putRepoAccounts").mockRejectedValue(new ApiError("http", "no github account `private-me` is registered", 400));
     renderPage(createFakeEvents(), [work, mine]);
-    await within(await screen.findByText("shop", { selector: ".th-repo-name b" }).then(() => rowOf("shop"))).findByRole("radiogroup", {
-      name: "GitHub account for shop",
-    });
-    await userEvent.click(pick("shop", "GitHub").getByRole("radio", { name: "private" }));
+    const modal = await editing();
+    await userEvent.click(pick(modal, "shop", "GitHub").getByRole("radio", { name: "private" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("error: no github account `private-me` is registered");
-    expect(pick("shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
+    expect(pick(modal, "shop", "GitHub").getByRole("radio", { name: "auto" })).toBeChecked();
   });
 });

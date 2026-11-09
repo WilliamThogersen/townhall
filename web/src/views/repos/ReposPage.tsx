@@ -3,6 +3,7 @@ import { toMessage } from "../../api/errors";
 import type { PatchRepoInput, PutRepoAccountsInput, Repo } from "../../api/types";
 import { useAgentInfos, useConversations, useRepos, useTasks } from "../../data";
 import { NO_REPOS_TEXT } from "../../repos/copy";
+import { filterRepos } from "../../repos/filterRepos";
 import { clonesDirOf, userHomeOf } from "../../repos/repoPath";
 import { summarizeRepos, type RepoSummary } from "../../repos/repoSummary";
 import { useAddRepo, type AddRepoFlow } from "../../repos/useAddRepo";
@@ -88,6 +89,8 @@ interface BodyProps {
 }
 
 function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, onEdit, accounts, defaultCloneDir }: BodyProps) {
+  const [query, setQuery] = useState("");
+  const visible = useMemo(() => (summaries === null ? null : filterRepos(summaries, query)), [summaries, query]);
   const form = flow.formOpen ? (
     <AddRepoModal
       busy={flow.busy}
@@ -99,7 +102,7 @@ function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, onEdit, 
       onCancel={flow.cancel}
     />
   ) : null;
-  if (summaries === null) {
+  if (summaries === null || visible === null) {
     return loading ? (
       <div className="th-empty">
         <Loading verb="loading repos" />
@@ -111,7 +114,23 @@ function ReposBody({ summaries, loading, flow, onRemove, onPickAccount, onEdit, 
       <DefaultCloneDir />
       {form}
       {summaries.length === 0 && !flow.formOpen ? <EmptyState title="no repos yet">{NO_REPOS_TEXT}</EmptyState> : null}
-      {summaries.map((summary) => (
+      {summaries.length > 0 ? (
+        <input
+          type="search"
+          className="th-input th-repo-search"
+          placeholder="search by name or path…"
+          aria-label="search repos"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      ) : null}
+      {summaries.length > 0 && visible.length === 0 ? (
+        <EmptyState title={`no repos match "${query.trim()}"`}>clear the search to see all {summaries.length}</EmptyState>
+      ) : null}
+      {visible.map((summary) => (
         <RepoRow key={summary.repo.name} summary={summary} onRemove={onRemove} accounts={accounts} onPickAccount={onPickAccount} onEdit={onEdit} />
       ))}
     </>
