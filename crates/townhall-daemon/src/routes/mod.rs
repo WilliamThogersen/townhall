@@ -8,6 +8,7 @@ mod attach_frames;
 mod attachments;
 mod conversations;
 mod events;
+mod forge_accounts;
 mod info;
 mod library;
 mod logs;
@@ -103,6 +104,7 @@ pub fn router(state: AppState) -> Router {
         .route("/repos", get(repos::list).post(repos::add))
         .route("/repos/{name}", delete(repos::remove))
         .route("/repos/{name}/accounts", put(repos::put_accounts))
+        .route("/forge-accounts/detected", get(forge_accounts::detected))
         .route("/settings", get(settings::get))
         .route("/settings/{key}", put(settings::put))
         .route(

@@ -1,14 +1,14 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::sync::Mutex;
 
 use axum::http::StatusCode;
 use serde_json::{json, Value};
+use tokio::sync::Mutex;
 
 mod common;
 use common::{call, Env};
 
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
 fn stub(dir: &Path, name: &str, body: &str) -> String {
     let path = dir.join(name);
@@ -57,7 +57,7 @@ EOF"#;
 
 #[tokio::test]
 async fn every_logged_in_account_on_every_host_is_listed_and_registered_ones_are_marked() {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
     point_at(&stub(dir, "gh", GH_TEXT), &stub(dir, "glab", GLAB_TEXT));
@@ -81,24 +81,28 @@ async fn every_logged_in_account_on_every_host_is_listed_and_registered_ones_are
 
 #[tokio::test]
 async fn machine_readable_output_is_used_when_gh_has_it() {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
     let json_out = r#"if [ "$3" = "--json" ]; then echo '{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"json-me","tokenSource":"keyring","scopes":"repo","gitProtocol":"https"},{"state":"error","active":false,"host":"github.com","login":"expired-me","tokenSource":"keyring","scopes":"","gitProtocol":"https"}],"ghe.io":[{"state":"success","active":true,"host":"ghe.io","login":"ghe-me","tokenSource":"GH_ENTERPRISE_TOKEN","scopes":"","gitProtocol":"https"}]}}'; exit 0; fi; echo "text mode used" >&2; exit 1"#;
     point_at(&stub(dir, "gh", json_out), &stub(dir, "glab", "exit 1"));
     let got = detected(&env).await;
-    let logins: Vec<_> = got
+    let mut logins: Vec<_> = got
         .as_array()
         .unwrap()
         .iter()
         .map(|a| (a["login"].as_str().unwrap(), a["host"].as_str().unwrap()))
         .collect();
-    assert_eq!(logins, vec![("json-me", "github.com"), ("ghe-me", "ghe.io")]);
+    logins.sort();
+    assert_eq!(
+        logins,
+        vec![("ghe-me", "ghe.io"), ("json-me", "github.com")]
+    );
 }
 
 #[tokio::test]
 async fn older_gh_that_writes_to_stderr_and_says_as_is_understood() {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
     let old = "if [ \"$3\" = \"--json\" ]; then echo \"unknown flag: --json\" >&2; exit 1; fi\necho 'github.com' >&2\necho '  ✓ Logged in to github.com as old-me (oauth_token)' >&2\necho '  ✓ Git operations for github.com configured to use https protocol.' >&2";
@@ -112,7 +116,7 @@ async fn older_gh_that_writes_to_stderr_and_says_as_is_understood() {
 
 #[tokio::test]
 async fn not_logged_in_is_an_empty_list() {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
     let out = "echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1";
@@ -123,7 +127,7 @@ async fn not_logged_in_is_an_empty_list() {
 
 #[tokio::test]
 async fn a_missing_binary_is_an_empty_list_not_an_error() {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
     point_at(
@@ -135,7 +139,7 @@ async fn a_missing_binary_is_an_empty_list_not_an_error() {
 
 #[tokio::test]
 async fn one_missing_binary_does_not_hide_the_other() {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
     point_at(
