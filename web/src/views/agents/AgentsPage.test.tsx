@@ -103,6 +103,27 @@ describe("AgentsPage", () => {
     expect(await rowOf("planner")).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("shows the prompt of the selected type as sections above the TOML", async () => {
+    vi.mocked(library.getAgentType).mockResolvedValue(
+      anAgentType({ ...planner, prompt: "Intro text.\n<role>\nPlan the work.\n</role>", source: 'name = "planner"\n' }),
+    );
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    const prompt = within(await detail.findByRole("region", { name: "prompt" }));
+    expect(prompt.getByText("Intro text.")).toBeInTheDocument();
+    expect(prompt.getByRole("button", { name: "role" })).toHaveAttribute("aria-expanded", "true");
+    expect(prompt.getByText("Plan the work.")).toBeInTheDocument();
+  });
+
+  it("says no prompt when the selected type has none", async () => {
+    vi.mocked(library.getAgentType).mockResolvedValue(anAgentType({ ...planner, prompt: null }));
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    expect(await detail.findByText("no prompt")).toBeInTheDocument();
+  });
+
   it("shows no tools line value as defaults when a type lists none", async () => {
     render(<AgentsPage />);
     await userEvent.click(await rowOf("builder"));
