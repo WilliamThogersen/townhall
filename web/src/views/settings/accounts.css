@@ -1,7 +1,17 @@
+.th-account-login {
+  margin: 0 0 var(--th-space-3);
+}
+
+.th-account-login code {
+  color: var(--th-fg);
+  font: inherit;
+}
+
 .th-accounts {
   display: grid;
-  margin: 0;
-  padding: 0;
+  margin: 0 0 var(--th-space-4);
+  padding: 0 var(--th-space-3);
+  border: var(--th-border) solid var(--th-line);
   list-style: none;
 }
 
@@ -10,7 +20,7 @@
   align-items: center;
   gap: var(--th-space-3);
   min-width: 0;
-  padding: var(--th-space-1) 0;
+  padding: var(--th-space-2) 0;
 }
 
 .th-account + .th-account {
@@ -38,6 +48,19 @@
   min-width: 0;
 }
 
+.th-account-add > .th-btn {
+  height: var(--th-control-lg);
+}
+
+.th-account-add .th-segmented {
+  box-sizing: border-box;
+  height: var(--th-control-lg);
+}
+
+.th-account-add .th-segmented span {
+  height: calc(var(--th-control-lg) - 2px);
+}
+
 .th-account-field > span {
   color: var(--th-fg-faint);
   font-size: var(--th-text-xs);
@@ -55,7 +78,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .th-account-add > .th-segmented,
+  .th-account-add > .th-account-field:first-child,
   .th-account-add > .th-btn {
     grid-column: 1 / -1;
     justify-self: start;
