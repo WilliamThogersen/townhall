@@ -148,9 +148,6 @@ async fn by_code(
 fn fallback(names: &[String]) -> Inference {
     match names {
         [only] => found(only, Rule::Only, copy::ONLY),
-        _ => Inference::Ask {
-            candidates: names.to_vec(),
-            reason: copy::could_fit(names.len()),
-        },
+        _ => Inference::NoSignal,
     }
 }

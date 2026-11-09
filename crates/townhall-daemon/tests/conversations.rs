@@ -27,10 +27,13 @@ fn check_first_turn(first: &[String], session: &str, config: String) {
     assert_eq!(values_of(first, "--permission-mode"), ["default"]);
     assert_eq!(values_of(first, "--model"), ["opus"]);
     assert_eq!(values_of(first, "--mcp-config"), [config]);
-    assert_eq!(values_of(first, "--tools"), ["Read,Grep,Glob"]);
+    assert_eq!(
+        values_of(first, "--tools"),
+        ["Read,Grep,Glob,WebFetch,WebSearch"]
+    );
     assert_eq!(
         values_of(first, "--allowedTools"),
-        ["mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__read_logs,mcp__townhall__log_summary,mcp__townhall__conversation_insights,Read,Grep,Glob"]
+        ["mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__read_logs,mcp__townhall__log_summary,mcp__townhall__conversation_insights,Read,Grep,Glob,WebFetch,WebSearch"]
     );
     assert_eq!(values_of(first, "--setting-sources"), [""]);
     assert_eq!(

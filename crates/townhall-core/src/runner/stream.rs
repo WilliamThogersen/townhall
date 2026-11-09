@@ -39,6 +39,7 @@ pub struct TurnResult {
     pub message: Option<String>,
     /// Input tokens summed over the turn: a fallback for the context size.
     pub used: Option<u64>,
+    pub tokens: Option<u64>,
     /// The model's context window, when the CLI says.
     pub limit: Option<u64>,
     /// What the turn cost in USD, when the CLI says.
@@ -81,6 +82,14 @@ fn input_size(usage: &Value) -> Option<u64> {
         .filter_map(|k| usage.get(*k).and_then(Value::as_u64))
         .sum::<u64>();
     Some(input + more)
+}
+
+fn turn_tokens(usage: &Value) -> Option<u64> {
+    let count = |key: &str| usage.get(key).and_then(Value::as_u64);
+    match (count("input_tokens"), count("output_tokens")) {
+        (None, None) => None,
+        (input, output) => Some(input.unwrap_or(0) + output.unwrap_or(0)),
+    }
 }
 
 fn assistant(value: &Value) -> Vec<StreamEvent> {
@@ -148,6 +157,7 @@ fn result(value: &Value) -> TurnResult {
         stopped,
         message: message_of(value),
         used: input_size(&value["usage"]),
+        tokens: turn_tokens(&value["usage"]),
         limit: window_of(value),
         cost_usd: value.get("total_cost_usd").and_then(Value::as_f64),
         denied: denied_tools(value),
@@ -232,13 +242,14 @@ mod tests {
     #[test]
     fn results_say_how_the_turn_ended() {
         let ok = json!({"type": "result", "subtype": "success", "is_error": false, "result": "done",
-            "usage": {"input_tokens": 50, "cache_creation_input_tokens": 7},
+            "usage": {"input_tokens": 50, "output_tokens": 4, "cache_creation_input_tokens": 7},
             "modelUsage": {"a": {"contextWindow": 200000}, "b": {"contextWindow": 1000000}}});
         let want = TurnResult {
             is_error: false,
             stopped: false,
             message: Some("done".into()),
             used: Some(57),
+            tokens: Some(54),
             limit: Some(1_000_000),
             cost_usd: None,
             denied: vec![],

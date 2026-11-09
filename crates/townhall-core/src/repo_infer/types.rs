@@ -36,4 +36,5 @@ pub enum Inference {
         reason: String,
     },
     NoRepos,
+    NoSignal,
 }

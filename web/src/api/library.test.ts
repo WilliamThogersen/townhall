@@ -85,18 +85,26 @@ describe("library api", () => {
   });
 
   it("lists the recent runs of an agent type", async () => {
-    const run = { task: "one", repo: "alpha", state: "ended", model: null, tokens: 12, createdAt: "2026-11-09T10:00:00Z", endedAt: null };
-    const fn = mockFetch(200, [run, { ...run, task: "two", model: "claude-x", endedAt: "2026-11-09T11:00:00Z" }]);
+    const run = { kind: "task", conversationId: "c1", task: "one", repo: "alpha", state: "ended", model: null, tokens: 12, createdAt: "2026-11-09T10:00:00Z", endedAt: null };
+    const fn = mockFetch(200, [run, { ...run, kind: "turn", task: "two", model: "claude-x", endedAt: "2026-11-09T11:00:00Z" }]);
     const runs = await listAgentRuns("my type");
-    expect(runs.map((r) => [r.task, r.model, r.endedAt])).toEqual([
-      ["one", null, null],
-      ["two", "claude-x", "2026-11-09T11:00:00Z"],
+    expect(runs.map((r) => [r.kind, r.conversationId, r.task, r.model, r.endedAt])).toEqual([
+      ["task", "c1", "one", null, null],
+      ["turn", "c1", "two", "claude-x", "2026-11-09T11:00:00Z"],
     ]);
     expect(sent(fn)).toEqual({ url: "/api/library/agents/my%20type/runs", method: "GET", body: undefined });
   });
 
   it("refuses a run without a token count", async () => {
-    mockFetch(200, [{ task: "one", repo: "alpha", state: "ended", model: null, createdAt: "x", endedAt: null }]);
+    mockFetch(200, [{ kind: "task", conversationId: "c1", task: "one", repo: "alpha", state: "ended", model: null, createdAt: "x", endedAt: null }]);
+    await expect(listAgentRuns("builder")).rejects.toMatchObject({ kind: "protocol" });
+  });
+
+  it("refuses a run of an unknown kind or without a conversation", async () => {
+    const run = { kind: "task", conversationId: "c1", task: "one", repo: "alpha", state: "ended", model: null, tokens: 1, createdAt: "x", endedAt: null };
+    mockFetch(200, [{ ...run, kind: "workflow" }]);
+    await expect(listAgentRuns("builder")).rejects.toMatchObject({ kind: "protocol" });
+    mockFetch(200, [{ ...run, conversationId: undefined }]);
     await expect(listAgentRuns("builder")).rejects.toMatchObject({ kind: "protocol" });
   });
 });

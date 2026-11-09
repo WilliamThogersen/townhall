@@ -165,6 +165,14 @@ impl Resolver<'_> {
         }
     }
 
+    fn no_signal(&self) -> Resolved {
+        let current = self
+            .current
+            .as_ref()
+            .and_then(|c| find(self.repos, &c.repo));
+        self.run(current.map_or(RepoNote::Unknown, RepoNote::One), false)
+    }
+
     async fn infer(&self) -> Result<Resolved> {
         let inferred = repo_infer::infer(self.message.text, &candidates_of(self.repos)).await;
         match inferred {
@@ -176,6 +184,7 @@ impl Resolver<'_> {
                 None => Ok(self.run(RepoNote::Unknown, false)),
             },
             Ok(Inference::Ask { candidates, reason }) => self.unclear(candidates, reason).await,
+            Ok(Inference::NoSignal) => Ok(self.no_signal()),
             Ok(Inference::NoRepos) => Ok(self.run(RepoNote::Unknown, false)),
             Err(e) => {
                 tracing::warn!(

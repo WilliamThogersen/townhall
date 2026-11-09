@@ -74,13 +74,13 @@ async fn a_reply_keeps_its_quote_through_a_repo_ask() {
     let (_state, app) = app_with(&env, &fake);
     let beta = env.repo("beta").await;
     add_repo(&app, &beta).await;
-    let created = create(&app, "make it faster").await;
+    let created = create(&app, "make it faster in alpha or beta").await;
     let id = created["conversation"]["id"].as_str().unwrap().to_string();
     let d = idle(&app, &id).await;
     let first = entries_of(&d, "you")[0]["id"].as_u64().unwrap();
 
     let uri = format!("/api/conversations/{id}/messages");
-    let body = json!({"text": "also tidy", "replyTo": first});
+    let body = json!({"text": "also tidy alpha and beta", "replyTo": first});
     let (s, v) = call(&app, "POST", &uri, Some(body)).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     let d = idle(&app, &id).await;
@@ -93,7 +93,7 @@ async fn a_reply_keeps_its_quote_through_a_repo_ask() {
     assert!(entries_of(&d, "error").is_empty(), "{d}");
     let text = &fake.stdin(1)[0]["message"]["content"][0]["text"];
     assert_eq!(
-        text, "> replying to you: \"make it faster\"\n\nalso tidy",
+        text, "> replying to you: \"make it faster in alpha or beta\"\n\nalso tidy alpha and beta",
         "the quote stays with the message the ask brought back"
     );
 }

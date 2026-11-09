@@ -113,19 +113,19 @@ async fn the_code_rule_finds_the_repo_with_the_file() {
 }
 
 #[tokio::test]
-async fn an_unclear_repo_asks_and_the_answer_runs_the_first_message() {
+async fn naming_two_repos_asks_and_the_answer_runs_the_first_message() {
     let env = Env::new("alpha").await;
     let fake = Fake::install(env.root.path());
     let (_state, app) = app_with(&env, &fake);
     let beta = env.repo("beta").await;
     add_repo(&app, &beta).await;
-    let id = id_of(&create(&app, "make it faster").await);
+    let id = id_of(&create(&app, "make it faster in alpha or beta").await);
     let d = idle(&app, &id).await;
     assert_eq!(kinds(&d), ["you", "repoAsk"]);
     assert_eq!(
         bodies(entries_of(&d, "repoAsk")),
         [
-            json!({"kind": "repoAsk", "question": "two repos could fit. which one?", "candidates": ["alpha", "beta"], "offerAll": true})
+            json!({"kind": "repoAsk", "question": "you named two repos. which one?", "candidates": ["alpha", "beta"], "offerAll": true})
         ]
     );
     assert_eq!(fake.turns(), 0, "no turn until you answer");
@@ -139,7 +139,7 @@ async fn an_unclear_repo_asks_and_the_answer_runs_the_first_message() {
         [repo_entry("beta", "picked", "you picked it")]
     );
     let text = &fake.stdin(1)[0]["message"]["content"][0]["text"];
-    assert_eq!(text, "make it faster");
+    assert_eq!(text, "make it faster in alpha or beta");
     assert_eq!(fake.cwd(1), beta);
 
     message(&app, &id, "and the docs").await;
@@ -158,7 +158,7 @@ async fn both_runs_the_turn_with_every_candidate() {
     let fake = Fake::install(env.root.path());
     let (_state, app) = app_with(&env, &fake);
     add_repo(&app, &env.repo("beta").await).await;
-    let id = id_of(&create(&app, "bump the version").await);
+    let id = id_of(&create(&app, "bump the version in alpha and beta").await);
     idle(&app, &id).await;
     message(&app, &id, "both").await;
     let d = idle(&app, &id).await;
@@ -180,17 +180,66 @@ async fn guess_picks_the_first_candidate_and_says_why() {
     let (_state, app) = app_with(&env, &fake);
     add_repo(&app, &env.repo("beta").await).await;
     set_setting(&app, "repoUnclear", json!("guess")).await;
-    let id = id_of(&create(&app, "make it faster").await);
+    let id = id_of(&create(&app, "make it faster in alpha or beta").await);
     let d = idle(&app, &id).await;
     assert_eq!(
         bodies(entries_of(&d, "repo")),
         [repo_entry(
             "alpha",
             "picked",
-            "guessed: two repos could fit"
+            "guessed: you named two repos"
         )]
     );
     assert_eq!(fake.turns(), 1);
+}
+
+#[tokio::test]
+async fn plain_talk_with_several_repos_runs_without_a_repo() {
+    let env = Env::new("alpha").await;
+    let fake = Fake::install(env.root.path());
+    let (_state, app) = app_with(&env, &fake);
+    add_repo(&app, &env.repo("beta").await).await;
+    let id = id_of(&create(&app, "looking into the bend language").await);
+    let d = idle(&app, &id).await;
+    assert_eq!(kinds(&d), ["you", "townhall"]);
+    assert_eq!(fake.turns(), 1);
+    let prompt = values_of(&fake.argv(1), "--append-system-prompt").join(" ");
+    assert!(
+        prompt.contains("no repo is resolved for this turn"),
+        "{prompt}"
+    );
+}
+
+#[tokio::test]
+async fn guess_does_not_pick_a_repo_for_plain_talk() {
+    let env = Env::new("alpha").await;
+    let fake = Fake::install(env.root.path());
+    let (_state, app) = app_with(&env, &fake);
+    add_repo(&app, &env.repo("beta").await).await;
+    set_setting(&app, "repoUnclear", json!("guess")).await;
+    let id = id_of(&create(&app, "looking into the bend language").await);
+    let d = idle(&app, &id).await;
+    assert_eq!(kinds(&d), ["you", "townhall"]);
+}
+
+#[tokio::test]
+async fn a_conversation_repo_is_kept_on_a_message_with_no_signal() {
+    let env = Env::new("alpha").await;
+    let fake = Fake::install(env.root.path());
+    let (_state, app) = app_with(&env, &fake);
+    let beta = env.repo("beta").await;
+    add_repo(&app, &beta).await;
+    let id = id_of(&create(&app, "the beta login is broken").await);
+    idle(&app, &id).await;
+    message(&app, &id, "and why is that").await;
+    let d = idle(&app, &id).await;
+    assert_eq!(
+        bodies(entries_of(&d, "repo")),
+        [repo_entry("beta", "named", "you named it")]
+    );
+    assert!(entries_of(&d, "repoAsk").is_empty());
+    let prompt = values_of(&fake.argv(2), "--append-system-prompt").join(" ");
+    assert!(prompt.contains("repo for this turn: beta"), "{prompt}");
 }
 
 #[tokio::test]

@@ -143,3 +143,73 @@ async fn task_model_and_tokens_are_stored_on_the_run() {
     assert_eq!(runs[0].tokens, 12);
     assert!(env.store.set_task_model("nope", "m").await.is_err());
 }
+
+#[tokio::test]
+async fn conversation_turns_count_as_runs_of_the_default_type() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    env.store.create_task(&c.id, new_task("a")).await.unwrap();
+    env.store.set_task_tokens("a", 100).await.unwrap();
+    let at = "2026-11-09T10:00:00.000Z";
+    env.store
+        .record_turn(&c.id, "done", 30, at, at)
+        .await
+        .unwrap();
+    env.store
+        .record_turn(&c.id, "failed", 0, at, at)
+        .await
+        .unwrap();
+    let usage = env.store.agent_usage().await.unwrap();
+    assert_eq!(
+        usage,
+        vec![
+            AgentUsage {
+                agent: "builder".into(),
+                runs: 1,
+                tokens: 100
+            },
+            AgentUsage {
+                agent: "default".into(),
+                runs: 2,
+                tokens: 30
+            },
+        ]
+    );
+    assert!(env
+        .store
+        .record_turn("nope", "done", 1, at, at)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn turns_are_listed_with_their_conversation_and_matched_ignoring_case() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    env.store.create_task(&c.id, new_task("a")).await.unwrap();
+    env.store
+        .record_turn(
+            &c.id,
+            "done",
+            30,
+            "2099-01-01T00:00:00.000Z",
+            "2099-01-01T00:00:05.000Z",
+        )
+        .await
+        .unwrap();
+    let runs = env.store.agent_runs("DEFAULT", 10).await.unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].kind, "turn");
+    assert_eq!(runs[0].conversation_id, c.id);
+    assert_eq!(runs[0].task, c.title);
+    assert_eq!((runs[0].state.as_str(), runs[0].tokens), ("done", 30));
+    assert_eq!(
+        runs[0].ended_at.as_deref(),
+        Some("2099-01-01T00:00:05.000Z")
+    );
+    let builder = env.store.agent_runs("builder", 10).await.unwrap();
+    assert_eq!(builder.len(), 1);
+    assert_eq!(builder[0].kind, "task");
+    assert_eq!(builder[0].conversation_id, c.id);
+    assert!(env.store.agent_runs("default", 0).await.unwrap().is_empty());
+}

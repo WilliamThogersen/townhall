@@ -59,10 +59,7 @@ async fn content_hits_need_whole_tokens() {
         found("store", Rule::Code, "it has /info in src/two.ts")
     );
     let got = infer("see a.ts", &candidates).await.unwrap();
-    assert_eq!(
-        got,
-        ask(&["shop", "store"], "two repos could fit. which one?")
-    );
+    assert_eq!(got, Inference::NoSignal);
 }
 
 #[tokio::test]
@@ -72,10 +69,7 @@ async fn control_characters_in_a_hint_do_not_fail_the_call() {
     let got = infer("rename `a\0b.ts` and `x\u{1b}y`", &candidates)
         .await
         .unwrap();
-    assert_eq!(
-        got,
-        ask(&["shop", "townhall"], "two repos could fit. which one?")
-    );
+    assert_eq!(got, Inference::NoSignal);
 }
 
 const TEN: [&str; 10] = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9"];
@@ -94,7 +88,7 @@ async fn a_huge_message_stays_fast() {
     let start = Instant::now();
     let got = infer(&message, &candidates).await.unwrap();
     let took = start.elapsed();
-    assert!(matches!(got, Inference::Ask { .. }), "{got:?}");
+    assert_eq!(got, Inference::NoSignal);
     // Inference is linear in the message: ~0.6 s in release, 2-5 s in debug,
     // and a tiny message already costs 0.3-2 s (git calls on ten repos).
     // The limit still catches quadratic work, which would take minutes.
@@ -147,9 +141,11 @@ async fn names_come_back_trimmed() {
         candidate("townhall  ", townhall.dir.path()),
     ];
     let got = infer("make it faster", &two).await.unwrap();
+    assert_eq!(got, Inference::NoSignal);
+    let got = infer("move shop to townhall", &two).await.unwrap();
     assert_eq!(
         got,
-        ask(&["shop", "townhall"], "two repos could fit. which one?")
+        ask(&["shop", "townhall"], "you named two repos. which one?")
     );
     let got = infer("shop needs a cart", &two).await.unwrap();
     assert_eq!(got, found("shop", Rule::Named, "you named it"));

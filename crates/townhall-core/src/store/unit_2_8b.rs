@@ -59,6 +59,16 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "0807_default_model",
         sql: include_str!("migrations/0807_default_model.sql"),
     },
+    Migration {
+        id: 808,
+        name: "0808_default_web_tools",
+        sql: include_str!("migrations/0808_default_web_tools.sql"),
+    },
+    Migration {
+        id: 809,
+        name: "0809_conversation_turns",
+        sql: include_str!("migrations/0809_conversation_turns.sql"),
+    },
 ];
 
 /// A stored row: name, source, updated_at.
@@ -266,10 +276,15 @@ impl Store {
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "select name, repo, conversation_id, created_at, tokens from tasks
-                     where agent = ?1 collate nocase",
+                     where agent = ?1 collate nocase
+                     union all
+                     select c.title, coalesce(c.linked_repo, ''), t.conversation_id,
+                            t.created_at, t.tokens
+                     from conversation_turns t join conversations c on c.id = t.conversation_id
+                     where ?1 = ?2 collate nocase",
                 )?;
                 let rows = stmt
-                    .query_map([wanted], |r| {
+                    .query_map(params![wanted, CONVERSATION_AGENT_TYPE], |r| {
                         Ok((
                             r.get::<_, String>(0)?,
                             r.get::<_, String>(1)?,
@@ -300,6 +315,40 @@ impl Store {
         Ok(aggregate(&name, range, now_ms, &runs))
     }
 
+    pub async fn record_turn(
+        &self,
+        conversation_id: &str,
+        state: &str,
+        tokens: u64,
+        created_at: &str,
+        ended_at: &str,
+    ) -> Result<()> {
+        let id = conversation_id.to_string();
+        let (state, created_at, ended_at) = (
+            state.to_string(),
+            created_at.to_string(),
+            ended_at.to_string(),
+        );
+        let tokens = i64::try_from(tokens).unwrap_or(i64::MAX);
+        self.call(move |conn| {
+            let known = conn
+                .query_row("select 1 from conversations where id = ?1", [&id], |_| {
+                    Ok(())
+                })
+                .optional()?;
+            if known.is_none() {
+                return Err(Error::missing("conversation", &id));
+            }
+            conn.execute(
+                "insert into conversation_turns (conversation_id, state, tokens, created_at, ended_at)
+                 values (?1, ?2, ?3, ?4, ?5)",
+                params![id, state, tokens, created_at, ended_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn set_task_model(&self, task: &str, model: &str) -> Result<()> {
         let (name, model) = (task.to_string(), model.to_string());
         self.call(move |conn| {
@@ -319,19 +368,28 @@ impl Store {
         let agent = agent.to_string();
         self.call(move |conn| {
             let mut stmt = conn.prepare(
-                "select name, repo, state, model, tokens, created_at, ended_at from tasks
-                 where agent = ?1 collate nocase order by created_at desc, name limit ?2",
+                "select 'task', conversation_id, name, repo, state, model, tokens, created_at,
+                        ended_at
+                 from tasks where agent = ?1 collate nocase
+                 union all
+                 select 'turn', t.conversation_id, c.title, coalesce(c.linked_repo, ''), t.state,
+                        null, t.tokens, t.created_at, t.ended_at
+                 from conversation_turns t join conversations c on c.id = t.conversation_id
+                 where ?1 = ?3 collate nocase
+                 order by 8 desc, 3 limit ?2",
             )?;
             let rows = stmt
-                .query_map(params![agent, limit], |r| {
+                .query_map(params![agent, limit, CONVERSATION_AGENT_TYPE], |r| {
                     Ok(TaskRun {
-                        task: r.get(0)?,
-                        repo: r.get(1)?,
-                        state: r.get(2)?,
-                        model: r.get(3)?,
-                        tokens: r.get(4)?,
-                        created_at: r.get(5)?,
-                        ended_at: r.get(6)?,
+                        kind: r.get(0)?,
+                        conversation_id: r.get(1)?,
+                        task: r.get(2)?,
+                        repo: r.get(3)?,
+                        state: r.get(4)?,
+                        model: r.get(5)?,
+                        tokens: r.get(6)?,
+                        created_at: r.get(7)?,
+                        ended_at: r.get(8)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -343,11 +401,14 @@ impl Store {
     pub async fn agent_usage(&self) -> Result<Vec<AgentUsage>> {
         self.call(|conn| {
             let mut stmt = conn.prepare(
-                "select agent, count(*), sum(tokens) from tasks
-                 group by agent order by agent collate nocase",
+                "select agent, count(*), sum(tokens) from (
+                   select agent, tokens from tasks
+                   union all
+                   select ?1, tokens from conversation_turns
+                 ) group by agent order by agent collate nocase",
             )?;
             let rows = stmt
-                .query_map([], |r| {
+                .query_map([CONVERSATION_AGENT_TYPE], |r| {
                     Ok(AgentUsage {
                         agent: r.get(0)?,
                         runs: r.get(1)?,

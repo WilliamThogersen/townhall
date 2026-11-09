@@ -332,8 +332,10 @@ async fn runs_list_one_agent_types_tasks_with_model_and_tokens() {
     assert_eq!(
         keys,
         [
+            "conversationId",
             "createdAt",
             "endedAt",
+            "kind",
             "model",
             "repo",
             "state",
@@ -341,6 +343,7 @@ async fn runs_list_one_agent_types_tasks_with_model_and_tokens() {
             "tokens"
         ]
     );
+    assert_eq!(runs[1]["kind"], "task");
     assert_eq!(runs[1]["model"], "claude-x");
     assert_eq!(runs[1]["tokens"], 1200);
     assert!(runs[0]["model"].is_null());
