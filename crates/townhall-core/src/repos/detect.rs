@@ -4,7 +4,7 @@
 //! unreachable. Only logins and hosts are read: no token is requested, parsed or returned.
 
 use std::io::{ErrorKind, Read};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -269,23 +269,62 @@ fn env_dir(var: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// Where a program keeps its config: `<own_var>`, else `$XDG_CONFIG_HOME/<name>`, else
-/// `~/.config/<name>`, the same order both programs use.
-fn config_dir(own_var: &str, name: &str) -> PathBuf {
-    env_dir(own_var)
-        .or_else(|| env_dir("XDG_CONFIG_HOME").map(|d| d.join(name)))
-        .or_else(|| env_dir("HOME").map(|d| d.join(".config").join(name)))
-        .unwrap_or_else(|| PathBuf::from(".config").join(name))
+fn candidate_dirs(
+    env: &dyn Fn(&str) -> Option<PathBuf>,
+    own_var: &str,
+    name: &str,
+    macos_support: bool,
+) -> Vec<PathBuf> {
+    let home = env("HOME");
+    let all = [
+        env(own_var),
+        env("XDG_CONFIG_HOME").map(|d| d.join(name)),
+        home.as_ref()
+            .filter(|_| macos_support)
+            .map(|d| d.join("Library").join("Application Support").join(name)),
+        home.as_ref().map(|d| d.join(".config").join(name)),
+    ];
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    for dir in all.into_iter().flatten() {
+        if !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    }
+    dirs
 }
 
-fn read_config(path: &Path, program: &str) -> std::result::Result<String, String> {
-    std::fs::read_to_string(path).map_err(|e| match e.kind() {
-        ErrorKind::NotFound => format!(
-            "no {program} config at {}: log in with `{program} auth login`",
-            path.display()
-        ),
-        _ => format!("could not read {}: {e}", path.display()),
-    })
+fn config_dirs(own_var: &str, name: &str, macos_support: bool) -> Vec<PathBuf> {
+    candidate_dirs(
+        &env_dir,
+        own_var,
+        name,
+        macos_support && cfg!(target_os = "macos"),
+    )
+}
+
+fn read_configs(
+    dirs: &[PathBuf],
+    file: &str,
+    program: &str,
+) -> (Vec<(PathBuf, String)>, Vec<String>) {
+    let mut found = Vec::new();
+    let mut warnings = Vec::new();
+    let mut tried = Vec::new();
+    for dir in dirs {
+        let path = dir.join(file);
+        match std::fs::read_to_string(&path) {
+            Ok(text) => found.push((path, text)),
+            Err(e) if e.kind() == ErrorKind::NotFound => tried.push(path.display().to_string()),
+            Err(e) => warnings.push(format!("could not read {}: {e}", path.display())),
+        }
+    }
+    if found.is_empty() {
+        warnings.push(format!(
+            "no {program} config found (tried {}): log in with `{program} auth login`",
+            tried.join(", ")
+        ));
+    }
+    (found, warnings)
 }
 
 fn not_found(program: &str) -> String {
@@ -313,7 +352,7 @@ fn gh_by_command(program: &str) -> Result<Option<Pairs>> {
 }
 
 /// `gh auth status` first; when it fails or lists nothing, `hosts.yml` in the config dir.
-fn probe_gh(program: &str, config: &Path) -> Probe {
+fn probe_gh(program: &str, config: &[PathBuf]) -> Probe {
     let mut probe = Probe::default();
     match gh_by_command(program) {
         Ok(Some(pairs)) if !pairs.is_empty() => {
@@ -329,17 +368,16 @@ fn probe_gh(program: &str, config: &Path) -> Probe {
         }
         Err(e) => probe.warnings.push(e.to_string()),
     }
-    let path = config.join("hosts.yml");
-    match read_config(&path, "gh") {
-        Ok(text) => {
-            probe.pairs = gh_hosts(&text);
-            if probe.pairs.is_empty() {
-                probe
-                    .warnings
-                    .push(format!("{} lists no logged-in account", path.display()));
-            }
+    let (found, warnings) = read_configs(config, "hosts.yml", "gh");
+    probe.warnings.extend(warnings);
+    for (path, text) in found {
+        let pairs = gh_hosts(&text);
+        if pairs.is_empty() {
+            probe
+                .warnings
+                .push(format!("{} lists no logged-in account", path.display()));
         }
-        Err(warning) => probe.warnings.push(warning),
+        probe.pairs.extend(pairs);
     }
     probe
 }
@@ -364,7 +402,7 @@ fn glab_user(program: &str, host: &str) -> std::result::Result<String, String> {
 
 /// glab's hosts and users from `config.yml`, never from `auth status`. A host with no `user` key
 /// is asked with `glab api user`, so one slow host costs a few seconds, not the whole list.
-fn probe_glab(program: &str, config: &Path) -> Probe {
+fn probe_glab(program: &str, config: &[PathBuf]) -> Probe {
     let mut probe = Probe::default();
     match capture(program, &["--version"], VERSION_TIMEOUT) {
         Ok(Some(_)) => {}
@@ -377,21 +415,26 @@ fn probe_glab(program: &str, config: &Path) -> Probe {
             return probe;
         }
     }
-    let path = config.join("config.yml");
-    let text = match read_config(&path, "glab") {
-        Ok(text) => text,
-        Err(warning) => {
-            probe.warnings.push(warning);
-            return probe;
+    let (found, warnings) = read_configs(config, "config.yml", "glab");
+    probe.warnings.extend(warnings);
+    let mut hosts: Vec<(String, Option<String>)> = Vec::new();
+    for (path, text) in found {
+        let listed = glab_hosts(&text);
+        if listed.is_empty() {
+            probe
+                .warnings
+                .push(format!("{} lists no glab host", path.display()));
         }
-    };
-    let hosts = glab_hosts(&text);
-    if hosts.is_empty() {
-        probe
-            .warnings
-            .push(format!("{} lists no glab host", path.display()));
+        hosts.extend(listed);
     }
-    for (host, user) in hosts {
+    let asked: Vec<(String, Option<String>)> = hosts
+        .iter()
+        .filter(|(host, user)| {
+            user.is_some() || !hosts.iter().any(|(h, u)| h == host && u.is_some())
+        })
+        .cloned()
+        .collect();
+    for (host, user) in asked {
         match user {
             Some(user) => probe.pairs.push((host, user)),
             None => match glab_user(program, &host) {
@@ -441,8 +484,8 @@ fn mark(found: Vec<ForgeAccount>, registered: &[ForgeAccount]) -> Vec<Detected> 
 
 fn detect_in(
     programs: &Programs,
-    gh_config: &Path,
-    glab_config: &Path,
+    gh_config: &[PathBuf],
+    glab_config: &[PathBuf],
     registered: &[ForgeAccount],
 ) -> Detection {
     let (gh, glab) = std::thread::scope(|scope| {
@@ -479,8 +522,8 @@ fn detect_in(
 pub fn detect_blocking(programs: &Programs, registered: &[ForgeAccount]) -> Detection {
     detect_in(
         programs,
-        &config_dir("GH_CONFIG_DIR", "gh"),
-        &config_dir("GLAB_CONFIG_DIR", "glab-cli"),
+        &config_dirs("GH_CONFIG_DIR", "gh", false),
+        &config_dirs("GLAB_CONFIG_DIR", "glab-cli", true),
         registered,
     )
 }
@@ -580,10 +623,97 @@ mod tests {
         assert_eq!(glab_hosts("git_protocol: ssh\n"), vec![]);
     }
 
+    fn fake_env(vars: &[(&str, &str)]) -> impl Fn(&str) -> Option<PathBuf> {
+        let vars: Vec<(String, String)> = vars
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |key| {
+            vars.iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| PathBuf::from(v))
+        }
+    }
+
+    fn dirs(list: Vec<PathBuf>) -> Vec<String> {
+        list.iter().map(|d| d.display().to_string()).collect()
+    }
+
+    #[test]
+    fn glab_dirs_follow_go_user_config_dir_order_on_macos() {
+        let env = fake_env(&[
+            ("GLAB_CONFIG_DIR", "/own"),
+            ("XDG_CONFIG_HOME", "/xdg"),
+            ("HOME", "/Users/me"),
+        ]);
+        assert_eq!(
+            dirs(candidate_dirs(&env, "GLAB_CONFIG_DIR", "glab-cli", true)),
+            vec![
+                "/own",
+                "/xdg/glab-cli",
+                "/Users/me/Library/Application Support/glab-cli",
+                "/Users/me/.config/glab-cli"
+            ]
+        );
+        let home_only = fake_env(&[("HOME", "/Users/me")]);
+        assert_eq!(
+            dirs(candidate_dirs(
+                &home_only,
+                "GLAB_CONFIG_DIR",
+                "glab-cli",
+                true
+            )),
+            vec![
+                "/Users/me/Library/Application Support/glab-cli",
+                "/Users/me/.config/glab-cli"
+            ]
+        );
+    }
+
+    #[test]
+    fn linux_and_gh_dirs_skip_application_support() {
+        let home_only = fake_env(&[("HOME", "/home/me")]);
+        assert_eq!(
+            dirs(candidate_dirs(
+                &home_only,
+                "GLAB_CONFIG_DIR",
+                "glab-cli",
+                false
+            )),
+            vec!["/home/me/.config/glab-cli"]
+        );
+        let env = fake_env(&[
+            ("GH_CONFIG_DIR", "/gh"),
+            ("XDG_CONFIG_HOME", "/home/me/.config"),
+            ("HOME", "/home/me"),
+        ]);
+        assert_eq!(
+            dirs(candidate_dirs(&env, "GH_CONFIG_DIR", "gh", false)),
+            vec!["/gh", "/home/me/.config/gh"]
+        );
+    }
+
+    const REAL_GLAB_CONFIG: &str = "hosts:\n    gitlab.wexo.io:\n        api_protocol: https\n        git_protocol: https\n        user: wexowgt\n";
+
+    #[test]
+    fn glab_config_with_keyring_token_keeps_the_user() {
+        assert_eq!(
+            glab_hosts(REAL_GLAB_CONFIG),
+            vec![("gitlab.wexo.io".to_string(), Some("wexowgt".to_string()))]
+        );
+        let null_token =
+            "hosts:\n    gitlab.wexo.io:\n        token: !!null\n        user: wexowgt\n";
+        assert_eq!(
+            glab_hosts(null_token),
+            vec![("gitlab.wexo.io".to_string(), Some("wexowgt".to_string()))]
+        );
+    }
+
     #[cfg(unix)]
     mod with_stubs {
         use super::*;
         use std::os::unix::fs::PermissionsExt;
+        use std::path::Path;
 
         fn stub(dir: &Path, name: &str, body: &str) -> String {
             std::fs::create_dir_all(dir.join("bin")).unwrap();
@@ -629,7 +759,7 @@ mod tests {
                 "hosts:\n    gitlab.wexo.io:\n        token: x\n        user: wexowgt\n",
             );
             let started = Instant::now();
-            let found = detect_in(&Programs { gh, glab }, &gh_cfg, &glab_cfg, &[]);
+            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[]);
             assert!(started.elapsed() < Duration::from_secs(8));
             assert_eq!(
                 logins(&found),
@@ -640,6 +770,105 @@ mod tests {
                 ]
             );
             assert_eq!(found.warnings, Vec::<String>::new());
+        }
+
+        fn detect_with_home(home: &Path, vars: &[(&str, &str)], macos: bool) -> Detection {
+            let gh = stub(home, "gh", "exit 1");
+            let glab = stub(home, "glab", GLAB);
+            let home_var = home.to_string_lossy().into_owned();
+            let mut all = vec![("HOME", home_var.as_str())];
+            all.extend_from_slice(vars);
+            let env = fake_env(&all);
+            detect_in(
+                &Programs { gh, glab },
+                &candidate_dirs(&env, "GH_CONFIG_DIR", "gh", false),
+                &candidate_dirs(&env, "GLAB_CONFIG_DIR", "glab-cli", macos),
+                &[],
+            )
+        }
+
+        #[test]
+        fn glab_config_in_macos_application_support_is_found() {
+            let home = tempfile::tempdir().unwrap();
+            let support = home.path().join("Library").join("Application Support");
+            config(&support, "glab-cli", REAL_GLAB_CONFIG);
+            let found = detect_with_home(home.path(), &[], true);
+            assert_eq!(logins(&found), vec!["Gitlab wexowgt@gitlab.wexo.io"]);
+            assert!(
+                found.warnings.iter().all(|w| !w.starts_with("glab:")),
+                "{:?}",
+                found.warnings
+            );
+        }
+
+        #[test]
+        fn glab_config_in_dot_config_is_found_on_linux() {
+            let home = tempfile::tempdir().unwrap();
+            config(&home.path().join(".config"), "glab-cli", REAL_GLAB_CONFIG);
+            let found = detect_with_home(home.path(), &[], false);
+            assert_eq!(logins(&found), vec!["Gitlab wexowgt@gitlab.wexo.io"]);
+        }
+
+        #[test]
+        fn glab_configs_in_every_existing_candidate_are_merged() {
+            let home = tempfile::tempdir().unwrap();
+            let support = home.path().join("Library").join("Application Support");
+            config(&support, "glab-cli", REAL_GLAB_CONFIG);
+            config(
+                &home.path().join(".config"),
+                "glab-cli",
+                "hosts:\n    gitlab.corp.io:\n        user: corp\n    gitlab.wexo.io:\n        user: wexowgt\n",
+            );
+            let found = detect_with_home(home.path(), &[], true);
+            assert_eq!(
+                logins(&found),
+                vec![
+                    "Gitlab wexowgt@gitlab.wexo.io",
+                    "Gitlab corp@gitlab.corp.io"
+                ]
+            );
+        }
+
+        #[test]
+        fn glab_config_dir_variable_comes_first_and_xdg_is_also_read() {
+            let home = tempfile::tempdir().unwrap();
+            let own = home.path().join("own");
+            config(&own, "glab-cli", "hosts:\n    a.io:\n        user: first\n");
+            let xdg = home.path().join("xdg");
+            config(
+                &xdg,
+                "glab-cli",
+                "hosts:\n    b.io:\n        user: second\n",
+            );
+            let own_dir = own.join("glab-cli");
+            let found = detect_with_home(
+                home.path(),
+                &[
+                    ("GLAB_CONFIG_DIR", own_dir.to_str().unwrap()),
+                    ("XDG_CONFIG_HOME", xdg.to_str().unwrap()),
+                ],
+                true,
+            );
+            assert_eq!(
+                logins(&found),
+                vec!["Gitlab first@a.io", "Gitlab second@b.io"]
+            );
+        }
+
+        #[test]
+        fn no_glab_config_warning_lists_every_path_tried() {
+            let home = tempfile::tempdir().unwrap();
+            let found = detect_with_home(home.path(), &[], true);
+            let warning = found
+                .warnings
+                .iter()
+                .find(|w| w.starts_with("glab: no glab config found"))
+                .unwrap_or_else(|| panic!("{:?}", found.warnings));
+            let root = home.path().display().to_string();
+            assert!(warning.contains(&format!(
+                "{root}/Library/Application Support/glab-cli/config.yml"
+            )));
+            assert!(warning.contains(&format!("{root}/.config/glab-cli/config.yml")));
         }
 
         #[test]
@@ -653,7 +882,7 @@ mod tests {
                 "glab-cli",
                 "hosts:\n    gitlab.example.com:\n        api_host: gitlab.example.com\n",
             );
-            let found = detect_in(&Programs { gh, glab }, &gh_cfg, &glab_cfg, &[]);
+            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[]);
             assert_eq!(
                 logins(&found),
                 vec!["Gitlab from-api-gitlab.example.com@gitlab.example.com"]
@@ -667,7 +896,7 @@ mod tests {
             let glab = stub(dir.path(), "glab", GLAB);
             let gh_cfg = config(dir.path(), "gh", GH_HOSTS);
             let glab_cfg = dir.path().join("none");
-            let found = detect_in(&Programs { gh, glab }, &gh_cfg, &glab_cfg, &[]);
+            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[]);
             assert!(logins(&found).contains(&"Github wexowgt@github.com".to_string()));
             assert!(logins(&found).iter().all(|l| !l.starts_with("Gitlab")));
             assert!(
@@ -682,7 +911,7 @@ mod tests {
                 found
                     .warnings
                     .iter()
-                    .any(|w| w.starts_with("glab: no glab config at")),
+                    .any(|w| w.starts_with("glab: no glab config found (tried")),
                 "{:?}",
                 found.warnings
             );
@@ -705,7 +934,7 @@ mod tests {
                 gh: "/no/such/gh".to_string(),
                 glab,
             };
-            let found = detect_in(&programs, &dir.path().join("none"), &glab_cfg, &[]);
+            let found = detect_in(&programs, &[dir.path().join("none")], &[glab_cfg], &[]);
             assert_eq!(found.accounts, vec![]);
             assert!(
                 found
@@ -735,8 +964,8 @@ mod tests {
             .unwrap();
             let found = detect_in(
                 &Programs { gh, glab },
-                &dir.path().join("a"),
-                &dir.path().join("b"),
+                &[dir.path().join("a")],
+                &[dir.path().join("b")],
                 &registered,
             );
             let marks: Vec<_> = found.accounts.iter().map(|d| d.registered).collect();
