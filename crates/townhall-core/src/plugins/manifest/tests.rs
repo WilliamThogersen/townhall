@@ -130,8 +130,8 @@ fn real_claude_plugin_manifests_decode() {
             Some("0.5.7"),
         ),
         (
-            include_str!("../../../tests/fixtures/plugins/plugins/pstack-wexo.json"),
-            "pstack-wexo",
+            include_str!("../../../tests/fixtures/plugins/plugins/sample-team.json"),
+            "sample-team",
             Some("0.1.2"),
         ),
         (
@@ -170,7 +170,7 @@ fn a_claude_manifest_keeps_its_own_fields() {
         "../../../tests/fixtures/plugins/plugins/ddev.json"
     ))
     .unwrap();
-    assert_eq!(ddev.author.unwrap().email.as_deref(), Some("wgt@wexo.dk"));
+    assert_eq!(ddev.author.unwrap().email.as_deref(), Some("dev@example.com"));
 }
 
 #[test]

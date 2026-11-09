@@ -1,9 +1,9 @@
 {
   "name": "ddev",
-  "description": "Local DDEV development environment for WEXO Shopware projects. Use when the user wants to initialise the project, pull/import the database, start/stop the environment, run Composer or PHP commands, build storefront/admin assets, clear cache, manage plugins, run tests, access phpMyAdmin/RabbitMQ/Mailpit, or configure Xdebug.",
+  "description": "Local DDEV development environment for sample PHP projects. Use when the user wants to initialise the project, pull/import the database, start/stop the environment, run Composer or PHP commands, build storefront/admin assets, clear cache, manage plugins, run tests, access phpMyAdmin/RabbitMQ/Mailpit, or configure Xdebug.",
   "version": "1.0.0",
   "author": {
-    "name": "WEXO",
-    "email": "wgt@wexo.dk"
+    "name": "Sample Team",
+    "email": "dev@example.com"
   }
 }
