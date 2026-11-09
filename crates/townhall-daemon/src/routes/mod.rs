@@ -25,8 +25,7 @@ mod tasks;
 mod usage;
 
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{delete, get, post, put};
-use axum::Router;
+use axum::routing::{delete, get, post, put};use axum::Router;
 use townhall_core::model::{MAX_ARTIFACT_BYTES, MAX_ATTACHMENT_BYTES};
 
 use crate::state::AppState;
@@ -106,7 +105,7 @@ pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/info", get(info::info))
         .route("/repos", get(repos::list).post(repos::add))
-        .route("/repos/{name}", delete(repos::remove))
+        .route("/repos/{name}", delete(repos::remove).patch(repos::patch))
         .route("/repos/{name}/accounts", put(repos::put_accounts))
         .route("/forge-accounts/detected", get(forge_accounts::detected))
         .route("/settings", get(settings::get))

@@ -273,6 +273,71 @@ async fn a_link_that_cannot_be_cloned_is_a_400_that_says_so() {
 }
 
 #[tokio::test]
+async fn a_link_is_cloned_into_the_clone_dir_of_the_request() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let src = env.repo("shop-src").await;
+    let bare = env.root.path().join("shop.git");
+    let (from, to) = (src.to_string_lossy(), bare.to_string_lossy());
+    git(env.root.path(), &["clone", "-q", "--bare", &from, &to]).await;
+    let url = format!("file://{}", bare.display());
+    let dev = env.root.path().join("Developer");
+    let body = json!({"path": url, "cloneDir": dev});
+    let (s, v) = call(&app, "POST", "/api/repos", Some(body)).await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+    assert_eq!(v["data"]["path"], json!(dev.join("shop").canonicalize().unwrap()));
+    std::fs::create_dir_all(dev.join("taken")).unwrap();
+    let taken = format!("file://{}/taken.git", env.root.path().display());
+    git(env.root.path(), &["clone", "-q", "--bare", &from, &env.root.path().join("taken.git").to_string_lossy()]).await;
+    let body = json!({"path": taken, "cloneDir": dev});
+    let (s, v) = call(&app, "POST", "/api/repos", Some(body)).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+}
+
+#[tokio::test]
+async fn a_repo_is_renamed_and_gets_another_base_branch_through_patch() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let beta = env.repo("beta").await;
+    git(&beta, &["branch", "develop"]).await;
+    call(&app, "POST", "/api/repos", Some(json!({"path": beta}))).await;
+    let body = json!({"name": "store", "baseBranch": "develop"});
+    let (s, v) = call(&app, "PATCH", "/api/repos/beta", Some(body)).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!((&v["data"]["name"], &v["data"]["baseBranch"]), (&json!("store"), &json!("develop")));
+    let (_, v) = call(&app, "GET", "/api/repos", None).await;
+    assert_eq!(v["data"][1]["name"], "store");
+    let (s, _) = call(&app, "PATCH", "/api/repos/beta", Some(json!({"name": "x"}))).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = call(&app, "PATCH", "/api/repos/store", Some(json!({"name": "ALPHA"}))).await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    let (s, _) = call(&app, "PATCH", "/api/repos/store", Some(json!({}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let (s, _) = call(&app, "PATCH", "/api/repos/store", Some(json!({"token": "x"}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_repo_folder_is_moved_through_patch_but_not_the_startup_repo() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let beta = env.repo("beta").await;
+    call(&app, "POST", "/api/repos", Some(json!({"path": beta}))).await;
+    let target = env.root.path().join("beta-moved");
+    let body = json!({"path": target, "moveFolder": true});
+    let (s, v) = call(&app, "PATCH", "/api/repos/beta", Some(body)).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["data"]["path"], json!(target.canonicalize().unwrap()));
+    assert!(!beta.exists() && target.join(".git").exists());
+    let elsewhere = env.root.path().join("alpha-moved");
+    let body = json!({"path": elsewhere, "moveFolder": true});
+    let (s, v) = call(&app, "PATCH", "/api/repos/alpha", Some(body)).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("started with"), "{v}");
+    assert!(env.startup.join(".git").exists());
+}
+
+#[tokio::test]
 async fn a_subfolder_is_not_a_repo() {
     let env = Env::new("alpha").await;
     let (_state, app) = env.start();
