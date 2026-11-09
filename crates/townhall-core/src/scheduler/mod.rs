@@ -23,6 +23,7 @@ mod gate;
 mod launch;
 mod merged;
 mod plan;
+pub mod reflect;
 pub mod report;
 pub mod requires;
 mod verify;
@@ -64,6 +65,8 @@ pub struct Pass {
     /// Queued tasks held back by their agent type's `requires` (`gate.rs`).
     pub blocked: Vec<String>,
     pub merged: Vec<String>,
+    /// Ended tasks handed on to the `reflector` type (`reflect.rs`).
+    pub reflected: Vec<String>,
     /// Tasks whose check this pass started (`verify.rs`).
     pub verifying: Vec<String>,
     pub warnings: Vec<String>,
@@ -121,14 +124,19 @@ fn report(result: Result<Pass>, last: String) -> String {
 
 /// One pass: start what may start, then tell merges. Tests call it directly.
 pub async fn run_once(ctx: &Context) -> Result<Pass> {
-    let tasks = ctx.store()?.all_tasks().await?;
+    let mut tasks = ctx.store()?.all_tasks().await?;
+    let (reflected, reflect_warnings) = reflect::queue(ctx, &tasks).await?;
+    if !reflected.is_empty() {
+        tasks = ctx.store()?.all_tasks().await?;
+    }
     let verifying = verify::start(ctx, &tasks);
     let pass = launch::start_ready(ctx, &tasks).await?;
     let (merged, warnings) = merged::detect(ctx, &tasks).await?;
     Ok(Pass {
         verifying,
         merged,
-        warnings: [pass.warnings.clone(), warnings].concat(),
+        reflected,
+        warnings: [pass.warnings.clone(), reflect_warnings, warnings].concat(),
         ..pass
     })
 }

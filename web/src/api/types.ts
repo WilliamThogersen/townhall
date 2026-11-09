@@ -74,6 +74,7 @@ export interface Settings {
   readonly learnAboutMe: boolean;
   readonly githubAccount: string;
   readonly forgeAccounts: readonly ForgeAccount[];
+  readonly reflectAfterTasks: boolean;
 }
 
 export type SettingKey = keyof Settings;

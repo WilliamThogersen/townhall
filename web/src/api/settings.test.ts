@@ -15,6 +15,7 @@ const daemon: Settings = {
   learnAboutMe: true,
   githubAccount: "octocat",
   forgeAccounts: [{ forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "work" }],
+  reflectAfterTasks: true,
 };
 
 function mockFetch(status: number, body: unknown) {

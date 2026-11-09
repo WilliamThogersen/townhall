@@ -51,20 +51,46 @@ fn target(conn: &Connection, to: &str) -> Result<String> {
     })
 }
 
+/// Which tasks a hand back may take: the running ones (an agent hands its own task back), or
+/// the ended ones (townhall hands a finished task on to a reflector).
+#[derive(Debug, Clone, Copy)]
+enum Takes {
+    Running,
+    Ended,
+}
+
+impl Takes {
+    fn allows(self, state: TaskState) -> bool {
+        match self {
+            Self::Running => matches!(state, TaskState::Working | TaskState::NeedsYou),
+            Self::Ended => state == TaskState::Ended,
+        }
+    }
+
+    fn refusal(self, task: &str) -> String {
+        match self {
+            Self::Running => {
+                format!("task `{task}` is not running: only a running task can be handed back")
+            }
+            Self::Ended => {
+                format!("task `{task}` has not ended: only an ended task can be handed on")
+            }
+        }
+    }
+}
+
 fn hand_back(
     conn: &mut Connection,
     name: &str,
     to: &str,
     reason: &str,
     summary: &str,
+    from: Takes,
 ) -> Result<(Task, Handoff, ThreadEntry)> {
     let tx = conn.transaction()?;
     let task = find(&tx, name)?.ok_or_else(|| Error::missing("task", name))?;
-    if !matches!(task.state, TaskState::Working | TaskState::NeedsYou) {
-        return Err(Error::Conflict(format!(
-            "task `{}` is not running: only a running task can be handed back",
-            task.name
-        )));
+    if !from.allows(task.state) {
+        return Err(Error::Conflict(from.refusal(&task.name)));
     }
     let done = listed(&tx, &task.name)?;
     if done.len() >= MAX_HANDOFFS {
@@ -212,11 +238,37 @@ impl Store {
         reason: &str,
         summary: &str,
     ) -> Result<Handoff> {
+        self.hand_over(name, to, reason, summary, Takes::Running)
+            .await
+    }
+
+    /// Like [`Store::hand_back`] for an `ended` task: it is queued again as `to`, in its own
+    /// worktree and branch. `Conflict` when it has not ended or was handed back
+    /// `MAX_HANDOFFS` times.
+    pub async fn hand_on(
+        &self,
+        name: &str,
+        to: &str,
+        reason: &str,
+        summary: &str,
+    ) -> Result<Handoff> {
+        self.hand_over(name, to, reason, summary, Takes::Ended)
+            .await
+    }
+
+    async fn hand_over(
+        &self,
+        name: &str,
+        to: &str,
+        reason: &str,
+        summary: &str,
+        from: Takes,
+    ) -> Result<Handoff> {
         let args = [name, to, reason, summary].map(String::from);
         let bus = self.bus().clone();
         self.call(move |conn| {
             let [name, to, reason, summary] = &args;
-            let (task, handoff, entry) = hand_back(conn, name, to, reason, summary)?;
+            let (task, handoff, entry) = hand_back(conn, name, to, reason, summary, from)?;
             bus.publish(ServerEvent::TaskUpdated { task: task.clone() });
             bus.publish(ServerEvent::EntryAppended {
                 conversation_id: task.conversation_id.clone(),
