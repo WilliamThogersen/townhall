@@ -53,8 +53,6 @@ export const HELP = {
   agentsAtOnce: "the rest wait as queued and start when one finishes.",
   repoUnclear: "ask shows the candidates as buttons. guess picks the best match and says why.",
   sessionPanel: "open in new conversations. you can always fold it with s.",
-  clonesDir:
-    "where a repo added by link is cloned, as <folder>/<repo>. you can pick another folder each time you add one. empty uses ~/.townhall/repos.",
   forgeAccounts:
     "the gh and glab logins townhall may use. no token is stored. pick one per repo on the repos page, else the first for the host is used.",
   theme: "dark is the default.",
