@@ -24,12 +24,6 @@ async fn last_townhall(m: &Mcp) -> (u64, String) {
     }
 }
 
-async fn work_without_asking(m: &Mcp, on: bool) {
-    let body = json!({"value": on});
-    let (s, v) = call(&m.app, "PUT", "/api/settings/workWithoutAsking", Some(body)).await;
-    assert_eq!(s, StatusCode::OK, "{v}");
-}
-
 #[tokio::test]
 async fn list_and_read_show_the_saved_types() {
     let m = Mcp::new().await;
@@ -84,10 +78,10 @@ async fn read_agent_type_shows_what_a_type_requires() {
 #[tokio::test]
 async fn an_invalid_type_comes_back_as_its_errors() {
     let m = Mcp::new().await;
-    let bad = "name = \"x\"\nadapter = \"claude\"\npermission_mode = \"bypassPermissions\"\n";
+    let bad = "name = \"x\"\nadapter = \"claude\"\npermission_mode = \"yolo\"\n";
     let text = m.refused("save_agent_type", json!({"source": bad})).await;
     assert!(
-        text.contains("error: agent \"x\"") && text.contains("skip all"),
+        text.contains("error: agent \"x\"") && text.contains("bypassPermissions"),
         "{text}"
     );
     assert!(saved(&m, "x").await.is_none());
@@ -134,15 +128,9 @@ async fn a_new_type_asks_first_and_saves_once_confirmed() {
 }
 
 #[tokio::test]
-async fn work_without_asking_saves_new_types_but_never_replaces() {
+async fn a_replacing_save_asks_and_saves_once_confirmed() {
     let m = Mcp::new().await;
-    work_without_asking(&m, true).await;
-    let before = m.store().entries(&m.id).await.unwrap().len();
-    let done = m.ok("save_agent_type", json!({"source": REVIEWER})).await;
-    assert_eq!(done["status"], "saved");
-    assert_eq!(m.store().entries(&m.id).await.unwrap().len(), before);
-    assert_eq!(saved(&m, "reviewer").await.unwrap()["model"], "opus");
-
+    m.store().save_agent_type(REVIEWER).await.unwrap();
     let replace = REVIEWER.replace("opus", "haiku");
     let asked = m.ok("save_agent_type", json!({"source": replace})).await;
     assert_eq!(
@@ -164,6 +152,27 @@ async fn work_without_asking_saves_new_types_but_never_replaces() {
         (&json!("saved"), &json!(true))
     );
     assert_eq!(saved(&m, "reviewer").await.unwrap()["model"], "haiku");
+}
+
+#[tokio::test]
+async fn a_type_that_skips_all_permissions_never_saves_without_a_confirmation() {
+    let m = Mcp::new().await;
+    let skip = "name = \"yolo\"\nadapter = \"claude\"\npermission_mode = \"bypassPermissions\"\n";
+    let asked = m.ok("save_agent_type", json!({"source": skip})).await;
+    assert_eq!(asked["status"], "asked", "{asked}");
+    assert!(saved(&m, "yolo").await.is_none());
+    let (_, text) = last_townhall(&m).await;
+    assert!(text.contains("bypassPermissions"), "{text}");
+    let early = json!({"source": skip, "confirmed": true});
+    let text = m.refused("save_agent_type", early.clone()).await;
+    assert!(text.contains("confirm"), "{text}");
+    assert!(saved(&m, "yolo").await.is_none());
+    m.you("yes").await;
+    assert_eq!(m.ok("save_agent_type", early).await["status"], "saved");
+    assert_eq!(
+        saved(&m, "yolo").await.unwrap()["permissionMode"],
+        "bypassPermissions"
+    );
 }
 
 #[tokio::test]
@@ -196,8 +205,7 @@ async fn create_task_runs_as_a_saved_type() {
         .ok("create_task", mcp_support::task(&common::unique("a")))
         .await;
     assert_eq!(first["agent"], "builder");
-    work_without_asking(&m, true).await;
-    m.ok("save_agent_type", json!({"source": REVIEWER})).await;
+    m.store().save_agent_type(REVIEWER).await.unwrap();
     let mut args = mcp_support::task(&common::unique("b"));
     args["agent"] = json!("REVIEWER");
     assert_eq!(m.ok("create_task", args).await["agent"], "reviewer");

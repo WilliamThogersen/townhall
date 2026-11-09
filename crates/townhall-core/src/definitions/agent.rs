@@ -25,23 +25,25 @@ impl AdapterKind {
     }
 }
 
-/// The permission modes a definition may set. `bypassPermissions` is refused:
-/// skip all is set only through the settings endpoint.
+/// The permission modes a definition may set. `bypassPermissions` is skip all: saving a
+/// type that sets it always asks the user to confirm (`mcp/library.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", try_from = "String")]
 pub enum PermissionMode {
     Default,
     AcceptEdits,
     Plan,
+    BypassPermissions,
 }
 
 impl PermissionMode {
-    /// The value `claude --permission-mode` takes.
+    /// The name used in TOML and JSON.
     pub fn as_str(self) -> &'static str {
         match self {
             PermissionMode::Default => "default",
             PermissionMode::AcceptEdits => "acceptEdits",
             PermissionMode::Plan => "plan",
+            PermissionMode::BypassPermissions => "bypassPermissions",
         }
     }
 }
@@ -54,11 +56,9 @@ impl TryFrom<String> for PermissionMode {
             "default" => Ok(PermissionMode::Default),
             "acceptEdits" => Ok(PermissionMode::AcceptEdits),
             "plan" => Ok(PermissionMode::Plan),
-            "bypassPermissions" => Err(format!(
-                "permission_mode \"{value}\" is not allowed in a definition: skip all is set only in settings"
-            )),
+            "bypassPermissions" => Ok(PermissionMode::BypassPermissions),
             _ => Err(format!(
-                "permission_mode \"{value}\" is not one of default, acceptEdits, plan"
+                "permission_mode \"{value}\" is not one of default, acceptEdits, plan, bypassPermissions"
             )),
         }
     }

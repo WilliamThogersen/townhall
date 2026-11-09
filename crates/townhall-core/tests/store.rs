@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use serde_json::json;
 use tempfile::TempDir;
 use townhall_core::events::EventBus;
-use townhall_core::model::{PermissionMode, SettingKey, Settings};
+use townhall_core::model::{SettingKey, Settings};
 use townhall_core::store::{Store, DB_FILE, LOCK_FILE};
 use townhall_core::{Error, Home};
 
@@ -118,27 +118,17 @@ async fn config_json_is_imported_once_and_renamed() {
 }
 
 #[tokio::test]
-async fn a_config_json_cannot_choose_skip_all() {
+async fn a_config_json_with_the_removed_permission_settings_still_imports_and_changes_no_setting() {
     let dir = TempDir::new().unwrap();
     write_config(
         &dir,
-        json!({"repo": "/x", "settings": {"permissionMode": "bypassPermissions"}}),
+        json!({"repo": "/x", "settings": {
+            "permissionMode": "bypassPermissions", "workWithoutAsking": true, "agentsAtOnce": 4
+        }}),
     );
     let store = open(&dir);
-    assert_eq!(
-        store.settings().await.unwrap().permission_mode,
-        PermissionMode::AcceptEdits
-    );
-    drop(store);
-    write_config(
-        &dir,
-        json!({"settings": {"permissionMode": "bypassPermissions"}}),
-    );
-    let again = open(&dir);
-    assert_eq!(
-        again.settings().await.unwrap().permission_mode,
-        PermissionMode::AcceptEdits
-    );
+    assert_eq!(store.settings().await.unwrap().agents_at_once, 6);
+    assert!(home(&dir).root().join("config.json.imported").exists());
 }
 
 #[tokio::test]
@@ -183,34 +173,27 @@ async fn settings_round_trip_and_validate() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir);
     let s = store
-        .set_setting(SettingKey::PermissionMode, json!("bypassPermissions"))
+        .set_setting(SettingKey::AgentsAtOnce, json!(9))
         .await
         .unwrap();
-    assert_eq!(s.permission_mode, PermissionMode::BypassPermissions);
+    assert_eq!(s.agents_at_once, 9);
     for (key, bad) in [
-        (SettingKey::PermissionMode, json!("yolo")),
         (SettingKey::AgentsAtOnce, json!(0)),
-        (SettingKey::WorkWithoutAsking, json!("yes")),
+        (SettingKey::SessionPanelOpen, json!("yes")),
     ] {
         let err = store.set_setting(key, bad).await.unwrap_err();
         assert!(matches!(err, Error::InvalidInput(_)), "{err:?}");
     }
     drop(store);
     let again = open(&dir);
-    assert_eq!(
-        again.settings().await.unwrap().permission_mode,
-        PermissionMode::BypassPermissions
-    );
+    assert_eq!(again.settings().await.unwrap().agents_at_once, 9);
     let path = std::path::Path::new("/x/app");
     again.set_desktop_repo(path).await.unwrap();
     assert_eq!(
         again.desktop_repo().await.unwrap(),
         Some(path.to_path_buf())
     );
-    assert_eq!(
-        again.settings().await.unwrap().permission_mode,
-        PermissionMode::BypassPermissions
-    );
+    assert_eq!(again.settings().await.unwrap().agents_at_once, 9);
 }
 
 #[tokio::test]
@@ -221,7 +204,7 @@ async fn a_bad_settings_row_reads_as_its_default() {
         .call(|conn| {
             conn.execute(
                 "insert into settings (key, value, updated_at) values ('agentsAtOnce', 'nope', 'x'),
-                 ('notifyWhen', '\"loud\"', 'x'), ('workWithoutAsking', 'true', 'x')",
+                 ('notifyWhen', '\"loud\"', 'x'), ('workWithoutAsking', 'true', 'x'), ('permissionMode', '\"plan\"', 'x')",
                 [],
             )?;
             Ok(())
@@ -231,5 +214,4 @@ async fn a_bad_settings_row_reads_as_its_default() {
     let s = store.settings().await.unwrap();
     assert_eq!(s.agents_at_once, 6);
     assert_eq!(s.notify_when, Settings::default().notify_when);
-    assert!(s.work_without_asking);
 }

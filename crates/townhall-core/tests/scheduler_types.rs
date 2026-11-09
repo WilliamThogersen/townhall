@@ -1,7 +1,6 @@
 use std::time::{Duration, Instant};
 
-use serde_json::json;
-use townhall_core::model::{NewTask, SettingKey, TaskState};
+use townhall_core::model::{NewTask, TaskState};
 use townhall_core::scheduler::run_once;
 
 mod scheduler_support;
@@ -51,28 +50,34 @@ async fn a_builder_task_runs_claude_with_the_types_flags() {
 }
 
 #[tokio::test]
-async fn a_types_mode_only_narrows_the_setting() {
+async fn a_task_runs_in_its_types_mode_and_accept_edits_when_it_sets_none() {
     let s = Sched::new().await;
-    let skip = json!("bypassPermissions");
-    s.store()
-        .set_setting(SettingKey::PermissionMode, skip)
-        .await
-        .unwrap();
-    let narrowed = unique("narrow");
-    create_as(&s, &narrowed, "builder").await;
-    run_once(s.ctx()).await.unwrap();
-    let args = s.args(&narrowed).await;
-    assert!(args.contains("\n--permission-mode=acceptEdits\n"), "{args}");
-    assert!(!args.contains("dangerously"), "{args}");
-
-    s.store()
-        .set_setting(SettingKey::PermissionMode, json!("plan"))
-        .await
-        .unwrap();
-    let strict = unique("strict");
-    create_as(&s, &strict, "builder").await;
-    run_once(s.ctx()).await.unwrap();
-    assert!(s.args(&strict).await.contains("\n--permission-mode=plan\n"));
+    let source =
+        |name: &str, mode: &str| format!("name = \"{name}\"\nadapter = \"claude\"\n{mode}");
+    for (type_name, mode) in [
+        ("modeless", ""),
+        ("planner", "permission_mode = \"plan\"\n"),
+        ("skipper", "permission_mode = \"bypassPermissions\"\n"),
+    ] {
+        s.store()
+            .save_agent_type(&source(type_name, mode))
+            .await
+            .unwrap();
+    }
+    for (task, type_name, want) in [
+        ("modeless", "modeless", "--permission-mode=acceptEdits\n"),
+        ("planned", "planner", "--permission-mode=plan\n"),
+        ("skipped", "skipper", "--dangerously-skip-permissions\n"),
+    ] {
+        let name = unique(task);
+        create_as(&s, &name, type_name).await;
+        run_once(s.ctx()).await.unwrap();
+        let args = s.args(&name).await;
+        assert!(args.contains(want), "{type_name}: {args}");
+        if type_name != "skipper" {
+            assert!(!args.contains("dangerously"), "{args}");
+        }
+    }
 }
 
 #[tokio::test]

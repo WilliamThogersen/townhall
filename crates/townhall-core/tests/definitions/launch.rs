@@ -9,15 +9,6 @@ use townhall_core::model::PermissionMode as SettingsMode;
 
 use crate::support::{agent_errors, CODER};
 
-/// Every saved setting, strictest first.
-const SETTINGS_MODES: [SettingsMode; 5] = [
-    SettingsMode::Plan,
-    SettingsMode::Default,
-    SettingsMode::AcceptEdits,
-    SettingsMode::Auto,
-    SettingsMode::BypassPermissions,
-];
-
 /// The argv the real `ClaudeCodeAdapter` command hands to its program, without the
 /// isolation flags every agent gets: checked here, right before the prompt.
 fn argv(options: &LaunchOptions) -> Vec<String> {
@@ -49,7 +40,7 @@ fn the_coder_runs_with_its_own_flags() {
     let coder = parse_agent(CODER).unwrap().def;
     let prompt = coder.prompt.clone().unwrap();
     assert_eq!(
-        argv(&coder.launch_options(SettingsMode::Auto)),
+        argv(&coder.launch_options()),
         [
             "--model=sonnet".to_string(),
             "--permission-mode=dontAsk".into(),
@@ -69,41 +60,17 @@ fn mode_words(mode: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_definition_only_narrows_the_saved_setting() {
-    let table: [(Option<&str>, [&str; 5]); 4] = [
-        (None, ["plan", "default", "acceptEdits", "auto", "skip all"]),
-        (Some("plan"), ["plan", "plan", "plan", "plan", "plan"]),
-        (
-            Some("default"),
-            ["plan", "default", "default", "default", "default"],
-        ),
-        (
-            Some("acceptEdits"),
-            [
-                "plan",
-                "default",
-                "acceptEdits",
-                "acceptEdits",
-                "acceptEdits",
-            ],
-        ),
+fn a_definition_runs_in_its_own_mode_and_accept_edits_when_it_sets_none() {
+    let table = [
+        (None, "acceptEdits"),
+        (Some("plan"), "plan"),
+        (Some("default"), "default"),
+        (Some("acceptEdits"), "acceptEdits"),
+        (Some("bypassPermissions"), "skip all"),
     ];
-    for (own, expected) in table {
+    for (own, want) in table {
         let def = agent(&own.map_or(String::new(), |m| format!("permission_mode = \"{m}\"")));
-        for (settings, want) in SETTINGS_MODES.into_iter().zip(expected) {
-            let options = def.launch_options(settings);
-            assert_eq!(
-                argv(&options),
-                mode_words(want),
-                "{own:?} under {settings:?}"
-            );
-            if own.is_some() {
-                assert!(!matches!(
-                    options.permission_mode,
-                    SettingsMode::Auto | SettingsMode::BypassPermissions
-                ));
-            }
-        }
+        assert_eq!(argv(&def.launch_options()), mode_words(want), "{own:?}");
     }
 }
 
@@ -116,17 +83,25 @@ fn definition_modes_map_onto_the_same_settings_modes() {
     ] {
         assert_eq!(SettingsMode::from(mode).cli_value(), Some(mode.as_str()));
     }
+    assert_eq!(
+        SettingsMode::from(PermissionMode::BypassPermissions),
+        SettingsMode::BypassPermissions
+    );
+    assert_eq!(
+        PermissionMode::BypassPermissions.as_str(),
+        "bypassPermissions"
+    );
 }
 
 #[test]
 fn an_effort_reaches_the_claude_launch_only_when_set() {
-    let medium = agent("effort = \"medium\"").launch_options(SettingsMode::AcceptEdits);
+    let medium = agent("effort = \"medium\"").launch_options();
     assert_eq!(medium.effort, Some(Effort::Medium));
     assert_eq!(
         argv(&medium),
         ["--effort=medium", "--permission-mode=acceptEdits"]
     );
-    let unset = agent("").launch_options(SettingsMode::AcceptEdits);
+    let unset = agent("").launch_options();
     assert_eq!(unset.effort, None);
     assert_eq!(argv(&unset), ["--permission-mode=acceptEdits"]);
 }
@@ -134,11 +109,8 @@ fn an_effort_reaches_the_claude_launch_only_when_set() {
 #[test]
 fn a_blank_model_is_unset() {
     let def = agent("model = \"  \"");
-    assert_eq!(def.launch_options(SettingsMode::Plan).model, None);
-    assert_eq!(
-        argv(&def.launch_options(SettingsMode::Plan)),
-        mode_words("plan")
-    );
+    assert_eq!(def.launch_options().model, None);
+    assert_eq!(argv(&def.launch_options()), mode_words("acceptEdits"));
 }
 
 #[test]
@@ -146,7 +118,7 @@ fn the_step_prompt_goes_last_after_the_end_of_options() {
     let def = agent("tools = [\"Read\", \"Bash(rm -rf:*)\"]");
     let options = LaunchOptions {
         prompt: Some("go on".into()),
-        ..def.launch_options(SettingsMode::AcceptEdits)
+        ..def.launch_options()
     };
     assert_eq!(
         argv(&options),
@@ -165,7 +137,7 @@ fn the_step_prompt_goes_last_after_the_end_of_options() {
 fn a_tool_with_a_comma_is_refused_at_launch() {
     let def = agent("tools = [\"Read\", \"Bash(git diff:*,x)\"]");
     let error = ClaudeCodeAdapter::default()
-        .launch_command(&def.launch_options(SettingsMode::AcceptEdits))
+        .launch_command(&def.launch_options())
         .unwrap_err();
     assert!(
         error.to_string().contains("must not hold a comma"),
@@ -191,7 +163,7 @@ fn a_shell_definition_carries_its_command() {
     let def = parse_agent("name = \"s\"\nadapter = \"shell\"\ncommand = \"cargo test\"\n")
         .unwrap()
         .def;
-    let options = def.launch_options(SettingsMode::default());
+    let options = def.launch_options();
     assert_eq!(options.command.as_deref(), Some("cargo test"));
     assert_eq!(ShellAdapter.launch_command(&options).unwrap(), "cargo test");
 }
