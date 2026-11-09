@@ -14,6 +14,7 @@ pub mod fleet;
 pub mod fsutil;
 pub mod home;
 pub mod ids;
+pub mod insights;
 pub mod logs;
 pub mod mcp;
 pub mod model;

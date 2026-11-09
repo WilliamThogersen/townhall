@@ -272,7 +272,8 @@ mod tests {
                 "read_agent_type",
                 "save_agent_type",
                 "read_logs",
-                "log_summary"
+                "log_summary",
+                "conversation_insights"
             ]
         );
         assert_eq!(got[2]["error"]["code"], INVALID_REQUEST);

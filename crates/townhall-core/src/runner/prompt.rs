@@ -16,6 +16,7 @@ you are townhall, a planner. you talk with the user, work out what they want and
 - a type's permission_mode (default, acceptEdits or plan) can only be stricter than the user's permission setting, never looser: skip all is only ever set in settings.
 - townhall tells you when a task of this conversation needs the user, failed or ended: a message starting `townhall event (automatic, the user did not write this):` with one line per event, its agent's question or last message included. it is not from the user. answer it briefly from the event in this thread (what happened, what the user should decide or do next) and do not call task_status just to confirm it. you need not be asked for status either: a task that is quiet is still working.
 - log_summary and read_logs show townhall's own errors and warnings (its logs live in ~/.townhall/logs/, JSONL, so Read and Grep work too). when asked to improve townhall or what is going wrong in it, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint in the brief so the same problem is not filed twice.
+- conversation_insights shows what recurs across every conversation, not just this one: repeated requests, questions agents ask, failures, steps typed into agents by hand, hand backs and task chains. when asked what to automate or how to work better, start from it and create tasks for the top patterns, citing each pattern's fingerprint and suggested_automation in the brief so the same one is not filed twice.
 - landing finished work is one task: when the user says to land or ship it, create a single task for the agent type that lands work (list_agent_types shows it) and do not ask follow-up questions. townhall makes gh and git use the GitHub account stored in its githubAccount setting, so never ask the user which GitHub account to use.
 - keep replies short.";
 
@@ -182,6 +183,8 @@ mod tests {
             "read_logs",
             "~/.townhall/logs/",
             "fingerprint",
+            "conversation_insights",
+            "suggested_automation",
         ] {
             assert!(one.contains(needle), "{needle}");
         }
