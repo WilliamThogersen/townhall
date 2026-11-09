@@ -164,7 +164,7 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | key | values | default |
 |-----|--------|---------|
 | `agentsAtOnce` | integer 1 to 50 | `6` |
-| `repoUnclear` | `ask`, `guess` | `ask` |
+| `repoUnclear` | `ask`, `guess`: what townhall does when a message points at several repos (names two, or its code fits two equally): ask, or run in the first candidate. A message that points at no repo is not unclear: it keeps the conversation's repo, else runs with no repo (the session passes `repo` to `create_task`), and nothing is asked or noted | `ask` |
 | `sessionPanelOpen` | boolean | `true` |
 | `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
 | `minFreeDiskGb` | integer 0 to 100000: a task does not start with less free space on the data volume; `0` is off | `5` |

@@ -134,18 +134,12 @@ async fn only_repo_when_nothing_else_fits() {
 }
 
 #[tokio::test]
-async fn ask_every_repo_when_nothing_fits() {
+async fn no_signal_when_nothing_fits() {
     let (shop, townhall) = shop_and_townhall().await;
     let other = repo("store", &[]).await;
     let candidates = [shop.candidate(), townhall.candidate(), other.candidate()];
     let got = infer("make it faster", &candidates).await.unwrap();
-    assert_eq!(
-        got,
-        ask(
-            &["shop", "townhall", "store"],
-            "three repos could fit. which one?"
-        )
-    );
+    assert_eq!(got, Inference::NoSignal);
 }
 
 #[tokio::test]
@@ -155,10 +149,7 @@ async fn hints_that_hit_nothing_fall_back() {
     let got = infer("rename `NothingLikeThis` in payment.go", &candidates)
         .await
         .unwrap();
-    assert_eq!(
-        got,
-        ask(&["shop", "townhall"], "two repos could fit. which one?")
-    );
+    assert_eq!(got, Inference::NoSignal);
 }
 
 #[tokio::test]
@@ -219,6 +210,8 @@ async fn event_text_for_found_only() {
     );
     let asked = infer("make it faster", &candidates).await.unwrap();
     assert_eq!(event_text(&asked, "main"), None);
+    let tie = ask(&["shop", "townhall"], "two repos could fit. which one?");
+    assert_eq!(event_text(&tie, "main"), None);
     assert_eq!(event_text(&Inference::NoRepos, "main"), None);
 }
 
@@ -246,6 +239,8 @@ fn wire_names_are_camel_case_and_tagged() {
     assert_eq!(got, found("shop", Rule::Code, "it has x"));
     let none: Inference = from_pairs(&[("kind", "noRepos")]);
     assert_eq!(none, Inference::NoRepos);
+    let quiet: Inference = from_pairs(&[("kind", "noSignal")]);
+    assert_eq!(quiet, Inference::NoSignal);
     let cand: Candidate = from_pairs(&[("name", "shop"), ("path", "/x/shop")]);
     assert_eq!(cand, candidate("shop", Path::new("/x/shop")));
 }

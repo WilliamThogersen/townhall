@@ -57,7 +57,7 @@ pub(crate) fn event_text(inference: &Inference, base_branch: &str) -> Option<Str
         Inference::Found { repo, reason, .. } => {
             Some(clean(&format!("~ repo {repo} · {base_branch}, {reason}")))
         }
-        Inference::Ask { .. } | Inference::NoRepos => None,
+        Inference::Ask { .. } | Inference::NoRepos | Inference::NoSignal => None,
     }
 }
 

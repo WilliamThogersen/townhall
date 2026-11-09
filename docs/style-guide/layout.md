@@ -69,7 +69,7 @@ Hive (`~/Developer/desktop/hive`) already runs planning conversations that creat
 
 **Task** (what an agent picks up): `name` (also the branch, `townhall/<name>`), `title`, `prompt`, `repo`, `baseBranch`, `after` (tasks it waits for), `state` (queued, working, needs you, in ci, in review, merged, ended, error), `pr` (number, checks).
 
-**Repo inference** (new, no picker): when you write, townhall matches against the known repos in this order: a repo named in your message; a repo whose code has what you describe (file, route, package name); otherwise it asks with one button per candidate. It says which rule it used as a `~` event. Each task stores the result, so the agent's worktree starts from that repo's base branch.
+**Repo inference** (new, no picker): when you write, townhall matches against the known repos in this order: a repo named in your message; a repo whose code has what you describe (file, route, package name); otherwise, when nothing in the message points at a repo, the turn runs with the conversation's current repo or none, and the planner picks a repo only when it creates a task. It asks with one button per candidate only when you named several repos, named one it cannot reach, or the code fits several equally (the `repoUnclear` setting can guess the first instead). It says which rule it used as a `~` event. Each task stores the result, so the agent's worktree starts from that repo's base branch.
 
 **Repo of a conversation** (Hive's `linkedRepoOf`): a repo set from the row menu wins; else the most common repo among its tasks; a tie is `multiple repos`; nothing yet is `no repo`.
 
