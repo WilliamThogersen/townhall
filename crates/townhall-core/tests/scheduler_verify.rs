@@ -129,6 +129,9 @@ async fn a_check_that_keeps_failing_needs_the_user_after_the_last_retry() {
     let verify = last.done.verify.unwrap();
     assert_eq!((verify.phase, verify.retries), (VerifyPhase::Failed, 1));
     assert!(verify.output.unwrap().contains("still-red"));
+    let told = s.ctx().notes().waiting(&s.conversation);
+    let line = format!("task {name} needs you, its check `echo still-red; exit 1` still fails");
+    assert!(told.iter().any(|t| t.starts_with(&line)), "{told:?}");
     let pass = run_once(s.ctx()).await.unwrap();
     assert!(pass.started.is_empty(), "{pass:?}");
     assert_eq!(s.state(&name).await, TaskState::NeedsYou);

@@ -20,7 +20,7 @@ use tokio::process::Command;
 
 use crate::context::Context;
 use crate::model::{AgentEvent, Done, EntryBody, Task, TaskState, Verify, VerifyPhase};
-use crate::{Error, Result};
+use crate::{runner, Error, Result};
 
 use super::plan;
 
@@ -87,10 +87,21 @@ async fn verify(ctx: &Context, task: &Task) -> Result<()> {
         let repo = ctx.repo(&task.repo).await?;
         ctx.workspace(&repo)?.worktrees_dir().join(&task.name)
     };
-    let store = ctx.store()?;
     match run_check(&command, &dir).await {
         Ok(()) => passed(ctx, task).await,
-        Err(output) => store.check_failed(&task.name, &output).await.map(|_| ()),
+        Err(output) => {
+            let failed = ctx.store()?.check_failed(&task.name, &output).await?;
+            if failed.state == TaskState::NeedsYou {
+                let said = format!(
+                    "task {} needs you, its check `{command}` still fails after {} retries. its last output: {}",
+                    task.name,
+                    failed.done.verify.as_ref().map_or(0, |v| v.retries),
+                    plan::capped(&output, 500)
+                );
+                runner::notify(ctx, &task.conversation_id, said);
+            }
+            Ok(())
+        }
     }
 }
 
