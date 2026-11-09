@@ -18,6 +18,7 @@ export function useRepoKeys(formOpen: boolean, onAdd: () => void): void {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== ADD_REPO_HINT.keys || e.defaultPrevented || e.isComposing) return;
       if (e.metaKey || e.ctrlKey || e.altKey || isTextField(e.target)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
       e.preventDefault();
       latest.current();
     };
