@@ -19,7 +19,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::context::Context;
 use crate::home::{repo_key, WORKTREES_DIR};
-use crate::model::{AgentInfo, AgentState, ServerEvent, Task};
+use crate::model::{AgentInfo, AgentState, Done, ServerEvent, Task};
 use crate::{fleet, runner, tmux, Error, Result, Workspace};
 use sync::Change;
 
@@ -233,7 +233,12 @@ impl Watcher {
         }
         if let Some(task) = task {
             let entry = Some(trust::entry(&task.name));
-            self.apply(task, Some(Change { state: None, entry })).await;
+            let change = Change {
+                state: None,
+                entry,
+                verify: None,
+            };
+            self.apply(task, Some(change)).await;
         }
         true
     }
@@ -276,11 +281,19 @@ impl Watcher {
                 return false;
             }
         };
-        if let Some(state) = change.state {
+        if change.state.is_some() || change.verify.is_some() {
             let (expected, name) = (task.state, task.name.clone());
+            let (state, verify) = (change.state, change.verify);
             let moved = move |t: Task| {
                 if t.state == expected {
-                    Ok(Task { state, ..t })
+                    Ok(Task {
+                        state: state.unwrap_or(t.state),
+                        done: Done {
+                            verify: verify.or(t.done.verify.clone()),
+                            ..t.done.clone()
+                        },
+                        ..t
+                    })
                 } else {
                     Err(Error::Conflict(format!("task `{name}` changed meanwhile")))
                 }
