@@ -1,0 +1,7 @@
+{
+  "name": "sample-team",
+  "version": "0.1.2",
+  "description": "Sample team skills: review, scope check, plain-language summaries, and a planning router.",
+  "author": { "name": "Sample Team" },
+  "license": "MIT"
+}

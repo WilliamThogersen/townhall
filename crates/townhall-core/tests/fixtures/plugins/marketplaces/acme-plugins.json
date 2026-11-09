@@ -1,0 +1,38 @@
+{
+  "name": "acme-plugins",
+  "description": "Plugins of the Acme team",
+  "owner": { "name": "Acme", "url": "https://acme.example" },
+  "plugins": [
+    {
+      "name": "release-notes",
+      "description": "Writes release notes when a task is merged",
+      "version": "0.3.0",
+      "source": { "source": "github", "repo": "acme/townhall-release-notes", "ref": "v0.3.0", "sha": "3f9c0d1e5b7a4c2d8e6f1a0b9c8d7e6f5a4b3c2d" },
+      "category": "workflow",
+      "tags": ["release", "docs"]
+    },
+    {
+      "name": "theme-paper",
+      "description": "A light paper theme",
+      "source": "./plugins/theme-paper"
+    },
+    {
+      "name": "gitlab-tools",
+      "source": { "source": "url", "url": "https://gitlab.example.com/acme/tools.git" }
+    },
+    {
+      "name": "ssh-tools",
+      "source": { "source": "url", "url": "git@git.example.com:acme/tools.git", "ref": "main" }
+    },
+    {
+      "name": "subdir-tools",
+      "source": { "source": "git-subdir", "url": "https://github.com/acme/mono.git", "path": "plugins/tools", "sha": "3f9c0d1e5b7a4c2d8e6f1a0b9c8d7e6f5a4b3c2d" }
+    },
+    {
+      "name": "wrapped",
+      "description": "A plain Claude Code plugin wrapped for townhall",
+      "source": { "source": "github", "repo": "acme/claude-only" },
+      "townhall": { "apiVersion": 1, "permissions": { "claude": { "hooks": { "events": ["PostToolUse"] } } } }
+    }
+  ]
+}
