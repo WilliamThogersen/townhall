@@ -17,7 +17,7 @@ use super::{ToolDef, MAX_NAME_LEN, MAX_PROMPT_LEN, NAME_PATTERN};
 
 pub const HAND_BACK: &str = "hand_back";
 
-pub const INSTRUCTIONS: &str = "townhall tools: hand_back sends your task to another agent type with the reason, then ends your run. Use it when the work needs another type, for example a failing check that the type that wrote the code must fix. add_artifact attaches proof (a screenshot, log, note or report) to your own task outside the repo, and list_artifacts reads the proof of any task of this conversation; proof can be added but never changed or deleted. open_pr pushes your branch and opens its pull or merge request. open_pr publishes as the GitHub account in townhall's githubAccount setting: it switches gh to that account, sets the worktree's git author and committer to it and fails with a clear message when that is not possible, so never ask the user which GitHub account to use. When your task is landing the work: call open_pr, watch CI with `gh pr checks --watch`, fix a failing check and push again (or hand_back to the type that can), rebase onto the base branch when it moved, and run `gh pr merge` only once every check is green. Never push to the base branch.";
+pub const INSTRUCTIONS: &str = "townhall tools: hand_back sends your task to another agent type with the reason, then ends your run. Use it when the work needs another type, for example a failing check that the type that wrote the code must fix. add_artifact attaches proof (a screenshot, log, note or report) to your own task outside the repo, and list_artifacts reads the proof of any task of this conversation; proof can be added but never changed or deleted. open_pr pushes your branch and opens its pull or merge request. open_pr publishes as the forge account townhall has registered for this task's repo (its forgeAccounts setting, with the older githubAccount setting as the fallback): it runs gh or glab with that account's token for the one call, never switches gh's own active account, sets the worktree's git author and committer to it on GitHub and fails with a clear message when that is not possible, so never ask the user which GitHub or GitLab account to use. Its answer names the account it used as `account` {login, host}. Because gh itself stays on whichever account is active, run every later gh command for that pull request as that account: `GH_TOKEN=\"$(gh auth token --user <login> --hostname <host>)\" gh pr checks --watch` (on a host other than github.com the variable is GH_ENTERPRISE_TOKEN). When your task is landing the work: call open_pr, watch CI with `gh pr checks --watch`, fix a failing check and push again (or hand_back to the type that can), rebase onto the base branch when it moved, and run `gh pr merge` only once every check is green. Never push to the base branch.";
 
 const MAX_REASON_LEN: u64 = 2_000;
 const MAX_COMMITS: usize = 30;
@@ -179,10 +179,13 @@ mod tests {
     use super::INSTRUCTIONS;
 
     #[test]
-    fn the_instructions_settle_the_github_account_for_landing() {
+    fn the_instructions_settle_the_forge_account_for_landing() {
         for needle in [
+            "forgeAccounts",
             "githubAccount",
-            "never ask the user which GitHub account",
+            "never ask the user which GitHub or GitLab account",
+            "gh auth token --user",
+            "GH_TOKEN",
             "gh pr checks",
             "gh pr merge",
             "rebase",
