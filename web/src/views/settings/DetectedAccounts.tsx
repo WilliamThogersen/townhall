@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toMessage } from "../../api/errors";
-import { getDetectedAccounts, type DetectedAccount } from "../../api/forgeAccounts";
+import { getDetectedAccounts, type DetectedAccount, type Detection } from "../../api/forgeAccounts";
 import type { ForgeAccount } from "../../settings/settings";
 import { Button } from "../../ui/Button";
 import "./detected.css";
@@ -10,13 +10,26 @@ const same = (a: ForgeAccount, b: DetectedAccount) =>
 
 const asAccount = ({ forge, login, host }: DetectedAccount): ForgeAccount => ({ forge, login, host, label: login });
 
+function Warnings({ warnings }: { readonly warnings: readonly string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <ul className="th-detected-warnings" aria-label="Detection warnings">
+      {warnings.map((warning) => (
+        <li key={warning} className="th-cap">
+          {warning}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 interface Props {
   readonly accounts: readonly ForgeAccount[];
   readonly onAdd: (added: readonly ForgeAccount[]) => void;
 }
 
 export function DetectedAccounts({ accounts, onAdd }: Props) {
-  const [found, setFound] = useState<readonly DetectedAccount[] | null>(null);
+  const [found, setFound] = useState<Detection | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -27,17 +40,20 @@ export function DetectedAccounts({ accounts, onAdd }: Props) {
   }, []);
 
   if (problem !== null) return <p className="th-cap">could not look for logged-in accounts: {problem}</p>;
-  if (found === null) return null;
-  const pending = found.filter((d) => !accounts.some((a) => same(a, d)));
-  if (found.length === 0) {
+  if (found === null) return <p className="th-cap">looking for accounts logged in with gh and glab…</p>;
+  const { accounts: seen, warnings } = found;
+  const pending = seen.filter((d) => !accounts.some((a) => same(a, d)));
+  if (seen.length === 0) {
     return (
-      <p className="th-cap">
-        no logged-in accounts found: <code>gh auth status</code> and <code>glab auth status</code> listed none, or
-        neither program was found on this machine
-      </p>
+      <div className="th-detected">
+        <p className="th-cap">
+          no logged-in accounts found: log in with <code>gh auth login</code> or <code>glab auth login</code>
+        </p>
+        <Warnings warnings={warnings} />
+      </div>
     );
   }
-  if (pending.length === 0) return null;
+  if (pending.length === 0) return warnings.length === 0 ? null : <Warnings warnings={warnings} />;
   const first = accounts.length === 0;
   const count = `${pending.length} account${pending.length === 1 ? "" : "s"}`;
   return (
@@ -72,6 +88,7 @@ export function DetectedAccounts({ accounts, onAdd }: Props) {
           </Button>
         ) : null}
       </div>
+      <Warnings warnings={warnings} />
     </div>
   );
 }

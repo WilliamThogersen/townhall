@@ -17,16 +17,31 @@ fn stub(dir: &Path, name: &str, body: &str) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// Points the daemon at stub programs and at config dirs that do not exist, so the machine's
+/// real `gh` and `glab` config is never read; `glab_config` then provides one.
 fn point_at(gh: &str, glab: &str) {
     std::env::set_var("TOWNHALL_GH_BIN", gh);
     std::env::set_var("TOWNHALL_GLAB_BIN", glab);
+    std::env::set_var("GH_CONFIG_DIR", "/nonexistent-townhall-test/gh");
+    std::env::set_var("GLAB_CONFIG_DIR", "/nonexistent-townhall-test/glab-cli");
 }
 
-async fn detected(env: &Env) -> Value {
+fn glab_config(dir: &Path, text: &str) {
+    let at = dir.join("cfg").join("glab-cli");
+    std::fs::create_dir_all(&at).unwrap();
+    std::fs::write(at.join("config.yml"), text).unwrap();
+    std::env::set_var("GLAB_CONFIG_DIR", &at);
+}
+
+async fn detected_body(env: &Env) -> Value {
     let (_state, app) = env.start();
     let (s, v) = call(&app, "GET", "/api/forge-accounts/detected", None).await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    v["data"].clone()
+    v
+}
+
+async fn detected(env: &Env) -> Value {
+    detected_body(env).await["data"].clone()
 }
 
 const GH_TEXT: &str = r#"cat <<'EOF'
@@ -46,21 +61,21 @@ github.corp.io
   - Active account: true
 EOF"#;
 
-const GLAB_TEXT: &str = r#"cat >&2 <<'EOF'
-gitlab.com
-  ✓ Logged in to gitlab.com as gl-me (/home/me/.config/glab-cli/config.yml)
-  ✓ Git operations for gitlab.com configured to use ssh protocol.
-  ✓ API calls for gitlab.com are made over https protocol.
-  ✓ REST API Endpoint: https://gitlab.com/api/v4/
-  ✓ Token found: **************************
-EOF"#;
+/// A glab whose `auth status` must never be called: it would hang, as it does on a dead host.
+const GLAB_NO_STATUS: &str = "case \"$1\" in --version) echo 'glab 1.50';; api) exit 1;; *) echo 'auth status must not be called' >&2; sleep 60;; esac";
+
+const GLAB_CONFIG: &str = "git_protocol: ssh\nhosts:\n    gitlab.com:\n        token: glpat-secret\n        user: gl-me\n";
 
 #[tokio::test]
 async fn every_logged_in_account_on_every_host_is_listed_and_registered_ones_are_marked() {
     let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
-    point_at(&stub(dir, "gh", GH_TEXT), &stub(dir, "glab", GLAB_TEXT));
+    point_at(
+        &stub(dir, "gh", GH_TEXT),
+        &stub(dir, "glab", GLAB_NO_STATUS),
+    );
+    glab_config(dir, GLAB_CONFIG);
     let (_state, app) = env.start();
     let put = json!({"value": [{"forge": "github", "login": "Work-Me"}]});
     let (s, _) = call(&app, "PUT", "/api/settings/forgeAccounts", Some(put)).await;
@@ -77,6 +92,11 @@ async fn every_logged_in_account_on_every_host_is_listed_and_registered_ones_are
         ])
     );
     assert!(!v.to_string().contains("gho_"), "no token is returned: {v}");
+    assert!(
+        !v.to_string().contains("glpat"),
+        "no token is returned: {v}"
+    );
+    assert!(v.get("warnings").is_none(), "nothing to warn about: {v}");
 }
 
 #[tokio::test]
@@ -144,8 +164,9 @@ async fn one_missing_binary_does_not_hide_the_other() {
     let dir = env.root.path();
     point_at(
         &dir.join("no-gh").to_string_lossy(),
-        &stub(dir, "glab", GLAB_TEXT),
+        &stub(dir, "glab", GLAB_NO_STATUS),
     );
+    glab_config(dir, GLAB_CONFIG);
     let got = detected(&env).await;
     assert_eq!(got[0]["login"], "gl-me");
     assert_eq!(got.as_array().unwrap().len(), 1);
@@ -194,35 +215,53 @@ async fn real_gh_2_101_text_lists_both_accounts_when_json_is_unavailable() {
     assert_eq!(detected(&env).await, both_real_accounts());
 }
 
-const REAL_GLAB_PARTIAL: &str = "gitlab.com
-  x gitlab.com: API call failed: context deadline exceeded
-  ✓ Git operations for gitlab.com configured to use ssh protocol.
-  ✓ API calls for gitlab.com are made over https protocol.
-  ✓ REST API Endpoint: https://gitlab.com/api/v4/
-  ✓ GraphQL Endpoint: https://gitlab.com/api/graphql/
-gitlab.wexo.io
-  ✓ Logged in to gitlab.wexo.io as wexowgt (keyring)
-  ✓ Git operations for gitlab.wexo.io configured to use ssh protocol.
-  ✓ API calls for gitlab.wexo.io are made over https protocol.
-  ✓ REST API Endpoint: https://gitlab.wexo.io/api/v4/
-  ✓ GraphQL Endpoint: https://gitlab.wexo.io/api/graphql/
-
-   ERROR
-
-
-  X could not authenticate to one or more of the configured GitLab instances.
-";
+/// The user's machine: gitlab.wexo.io has a user in the config, gitlab.com (logged out, dead)
+/// has none and `glab api user` fails there.
+const REAL_GLAB_CONFIG: &str = "git_protocol: ssh\nhosts:\n    gitlab.com:\n        api_host: gitlab.com\n    gitlab.wexo.io:\n        api_host: gitlab.wexo.io\n        git_protocol: ssh\n        user: wexowgt\n";
 
 #[tokio::test]
-async fn real_glab_output_with_one_failed_host_and_non_zero_exit_lists_the_working_host_only() {
+async fn glab_is_read_from_its_config_and_a_dead_host_only_costs_a_warning() {
     let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
-    let glab = format!("cat >&2 <<'EOF'\n{REAL_GLAB_PARTIAL}EOF\nexit 1");
-    point_at(&stub(dir, "gh", "exit 1"), &stub(dir, "glab", &glab));
+    point_at(
+        &stub(dir, "gh", "exit 1"),
+        &stub(dir, "glab", GLAB_NO_STATUS),
+    );
+    glab_config(dir, REAL_GLAB_CONFIG);
+    let body = detected_body(&env).await;
     assert_eq!(
-        detected(&env).await,
+        body["data"],
         json!([{"forge": "gitlab", "login": "wexowgt", "host": "gitlab.wexo.io", "registered": false}])
+    );
+    let warnings = body["warnings"].to_string();
+    assert!(
+        warnings.contains("could not tell who is logged in on gitlab.com"),
+        "{warnings}"
+    );
+    assert!(warnings.contains("gh:"), "{warnings}");
+}
+
+#[tokio::test]
+async fn a_missing_glab_config_says_why_nothing_was_found() {
+    let _guard = ENV_LOCK.lock().await;
+    let env = Env::new("alpha").await;
+    let dir = env.root.path();
+    point_at(
+        &stub(dir, "gh", GH_TEXT),
+        &stub(dir, "glab", GLAB_NO_STATUS),
+    );
+    let body = detected_body(&env).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 3, "{body}");
+    assert_eq!(body["success"], true);
+    let warnings = body["warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1, "{body}");
+    assert!(
+        warnings[0]
+            .as_str()
+            .unwrap()
+            .starts_with("glab: no glab config at"),
+        "{body}"
     );
 }
 
@@ -246,8 +285,14 @@ async fn glab_status_on_stderr_with_two_hosts_lists_both_even_when_it_exits_non_
     let _guard = ENV_LOCK.lock().await;
     let env = Env::new("alpha").await;
     let dir = env.root.path();
-    let glab = "cat >&2 <<'EOF'\ngitlab.com\n  ✓ Logged in to gitlab.com as gl-me (/home/me/.config/glab-cli/config.yml)\n  ✓ Token found: **********\ngitlab.corp.io\n  x gitlab.corp.io: API call failed: 401 Unauthorized\n  ✓ Logged in to gitlab.corp.io as corp-me (config)\nEOF\nexit 1";
-    point_at(&stub(dir, "gh", "exit 1"), &stub(dir, "glab", glab));
+    point_at(
+        &stub(dir, "gh", "exit 1"),
+        &stub(dir, "glab", GLAB_NO_STATUS),
+    );
+    glab_config(
+        dir,
+        "hosts:\n    gitlab.com:\n        user: gl-me\n    gitlab.corp.io:\n        user: corp-me\n",
+    );
     assert_eq!(
         detected(&env).await,
         json!([
