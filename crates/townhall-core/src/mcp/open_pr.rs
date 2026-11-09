@@ -6,7 +6,9 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 use crate::model::{Checks, Pr, Task};
-use crate::repos::publish::{publish, PrRequest, Programs, Published};
+use crate::repos::accounts::Accounts;
+use crate::repos::names;
+use crate::repos::publish::{origin_of, publish, PrRequest, Programs, Published};
 
 use super::checks::{one_line, Checked};
 use super::hand_back::worktree_of;
@@ -73,17 +75,25 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
     })?;
     let (branch, base) = (task.branch(), task.pr_target().to_string());
     let body = input.body.unwrap_or_default();
-    let account = store.settings().await.map_err(text)?.github_account;
-    let published = tokio::task::spawn_blocking(move || {
+    let settings = store.settings().await.map_err(text)?;
+    let repos = store.repos().await.map_err(text)?;
+    let repo = repos.iter().find(|r| names::same(&r.name, &task.repo));
+    let accounts = Accounts::for_repo(&settings, repo);
+    let (published, account) = tokio::task::spawn_blocking(move || {
         let req = PrRequest {
             worktree: &worktree,
             branch: &branch,
             base: &base,
             title: &title,
             body: &body,
-            account: &account,
+            accounts: &accounts,
         };
-        publish(&req, &Programs::from_env())
+        let published = publish(&req, &Programs::from_env())?;
+        let account = match origin_of(&worktree)? {
+            Some(origin) => accounts.pick(origin.forge.kind(), &origin.host)?,
+            None => None,
+        };
+        Ok::<_, crate::Error>((published, account))
     })
     .await
     .map_err(|e| format!("publishing failed: {e}"))?
@@ -109,7 +119,11 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
                 let change = move |t: Task| Ok(Task { pr: Some(pr), ..t });
                 store.update_task(&task.name, change).await.map_err(text)?;
             }
-            Ok(json!({"state": "opened", "url": url, "number": number, "base": task.pr_target()}))
+            let account = account.map(|a| json!({"login": a.login, "host": a.host}));
+            Ok(json!({
+                "state": "opened", "url": url, "number": number, "base": task.pr_target(),
+                "account": account
+            }))
         }
     }
 }

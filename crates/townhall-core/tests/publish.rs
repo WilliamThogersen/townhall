@@ -1,7 +1,10 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+use serde_json::json;
 use tempfile::TempDir;
+use townhall_core::model::normalize_accounts;
+use townhall_core::repos::accounts::Accounts;
 use townhall_core::repos::publish::{publish, PrRequest, Programs, Published};
 
 mod common;
@@ -66,46 +69,70 @@ impl Env {
     }
 
     fn run(&self, programs: &Programs) -> townhall_core::Result<Published> {
+        self.run_with(programs, &Accounts::default())
+    }
+
+    fn run_with(
+        &self,
+        programs: &Programs,
+        accounts: &Accounts,
+    ) -> townhall_core::Result<Published> {
         let req = PrRequest {
             worktree: &self.repo,
             branch: BRANCH,
             base: "main",
             title: "Fix login",
             body: "the body",
-            account: "",
+            accounts,
         };
         publish(&req, programs)
     }
 
-    fn run_as(&self, programs: &Programs, account: &str) -> townhall_core::Result<Published> {
-        let req = PrRequest {
-            worktree: &self.repo,
-            branch: BRANCH,
-            base: "main",
-            title: "Fix login",
-            body: "the body",
-            account,
+    fn run_as(&self, programs: &Programs, login: &str) -> townhall_core::Result<Published> {
+        let legacy = Accounts {
+            legacy_github: login.to_string(),
+            ..Accounts::default()
         };
-        publish(&req, programs)
+        self.run_with(programs, &legacy)
     }
 
-    fn account_stub(&self, active: &str, others: &[&str]) -> PathBuf {
-        let state = self.dir.path().join("active");
-        std::fs::write(&state, active).unwrap();
-        let known = others.join(" ");
-        let script = format!(
-            "#!/bin/sh\necho \"$@\" >> \"{log}\"\ncase \"$1 $2\" in\n\
-             \"auth status\") exit 0;;\n\
-             \"auth switch\") case \" {known} \" in *\" $6 \"*) printf %s \"$6\" > \"{state}\"; exit 0;; esac; echo \"no account $6\" >&2; exit 1;;\n\
-             \"api --hostname\") echo \"$(cat \"{state}\") 42\";;\n\
-             *) {CREATE_GITHUB};;\nesac\n",
-            log = self.log("gh").display(),
-            state = state.display(),
-        );
-        let path = self.dir.path().join("gh");
+    fn write_stub(&self, name: &str, script: &str) -> PathBuf {
+        let path = self.dir.path().join(name);
         std::fs::write(&path, script).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
+    }
+
+    /// A `gh` that has a login for each of `known`: `auth token` answers `tok-<login>`,
+    /// `api user` answers whoever the token in the environment belongs to, and the create
+    /// call records the token variables it ran with in `gh.env`.
+    fn account_stub(&self, known: &[&str]) -> PathBuf {
+        let known = known.join(" ");
+        let script = format!(
+            "#!/bin/sh\necho \"$@\" >> \"{log}\"\ncase \"$1 $2\" in\n\
+             \"auth status\") exit 0;;\n\
+             \"auth token\") case \" {known} \" in *\" $4 \"*) echo \"tok-$4\"; exit 0;; esac; echo \"no account $4\" >&2; exit 1;;\n\
+             \"api --hostname\") t=\"$GH_TOKEN$GH_ENTERPRISE_TOKEN\"; echo \"${{t#tok-}} 42\";;\n\
+             *) echo \"GH_TOKEN=$GH_TOKEN GH_ENTERPRISE_TOKEN=$GH_ENTERPRISE_TOKEN GH_HOST=$GH_HOST\" >> \"{env}\"; {CREATE_GITHUB};;\nesac\n",
+            log = self.log("gh").display(),
+            env = self.log("gh.env").display(),
+        );
+        self.write_stub("gh", &script)
+    }
+
+    /// A `glab` whose config holds a token for each of `hosts`; the create call records the
+    /// token variables it ran with in `glab.env`.
+    fn glab_account_stub(&self, hosts: &[&str]) -> PathBuf {
+        let hosts = hosts.join(" ");
+        let script = format!(
+            "#!/bin/sh\necho \"$@\" >> \"{log}\"\ncase \"$1 $2\" in\n\
+             \"auth status\") exit 0;;\n\
+             \"config get\") case \" {hosts} \" in *\" $5 \"*) echo \"glpat-$5\";; esac; exit 0;;\n\
+             *) echo \"GITLAB_TOKEN=$GITLAB_TOKEN GITLAB_HOST=$GITLAB_HOST\" >> \"{env}\"; {CREATE_GITLAB};;\nesac\n",
+            log = self.log("glab").display(),
+            env = self.log("glab.env").display(),
+        );
+        self.write_stub("glab", &script)
     }
 
     async fn pushed(&self) -> String {
@@ -292,40 +319,78 @@ async fn a_push_that_fails_is_an_error() {
 
 const ME: &str = "WilliamThogersen";
 
+fn registered(list: serde_json::Value) -> Vec<townhall_core::model::ForgeAccount> {
+    normalize_accounts(&list).unwrap()
+}
+
 #[tokio::test]
-async fn the_active_account_is_kept_and_becomes_the_git_identity() {
+async fn the_account_runs_gh_by_token_and_becomes_the_git_identity() {
     let env = env().await;
     env.origin("https://github.com/acme/shop.git").await;
-    let gh = env.account_stub(ME, &[ME]);
+    let gh = env.account_stub(&[ME, "someone-else"]);
     let got = env.run_as(&programs(&gh, &gh), ME).unwrap();
     assert!(matches!(got, Published::Opened { .. }), "{got:?}");
     let log = read(env.log("gh"));
-    assert!(!log.contains("auth switch"), "{log}");
+    assert!(
+        log.contains(&format!("auth token --user {ME} --hostname github.com")),
+        "{log}"
+    );
+    assert!(!log.contains("auth switch"), "gh's own state is never changed: {log}");
+    let ran = read(env.log("gh.env"));
+    assert!(ran.contains(&format!("GH_TOKEN=tok-{ME} ")), "{ran}");
+    assert!(ran.contains("GH_HOST=github.com"), "{ran}");
     let name = git(&env.repo, &["config", "--get", "user.name"]).await;
     let email = git(&env.repo, &["config", "--get", "user.email"]).await;
     assert_eq!(name.trim(), ME);
     assert_eq!(email.trim(), "42+WilliamThogersen@users.noreply.github.com");
+    assert!(!env.pushed().await.is_empty());
 }
 
 #[tokio::test]
-async fn another_active_account_is_switched_before_anything_is_pushed() {
+async fn the_repos_own_pick_decides_which_registered_account_runs() {
     let env = env().await;
     env.origin("https://github.com/acme/shop.git").await;
-    let gh = env.account_stub("someone-else", &[ME, "someone-else"]);
-    env.run_as(&programs(&gh, &gh), ME).unwrap();
+    let gh = env.account_stub(&["work-me", "private-me"]);
+    let accounts = Accounts {
+        registered: registered(json!([
+            {"forge": "github", "login": "work-me"},
+            {"forge": "github", "login": "private-me"}
+        ])),
+        github: Some("private-me".into()),
+        ..Accounts::default()
+    };
+    env.run_with(&programs(&gh, &gh), &accounts).unwrap();
+    let ran = read(env.log("gh.env"));
+    assert!(ran.contains("GH_TOKEN=tok-private-me "), "{ran}");
+    let name = git(&env.repo, &["config", "--get", "user.name"]).await;
+    assert_eq!(name.trim(), "private-me");
+}
+
+#[tokio::test]
+async fn a_self_hosted_github_gets_the_enterprise_token_variable_and_its_host() {
+    let env = env().await;
+    env.origin("https://github.corp.io/acme/shop.git").await;
+    let gh = env.account_stub(&["corp-me"]);
+    let accounts = Accounts {
+        registered: registered(json!([
+            {"forge": "github", "login": "corp-me", "host": "github.corp.io"}
+        ])),
+        ..Accounts::default()
+    };
+    env.run_with(&programs(&gh, &gh), &accounts).unwrap();
     let log = read(env.log("gh"));
-    assert!(
-        log.contains(&format!("auth switch --hostname github.com --user {ME}")),
-        "{log}"
-    );
-    assert!(!env.pushed().await.is_empty());
+    assert!(log.contains("auth token --user corp-me --hostname github.corp.io"), "{log}");
+    let ran = read(env.log("gh.env"));
+    assert!(ran.contains("GH_ENTERPRISE_TOKEN=tok-corp-me "), "{ran}");
+    assert!(ran.contains("GH_HOST=github.corp.io"), "{ran}");
+    assert!(ran.contains("GH_TOKEN= "), "{ran}");
 }
 
 #[tokio::test]
 async fn an_account_gh_has_no_login_for_fails_clearly_and_pushes_nothing() {
     let env = env().await;
     env.origin("https://github.com/acme/shop.git").await;
-    let gh = env.account_stub("someone-else", &["someone-else"]);
+    let gh = env.account_stub(&["someone-else"]);
     let err = env.run_as(&programs(&gh, &gh), ME).unwrap_err().to_string();
     assert!(
         err.contains(ME) && err.contains("gh auth login --hostname github.com"),
@@ -337,14 +402,91 @@ async fn an_account_gh_has_no_login_for_fails_clearly_and_pushes_nothing() {
 }
 
 #[tokio::test]
+async fn a_token_that_belongs_to_another_user_is_refused_before_pushing() {
+    let env = env().await;
+    env.origin("https://github.com/acme/shop.git").await;
+    let script = "#!/bin/sh\ncase \"$1 $2\" in\n\"auth status\") exit 0;;\n\"auth token\") echo tok-x;;\n\"api --hostname\") echo \"intruder 7\";;\n*) echo https://github.com/acme/shop/pull/7;;\nesac\n";
+    let gh = env.write_stub("gh", script);
+    let err = env.run_as(&programs(&gh, &gh), ME).unwrap_err().to_string();
+    assert!(err.contains("intruder") && err.contains(ME), "{err}");
+    assert!(env.pushed().await.is_empty());
+}
+
+#[tokio::test]
+async fn a_repo_pick_that_is_not_registered_for_the_host_fails_before_any_call() {
+    let env = env().await;
+    env.origin("https://github.com/acme/shop.git").await;
+    let gh = env.account_stub(&["private-me"]);
+    let accounts = Accounts {
+        github: Some("private-me".into()),
+        ..Accounts::default()
+    };
+    let err = env
+        .run_with(&programs(&gh, &gh), &accounts)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("private-me") && err.contains("github.com"), "{err}");
+    assert!(!env.log("gh").exists());
+    assert!(env.pushed().await.is_empty());
+}
+
+#[tokio::test]
 async fn no_expected_account_means_no_account_calls() {
     let env = env().await;
     env.origin("https://github.com/acme/shop.git").await;
-    let gh = env.account_stub("someone-else", &[]);
+    let gh = env.account_stub(&[]);
     env.run_as(&programs(&gh, &gh), "").unwrap();
     let log = read(env.log("gh"));
     assert!(
-        !log.contains("auth switch") && !log.contains("api "),
+        !log.contains("auth token") && !log.contains("api "),
         "{log}"
     );
+    let ran = read(env.log("gh.env"));
+    assert!(ran.contains("GH_TOKEN= "), "{ran}");
+}
+
+#[tokio::test]
+async fn a_gitlab_account_runs_glab_with_the_hosts_token() {
+    let env = env().await;
+    env.origin("git@gitlab.example.com:acme/shop.git").await;
+    let glab = env.glab_account_stub(&["gitlab.example.com"]);
+    let accounts = Accounts {
+        registered: registered(json!([
+            {"forge": "gitlab", "login": "me", "host": "gitlab.example.com"}
+        ])),
+        ..Accounts::default()
+    };
+    let got = env
+        .run_with(&programs(Path::new("/nonexistent/gh"), &glab), &accounts)
+        .unwrap();
+    assert!(matches!(got, Published::Opened { number: Some(12), .. }), "{got:?}");
+    let log = read(env.log("glab"));
+    assert!(log.contains("config get token --host gitlab.example.com"), "{log}");
+    let ran = read(env.log("glab.env"));
+    assert!(
+        ran.contains("GITLAB_TOKEN=glpat-gitlab.example.com GITLAB_HOST=gitlab.example.com"),
+        "{ran}"
+    );
+}
+
+#[tokio::test]
+async fn a_gitlab_host_glab_has_no_token_for_fails_clearly_and_pushes_nothing() {
+    let env = env().await;
+    env.origin("git@gitlab.example.com:acme/shop.git").await;
+    let glab = env.glab_account_stub(&[]);
+    let accounts = Accounts {
+        registered: registered(json!([
+            {"forge": "gitlab", "login": "me", "host": "gitlab.example.com"}
+        ])),
+        ..Accounts::default()
+    };
+    let err = env
+        .run_with(&programs(Path::new("/nonexistent/gh"), &glab), &accounts)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("me") && err.contains("glab auth login --hostname gitlab.example.com"),
+        "{err}"
+    );
+    assert!(env.pushed().await.is_empty());
 }
