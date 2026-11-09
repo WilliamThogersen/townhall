@@ -2,6 +2,7 @@
 //! and the API contract types shared by the daemon and the desktop app.
 
 pub mod agent;
+pub mod agent_usage;
 pub mod clock;
 pub mod cmd;
 pub mod context;
