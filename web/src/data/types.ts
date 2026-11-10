@@ -2,6 +2,9 @@ import type {
   AddRepoInput,
   AgentInfo,
   Artifact,
+  AvailablePlugin,
+  Marketplace,
+  Plugin,
   ClaudeUsage,
   Conversation,
   ConversationDetail,
@@ -15,6 +18,8 @@ import type {
   Task,
   ThreadEntry,
 } from "../api/types";
+
+import type { PluginActions } from "./storeActions";
 
 export type { ConnectionStatus } from "../api/events";
 
@@ -51,6 +56,20 @@ export interface ReposState extends Loadable {
   readonly remove: (name: string, deleteClone?: boolean) => Promise<void>;
   readonly setAccounts: (name: string, input: PutRepoAccountsInput) => Promise<Repo>;
   readonly edit: (name: string, input: PatchRepoInput) => Promise<Repo>;
+}
+
+export interface PluginsState extends Loadable {
+  readonly marketplaces: readonly Marketplace[];
+  readonly available: readonly AvailablePlugin[];
+  readonly installed: readonly Plugin[];
+  readonly addMarketplace: PluginActions["addMarketplace"];
+  readonly refreshMarketplace: PluginActions["refreshMarketplace"];
+  readonly removeMarketplace: PluginActions["removeMarketplace"];
+  readonly preview: PluginActions["previewPlugin"];
+  readonly install: PluginActions["installPlugin"];
+  readonly patch: PluginActions["patchPlugin"];
+  readonly update: PluginActions["updatePlugin"];
+  readonly uninstall: PluginActions["deletePlugin"];
 }
 
 export interface StatsState extends Loadable {

@@ -12,6 +12,7 @@ export {
 export { ARTIFACTS_POLL_MS, useArtifacts } from "./useArtifacts";
 export { useConversation, useConversations } from "./useConversations";
 export { useConversationActions } from "./useConversationActions";
+export { usePlugins } from "./usePlugins";
 export { useRepos } from "./useRepos";
 export { useStats } from "./useStats";
 export { STEPS_POLL_MS, useSteps } from "./useSteps";
@@ -25,6 +26,7 @@ export type {
   ConversationState,
   ConversationsState,
   Loadable,
+  PluginsState,
   ReposState,
   StatsState,
   StepsOptions,

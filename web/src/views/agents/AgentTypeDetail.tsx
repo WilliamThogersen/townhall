@@ -129,6 +129,11 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
         <AgentAvatar name={data.name} spec={data.avatar} scale={4} />
         <h2>{data.name}</h2>
         <StepBadge name={data.name} />
+        {data.origin === "plugin" ? (
+          <span className="th-tag" title="this type comes from a plugin and is read only">
+            {data.plugin === null || data.plugin === undefined ? "plugin" : `plugin ${data.plugin}`}
+          </span>
+        ) : null}
         <div className="th-page-head-actions">
           <CopyButton text={data.source} />
         </div>

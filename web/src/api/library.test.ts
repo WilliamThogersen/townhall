@@ -47,6 +47,17 @@ describe("library api", () => {
     await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
   });
 
+  it("reads where a type comes from, leaving it out for a daemon that does not send it", async () => {
+    mockFetch(200, { ...anAgentType(), origin: "plugin", plugin: "lint@acme-tools" });
+    expect(await getAgentType("lint-checker")).toMatchObject({ origin: "plugin", plugin: "lint@acme-tools" });
+    mockFetch(200, { ...anAgentType(), origin: "user", plugin: null });
+    expect(await getAgentType("builder")).toMatchObject({ origin: "user", plugin: null });
+    mockFetch(200, anAgentType());
+    expect(await getAgentType("builder")).not.toHaveProperty("origin");
+    mockFetch(200, { ...anAgentType(), origin: "robot" });
+    await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
+  });
+
   it("accepts null model and permission mode", async () => {
     mockFetch(200, [anAgentTypeSummary({ model: null, permissionMode: null })]);
     expect(await listAgentTypes()).toHaveLength(1);

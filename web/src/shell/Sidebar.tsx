@@ -47,6 +47,7 @@ function Nav({ search }: { readonly search: SidebarSearch }) {
         {repos !== null && <span className="th-nav-count">{repos.length}</span>}
       </NavItem>
       <NavItem to={PATHS.agents} icon="@" label="agents" current={name === "agents"} />
+      <NavItem to={PATHS.plugins} icon="&" label="plugins" current={name === "plugins"} />
       <NavItem to={PATHS.control} icon="$" label="control center" current={name === "control"}>
         <GlyphCounts counts={countByState(agents)} className="th-nav-count" />
       </NavItem>

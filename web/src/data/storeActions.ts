@@ -5,8 +5,23 @@ import {
   startConversation,
   stopTurn,
 } from "../api/conversations";
+import { addMarketplace, refreshMarketplace, removeMarketplace } from "../api/marketplaces";
+import { deletePlugin, installPlugin, patchPlugin, previewPlugin, updatePlugin } from "../api/plugins";
 import { addRepo, patchRepo, putRepoAccounts, removeRepo } from "../api/repos";
-import type { AddRepoInput, Conversation, PatchRepoInput, PutRepoAccountsInput, Repo, ServerEvent } from "../api/types";
+import type {
+  AddMarketplaceInput,
+  AddRepoInput,
+  Conversation,
+  Marketplace,
+  PatchPluginInput,
+  PatchRepoInput,
+  Plugin,
+  PluginPreview,
+  PluginUpdate,
+  PutRepoAccountsInput,
+  Repo,
+  ServerEvent,
+} from "../api/types";
 import { applyRepoEdited, applyStarted, upsertRepo, withoutRepo } from "./reducers";
 import { mapResource, type DataState } from "./state";
 import type { ConversationActions } from "./types";
@@ -14,6 +29,17 @@ import type { ConversationActions } from "./types";
 export interface StoreAccess {
   readonly update: (change: (state: DataState) => DataState) => void;
   readonly apply: (event: ServerEvent) => void;
+}
+
+export interface PluginActions {
+  readonly addMarketplace: (input: AddMarketplaceInput) => Promise<Marketplace>;
+  readonly refreshMarketplace: (name: string) => Promise<Marketplace>;
+  readonly removeMarketplace: (name: string) => Promise<Marketplace>;
+  readonly previewPlugin: (id: string) => Promise<PluginPreview>;
+  readonly installPlugin: (id: string, approve: string) => Promise<Plugin>;
+  readonly patchPlugin: (id: string, input: PatchPluginInput) => Promise<Plugin>;
+  readonly updatePlugin: (id: string, approve?: string) => Promise<PluginUpdate>;
+  readonly deletePlugin: (id: string, purge?: boolean) => Promise<Plugin>;
 }
 
 export interface RepoActions {
@@ -43,6 +69,24 @@ export function createConversationActions({ update, apply }: StoreAccess): Conve
     stop: (id) => settle(stopTurn(id)),
     end: (id) => settle(endConversation(id)),
     patch: (id, patch) => settle(patchConversation(id, patch)),
+  };
+}
+
+export function createPluginActions(reload: () => void): PluginActions {
+  const then = async <T>(answer: Promise<T>): Promise<T> => {
+    const value = await answer;
+    reload();
+    return value;
+  };
+  return {
+    addMarketplace: (input) => then(addMarketplace(input)),
+    refreshMarketplace: (name) => then(refreshMarketplace(name)),
+    removeMarketplace: (name) => then(removeMarketplace(name)),
+    previewPlugin,
+    installPlugin: (id, approve) => then(installPlugin(id, approve)),
+    patchPlugin: (id, input) => then(patchPlugin(id, input)),
+    updatePlugin: (id, approve) => then(approve === undefined ? updatePlugin(id) : updatePlugin(id, approve)),
+    deletePlugin: (id, purge) => then(deletePlugin(id, purge)),
   };
 }
 

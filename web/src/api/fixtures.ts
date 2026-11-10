@@ -8,6 +8,10 @@ import type {
   Conversation,
   ConversationDetail,
   EntryBody,
+  AvailablePlugin,
+  Marketplace,
+  Plugin,
+  PluginPreview,
   Repo,
   Stats,
   Step,
@@ -116,7 +120,58 @@ export const aRepo = (over: Partial<Repo> = {}): Repo => ({
   ...over,
 });
 
-export const aStep = (over: Partial<Step> = {}): Step => ({
+export const aMarketplace = (over: Partial<Marketplace> = {}): Marketplace => ({
+  name: "acme-tools",
+  source: { source: "url", url: "https://github.com/acme/tools.git" },
+  account: null,
+  enabled: true,
+  official: false,
+  headSha: "abc1234",
+  fetchedAt: "2026-11-01T10:00:00Z",
+  error: null,
+  plugins: [],
+  ...over,
+});
+
+export const aPlugin = (over: Partial<Plugin> = {}): Plugin => ({
+  id: "lint@acme-tools",
+  marketplace: "acme-tools",
+  name: "lint",
+  version: "1.0.0",
+  sha: "1111111",
+  enabled: false,
+  pinned: false,
+  permissions: ["prompt:brief"],
+  permissionsHash: "sha256:aaa",
+  installedAt: "2026-11-01T10:00:00Z",
+  updatedAt: "2026-11-01T10:00:00Z",
+  error: null,
+  ...over,
+});
+
+export const anAvailablePlugin = (over: Partial<AvailablePlugin> = {}): AvailablePlugin => ({
+  id: "lint@acme-tools",
+  marketplace: "acme-tools",
+  name: "lint",
+  description: "lints the brief",
+  version: "1.0.0",
+  category: null,
+  installed: false,
+  ...over,
+});
+
+export const aPreview = (over: Partial<PluginPreview> = {}): PluginPreview => ({
+  plugin: "lint@acme-tools",
+  marketplace: "acme-tools",
+  name: "lint",
+  version: "1.0.0",
+  sha: "1111111",
+  permissions: ["prompt:brief"],
+  permissionsHash: "sha256:aaa",
+  ...over,
+});
+
+export const aStep =(over: Partial<Step> = {}): Step => ({
   id: "s1",
   tool: "Read",
   summary: "src/login.ts",

@@ -321,6 +321,93 @@ export interface AgentType {
   readonly env: Readonly<Record<string, string>>;
   readonly source: string;
   readonly updatedAt: string;
+  readonly origin?: "user" | "plugin";
+  readonly plugin?: string | null;
+}
+
+export type MarketplaceSource =
+  | { readonly source: "github"; readonly repo: string }
+  | { readonly source: "url"; readonly url: string }
+  | { readonly source: "directory"; readonly path: string };
+
+export interface MarketplaceEntry {
+  readonly name: string;
+  readonly description: string;
+  readonly version: string | null;
+  readonly category: string | null;
+}
+
+export interface Marketplace {
+  readonly name: string;
+  readonly source: MarketplaceSource;
+  readonly account: string | null;
+  readonly enabled: boolean;
+  readonly official: boolean;
+  readonly headSha: string | null;
+  readonly fetchedAt: string | null;
+  readonly error: string | null;
+  readonly plugins: readonly MarketplaceEntry[];
+}
+
+export interface AddMarketplaceInput {
+  readonly source: string;
+  readonly name?: string;
+  readonly account?: string;
+}
+
+export interface Plugin {
+  readonly id: string;
+  readonly marketplace: string;
+  readonly name: string;
+  readonly version: string | null;
+  readonly sha: string;
+  readonly enabled: boolean;
+  readonly pinned: boolean;
+  readonly permissions: readonly string[];
+  readonly permissionsHash: string;
+  readonly installedAt: string;
+  readonly updatedAt: string;
+  readonly error: string | null;
+}
+
+export interface AvailablePlugin {
+  readonly id: string;
+  readonly marketplace: string;
+  readonly name: string;
+  readonly description: string;
+  readonly version: string | null;
+  readonly category: string | null;
+  readonly installed: boolean;
+}
+
+export interface PluginList {
+  readonly available: readonly AvailablePlugin[];
+  readonly installed: readonly Plugin[];
+}
+
+export interface PluginPreview {
+  readonly plugin: string;
+  readonly marketplace: string;
+  readonly name: string;
+  readonly version: string | null;
+  readonly sha: string;
+  readonly permissions: readonly string[];
+  readonly permissionsHash: string;
+}
+
+export type PluginUpdateOutcome = "unchanged" | "updated" | "pinned" | "needsApproval";
+
+export interface PluginUpdate {
+  readonly outcome: PluginUpdateOutcome;
+  readonly sha: string | null;
+  readonly added: readonly string[];
+  readonly permissionsHash: string | null;
+  readonly plugin: Plugin;
+}
+
+export interface PatchPluginInput {
+  readonly enabled?: boolean;
+  readonly pinned?: boolean;
 }
 
 export interface DefinitionError {

@@ -1,15 +1,18 @@
 import { listAgents } from "../api/client";
 import { getConversation, listConversations } from "../api/conversations";
+import { listMarketplaces } from "../api/marketplaces";
+import { listPlugins } from "../api/plugins";
 import { listRepos } from "../api/repos";
 import { listTasks } from "../api/tasks";
 import type { ServerEvent } from "../api/types";
-import { keepRepos, newestFirst, reduceAgents, reduceConversations, reduceDetail, reduceTasks } from "./reducers";
+import { keepPlugins, keepRepos, newestFirst, reduceAgents, reduceConversations, reduceDetail, reduceTasks } from "./reducers";
 import { failed, loaded, pending, withDetail, type DataState, type Resource } from "./state";
 
 export const CONVERSATIONS_KEY = "conversations";
 export const TASKS_KEY = "tasks";
 export const AGENTS_KEY = "agents";
 export const REPOS_KEY = "repos";
+export const PLUGINS_KEY = "plugins";
 const DETAIL_PREFIX = "detail:";
 
 export const detailKey = (id: string): string => `${DETAIL_PREFIX}${id}`;
@@ -77,6 +80,21 @@ const FIXED: ReadonlyMap<string, Loadable> = new Map([
       read: (state) => state.repos,
       write: (state, repos) => ({ ...state, repos }),
       reduce: keepRepos,
+    }),
+  ],
+  [
+    PLUGINS_KEY,
+    erase({
+      fetch: async (signal) => {
+        const [marketplaces, { available, installed }] = await Promise.all([
+          listMarketplaces(signal),
+          listPlugins(signal),
+        ]);
+        return { marketplaces, available, installed };
+      },
+      read: (state) => state.plugins,
+      write: (state, plugins) => ({ ...state, plugins }),
+      reduce: keepPlugins,
     }),
   ],
 ]);

@@ -4,12 +4,19 @@ import { createEventsLink, type EventsLinkDeps } from "./eventsLink";
 import { createLoader } from "./loader";
 import { applyEvent } from "./reducers";
 import { INITIAL_STATE, type DataState } from "./state";
-import { createConversationActions, createRepoActions, type RepoActions } from "./storeActions";
+import { PLUGINS_KEY } from "./resources";
+import {
+  createConversationActions,
+  createPluginActions,
+  createRepoActions,
+  type PluginActions,
+  type RepoActions,
+} from "./storeActions";
 import type { ConversationActions } from "./types";
 
 export type DataStoreDeps = EventsLinkDeps;
 
-export interface DataStore extends RepoActions {
+export interface DataStore extends RepoActions, PluginActions {
   readonly getState: () => DataState;
   readonly subscribe: (listener: () => void) => () => void;
   readonly start: () => void;
@@ -40,5 +47,6 @@ export function createDataStore(deps: DataStoreDeps, initial: DataState = INITIA
     refetch: loader.load,
     actions: createConversationActions(access),
     ...createRepoActions(access),
+    ...createPluginActions(() => loader.load(PLUGINS_KEY)),
   };
 }

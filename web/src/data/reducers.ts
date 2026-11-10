@@ -7,7 +7,7 @@ import type {
   Task,
   ThreadEntry,
 } from "../api/types";
-import { loaded, mapDetails, mapResource, withDetail, type DataState } from "./state";
+import { loaded, mapDetails, mapResource, withDetail, type DataState, type PluginsData } from "./state";
 
 const byNewestActivity = (a: Conversation, b: Conversation): number =>
   b.updatedAt.localeCompare(a.updatedAt);
@@ -119,6 +119,8 @@ export function applyRepoEdited(state: DataState, oldName: string, repo: Repo): 
 }
 
 export const keepRepos = (list: readonly Repo[]): readonly Repo[] => list;
+
+export const keepPlugins = (data: PluginsData): PluginsData => data;
 
 export function applyEvent(state: DataState, event: ServerEvent): DataState {
   const next: DataState = {
