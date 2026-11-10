@@ -12,7 +12,6 @@ pub const DEFAULT_AGENT_TYPE: &str = "builder";
 /// never deleted, and never the type a task defaults to.
 pub const CONVERSATION_AGENT_TYPE: &str = "default";
 
-/// Who owns an agent type: the user (a row in `agents`) or a plugin (read only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Origin {
@@ -21,7 +20,6 @@ pub enum Origin {
 }
 
 /// One saved agent type: the parsed definition, the TOML as written and when it was saved.
-/// `plugin` is the owning plugin's id when `origin` is `plugin`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentType {

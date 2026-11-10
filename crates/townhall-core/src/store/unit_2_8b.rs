@@ -201,8 +201,7 @@ impl Store {
         }
     }
 
-    /// Every agent type by name, ignoring case: the saved ones, then the read only types
-    /// of enabled plugins that no saved type shadows. A row that no longer parses is left
+    /// Every saved agent type by name, ignoring case. A row that no longer parses is left
     /// out with a warning, so one bad row cannot hide the rest.
     pub async fn agent_types(&self) -> Result<Vec<AgentType>> {
         let found = self.call(|conn| rows(conn, "", None)).await?;
@@ -269,8 +268,7 @@ impl Store {
     }
 
     /// Checks `source` and saves it under its `name`, replacing a type of that name
-    /// (ignoring case, the new spelling wins). `true` when it replaced one. `Conflict`
-    /// for the name of a plugin's type.
+    /// (ignoring case, the new spelling wins). `true` when it replaced one.
     pub async fn save_agent_type(&self, source: &str) -> Result<(AgentType, bool)> {
         let parsed = Self::check_agent_type(source)
             .map_err(|errors| Error::InvalidInput(joined(&errors)))?;
@@ -280,8 +278,7 @@ impl Store {
     }
 
     /// Deletes the type called `name` (ignoring case) and returns its stored name.
-    /// `Missing` when unknown, `Conflict` for the last type: tasks always need one, and
-    /// for a plugin's type.
+    /// `Missing` when unknown, `Conflict` for the last type: tasks always need one.
     pub async fn delete_agent_type(&self, name: &str) -> Result<String> {
         self.refuse_plugin_type(name).await?;
         let name = name.to_string();

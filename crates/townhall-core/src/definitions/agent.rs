@@ -140,7 +140,6 @@ pub struct AgentDef {
     /// never logged. Townhall gives no name a meaning: they are the user's to choose.
     #[serde(default)]
     pub env: BTreeMap<String, String>,
-    /// The plugins (`name@marketplace`) whose Claude-side parts this type opts into.
     #[serde(default)]
     pub plugins: Vec<String>,
 }
