@@ -14,6 +14,7 @@ mod library;
 mod logs;
 mod marketplaces;
 mod mcp;
+mod plugins;
 mod profile;
 mod repos;
 mod runs;
@@ -26,7 +27,7 @@ mod tasks;
 mod usage;
 
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use townhall_core::model::{MAX_ARTIFACT_BYTES, MAX_ATTACHMENT_BYTES};
 
@@ -116,6 +117,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/marketplaces/{name}", delete(marketplaces::remove))
         .route("/marketplaces/{name}/refresh", post(marketplaces::refresh))
+        .route("/plugins", get(plugins::list).post(plugins::install))
+        .route("/plugins/preview", get(plugins::preview))
+        .route(
+            "/plugins/{id}",
+            patch(plugins::patch).delete(plugins::uninstall),
+        )
+        .route("/plugins/{id}/update", post(plugins::update))
         .route("/settings", get(settings::get))
         .route("/settings/{key}", put(settings::put))
         .route(

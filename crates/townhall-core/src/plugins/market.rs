@@ -76,12 +76,12 @@ enum Target {
     Remote(Remote),
 }
 
-enum Place {
+pub(super) enum Place {
     Directory(PathBuf),
     Remote(String),
 }
 
-fn place_of(source: &Value) -> Result<Place> {
+pub(super) fn place_of(source: &Value) -> Result<Place> {
     let text = |key: &str| source.get(key).and_then(Value::as_str);
     let found = match source.get("source").and_then(Value::as_str) {
         Some("directory") => text("path").map(|p| Place::Directory(PathBuf::from(p))),
@@ -148,7 +148,7 @@ fn reserved(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn marketplaces_dir(home: &Home) -> Result<PathBuf> {
+pub(super) fn marketplaces_dir(home: &Home) -> Result<PathBuf> {
     let dir = home.plugins_dir()?.join(MARKETPLACES_DIR);
     std::fs::create_dir_all(&dir).map_err(|e| Error::io(format!("create {}", dir.display()), e))?;
     Ok(dir)
@@ -208,7 +208,7 @@ fn index_at(dir: &Path, sha: &str) -> Result<marketplace::Marketplace> {
     Err(no_index(&format!("commit {sha}")))
 }
 
-fn head_of(dir: &Path) -> Result<Option<String>> {
+pub(super) fn head_of(dir: &Path) -> Result<Option<String>> {
     if !dir.join(".git").exists() {
         return Ok(None);
     }
@@ -232,7 +232,7 @@ fn summaries(market: &marketplace::Marketplace) -> Vec<PluginSummary> {
         .collect()
 }
 
-fn listed(home: &Home, row: &Marketplace) -> Result<marketplace::Marketplace> {
+pub(super) fn listed(home: &Home, row: &Marketplace) -> Result<marketplace::Marketplace> {
     match place_of(&row.source)? {
         Place::Directory(path) => read_index_dir(&path),
         Place::Remote(_) => {
@@ -304,7 +304,7 @@ fn sync(
     Ok(Some(sha))
 }
 
-async fn blocking<T, F>(f: F) -> Result<T>
+pub(super) async fn blocking<T, F>(f: F) -> Result<T>
 where
     F: FnOnce() -> Result<T> + Send + 'static,
     T: Send + 'static,
@@ -328,7 +328,7 @@ impl MarketplaceRegistry {
         }
     }
 
-    async fn ensure_official(&self) -> Result<()> {
+    pub(super) async fn ensure_official(&self) -> Result<()> {
         let row = Marketplace {
             name: OFFICIAL.name.to_string(),
             source: json!({"source": "github", "repo": OFFICIAL.repo}),
