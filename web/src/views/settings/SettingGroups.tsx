@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { toMessage } from "../../api/errors";
+import { useContributions } from "../../data";
 import { AGENTS_AT_ONCE_MAX, AGENTS_AT_ONCE_MIN } from "../../settings/settings";
 import { useSettings } from "../../settings/useSettings";
 import { useTheme } from "../../theme/useTheme";
@@ -83,6 +86,32 @@ export function AboutYouGroup() {
   );
 }
 
+function PluginThemeRow() {
+  const { themes, theme, chooseTheme } = useContributions();
+  const [problem, setProblem] = useState<string | null>(null);
+  if (themes.length === 0) return null;
+  const options = [{ value: "", label: "none" }, ...themes.map((t) => ({ value: t.plugin, label: t.name }))];
+  const choose = async (plugin: string) => {
+    try {
+      await chooseTheme(plugin === "" ? null : plugin);
+      setProblem(null);
+    } catch (e) {
+      setProblem(`plugin theme not saved: ${toMessage(e)}`);
+    }
+  };
+  return (
+    <SettingRow label="plugin theme" help={problem ?? HELP.pluginTheme} helpTone={problem === null ? undefined : "danger"}>
+      <Segmented
+        name="th-setting-plugin-theme"
+        label="Plugin theme"
+        value={theme?.plugin ?? ""}
+        options={options}
+        onChange={(plugin) => void choose(plugin)}
+      />
+    </SettingRow>
+  );
+}
+
 export function AppearanceGroup() {
   const { settings, update } = useSettings();
   const theme = useTheme();
@@ -97,6 +126,7 @@ export function AppearanceGroup() {
           onChange={theme.setChoice}
         />
       </SettingRow>
+      <PluginThemeRow />
       <SettingRow label="notify me when" help={HELP.notifyWhen}>
         <Segmented
           name="th-setting-notify"
