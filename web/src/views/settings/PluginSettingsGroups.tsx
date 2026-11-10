@@ -8,6 +8,7 @@ import { Segmented } from "../../ui/Segmented";
 import { Stepper } from "../../ui/Stepper";
 import { Switch } from "../../ui/Switch";
 import { SettingGroup, SettingRow } from "./SettingRow";
+import "./pluginSettings.css";
 
 const SEGMENTED_MAX = 4;
 
