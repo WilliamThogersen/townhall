@@ -85,7 +85,7 @@ export function createPluginActions(reload: () => void): PluginActions {
     previewPlugin,
     installPlugin: (id, approve) => then(installPlugin(id, approve)),
     patchPlugin: (id, input) => then(patchPlugin(id, input)),
-    updatePlugin: (id, approve) => then(updatePlugin(id, approve)),
+    updatePlugin: (id, approve) => then(approve === undefined ? updatePlugin(id) : updatePlugin(id, approve)),
     deletePlugin: (id, purge) => then(deletePlugin(id, purge)),
   };
 }
