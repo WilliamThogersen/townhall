@@ -1,0 +1,26 @@
+[
+  {
+    "title": "find dead code",
+    "text": "find code that nothing calls any more and list what can be removed safely"
+  },
+  {
+    "title": "add missing tests",
+    "text": "find the least tested module and add tests for its main behaviour"
+  },
+  {
+    "title": "review the last commits",
+    "text": "review the last five commits and tell me what looks risky"
+  },
+  {
+    "title": "explain this repo",
+    "text": "explain how this repo is laid out and where a new feature would go"
+  },
+  {
+    "title": "update dependencies",
+    "text": "list outdated dependencies and update the ones that are safe to update"
+  },
+  {
+    "title": "tidy the readme",
+    "text": "check the readme against the code and fix what is out of date"
+  }
+]

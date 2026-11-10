@@ -8,6 +8,8 @@ pub mod manifest;
 pub mod market;
 pub mod marketplace;
 mod official;
+pub mod prompts;
+pub mod schema;
 mod sha256;
 pub mod theme;
 pub mod tree;
