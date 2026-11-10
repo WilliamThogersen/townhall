@@ -6,5 +6,6 @@ pub mod manifest;
 pub mod market;
 pub mod marketplace;
 mod official;
+mod sha256;
 
 pub use official::{Official, OFFICIAL};
