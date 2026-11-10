@@ -1,5 +1,20 @@
 import type { ConnectionStatus } from "../api/events";
-import type { AgentInfo, Conversation, ConversationDetail, Repo, Task } from "../api/types";
+import type {
+  AgentInfo,
+  AvailablePlugin,
+  Conversation,
+  ConversationDetail,
+  Marketplace,
+  Plugin,
+  Repo,
+  Task,
+} from "../api/types";
+
+export interface PluginsData {
+  readonly marketplaces: readonly Marketplace[];
+  readonly available: readonly AvailablePlugin[];
+  readonly installed: readonly Plugin[];
+}
 
 export interface Resource<T> {
   readonly data: T | null;
@@ -15,6 +30,7 @@ export interface DataState {
   readonly tasks: Resource<readonly Task[]> | null;
   readonly agents: Resource<readonly AgentInfo[]> | null;
   readonly repos: Resource<readonly Repo[]> | null;
+  readonly plugins: Resource<PluginsData> | null;
 }
 
 export const INITIAL_STATE: DataState = {
@@ -25,6 +41,7 @@ export const INITIAL_STATE: DataState = {
   tasks: null,
   agents: null,
   repos: null,
+  plugins: null,
 };
 
 export function pending<T>(): Resource<T> {
