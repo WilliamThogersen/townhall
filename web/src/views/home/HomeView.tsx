@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { Repo } from "../../api/types";
+import type { PluginStarter, Repo } from "../../api/types";
 import { DropZone, useFileDrop } from "../../attachments";
 import { Composer, type ComposerHandle } from "../../composer";
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
@@ -21,9 +21,10 @@ export const HOME_KEYS: readonly KeyHint[] = [
 export interface HomeViewProps {
   readonly repos: readonly Repo[] | null;
   readonly clock: Clock;
+  readonly pluginStarters?: readonly PluginStarter[];
 }
 
-export function HomeView({ repos, clock }: HomeViewProps) {
+export function HomeView({ repos, clock, pluginStarters }: HomeViewProps) {
   useKeyHints(HOME_KEYS);
   const [now] = useState(clock);
   const composer = useRef<ComposerHandle>(null);
@@ -43,7 +44,11 @@ export function HomeView({ repos, clock }: HomeViewProps) {
           onSubmit={start}
           tools={repos && repos.length > 0 ? <ReposKnown repos={repos} /> : null}
         />
-        <Starters prompts={starterPrompts(repos)} onPick={(text) => composer.current?.fill(text)} />
+        <Starters
+          prompts={starterPrompts(repos)}
+          extra={pluginStarters}
+          onPick={(text) => composer.current?.fill(text)}
+        />
         <ShippedStats today={now} />
       </div>
     </div>
