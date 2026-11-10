@@ -1,10 +1,10 @@
-import type { ServerEvent } from "../api/types";
+import type { PluginContributions, ServerEvent } from "../api/types";
 import { createCell } from "./cell";
 import { createEventsLink, type EventsLinkDeps } from "./eventsLink";
 import { createLoader } from "./loader";
 import { applyEvent } from "./reducers";
-import { INITIAL_STATE, type DataState } from "./state";
-import { PLUGINS_KEY } from "./resources";
+import { INITIAL_STATE, loaded, type DataState } from "./state";
+import { CONTRIBUTIONS_KEY, loadableFor, PLUGINS_KEY } from "./resources";
 import {
   createConversationActions,
   createPluginActions,
@@ -35,6 +35,12 @@ export function createDataStore(deps: DataStoreDeps, initial: DataState = INITIA
   };
   const link = createEventsLink(cell, loader, apply, deps);
   const access = { update: cell.update, apply };
+  const reloadPlugins = () => {
+    loader.load(PLUGINS_KEY);
+    if (loadableFor(CONTRIBUTIONS_KEY).read(cell.get()) !== null) loader.load(CONTRIBUTIONS_KEY);
+  };
+  const adoptContributions = (contributions: PluginContributions) =>
+    cell.update((state) => ({ ...state, contributions: loaded(contributions) }));
   return {
     getState: cell.get,
     subscribe: cell.subscribe,
@@ -47,6 +53,6 @@ export function createDataStore(deps: DataStoreDeps, initial: DataState = INITIA
     refetch: loader.load,
     actions: createConversationActions(access),
     ...createRepoActions(access),
-    ...createPluginActions(() => loader.load(PLUGINS_KEY)),
+    ...createPluginActions(reloadPlugins, adoptContributions),
   };
 }

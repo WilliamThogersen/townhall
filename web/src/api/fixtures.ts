@@ -11,7 +11,9 @@ import type {
   AvailablePlugin,
   Marketplace,
   Plugin,
+  PluginContributions,
   PluginPreview,
+  PluginSettingField,
   Repo,
   Stats,
   Step,
@@ -157,6 +159,29 @@ export const anAvailablePlugin = (over: Partial<AvailablePlugin> = {}): Availabl
   version: "1.0.0",
   category: null,
   installed: false,
+  ...over,
+});
+
+export const aSettingField = (over: Partial<PluginSettingField> = {}): PluginSettingField => ({
+  key: "retries",
+  label: "retries",
+  description: null,
+  type: "integer",
+  default: 3,
+  min: 1,
+  max: 9,
+  choices: null,
+  secret: false,
+  value: 3,
+  set: false,
+  ...over,
+});
+
+export const someContributions = (over: Partial<PluginContributions> = {}): PluginContributions => ({
+  starters: [],
+  themes: [],
+  theme: null,
+  settings: [],
   ...over,
 });
 

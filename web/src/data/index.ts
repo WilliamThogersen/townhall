@@ -12,6 +12,7 @@ export {
 export { ARTIFACTS_POLL_MS, useArtifacts } from "./useArtifacts";
 export { useConversation, useConversations } from "./useConversations";
 export { useConversationActions } from "./useConversationActions";
+export { useContributions } from "./useContributions";
 export { usePlugins } from "./usePlugins";
 export { useRepos } from "./useRepos";
 export { useStats } from "./useStats";
@@ -22,6 +23,7 @@ export type {
   AgentInfosState,
   ArtifactsState,
   ConnectionStatus,
+  ContributionsState,
   ConversationActions,
   ConversationState,
   ConversationsState,

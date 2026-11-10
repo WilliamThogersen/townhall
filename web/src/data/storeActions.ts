@@ -6,7 +6,16 @@ import {
   stopTurn,
 } from "../api/conversations";
 import { addMarketplace, refreshMarketplace, removeMarketplace } from "../api/marketplaces";
-import { deletePlugin, installPlugin, patchPlugin, previewPlugin, updatePlugin } from "../api/plugins";
+import {
+  deletePlugin,
+  installPlugin,
+  patchPlugin,
+  previewPlugin,
+  putPluginSetting,
+  putPluginTheme,
+  resetPluginSetting,
+  updatePlugin,
+} from "../api/plugins";
 import { addRepo, patchRepo, putRepoAccounts, removeRepo } from "../api/repos";
 import type {
   AddMarketplaceInput,
@@ -16,11 +25,13 @@ import type {
   PatchPluginInput,
   PatchRepoInput,
   Plugin,
+  PluginContributions,
   PluginPreview,
   PluginUpdate,
   PutRepoAccountsInput,
   Repo,
   ServerEvent,
+  SettingFieldValue,
 } from "../api/types";
 import { applyRepoEdited, applyStarted, upsertRepo, withoutRepo } from "./reducers";
 import { mapResource, type DataState } from "./state";
@@ -40,6 +51,9 @@ export interface PluginActions {
   readonly patchPlugin: (id: string, input: PatchPluginInput) => Promise<Plugin>;
   readonly updatePlugin: (id: string, approve?: string) => Promise<PluginUpdate>;
   readonly deletePlugin: (id: string, purge?: boolean) => Promise<Plugin>;
+  readonly chooseTheme: (plugin: string | null) => Promise<PluginContributions>;
+  readonly setPluginSetting: (id: string, key: string, value: SettingFieldValue) => Promise<PluginContributions>;
+  readonly resetPluginSetting: (id: string, key: string) => Promise<PluginContributions>;
 }
 
 export interface RepoActions {
@@ -72,11 +86,19 @@ export function createConversationActions({ update, apply }: StoreAccess): Conve
   };
 }
 
-export function createPluginActions(reload: () => void): PluginActions {
+export function createPluginActions(
+  reload: () => void,
+  adopt: (contributions: PluginContributions) => void,
+): PluginActions {
   const then = async <T>(answer: Promise<T>): Promise<T> => {
     const value = await answer;
     reload();
     return value;
+  };
+  const adopted = async (answer: Promise<PluginContributions>): Promise<PluginContributions> => {
+    const contributions = await answer;
+    adopt(contributions);
+    return contributions;
   };
   return {
     addMarketplace: (input) => then(addMarketplace(input)),
@@ -87,6 +109,9 @@ export function createPluginActions(reload: () => void): PluginActions {
     patchPlugin: (id, input) => then(patchPlugin(id, input)),
     updatePlugin: (id, approve) => then(approve === undefined ? updatePlugin(id) : updatePlugin(id, approve)),
     deletePlugin: (id, purge) => then(deletePlugin(id, purge)),
+    chooseTheme: (plugin) => adopted(putPluginTheme(plugin)),
+    setPluginSetting: (id, key, value) => adopted(putPluginSetting(id, key, value)),
+    resetPluginSetting: (id, key) => adopted(resetPluginSetting(id, key)),
   };
 }
 
