@@ -208,6 +208,144 @@ async fn a_stored_value_that_no_longer_fits_the_schema_falls_back_to_the_default
 }
 
 #[tokio::test]
+async fn choosing_a_theme_needs_an_enabled_plugin_that_ships_one() {
+    let env = store_env();
+    let store = &env.store;
+    install_everything(store, "notes", "acme", true).await;
+    install_everything(store, "off", "acme", false).await;
+    install_files(
+        store,
+        "plain",
+        "acme",
+        json!({"name": "plain", "version": "1.0.0", "apiVersion": 1}),
+        &[],
+        true,
+    )
+    .await;
+
+    let all = declared::choose_theme(store, Some("NOTES@acme"))
+        .await
+        .unwrap();
+    assert_eq!(all.theme.unwrap().plugin, "notes@acme");
+    assert_eq!(
+        store.plugin_theme().await.unwrap().as_deref(),
+        Some("notes@acme")
+    );
+
+    for (id, kind) in [
+        ("ghost@acme", "missing"),
+        ("off@acme", "conflict"),
+        ("plain@acme", "conflict"),
+    ] {
+        let err = declared::choose_theme(store, Some(id)).await.unwrap_err();
+        let got = match err {
+            townhall_core::Error::Missing { .. } => "missing",
+            townhall_core::Error::Conflict(_) => "conflict",
+            other => panic!("{id}: {other}"),
+        };
+        assert_eq!(got, kind, "{id}");
+    }
+    assert_eq!(
+        store.plugin_theme().await.unwrap().as_deref(),
+        Some("notes@acme")
+    );
+
+    let all = declared::choose_theme(store, None).await.unwrap();
+    assert!(all.theme.is_none());
+    assert_eq!(store.plugin_theme().await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn a_setting_is_saved_only_when_it_fits_its_field() {
+    let env = store_env();
+    let store = &env.store;
+    install_everything(store, "notes", "acme", true).await;
+    install_everything(store, "off", "acme", false).await;
+
+    let all = declared::set_setting(store, "Notes@ACME", "retries", json!(5))
+        .await
+        .unwrap();
+    assert_eq!(all.settings[0].fields[0].value, json!(5));
+    assert_eq!(
+        store.plugin_settings("notes@acme").await.unwrap()["retries"],
+        json!(5)
+    );
+
+    for (key, value) in [
+        ("retries", json!(10)),
+        ("retries", json!("x")),
+        ("token", json!(3)),
+    ] {
+        let err = declared::set_setting(store, "notes@acme", key, value)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, townhall_core::Error::InvalidInput(_)),
+            "{key}: {err}"
+        );
+    }
+    let err = declared::set_setting(store, "notes@acme", "nope", json!(1))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, townhall_core::Error::Missing { .. }), "{err}");
+    let err = declared::set_setting(store, "off@acme", "retries", json!(2))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, townhall_core::Error::Missing { .. }), "{err}");
+    let err = declared::set_setting(store, "ghost@acme", "retries", json!(2))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, townhall_core::Error::Missing { .. }), "{err}");
+    assert_eq!(store.plugin_settings("notes@acme").await.unwrap().len(), 1);
+    assert!(store.plugin_settings("off@acme").await.unwrap().is_empty());
+
+    let all = declared::reset_setting(store, "notes@acme", "retries")
+        .await
+        .unwrap();
+    assert_eq!(all.settings[0].fields[0].value, json!(3));
+    assert!(store
+        .plugin_settings("notes@acme")
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn uninstalling_keeps_settings_unless_purged_and_drops_its_own_theme() {
+    use townhall_core::plugins::install::PluginRegistry;
+    let env = store_env();
+    let store = &env.store;
+    let registry = PluginRegistry::new(store.clone());
+    install_everything(store, "notes", "acme", true).await;
+    install_everything(store, "other", "acme", true).await;
+    declared::set_setting(store, "notes@acme", "retries", json!(5))
+        .await
+        .unwrap();
+    declared::set_setting(store, "other@acme", "retries", json!(6))
+        .await
+        .unwrap();
+    declared::choose_theme(store, Some("notes@acme"))
+        .await
+        .unwrap();
+
+    registry.uninstall("notes@acme", false).await.unwrap();
+    assert_eq!(store.plugin_settings("notes@acme").await.unwrap().len(), 1);
+    assert_eq!(store.plugin_theme().await.unwrap(), None);
+
+    declared::choose_theme(store, Some("other@acme"))
+        .await
+        .unwrap();
+    registry.uninstall("other@acme", true).await.unwrap();
+    assert!(store
+        .plugin_settings("other@acme")
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(store.plugin_theme().await.unwrap(), None);
+    assert_eq!(store.plugin_settings("notes@acme").await.unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn the_chosen_theme_applies_only_while_its_plugin_is_enabled() {
     let env = store_env();
     let plugin = install_everything(&env.store, "notes", "acme", true).await;

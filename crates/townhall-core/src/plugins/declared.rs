@@ -247,6 +247,60 @@ fn view_of(field: &Field, stored: Option<&Value>) -> FieldView {
     }
 }
 
+pub async fn choose_theme(store: &Store, plugin: Option<&str>) -> Result<Contributions> {
+    match plugin {
+        None => store.set_plugin_theme(None).await?,
+        Some(id) => {
+            let row = store.plugin(id).await?;
+            let ships_one = row.enabled
+                && enabled(store)
+                    .await?
+                    .iter()
+                    .any(|p| p.id == row.id && p.theme.is_some());
+            if !ships_one {
+                return Err(Error::Conflict(format!(
+                    "plugin `{}` has no theme to apply: it must be enabled and ship a valid theme",
+                    row.id
+                )));
+            }
+            store.set_plugin_theme(Some(&row.id)).await?;
+        }
+    }
+    contributions(store).await
+}
+
+async fn field_of(store: &Store, id: &str, key: &str) -> Result<(String, Field)> {
+    let all = enabled(store).await?;
+    let plugin = all
+        .into_iter()
+        .find(|p| p.id.eq_ignore_ascii_case(id) && !p.fields.is_empty())
+        .ok_or_else(|| Error::missing("plugin settings", id))?;
+    let field = plugin
+        .fields
+        .into_iter()
+        .find(|f| f.key == key)
+        .ok_or_else(|| Error::missing("setting", format!("{}/{key}", plugin.id)))?;
+    Ok((plugin.id, field))
+}
+
+pub async fn set_setting(
+    store: &Store,
+    id: &str,
+    key: &str,
+    value: Value,
+) -> Result<Contributions> {
+    let (id, field) = field_of(store, id, key).await?;
+    let value = field.check(&value)?;
+    store.set_plugin_setting(&id, key, value).await?;
+    contributions(store).await
+}
+
+pub async fn reset_setting(store: &Store, id: &str, key: &str) -> Result<Contributions> {
+    let (id, _) = field_of(store, id, key).await?;
+    store.reset_plugin_setting(&id, key).await?;
+    contributions(store).await
+}
+
 pub async fn contributions(store: &Store) -> Result<Contributions> {
     let all = enabled(store).await?;
     let chosen = store.plugin_theme().await?;
