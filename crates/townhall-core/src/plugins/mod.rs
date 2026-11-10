@@ -3,6 +3,7 @@
 
 pub(crate) mod agent_types;
 mod check;
+pub mod declared;
 pub mod install;
 pub mod manifest;
 pub mod market;
