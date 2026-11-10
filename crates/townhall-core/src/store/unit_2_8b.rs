@@ -15,7 +15,8 @@ use super::migrate::Migration;
 use super::Store;
 use crate::agent_usage::{aggregate, AgentUsageSeries, UsageRange, UsageRun};
 use crate::definitions::{check_agent, AgentDef, DefKind, DefinitionError, Parsed};
-use crate::model::{AgentType, AgentUsage, TaskRun, CONVERSATION_AGENT_TYPE};
+use crate::model::{AgentType, AgentUsage, Origin, TaskRun, CONVERSATION_AGENT_TYPE};
+use crate::plugins::agent_types;
 use crate::{clock, Error, Result};
 
 pub const MIGRATIONS: &[Migration] = &[
@@ -98,6 +99,8 @@ fn parse_row((name, source, updated_at): Row) -> Result<AgentType> {
         def: parsed.def,
         source: parsed.source,
         updated_at,
+        origin: Origin::User,
+        plugin: None,
     })
 }
 
@@ -149,6 +152,8 @@ fn upsert(conn: &mut Connection, def: &AgentDef, source: &str) -> Result<(AgentT
         def: def.clone(),
         source: source.to_string(),
         updated_at,
+        origin: Origin::User,
+        plugin: None,
     };
     Ok((saved, replaced))
 }
@@ -196,11 +201,12 @@ impl Store {
         }
     }
 
-    /// Every saved agent type by name, ignoring case. A row that no longer parses is left
+    /// Every agent type by name, ignoring case: the saved ones, then the read only types
+    /// of enabled plugins that no saved type shadows. A row that no longer parses is left
     /// out with a warning, so one bad row cannot hide the rest.
     pub async fn agent_types(&self) -> Result<Vec<AgentType>> {
         let found = self.call(|conn| rows(conn, "", None)).await?;
-        Ok(found
+        let mut all: Vec<AgentType> = found
             .into_iter()
             .filter_map(|row| match parse_row(row) {
                 Ok(agent) => Some(agent),
@@ -213,11 +219,31 @@ impl Store {
                     None
                 }
             })
-            .collect())
+            .collect();
+        for plugin_type in agent_types::enabled_types(self).await? {
+            let taken = all
+                .iter()
+                .any(|t| t.def.name.eq_ignore_ascii_case(&plugin_type.def.name));
+            if !taken {
+                all.push(plugin_type);
+            }
+        }
+        all.sort_by_key(|t| t.def.name.to_lowercase());
+        Ok(all)
     }
 
     /// The agent type called `name`, ignoring case.
     pub async fn agent_type(&self, name: &str) -> Result<Option<AgentType>> {
+        if let Some(saved) = self.saved_agent_type(name).await? {
+            return Ok(Some(saved));
+        }
+        Ok(agent_types::enabled_types(self)
+            .await?
+            .into_iter()
+            .find(|t| t.def.name.eq_ignore_ascii_case(name)))
+    }
+
+    async fn saved_agent_type(&self, name: &str) -> Result<Option<AgentType>> {
         let name = name.to_string();
         let found = self
             .call(move |conn| rows(conn, "where name = ?1", Some(&name)))
@@ -225,18 +251,39 @@ impl Store {
         found.into_iter().next().map(parse_row).transpose()
     }
 
+    async fn refuse_plugin_type(&self, name: &str) -> Result<()> {
+        if self.saved_agent_type(name).await?.is_some() {
+            return Ok(());
+        }
+        match self.agent_type(name).await? {
+            Some(AgentType {
+                plugin: Some(plugin),
+                def,
+                ..
+            }) => Err(Error::Conflict(format!(
+                "agent type `{}` is owned by plugin {plugin} and read only: copy it to a type of your own",
+                def.name
+            ))),
+            _ => Ok(()),
+        }
+    }
+
     /// Checks `source` and saves it under its `name`, replacing a type of that name
-    /// (ignoring case, the new spelling wins). `true` when it replaced one.
+    /// (ignoring case, the new spelling wins). `true` when it replaced one. `Conflict`
+    /// for the name of a plugin's type.
     pub async fn save_agent_type(&self, source: &str) -> Result<(AgentType, bool)> {
         let parsed = Self::check_agent_type(source)
             .map_err(|errors| Error::InvalidInput(joined(&errors)))?;
+        self.refuse_plugin_type(&parsed.def.name).await?;
         self.call(move |conn| upsert(conn, &parsed.def, &parsed.source))
             .await
     }
 
     /// Deletes the type called `name` (ignoring case) and returns its stored name.
-    /// `Missing` when unknown, `Conflict` for the last type: tasks always need one.
+    /// `Missing` when unknown, `Conflict` for the last type: tasks always need one, and
+    /// for a plugin's type.
     pub async fn delete_agent_type(&self, name: &str) -> Result<String> {
+        self.refuse_plugin_type(name).await?;
         let name = name.to_string();
         self.call(move |conn| delete(conn, &name)).await
     }

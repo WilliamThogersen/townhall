@@ -12,7 +12,16 @@ pub const DEFAULT_AGENT_TYPE: &str = "builder";
 /// never deleted, and never the type a task defaults to.
 pub const CONVERSATION_AGENT_TYPE: &str = "default";
 
+/// Who owns an agent type: the user (a row in `agents`) or a plugin (read only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Origin {
+    User,
+    Plugin,
+}
+
 /// One saved agent type: the parsed definition, the TOML as written and when it was saved.
+/// `plugin` is the owning plugin's id when `origin` is `plugin`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentType {
@@ -20,6 +29,8 @@ pub struct AgentType {
     pub def: AgentDef,
     pub source: String,
     pub updated_at: String,
+    pub origin: Origin,
+    pub plugin: Option<String>,
 }
 
 /// One row of the library's agent list.
@@ -69,12 +80,15 @@ mod tests {
             def: parse_agent(source).unwrap().def,
             source: source.into(),
             updated_at: "2026-11-05T10:00:00.000Z".into(),
+            origin: Origin::User,
+            plugin: None,
         };
         assert_eq!(
             serde_json::to_value(&t).unwrap(),
             json!({"name": "b", "description": "", "adapter": "claude", "model": null,
                    "effort": null, "permissionMode": "acceptEdits", "tools": [], "prompt": null, "command": null,
-                   "canHandBackTo": null, "requires": [], "avatar": null, "env": {}, "source": source, "updatedAt": "2026-11-05T10:00:00.000Z"})
+                   "canHandBackTo": null, "requires": [], "avatar": null, "env": {}, "plugins": [], "source": source, "updatedAt": "2026-11-05T10:00:00.000Z",
+                   "origin": "user", "plugin": null})
         );
         let keys: Vec<String> = serde_json::to_value(t.summary())
             .unwrap()
