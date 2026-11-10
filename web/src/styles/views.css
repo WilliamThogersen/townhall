@@ -657,6 +657,12 @@
   padding: var(--th-space-5) var(--th-space-5) var(--th-space-7);
 }
 
+.th-settings-version {
+  margin: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .th-setting-group {
   display: grid;
   gap: var(--th-space-2);

@@ -30,6 +30,7 @@ export interface Info {
   readonly repo: string;
   readonly repoKey: string;
   readonly userName?: string | null;
+  readonly version?: string | null;
 }
 
 export interface Repo {

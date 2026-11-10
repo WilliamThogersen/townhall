@@ -24,7 +24,7 @@ describe("api client", () => {
   });
 
   it("validates the info payload and reads the user name", async () => {
-    const info = { home: "/h/.townhall", repo: "/r", repoKey: "r-0123abcd", userName: "Ada Lovelace" };
+    const info = { home: "/h/.townhall", repo: "/r", repoKey: "r-0123abcd", userName: "Ada Lovelace", version: "0.2.0-alpha.1+dc699d6" };
     mockFetch(200, { success: true, data: info, error: null });
     expect(await getInfo()).toEqual(info);
     mockFetch(200, { success: true, data: { ...info, userName: null }, error: null });
