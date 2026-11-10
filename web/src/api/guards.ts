@@ -70,6 +70,7 @@ export function parseInfo(value: unknown): Info {
     repo: str(r.repo, "info.repo"),
     repoKey: str(r.repoKey, "info.repoKey"),
     userName: nullable(r.userName, "info.userName", str),
+    version: nullable(r.version, "info.version", str),
   };
 }
 

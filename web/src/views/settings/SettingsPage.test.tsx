@@ -9,6 +9,7 @@ import { saveThemeChoice } from "../../theme/theme";
 import { SettingsPage } from "./SettingsPage";
 
 const HELD = "townhall.db is held by another townhall";
+const VERSION = "0.2.0-alpha.1+dc699d6";
 
 interface Call {
   readonly method: string;
@@ -40,6 +41,10 @@ function fakeDaemon(initial: Partial<Settings> = {}, found: readonly Found[] = [
           (a) => a.forge === f.forge && a.host === f.host && a.login.toLowerCase() === f.login.toLowerCase(),
         );
       return reply(200, found.map((f) => ({ ...f, registered: registered(f) })), null, warnings);
+    }
+    if (url === "/api/info") {
+      if (failing.has("info")) return reply(503, null, HELD);
+      return reply(200, { home: "/h", repo: "/r", repoKey: "r-1", userName: null, version: VERSION }, null);
     }
     if (url === "/api/profile") {
       if (failing.has("profile")) return reply(503, null, HELD);
@@ -116,6 +121,34 @@ describe("SettingsPage", () => {
     const saves = screen.getAllByRole("button", { name: /^save/ });
     expect(saves).toHaveLength(1);
     expect(saves[0]?.closest(".th-setting-row")).toHaveTextContent("profile");
+  });
+
+  it("shows the full version below the last section, inside the settings column", async () => {
+    await renderLoaded();
+    const version = await screen.findByText(VERSION);
+    const column = document.querySelector(".th-settings");
+    expect(version.parentElement).toBe(column);
+    expect(column?.lastElementChild).toBe(version);
+    expect(version.previousElementSibling).toContainElement(screen.getByRole("heading", { level: 2, name: "about you" }));
+  });
+
+  it("shows no version while the daemon has not answered", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) =>
+        url === "/api/info" ? new Promise<Response>(() => undefined) : daemon.fetch(url, init),
+      ),
+    );
+    await renderLoaded();
+    expect(screen.queryByText(/0\.2\.0/)).not.toBeInTheDocument();
+  });
+
+  it("shows no version when the daemon cannot answer", async () => {
+    daemon.failing.add("info");
+    await renderLoaded();
+    await waitFor(() => expect(daemon.fetch).toHaveBeenCalledWith("/api/info", expect.anything()));
+    expect(screen.queryByText(/0\.2\.0/)).not.toBeInTheDocument();
+    expect(document.querySelector(".th-settings-version")).toBeNull();
   });
 
   it("has no permission rows: each agent type sets its own permissions", async () => {
