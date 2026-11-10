@@ -253,6 +253,24 @@ fn every_contributed_file_must_exist_inside_the_plugin() {
 }
 
 #[test]
+fn a_plugin_agent_type_with_bypass_permissions_cannot_be_installed() {
+    let dir = plugin(&manifest(
+        r#"{}"#,
+        r#","contributes":{"agentTypes":["agent-types/skip.toml"]}"#,
+    ));
+    let skip = "name = \"skip\"\nadapter = \"claude\"\npermission_mode = \"bypassPermissions\"\n";
+    write(dir.path(), "agent-types/skip.toml", skip);
+    let err = refused(dir.path());
+    assert!(err.contains("agent-types/skip.toml"), "{err}");
+    assert!(err.contains("bypassPermissions"), "{err}");
+    let plain = "name = \"skip\"\nadapter = \"claude\"\npermission_mode = \"plan\"\n";
+    write(dir.path(), "agent-types/skip.toml", plain);
+    assert!(validate(dir.path(), &entry()).is_ok());
+    write(dir.path(), "agent-types/skip.toml", "not toml at all");
+    assert!(validate(dir.path(), &entry()).is_ok());
+}
+
+#[test]
 fn a_contributed_file_that_is_a_symlink_out_of_the_plugin_is_refused() {
     let outside = tempfile::tempdir().unwrap();
     write(outside.path(), "secret.css", "x");

@@ -145,7 +145,7 @@ fn view_of(plugin: Plugin) -> Result<PluginView> {
     })
 }
 
-fn cache_root(home: &Home, market: &str, plugin: &str) -> Result<PathBuf> {
+pub(super) fn cache_root(home: &Home, market: &str, plugin: &str) -> Result<PathBuf> {
     Ok(home
         .plugins_dir()?
         .join(CACHE_DIR)

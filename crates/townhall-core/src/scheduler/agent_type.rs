@@ -8,6 +8,7 @@ use crate::context::Context;
 use crate::definitions::AdapterKind;
 use crate::mcp;
 use crate::model::{AgentType, Task};
+use crate::plugins::agent_types;
 use crate::{Error, Result};
 
 /// How a task's agent starts, before the brief, session id and folders are added.
@@ -28,9 +29,20 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
             .into_iter()
             .map(|t| t.def.name)
             .collect();
+        let why = match agent_types::owner_of(store, &task.agent).await? {
+            Some(plugin) if plugin.enabled => {
+                format!(
+                    "comes from plugin {}, which no longer provides it",
+                    plugin.id
+                )
+            }
+            Some(plugin) => format!("comes from plugin {}, which is disabled", plugin.id),
+            None => "was deleted after the task was created".to_string(),
+        };
         return Err(Error::Conflict(format!(
-            "agent type `{}` was deleted after the task was created: create the task again with one of: {}",
+            "agent type `{}` {}: create the task again with one of: {}",
             task.agent,
+            why,
             names.join(", ")
         )));
     };
