@@ -9,6 +9,7 @@ pub mod market;
 pub mod marketplace;
 mod official;
 mod sha256;
+pub mod theme;
 pub mod tree;
 
 pub use official::{Official, OFFICIAL};
