@@ -1,0 +1,48 @@
+name: brew-check
+
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  install:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-latest
+    steps:
+      - name: Install from the tap
+        run: brew install --cask WilliamThogersen/tap/townhall
+
+      - name: Check the tap has the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
+          installed=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" /Applications/Townhall.app/Contents/Info.plist)
+          if [[ "v$installed" != "$latest" ]]; then
+            echo "::error::brew installed $installed but the latest release is $latest. Check Casks/townhall.rb in WilliamThogersen/homebrew-tap."
+            exit 1
+          fi
+          echo "brew installs $latest"
+
+      - name: Check the app is intact and not quarantined
+        run: |
+          codesign --verify --deep --strict /Applications/Townhall.app
+          exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" /Applications/Townhall.app/Contents/Info.plist)
+          for arch in arm64 x86_64; do
+            lipo "/Applications/Townhall.app/Contents/MacOS/$exe" -verify_arch "$arch"
+          done
+          if xattr -p com.apple.quarantine /Applications/Townhall.app 2>/dev/null; then
+            echo "::error::the installed app is still quarantined"
+            exit 1
+          fi

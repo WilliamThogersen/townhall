@@ -32,6 +32,7 @@ pub mod steps;
 pub mod store;
 pub mod tmux;
 pub mod usage;
+pub mod version;
 pub mod worktree;
 
 pub use context::{Context, ContextOptions};

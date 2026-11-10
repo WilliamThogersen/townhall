@@ -1,0 +1,140 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Check the tag matches the workspace version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "townhall-core") | .version')
+          if [[ -z "$version" || "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version '$version' in the root Cargo.toml [workspace.package]. Bump it in a PR, merge, then tag the merge commit again."
+            exit 1
+          fi
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    env:
+      TOWNHALL_RELEASE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install Rust targets and web dependencies
+        run: |
+          cargo --version
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          npm --prefix web ci --no-audit --no-fund
+
+      - name: Test
+        run: |
+          git config --global user.email "ci@townhall.local"
+          git config --global user.name "CI"
+          git config --global init.defaultBranch main
+          command -v tmux >/dev/null || brew install tmux
+          mkdir -p web/dist
+          cargo test --workspace --locked
+
+      - name: Build the universal app
+        run: npm --prefix web run tauri -- build --target universal-apple-darwin --bundles app
+
+      - name: Sign and package
+        run: |
+          app=target/universal-apple-darwin/release/bundle/macos/Townhall.app
+          if [[ ! -d "$app" ]]; then
+            echo "::error::$app was not built"
+            exit 1
+          fi
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$app/Contents/Info.plist")
+          for arch in arm64 x86_64; do
+            lipo "$app/Contents/MacOS/$exe" -verify_arch "$arch"
+          done
+          version="${GITHUB_REF_NAME#v}"
+          plist=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Contents/Info.plist")
+          if [[ "$plist" != "$version" ]]; then
+            echo "::error::the app says $plist but the tag is $version"
+            exit 1
+          fi
+          mkdir dist
+          ditto -c -k --keepParent "$app" dist/Townhall-macos.zip
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: townhall-macos
+          path: dist/Townhall-macos.zip
+          if-no-files-found: error
+
+  publish:
+    needs: macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: townhall-*
+          merge-multiple: true
+          path: dist
+
+      - name: Checksums
+        run: |
+          if [[ ! -f dist/Townhall-macos.zip ]]; then
+            echo "::error::dist/Townhall-macos.zip is missing"
+            exit 1
+          fi
+          (cd dist && sha256sum -- *.zip > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-from-tag --verify-tag "${flags[@]}"
+
+      - name: Check out the Homebrew tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: WilliamThogersen/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+
+      - name: Update the Homebrew cask
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sha=$(sha256sum dist/Townhall-macos.zip | cut -d ' ' -f 1)
+          mkdir -p tap/Casks
+          sed -e "s/@VERSION@/$version/g" \
+              -e "s/@SHA256@/$sha/g" \
+              .github/homebrew/townhall.rb > tap/Casks/townhall.rb
+          if grep -n '@[A-Z0-9_]*@' tap/Casks/townhall.rb; then
+            echo "::error::the cask still has a placeholder"
+            exit 1
+          fi
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/townhall.rb
+          git commit -m "townhall $version"
+          git push
