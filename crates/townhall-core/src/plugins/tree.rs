@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 
+use super::agent_types;
 use super::check;
 use super::manifest::{self, McpTools, Permissions, MAX_MANIFEST_BYTES};
 use super::marketplace::Entry;
@@ -102,7 +103,10 @@ pub fn validate_with(root: &Path, entry: &Entry, limits: &Limits) -> Result<Chec
     let version = version.or_else(|| entry.version.clone());
 
     for (what, rel) in &files.others {
-        tree.file(what, rel)?;
+        let path = tree.file(what, rel)?;
+        if *what == "contributes.agentTypes" {
+            agent_types::refuse_skip_all_at_install(rel, &path)?;
+        }
     }
 
     let mut runs = BTreeSet::new();

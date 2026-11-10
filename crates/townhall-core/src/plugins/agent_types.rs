@@ -102,6 +102,17 @@ fn one(root: &Path, plugin: &Plugin, rel: &str) -> Result<AgentType> {
     })
 }
 
+pub(super) fn refuse_skip_all_at_install(rel: &str, path: &Path) -> Result<()> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(());
+    };
+    match Store::check_agent_type(&text) {
+        Ok(parsed) => refuse_bypass(parsed.def.permission_mode)
+            .map_err(|e| check::invalid("contributes.agentTypes", format!("`{rel}`: {e}"))),
+        Err(_) => Ok(()),
+    }
+}
+
 fn refuse_bypass(mode: Option<PermissionMode>) -> Result<()> {
     match mode {
         Some(PermissionMode::BypassPermissions) => Err(Error::InvalidInput(
