@@ -1,4 +1,5 @@
-import { useSettings, type SettingsControls } from "../../settings/useSettings";
+import { useInfo } from "../../repos/useInfo";
+import { useSettings,type SettingsControls } from "../../settings/useSettings";
 import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
@@ -32,6 +33,12 @@ function SettingsProblem({ problem, loading, retry, dismissProblem }: ProblemPro
   );
 }
 
+function VersionFooter() {
+  const { info } = useInfo();
+  if (!info?.version) return null;
+  return <p className="th-cap th-settings-version">{info.version}</p>;
+}
+
 export function SettingsPage() {
   useKeyHints(SETTINGS_HINTS);
   const { problem, loading, retry, dismissProblem } = useSettings();
@@ -50,6 +57,7 @@ export function SettingsPage() {
           <AccountsGroup />
           <AppearanceGroup />
           <AboutYouGroup />
+          <VersionFooter />
         </div>
       </div>
     </div>
