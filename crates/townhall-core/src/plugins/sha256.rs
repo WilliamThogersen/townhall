@@ -15,7 +15,7 @@ const START: [u32; 8] = [
 
 fn block(state: &mut [u32; 8], chunk: &[u8]) {
     let mut w = [0u32; 64];
-    for (i, word) in chunk.chunks_exact(4).enumerate() {
+    for (i, word) in chunk.chunks(4).enumerate() {
         w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
     }
     for i in 16..64 {
@@ -60,7 +60,7 @@ pub(super) fn hex(data: &[u8]) -> String {
         padded.push(0);
     }
     padded.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
-    for chunk in padded.chunks_exact(64) {
+    for chunk in padded.chunks(64) {
         block(&mut state, chunk);
     }
     state.iter().map(|word| format!("{word:08x}")).collect()
