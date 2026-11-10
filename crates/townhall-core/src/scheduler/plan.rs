@@ -99,6 +99,20 @@ pub fn brief_text(
     )
 }
 
+pub fn with_plugin_sections(text: String, sections: &[(String, String)]) -> String {
+    if sections.is_empty() {
+        return text;
+    }
+    let mut out = text;
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    for (id, body) in sections {
+        out.push_str(&format!("\n## From plugin {id}\n\n{}\n", body.trim_end()));
+    }
+    out
+}
+
 /// `text` cut to at most `max` characters, ending in `...` when it was cut.
 pub fn capped(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
@@ -213,6 +227,52 @@ mod tests {
             brief_text("fix", "do it", &blank, &[], &[]),
             "# fix\n\ndo it\n"
         );
+    }
+
+    #[test]
+    fn no_plugin_sections_leave_the_brief_byte_for_byte_alone() {
+        let hand = Handoff {
+            task: "t".into(),
+            from: "a".into(),
+            to: "b".into(),
+            reason: "why".into(),
+            summary: "did".into(),
+            at: "2026-11-04T10:42:05.000Z".into(),
+        };
+        let done = Done {
+            done_when: Some("all tests pass".into()),
+            check: Some("npm test".into()),
+            ..Done::default()
+        };
+        let files = [PathBuf::from("/a/b.png")];
+        for text in [
+            brief_text("fix", "do it", &Done::default(), &[], &[]),
+            brief_text("fix", "do it\n\n", &done, &files, &[hand.clone()]),
+            String::new(),
+        ] {
+            assert_eq!(with_plugin_sections(text.clone(), &[]), text);
+        }
+    }
+
+    #[test]
+    fn plugin_sections_come_last_each_under_its_own_heading() {
+        let files = [PathBuf::from("/a/b.png")];
+        let base = brief_text("fix", "do it", &Done::default(), &files, &[]);
+        let got = with_plugin_sections(
+            base.clone(),
+            &[
+                ("notes@acme".into(), "write a changelog line".into()),
+                ("lint@acme".into(), "run the linter\n\nand fix it".into()),
+            ],
+        );
+        assert_eq!(
+            got,
+            format!(
+                "{base}\n## From plugin notes@acme\n\nwrite a changelog line\n\n## From plugin lint@acme\n\nrun the linter\n\nand fix it\n"
+            )
+        );
+        assert!(got.starts_with(&base));
+        assert!(got.find("Files attached").unwrap() < got.find("## From plugin").unwrap());
     }
 
     #[test]
