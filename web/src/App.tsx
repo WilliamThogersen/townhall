@@ -9,6 +9,7 @@ import { ControlCenterPage } from "./views/control/ControlCenterPage";
 import { ConversationPage } from "./views/conversation/ConversationPage";
 import { HomePage } from "./views/home/HomePage";
 import { NotFound } from "./views/NotFound";
+import { PluginsPage } from "./views/plugins/PluginsPage";
 import { ReposPage } from "./views/repos/ReposPage";
 import { SearchPage } from "./views/search/SearchPage";
 import { SettingsPage } from "./views/settings/SettingsPage";
@@ -26,6 +27,8 @@ function Screen() {
       return <ReposPage />;
     case "agents":
       return <AgentsPage />;
+    case "plugins":
+      return <PluginsPage />;
     case "settings":
       return <SettingsPage />;
     case "search":

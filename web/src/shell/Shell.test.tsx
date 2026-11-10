@@ -83,6 +83,7 @@ describe("Shell", () => {
     expect(link(/search/)).toHaveAttribute("href", "/search");
     expect(link(/repos/)).toHaveAttribute("href", "/repos");
     expect(link(/agents/)).toHaveAttribute("href", "/agents");
+    expect(link(/plugins/)).toHaveAttribute("href", "/plugins");
     expect(link(/control center/)).toHaveAttribute("href", "/townhall");
     expect(link("settings")).toHaveAttribute("href", "/settings");
     expect(link(/new conversation/)).toHaveAttribute("aria-keyshortcuts", "n");

@@ -4,6 +4,7 @@ export type RouteName =
   | "control"
   | "repos"
   | "agents"
+  | "plugins"
   | "settings"
   | "search"
   | "not-found";
@@ -20,6 +21,7 @@ export const PATHS = {
   control: "/townhall",
   repos: "/repos",
   agents: "/agents",
+  plugins: "/plugins",
   settings: "/settings",
   search: "/search",
   conversation: (id: string) => `/c/${encodeURIComponent(id)}`,
@@ -31,6 +33,7 @@ const TABLE: readonly { readonly name: RouteName; readonly pattern: string }[] =
   { name: "control", pattern: PATHS.control },
   { name: "repos", pattern: PATHS.repos },
   { name: "agents", pattern: PATHS.agents },
+  { name: "plugins", pattern: PATHS.plugins },
   { name: "settings", pattern: PATHS.settings },
   { name: "search", pattern: PATHS.search },
 ];

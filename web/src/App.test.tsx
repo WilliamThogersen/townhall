@@ -4,6 +4,8 @@ import * as client from "./api/client";
 import * as conversationsApi from "./api/conversations";
 import * as events from "./api/events";
 import { aConversation, aDetail, aRepo, aUsage, someStats } from "./api/fixtures";
+import * as marketsApi from "./api/marketplaces";
+import * as pluginsApi from "./api/plugins";
 import * as reposApi from "./api/repos";
 import * as searchApi from "./api/search";
 import * as statsApi from "./api/stats";
@@ -26,6 +28,8 @@ beforeEach(() => {
   vi.spyOn(tasksApi, "listTasks").mockResolvedValue([]);
   vi.spyOn(searchApi, "searchConversations").mockResolvedValue([]);
   vi.spyOn(usageApi, "getUsage").mockResolvedValue(aUsage());
+  vi.spyOn(marketsApi, "listMarketplaces").mockResolvedValue([]);
+  vi.spyOn(pluginsApi, "listPlugins").mockResolvedValue({ available: [], installed: [] });
 });
 
 afterEach(() => {
@@ -56,6 +60,7 @@ describe("App routes", () => {
   it.each([
     ["/repos", "repos"],
     ["/agents", "agents"],
+    ["/plugins", "plugins"],
     ["/settings", "settings"],
   ])("%s shows the %s page", async (path, title) => {
     window.history.replaceState(null, "", path);
