@@ -1,0 +1,28 @@
+{
+  "name": "townhall-official",
+  "description": "The official townhall plugins: a theme, starter prompts and the tester and reviewer agent types",
+  "owner": { "name": "WilliamThogersen", "url": "https://github.com/WilliamThogersen" },
+  "plugins": [
+    {
+      "name": "theme-slate",
+      "description": "A cool blue-grey theme with a dark and a light palette",
+      "version": "0.1.0",
+      "source": "./plugins/theme-slate",
+      "category": "theme"
+    },
+    {
+      "name": "starter-prompts",
+      "description": "Extra starter prompts for the home screen",
+      "version": "0.1.0",
+      "source": "./plugins/starter-prompts",
+      "category": "prompts"
+    },
+    {
+      "name": "agent-types",
+      "description": "A tester and a reviewer agent type",
+      "version": "0.1.0",
+      "source": "./plugins/agent-types",
+      "category": "agents"
+    }
+  ]
+}
