@@ -238,6 +238,25 @@ describe("AgentsPage", () => {
     expect(await screen.findByText("any type", { selector: "dd" })).toBeInTheDocument();
   });
 
+  it("badges a type that comes from a plugin with the plugin's id, and no other", async () => {
+    vi.mocked(library.getAgentType).mockImplementation((name) =>
+      Promise.resolve(
+        anAgentType({
+          name,
+          source: 'name = "x"\n',
+          ...(name === "planner" ? { origin: "plugin" as const, plugin: "lint@acme-tools" } : { origin: "user" as const, plugin: null }),
+        }),
+      ),
+    );
+    render(<AgentsPage />);
+    await userEvent.click(await rowOf("planner"));
+    const detail = within(await screen.findByRole("region", { name: "planner" }));
+    expect(await detail.findByText("plugin lint@acme-tools")).toBeInTheDocument();
+    await userEvent.click(await rowOf("builder"));
+    const other = within(await screen.findByRole("region", { name: "builder" }));
+    expect(other.queryByText(/^plugin /)).toBeNull();
+  });
+
   it("lists the env variable names of a type but not their values", async () => {
     vi.mocked(library.getAgentType).mockImplementation((name) =>
       Promise.resolve(

@@ -20,7 +20,8 @@ import type {
 const adapter = oneOf<AgentAdapterKind>(["claude", "shell"]);
 const mode = oneOf<AgentTypeMode>(["default", "acceptEdits", "plan", "bypassPermissions"]);
 const effort = oneOf<AgentTypeEffort>(["low", "medium", "high", "xhigh", "max"]);
-const range = oneOf<UsageRange>(["24h", "7d", "30d"]);
+const origin = oneOf<"user" | "plugin">(["user", "plugin"]);
+const range =oneOf<UsageRange>(["24h", "7d", "30d"]);
 const runKind = oneOf<AgentRunKind>(["task", "turn"]);
 
 const PART_NAMES = Object.keys(AVATAR_PARTS) as readonly AvatarPart[];
@@ -65,6 +66,9 @@ const parseType: Guard<AgentType> = (value) => {
     canHandBackTo: nullable(r.canHandBackTo, "agentType.canHandBackTo", strings),
     env: stringMap(r.env, "agentType.env"),
     source: r.source,
+    ...(r.origin === undefined
+      ? {}
+      : { origin: origin(r.origin, "agentType.origin"), plugin: nullable(r.plugin, "agentType.plugin", str) }),
   };
 };
 
