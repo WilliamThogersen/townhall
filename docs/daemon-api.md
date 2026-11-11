@@ -165,6 +165,34 @@ Design: `docs/plugins.md` sections 3.2 to 3.4 and 8.5. Nothing here runs plugin 
 - `theme.css`, the strict parser (`plugins::theme`): rules whose selectors are only `:root`, `[data-theme="dark"]` or `[data-theme="light"]` (a comma list of them is fine), holding only `--th-*` declarations (lowercase letters, digits and `-` after the prefix). Refused: any at-rule (`@import`, `@media`, `@font-face`, `@charset`), any other selector, a nested rule, any other property, `url(` and `expression` anywhere in a value, a function that is not a colour or math function (`rgb rgba hsl hsla hwb lab lch oklab oklch color color-mix var calc min max clamp sin cos round abs`), a backslash anywhere, `!important` and other characters outside a plain value, an unterminated comment, string or brace, an empty theme and one over 64 KB. Comments are dropped and the kept text is rebuilt from the parsed rules.
 - The active theme is one row of `settings`, `plugins.theme` (not a `SettingKey`). It applies only while its plugin is enabled and is cleared when that plugin is uninstalled.
 
+## Plugin API v1 (plugins 2.1, `routes/plugin_api.rs`, `plugins::tokens`, `plugins::storage`)
+
+Design: `docs/plugins.md` sections 8.5, 9 and 10.3. A curated, versioned subset of the routes above, under `/api/plugin/v1/`, in the same envelope `{ success, data, error }` and the same camelCase. The handlers call the same `Store` and core functions (and, where the route is the same, the same handler) as the `/api` route they mirror, so the bodies are identical. The `/api` routes themselves are unchanged and still need no token.
+
+- Auth: `Authorization: Bearer <token>` on every route. No header, a scheme other than `Bearer`, an unknown token, a revoked token, or the token of a plugin that is disabled or uninstalled is `401`. A token without the scope the route needs is `403` (`this token has no \`<scope>\` scope`). The `401` comes first. A browser origin sends no token and CORS does not allow the `Authorization` header, so a page of another origin cannot use a plugin's scopes.
+- Tokens: 32 bytes from `/dev/urandom`, written as 64 hex characters. Only `sha256(token)` is stored, in `plugin_tokens (token_hash pk, plugin_id, task, created_at, revoked_at)` (migration `0952`); the clear text is returned once by `plugins::tokens::issue` and never read back. A plugin token (`task` null) is created when `PATCH /api/plugins/{id}` turns `enabled` from false to true. Disabling and uninstalling revoke every token of the plugin, task tokens too. A task token (`issue(store, plugin, Some(task))`, `revoke_task`) is supported by the store; the scheduler does not create them until phase 3.
+- Scopes of a caller are the `api:<scope>` items of the plugin's approved permission list. A task token keeps at most `tasks:read`, `conversations:read` and `storage` of them, and sees only its own task and the conversation of that task: another task or conversation is `403`, lists hold only its own rows, and the routes that span everything (`/stats`, `/search`) are `403`. `settings:read` is never given to a task token.
+
+| Method | Path | Scope | Answer | Errors |
+|--------|------|-------|--------|--------|
+| GET | `/info` | any | `{ apiVersion: 1, townhall, plugin, scopes }`: the version of the daemon, the plugin id and the scopes this token has | 401 |
+| GET | `/tasks` | `tasks:read` | as `GET /api/tasks`, with the same `conversation`, `repo` and `state` filters | 400 as there; 401; 403 |
+| GET | `/tasks/{name}` | `tasks:read` | as `GET /api/tasks/{name}` | 401; 403 another task for a task token; 404 |
+| GET | `/tasks/{name}/artifacts` | `tasks:read` | `Artifact[]` as `GET /api/tasks/{name}/artifacts` (no download route) | 401; 403; 404 |
+| GET | `/agents` | `tasks:read` | `AgentInfo[]` as `GET /api/agents`; a task token gets the agent named like its task | 401; 403 |
+| GET | `/stats` | `tasks:read` | `{ days }` as `GET /api/stats` | 401; 403 a task token |
+| GET | `/conversations` | `conversations:read` | `Conversation[]` as `GET /api/conversations`; a task token gets its own | 401; 403 |
+| GET | `/conversations/{id}` | `conversations:read` | `ConversationDetail` as `GET /api/conversations/{id}` | 401; 403 another conversation for a task token; 404 |
+| GET | `/search?q=&limit=` | `conversations:read` | `SearchHit[]` as `GET /api/search` | 400 as there; 401; 403 a task token |
+| GET | `/settings` | `settings:read` | townhall's own settings only: `agentsAtOnce`, `repoUnclear`, `sessionPanelOpen`, `notifyWhen`, `minFreeDiskGb`, `learnAboutMe`, `reflectAfterTasks`. Never `githubAccount`, `forgeAccounts` or `clonesDir`, never the profile | 401; 403 |
+| GET | `/storage/{key}` | `storage` | `{ key, value }` of the plugin's own row | 400 bad key; 401; 403; 404 |
+| PUT | `/storage/{key}` | `storage` | body `{ value: string }`; answers `{ key }` | 400 bad key or body; 401; 403; 413 value over 64 KB, or the plugin's rows would pass 5 MB in all |
+| DELETE | `/storage/{key}` | `storage` | `{ key }` | 400; 401; 403; 404 no such row |
+
+- Storage: rows of `plugin_storage (plugin_id, key, value, updated_at)` (migration `0952`), keyed by the plugin of the token, so a plugin never sees another plugin's rows and a task token shares its plugin's. A key is 1 to 128 characters of letters, digits, `.`, `_` and `-` (not `.` or `..`). A value is text of at most 65 536 bytes; a plugin's values total at most 5 242 880 bytes, and replacing a value counts only the new one. The rows are kept on uninstall and removed with `purge=true`.
+- Versioning: the version is in the path. New routes and optional fields stay in `v1`.
+- Not in 2.1: `tasks:create`, `conversations:write`, `profile:read`, `library:*`, `events` (2.2) and the hooks (2.3). The plugin token's clear text is not handed to anything yet: delivery to a hook or MCP server environment arrives with them.
+
 ## Types
 
 All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
@@ -517,7 +545,7 @@ Each unit owns a number range and lists its migrations in its own file, so no tw
 | 0800 to 0849 | 2.8b library | `store/unit_2_8b.rs` |
 | 0850 to 0899 | 2.8c runs | `store/unit_2_8c.rs` |
 | 0900 to 0949 | 2.9 artifacts | `store/unit_2_9.rs` |
-| 0950 to 0999 | plugins (0950 marketplaces and plugins, 0951 plugin_settings) | `store/unit_plugins.rs` |
+| 0950 to 0999 | plugins (0950 marketplaces and plugins, 0951 plugin_settings, 0952 plugin_storage and plugin_tokens) | `store/unit_plugins.rs` |
 | 0300 to 0499, 1000 and up | free | ask the orchestrator |
 
 To add one: write `store/migrations/0201_scheduler.sql`, then in your unit file `pub const MIGRATIONS: &[Migration] = &[Migration { id: 201, name: "0201_scheduler", sql: include_str!("migrations/0201_scheduler.sql") }];`.

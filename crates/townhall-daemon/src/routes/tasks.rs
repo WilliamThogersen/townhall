@@ -38,16 +38,22 @@ fn keep(task: &Task, q: &TaskQuery, state: Option<TaskState>) -> bool {
         && state.is_none_or(|s| task.state == s)
 }
 
+pub(super) async fn select(
+    state: &AppState,
+    query: Result<Query<TaskQuery>, QueryRejection>,
+) -> Result<Vec<Task>, ApiError> {
+    let Query(q) = query.map_err(|e| ApiError::BadRequest(e.body_text()))?;
+    let wanted = given(q.state.as_deref()).map(parse_state).transpose()?;
+    let tasks = state.ctx().store()?.all_tasks().await?;
+    Ok(tasks.into_iter().filter(|t| keep(t, &q, wanted)).collect())
+}
+
 /// `GET /api/tasks?conversation=&repo=&state=`: every matching task, oldest first.
 pub async fn list(
     State(state): State<AppState>,
     query: Result<Query<TaskQuery>, QueryRejection>,
 ) -> Result<Response, ApiError> {
-    let Query(q) = query.map_err(|e| ApiError::BadRequest(e.body_text()))?;
-    let wanted = given(q.state.as_deref()).map(parse_state).transpose()?;
-    let tasks = state.ctx().store()?.all_tasks().await?;
-    let kept: Vec<Task> = tasks.into_iter().filter(|t| keep(t, &q, wanted)).collect();
-    Ok(ok(kept))
+    Ok(ok(select(&state, query).await?))
 }
 
 /// `GET /api/tasks/{name}`, ignoring case.
