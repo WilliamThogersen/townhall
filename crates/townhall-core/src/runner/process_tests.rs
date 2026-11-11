@@ -33,7 +33,16 @@ async fn gone(pid: &str) -> bool {
 #[test]
 fn claude_goes_without_exactly_the_outer_sessions_variables() {
     let built = command("/bin/sh", &[], Path::new("/"));
-    let changed: Vec<_> = built.as_std().get_envs().collect();
+    let mut changed: Vec<_> = built.as_std().get_envs().collect();
+    let timeout = changed
+        .iter()
+        .position(|(name, _)| *name == "MCP_TOOL_TIMEOUT")
+        .map(|i| changed.remove(i));
+    assert_eq!(
+        timeout.and_then(|(_, value)| value.map(|v| v.to_string_lossy().into_owned())),
+        Some("660000".to_string()),
+        "the client must wait longer than the adviser's own 600 s"
+    );
     assert!(
         changed.iter().all(|(_, value)| value.is_none()),
         "{changed:?}"

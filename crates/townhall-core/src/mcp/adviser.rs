@@ -140,6 +140,16 @@ pub(super) async fn ask(ctx: &Context, caller: Caller<'_>, input: AskInput) -> C
     let place = locate(ctx, &caller).await?;
     let started_at = clock::now_rfc3339();
     let asked = prompt(question, input.context.as_deref());
+    let caller_name = match &caller {
+        Caller::Task(name) | Caller::Conversation(name) => redact(name),
+    };
+    let model_name = adviser.def.model.clone().unwrap_or_default();
+    tracing::info!(
+        target: "townhall::mcp", event = "adviser.started", caller = %caller_name,
+        conversation = %place.conversation_id, model = %model_name,
+        question_chars = question.chars().count(), "adviser asked"
+    );
+    let clock_start = std::time::Instant::now();
     let outcome = consult(
         ctx.claude_bin(),
         &adviser.def,
@@ -148,6 +158,19 @@ pub(super) async fn ask(ctx: &Context, caller: Caller<'_>, input: AskInput) -> C
         ADVICE_TIMEOUT,
     )
     .await;
+    let duration_ms = u64::try_from(clock_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    match &outcome {
+        Ok(advice) => tracing::info!(
+            target: "townhall::mcp", event = "adviser.finished", caller = %caller_name,
+            conversation = %place.conversation_id, model = %advice.model,
+            duration_ms, tokens = advice.tokens, "adviser answered"
+        ),
+        Err(why) => tracing::warn!(
+            target: "townhall::mcp", event = "adviser.failed", caller = %caller_name,
+            conversation = %place.conversation_id, model = %model_name,
+            duration_ms, error = %redact(why), "adviser failed"
+        ),
+    }
     let (state, answer, tokens, model) = match &outcome {
         Ok(advice) => (
             "done",
