@@ -195,8 +195,8 @@ fn create_task_schema() -> Value {
                 "description": "How many times a failing check relaunches the task. Default 2. Each retry counts as one hand back, so the limit is the most hand backs a task gets."
             },
             "pipeline": {
-                "type": "string", "minLength": 1,
-                "description": "Name of a saved pipeline (list_pipelines). Starts a run instead of one task: `name` is the run's name, `prompt` its input, and townhall creates the tasks `<name>-<step>` itself as each step finishes. Returns the first task."
+                "type": "string",
+                "description": "Name of a saved pipeline (list_pipelines). Starts a run instead of one task: `name` is the run's name, `prompt` its input, and townhall creates the tasks `<name>-<step>` itself as each step finishes. Returns the first task. Left out, the repo's default pipeline (`default = true`; one that names the repo wins over one for every repo) starts a run, unless `agent`, `after`, `prBase`, `check`, `doneWhen`, `maxRetries` or `attachments` is set; with no default, one plain task is created. An empty string means no pipeline: one plain task even when a default exists."
             },
             "after": names_array("Names of tasks that must finish before this one starts."),
             "attachments": names_array("Attachment ids of this conversation the agent needs."),

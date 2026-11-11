@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { useAgentsContext } from "../agents/AgentsProvider";
 import { countByState } from "../agents/agentState";
 import { useRepos } from "../data";
+import { PluginNavItems } from "../plugins/PluginNavItems";
+import { PluginSlot } from "../plugins/PluginSlot";
 import { Link, PATHS, useRoute } from "../router";
 import { SearchNavItem } from "../sidebar/SearchNavItem";
 import { SidebarConversations } from "../sidebar/SidebarConversations";
@@ -51,6 +53,7 @@ function Nav({ search }: { readonly search: SidebarSearch }) {
       <NavItem to={PATHS.control} icon="$" label="control center" current={name === "control"}>
         <GlyphCounts counts={countByState(agents)} className="th-nav-count" />
       </NavItem>
+      <PluginNavItems />
     </div>
   );
 }
@@ -70,6 +73,7 @@ export function Sidebar({ foot }: { readonly foot?: ReactNode }) {
       <SidebarConversations query={search.query} />
       <div className="th-sidebar-foot">
         <UsageMeter />
+        <PluginSlot name="sidebar.foot" />
         {foot}
         <Link className="th-btn th-btn--ghost th-btn--sm" to={PATHS.settings} aria-current={currentPage(name === "settings")}>
           settings

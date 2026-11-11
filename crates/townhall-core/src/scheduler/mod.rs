@@ -23,6 +23,7 @@ mod ci;
 mod gate;
 mod launch;
 mod merged;
+mod paths;
 pub(crate) mod pipeline;
 mod plan;
 pub mod reflect;

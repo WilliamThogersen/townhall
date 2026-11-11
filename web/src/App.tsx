@@ -5,11 +5,13 @@ import { useRoute } from "./router";
 import { useLoadSettings } from "./settings/useSettings";
 import { Shell } from "./shell/Shell";
 import { PluginTheme } from "./theme/pluginTheme";
+import { ToastProvider } from "./ui/Toasts";
 import { AgentsPage } from "./views/agents/AgentsPage";
 import { ControlCenterPage } from "./views/control/ControlCenterPage";
 import { ConversationPage } from "./views/conversation/ConversationPage";
 import { HomePage } from "./views/home/HomePage";
 import { NotFound } from "./views/NotFound";
+import { PluginPage } from "./views/plugins/PluginPage";
 import { PluginsPage } from "./views/plugins/PluginsPage";
 import { ReposPage } from "./views/repos/ReposPage";
 import { SearchPage } from "./views/search/SearchPage";
@@ -34,6 +36,8 @@ function Screen() {
       return <SettingsPage />;
     case "search":
       return <SearchPage />;
+    case "plugin-page":
+      return <PluginPage plugin={route.params.plugin ?? ""} page={route.params.page ?? ""} />;
     case "not-found":
       return <NotFound path={route.path} />;
   }
@@ -45,9 +49,11 @@ export function App({ sidebarFoot }: { readonly sidebarFoot?: ReactNode }) {
     <DataProvider>
       <PluginTheme />
       <AgentsProvider>
-        <Shell sidebarFoot={sidebarFoot}>
-          <Screen />
-        </Shell>
+        <ToastProvider>
+          <Shell sidebarFoot={sidebarFoot}>
+            <Screen />
+          </Shell>
+        </ToastProvider>
       </AgentsProvider>
     </DataProvider>
   );

@@ -7,6 +7,7 @@ export type RouteName =
   | "plugins"
   | "settings"
   | "search"
+  | "plugin-page"
   | "not-found";
 
 export interface Route {
@@ -25,6 +26,7 @@ export const PATHS = {
   settings: "/settings",
   search: "/search",
   conversation: (id: string) => `/c/${encodeURIComponent(id)}`,
+  pluginPage: (plugin: string, page: string) => `/p/${encodeURIComponent(plugin)}/${encodeURIComponent(page)}`,
 } as const;
 
 const TABLE: readonly { readonly name: RouteName; readonly pattern: string }[] = [
@@ -36,6 +38,7 @@ const TABLE: readonly { readonly name: RouteName; readonly pattern: string }[] =
   { name: "plugins", pattern: PATHS.plugins },
   { name: "settings", pattern: PATHS.settings },
   { name: "search", pattern: PATHS.search },
+  { name: "plugin-page", pattern: "/p/:plugin/:page" },
 ];
 
 function segments(path: string): string[] {

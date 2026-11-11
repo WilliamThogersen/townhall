@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import type { ConversationDetail, Task } from "../../../api/types";
+import { PluginSlot } from "../../../plugins/PluginSlot";
 import { Link, PATHS } from "../../../router";
 import { LoopStrip } from "./LoopStrip";
 import { ContextSection, FilesSection, RepoSection, TasksEmpty } from "./SessionSections";
@@ -44,7 +45,7 @@ export function SessionPanel({ detail, openTask, onOpenTask }: SessionPanelProps
     <aside className="th-session" id={SESSION_PANEL_ID} aria-label="Session" tabIndex={-1}>
       <SessionHead conversationId={conversation.id} tasks={tasks} />
       <div className="th-session-body">
-        <LoopStrip tasks={tasks} />
+        <LoopStrip conversationId={conversation.id} tasks={tasks} entryCount={detail.entries.length} />
         <h4 className="th-section">tasks {tasks.length}</h4>
         {views.length > 0 ? (
           <TaskList views={views} openTask={openTask} onOpenTask={onOpenTask} listRef={listRef} />
@@ -52,12 +53,16 @@ export function SessionPanel({ detail, openTask, onOpenTask }: SessionPanelProps
           <TasksEmpty />
         )}
         {openName !== null && <ProofSection key={openName} task={openName} />}
+        {openName !== null && (
+          <PluginSlot key={openName} name="task.section" heading context={{ conversationId: conversation.id, task: openName }} />
+        )}
         <h4 className="th-section">repo</h4>
         <RepoSection detail={detail} />
         <h4 className="th-section">files {attachments.length}</h4>
         <FilesSection detail={detail} />
         <h4 className="th-section">context</h4>
         <ContextSection usage={conversation.context} />
+        <PluginSlot name="session.section" heading context={{ conversationId: conversation.id }} />
       </div>
     </aside>
   );
