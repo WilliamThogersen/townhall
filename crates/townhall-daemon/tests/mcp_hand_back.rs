@@ -84,6 +84,29 @@ async fn a_task_agent_sees_hand_back_open_pr_and_the_proof_tools() {
 }
 
 #[tokio::test]
+async fn a_hand_back_fires_task_handed_back_with_who_to_whom_and_why() {
+    let m = Mcp::new().await;
+    running(&m, "fix-login", "shipper").await;
+    let data = m.install_hook("task.handed_back", "cat > payload.json").await;
+    hand_back(&m, "fix-login", json!({"to": "coder", "reason": "lint fails"})).await;
+    let file = data.join("payload.json");
+    let mut seen = String::new();
+    for _ in 0..100 {
+        seen = std::fs::read_to_string(&file).unwrap_or_default();
+        if !seen.is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let got: Value = serde_json::from_str(&seen).unwrap();
+    assert_eq!(got["event"], "task.handed_back");
+    assert_eq!(got["from"], "shipper");
+    assert_eq!(got["to"], "coder");
+    assert_eq!(got["reason"], "lint fails");
+    assert_eq!(got["task"]["name"], "fix-login");
+}
+
+#[tokio::test]
 async fn hand_back_queues_the_task_for_the_target_type() {
     let m = Mcp::new().await;
     running(&m, "fix-login", "shipper").await;

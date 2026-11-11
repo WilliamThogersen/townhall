@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentType, Task, MAX_HANDOFFS};
+use crate::plugins::hooks;
 use crate::worktree;
 
 use super::checks::{self, one_line, Checked};
@@ -115,6 +116,11 @@ pub(super) async fn hand_back(ctx: &Context, task: &str, input: HandBackInput) -
         .hand_back(&task.name, to, &reason, &summary)
         .await
         .map_err(text)?;
+    hooks::fire(
+        ctx,
+        "task.handed_back",
+        json!({"task": task, "from": task.agent, "to": handoff.to, "reason": reason}),
+    );
     Ok(json!({
         "handedBackTo": handoff.to,
         "maxHandoffs": MAX_HANDOFFS,

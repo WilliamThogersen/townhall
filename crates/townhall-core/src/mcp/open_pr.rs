@@ -77,6 +77,18 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
     })?;
     let (branch, base) = (task.branch(), task.pr_target().to_string());
     let body = input.body.unwrap_or_default();
+    let fields = json!({
+        "task": task, "repo": task.repo, "title": title, "body": body, "base": base
+    });
+    let asked = hooks::ask(ctx, "pr.before_open", fields).await;
+    if let Some(blocked) = asked.blocked {
+        return Err(format!(
+            "plugin {} blocked opening the pull request: {}",
+            blocked.plugin, blocked.reason
+        ));
+    }
+    let title = asked.title.as_deref().map_or(title, one_line);
+    let body = asked.body.unwrap_or(body);
     let settings = store.settings().await.map_err(text)?;
     let repos = store.repos().await.map_err(text)?;
     let repo = repos.iter().find(|r| names::same(&r.name, &task.repo));
