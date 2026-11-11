@@ -133,6 +133,7 @@ fn library_routes() -> Router<AppState> {
         )
         .route("/library/import", post(library::import))
         .route("/workflows/{name}/runs", post(runs::start))
+        .route("/runs", get(runs::list))
         .route("/runs/{id}", get(runs::get))
 }
 
