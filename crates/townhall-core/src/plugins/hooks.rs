@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Mutex;
@@ -22,6 +22,19 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 pub const MAX_TIMEOUT_SECS: u64 = 120;
 pub const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 
+pub const CHANGING_TIMEOUT_SECS: u64 = 10;
+pub const MAX_AMEND_CHARS: usize = 8_000;
+pub const MAX_AMEND_ENV: usize = 20;
+
+const CHANGING: [&str; 5] = [
+    "task.created",
+    "task.before_start",
+    "task.check",
+    "pr.before_open",
+    "message.before_turn",
+];
+const BLOCKING: [&str; 3] = ["task.created", "task.before_start", "pr.before_open"];
+const FAIL_CLOSABLE: [&str; 2] = ["task.before_start", "pr.before_open"];
 const PLUGINS_OFF: &str = "TOWNHALL_PLUGINS";
 const TARGET_DEFAULT: [&str; 4] = ["PATH", "HOME", "LANG", "TZ"];
 const NEVER_PASSED: [&str; 9] = [
@@ -72,11 +85,44 @@ impl State {
 struct Hook {
     command: String,
     timeout: Duration,
+    fail_closed: bool,
 }
 
 struct Ran {
     code: i32,
     elapsed: Duration,
+    stdout: String,
+    stderr: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Blocked {
+    pub plugin: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Asked {
+    pub blocked: Option<Blocked>,
+    pub prompt: Vec<(String, String)>,
+    pub env: BTreeMap<String, String>,
+    pub checks: Vec<String>,
+    pub context: Vec<(String, String)>,
+    pub title: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Default)]
+struct Budget {
+    prompt_chars: usize,
+    env: usize,
+}
+
+pub fn default_timeout(event: &str) -> Duration {
+    match CHANGING.contains(&event) {
+        true => Duration::from_secs(CHANGING_TIMEOUT_SECS),
+        false => Duration::from_secs(DEFAULT_TIMEOUT_SECS),
+    }
 }
 
 pub fn fire(ctx: &Context, event: &'static str, fields: Value) {
@@ -85,18 +131,27 @@ pub fn fire(ctx: &Context, event: &'static str, fields: Value) {
 }
 
 pub async fn run(ctx: &Context, event: &str, fields: Value) {
-    if let Err(e) = run_event(ctx, event, fields).await {
-        tracing::warn!(
-            target: "townhall::plugin", event = "plugin.hooks_not_run", hook = event,
-            error_kind = e.kind(), error = %redact(&e.to_string()),
-            "plugin hooks could not be run"
-        );
+    ask(ctx, event, fields).await;
+}
+
+pub async fn ask(ctx: &Context, event: &str, fields: Value) -> Asked {
+    match run_event(ctx, event, fields).await {
+        Ok(asked) => asked,
+        Err(e) => {
+            tracing::warn!(
+                target: "townhall::plugin", event = "plugin.hooks_not_run", hook = event,
+                error_kind = e.kind(), error = %redact(&e.to_string()),
+                "plugin hooks could not be run"
+            );
+            Asked::default()
+        }
     }
 }
 
-async fn run_event(ctx: &Context, event: &str, fields: Value) -> Result<()> {
+async fn run_event(ctx: &Context, event: &str, fields: Value) -> Result<Asked> {
+    let mut asked = Asked::default();
     if std::env::var(PLUGINS_OFF).is_ok_and(|v| v.eq_ignore_ascii_case("off")) {
-        return Ok(());
+        return Ok(asked);
     }
     let wanted = format!("hook:{event}");
     let plugins: Vec<Plugin> = ctx
@@ -107,22 +162,31 @@ async fn run_event(ctx: &Context, event: &str, fields: Value) -> Result<()> {
         .filter(|p| p.enabled && approved(p).contains(&wanted))
         .collect();
     for plugin in plugins {
-        if let Err(e) = run_plugin(ctx, &plugin, event, &fields).await {
+        if let Err(e) = run_plugin(ctx, &plugin, event, &fields, &mut asked).await {
             tracing::warn!(
                 target: "townhall::plugin", event = "plugin.hooks_not_run", plugin = %plugin.id,
                 hook = event, error_kind = e.kind(), error = %redact(&e.to_string()),
                 "plugin hooks could not be run"
             );
         }
+        if asked.blocked.is_some() {
+            break;
+        }
     }
-    Ok(())
+    Ok(asked)
 }
 
 fn approved(plugin: &Plugin) -> Vec<String> {
     serde_json::from_value(plugin.approved.clone()).unwrap_or_default()
 }
 
-async fn run_plugin(ctx: &Context, plugin: &Plugin, event: &str, fields: &Value) -> Result<()> {
+async fn run_plugin(
+    ctx: &Context,
+    plugin: &Plugin,
+    event: &str,
+    fields: &Value,
+    asked: &mut Asked,
+) -> Result<()> {
     let home = ctx.home().clone();
     let (market, name, sha) = (
         plugin.marketplace.clone(),
@@ -147,7 +211,6 @@ async fn run_plugin(ctx: &Context, plugin: &Plugin, event: &str, fields: &Value)
         .map_err(|e| Error::io(format!("create {}", data.display()), e))?;
     let token = token_for(ctx, &plugin.id).await?;
     let settings = ctx.store()?.plugin_settings(&plugin.id).await?;
-    let payload = payload_of(plugin, event, fields, &settings);
     let declared: Vec<String> = approved(plugin)
         .iter()
         .filter_map(|a| a.strip_prefix("env:").map(str::to_string))
@@ -167,17 +230,157 @@ async fn run_plugin(ctx: &Context, plugin: &Plugin, event: &str, fields: &Value)
         ("TOWNHALL_API_URL".to_string(), ctx.base_url().to_string()),
         ("TOWNHALL_API_TOKEN".to_string(), token),
     ]);
+    let mut budget = Budget::default();
     for hook in found {
         let command = hook
             .command
             .replace("${TOWNHALL_PLUGIN_ROOT}", &root.display().to_string())
             .replace("${TOWNHALL_PLUGIN_DATA}", &data.display().to_string());
+        let payload = payload_of(plugin, event, &current_fields(fields, asked), &settings);
         let outcome = exec(&command, &data, &env, payload.to_string(), hook.timeout).await;
-        if !record(ctx, plugin, event, outcome).await? {
+        let go = record(ctx, plugin, event, &outcome).await?;
+        match outcome {
+            Ok(ran) => apply(plugin, event, &ran, asked, &mut budget),
+            Err(why) if hook.fail_closed && FAIL_CLOSABLE.contains(&event) => {
+                asked.blocked = Some(Blocked {
+                    plugin: plugin.id.clone(),
+                    reason: format!("the hook failed and is marked failClosed: {}", redact(&why)),
+                });
+            }
+            Err(_) => {}
+        }
+        if asked.blocked.is_some() || !go {
             break;
         }
     }
     Ok(())
+}
+
+fn current_fields(fields: &Value, asked: &Asked) -> Value {
+    let mut fields = fields.clone();
+    if let Value::Object(map) = &mut fields {
+        for (key, value) in [("title", &asked.title), ("body", &asked.body)] {
+            if let Some(value) = value {
+                map.insert(key.into(), json!(value));
+            }
+        }
+    }
+    fields
+}
+
+fn ignored(plugin: &Plugin, event: &str, what: &str) {
+    tracing::warn!(
+        target: "townhall::plugin", event = "plugin.answer_ignored", plugin = %plugin.id,
+        hook = event, what, "a hook's answer has a key this event does not allow"
+    );
+}
+
+fn apply(plugin: &Plugin, event: &str, ran: &Ran, asked: &mut Asked, budget: &mut Budget) {
+    let can_block = BLOCKING.contains(&event);
+    if ran.code == 2 {
+        match can_block {
+            true => {
+                let said = ran.stderr.trim();
+                let reason = match said.is_empty() {
+                    true => "blocked by a plugin hook".to_string(),
+                    false => redact(said).into_owned(),
+                };
+                asked.blocked = Some(Blocked {
+                    plugin: plugin.id.clone(),
+                    reason,
+                });
+            }
+            false => ignored(plugin, event, "exit 2"),
+        }
+        return;
+    }
+    let text = ran.stdout.trim();
+    if text.is_empty() {
+        return;
+    }
+    let Ok(Value::Object(answer)) = serde_json::from_str::<Value>(text) else {
+        ignored(plugin, event, "stdout is not a JSON object");
+        return;
+    };
+    if answer.get("decision").and_then(Value::as_str) == Some("block") {
+        match can_block {
+            true => {
+                let reason = answer.get("reason").and_then(Value::as_str).unwrap_or("");
+                let reason = match reason.trim().is_empty() {
+                    true => "blocked by a plugin hook".to_string(),
+                    false => redact(reason.trim()).into_owned(),
+                };
+                asked.blocked = Some(Blocked {
+                    plugin: plugin.id.clone(),
+                    reason,
+                });
+                return;
+            }
+            false => ignored(plugin, event, "decision"),
+        }
+    }
+    if let Some(amend) = answer.get("amend").and_then(Value::as_object) {
+        amend_of(plugin, event, amend, asked, budget);
+    }
+    match (answer.get("checks"), event) {
+        (Some(Value::Array(list)), "task.check") => asked.checks.extend(
+            list.iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .map(str::to_string),
+        ),
+        (Some(_), _) => ignored(plugin, event, "checks"),
+        (None, _) => {}
+    }
+    match (answer.get("additionalContext"), event) {
+        (Some(Value::String(text)), "message.before_turn") if !text.trim().is_empty() => {
+            asked
+                .context
+                .push((plugin.id.clone(), text.trim().to_string()));
+        }
+        (Some(_), "message.before_turn") | (None, _) => {}
+        (Some(_), _) => ignored(plugin, event, "additionalContext"),
+    }
+}
+
+fn amend_of(
+    plugin: &Plugin,
+    event: &str,
+    amend: &Map<String, Value>,
+    asked: &mut Asked,
+    budget: &mut Budget,
+) {
+    let pr = event == "pr.before_open";
+    let brief = matches!(event, "task.created" | "task.before_start");
+    for (key, value) in amend {
+        match (key.as_str(), value) {
+            ("prompt", Value::String(text)) if brief => {
+                let room = MAX_AMEND_CHARS.saturating_sub(budget.prompt_chars);
+                let kept: String = text.chars().take(room).collect();
+                if kept.trim().is_empty() {
+                    continue;
+                }
+                budget.prompt_chars += kept.chars().count();
+                asked.prompt.push((plugin.id.clone(), kept));
+            }
+            ("env", Value::Object(vars)) if event == "task.before_start" => {
+                for (name, value) in vars {
+                    let Some(value) = value.as_str() else {
+                        continue;
+                    };
+                    if name.is_empty() || name.contains('=') || budget.env >= MAX_AMEND_ENV {
+                        continue;
+                    }
+                    budget.env += 1;
+                    asked.env.insert(name.clone(), value.to_string());
+                }
+            }
+            ("title", Value::String(text)) if pr => asked.title = Some(text.clone()),
+            ("body", Value::String(text)) if pr => asked.body = Some(text.clone()),
+            (other, _) => ignored(plugin, event, &format!("amend.{other}")),
+        }
+    }
 }
 
 async fn token_for(ctx: &Context, plugin: &str) -> Result<String> {
@@ -221,7 +424,7 @@ async fn record(
     ctx: &Context,
     plugin: &Plugin,
     event: &str,
-    outcome: std::result::Result<Ran, String>,
+    outcome: &std::result::Result<Ran, String>,
 ) -> Result<bool> {
     match outcome {
         Ok(ran) => {
@@ -238,12 +441,12 @@ async fn record(
             let in_a_row = ctx.hooks().failed(&plugin.id);
             tracing::warn!(
                 target: "townhall::plugin", event = "plugin.hook_failed", plugin = %plugin.id,
-                hook = event, in_a_row, reason = %redact(&why), "plugin hook failed"
+                hook = event, in_a_row, reason = %redact(why), "plugin hook failed"
             );
             if in_a_row < PAUSE_AFTER {
                 return Ok(true);
             }
-            pause(ctx, &plugin.id, &why).await?;
+            pause(ctx, &plugin.id, why).await?;
             Ok(false)
         }
     }
@@ -300,28 +503,29 @@ fn hooks_of(root: &Path, event: &str) -> Result<Vec<Hook>> {
         .map_err(|e| Error::InvalidInput(format!("contributes.hooks `{rel}`: {e}")))?;
     let mut hooks = Vec::new();
     if let Some(entries) = parsed.get("hooks").and_then(|h| h.get(event)) {
-        collect(entries, &mut hooks);
+        collect(event, entries, &mut hooks);
     }
     Ok(hooks)
 }
 
-fn collect(value: &Value, out: &mut Vec<Hook>) {
+fn collect(event: &str, value: &Value, out: &mut Vec<Hook>) {
     match value {
-        Value::Array(items) => items.iter().for_each(|v| collect(v, out)),
+        Value::Array(items) => items.iter().for_each(|v| collect(event, v, out)),
         Value::Object(map) => {
             if let Some(Value::String(command)) = map.get("command") {
                 let secs = map
                     .get("timeout")
                     .and_then(Value::as_u64)
-                    .unwrap_or(DEFAULT_TIMEOUT_SECS)
+                    .unwrap_or(default_timeout(event).as_secs())
                     .clamp(1, MAX_TIMEOUT_SECS);
                 out.push(Hook {
                     command: command.clone(),
                     timeout: Duration::from_secs(secs),
+                    fail_closed: map.get("failClosed").and_then(Value::as_bool) == Some(true),
                 });
             }
             if let Some(inner) = map.get("hooks") {
-                collect(inner, out);
+                collect(event, inner, out);
             }
         }
         _ => {}
@@ -435,6 +639,8 @@ async fn exec(
         Some(code @ (0 | 2)) => Ok(Ran {
             code,
             elapsed: started.elapsed(),
+            stdout: String::from_utf8_lossy(&out.bytes).into_owned(),
+            stderr: String::from_utf8_lossy(&err.bytes).into_owned(),
         }),
         Some(code) => {
             let said = String::from_utf8_lossy(&err.bytes);

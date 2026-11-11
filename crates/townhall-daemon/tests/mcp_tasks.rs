@@ -57,6 +57,59 @@ async fn create_task_needs_a_repo_and_defaults_to_the_conversations() {
 }
 
 #[tokio::test]
+async fn a_task_created_hook_that_blocks_ends_the_task_with_the_reason() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    m.install_hook("task.created", "echo 'no ticket for this' >&2; exit 2")
+        .await;
+    let name = unique("gated");
+    let created = m.ok("create_task", task(&name)).await;
+    assert_eq!(created["state"], "error", "{created}");
+    let why = created["blocked"].as_str().unwrap();
+    assert!(
+        why.contains("gate@acme") && why.contains("no ticket for this"),
+        "{why}"
+    );
+    let stored = m.store().find_task(&name).await.unwrap().unwrap();
+    assert_eq!(stored.state, TaskState::Error);
+    let entries = m.store().entries(&m.id).await.unwrap();
+    let failed = entries.iter().any(|e| {
+        matches!(&e.body, townhall_core::model::EntryBody::Agent { agent, text, .. }
+            if agent == &name && text.contains("no ticket for this"))
+    });
+    assert!(failed, "{entries:?}");
+}
+
+#[tokio::test]
+async fn a_task_created_hook_can_append_to_the_prompt() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    let answer = r#"echo '{"amend":{"prompt":"Ticket ABC-1 is open"}}'"#;
+    m.install_hook("task.created", answer).await;
+    let name = unique("amended");
+    let created = m.ok("create_task", task(&name)).await;
+    assert_eq!(created["state"], "queued", "{created}");
+    let prompt = created["prompt"].as_str().unwrap();
+    assert!(prompt.starts_with("the brief"), "{prompt}");
+    assert!(
+        prompt.contains("From plugin gate@acme") && prompt.contains("Ticket ABC-1 is open"),
+        "{prompt}"
+    );
+    let stored = m.store().find_task(&name).await.unwrap().unwrap();
+    assert_eq!(stored.prompt, prompt);
+}
+
+#[tokio::test]
+async fn a_failing_task_created_hook_fails_open() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    m.install_hook("task.created", "exit 1").await;
+    let created = m.ok("create_task", task(&unique("open"))).await;
+    assert_eq!(created["state"], "queued", "{created}");
+    assert_eq!(created["prompt"], "the brief");
+}
+
+#[tokio::test]
 async fn create_task_refuses_bad_input_with_a_reason() {
     let m = Mcp::new().await;
     m.note_repo("shop").await;

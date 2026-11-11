@@ -22,6 +22,58 @@ pub use tmux_server::{private_tmux, tmux};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+pub async fn install_hook(
+    store: &townhall_core::store::Store,
+    home: &Home,
+    event: &str,
+    command: &str,
+) -> PathBuf {
+    use serde_json::json;
+    use townhall_core::store::{Marketplace, Plugin};
+    let market = Marketplace {
+        name: "acme".into(),
+        source: json!({"source": "github", "repo": "acme/market"}),
+        account: None,
+        enabled: true,
+        official: false,
+        head_sha: None,
+        fetched_at: None,
+        error: None,
+    };
+    store.add_marketplace(market).await.unwrap();
+    let plugin = Plugin {
+        id: String::new(),
+        marketplace: "acme".into(),
+        name: "gate".into(),
+        version: Some("1.0.0".into()),
+        sha: "abc123".into(),
+        source: json!({"source": "git-subdir", "path": "plugins/gate"}),
+        enabled: true,
+        pinned: false,
+        permissions_hash: "sha256:aa".into(),
+        approved: json!([format!("hook:{event}")]),
+        installed_at: String::new(),
+        updated_at: String::new(),
+        error: None,
+    };
+    store.add_plugin(plugin).await.unwrap();
+    let plugins = home.plugins_dir().unwrap();
+    let root = plugins.join("cache/acme/gate/abc123");
+    std::fs::create_dir_all(root.join(".townhall-plugin")).unwrap();
+    let manifest = json!({
+        "name": "gate", "version": "1.0.0", "apiVersion": 1,
+        "permissions": {"hooks": [event]},
+        "contributes": {"hooks": "townhall-hooks.json"}
+    });
+    let file = root.join(".townhall-plugin/plugin.json");
+    std::fs::write(file, manifest.to_string()).unwrap();
+    let hooks = json!({"hooks": {event: [{"command": command}]}});
+    std::fs::write(root.join("townhall-hooks.json"), hooks.to_string()).unwrap();
+    let data = plugins.join("data/acme/gate");
+    std::fs::create_dir_all(&data).unwrap();
+    data
+}
+
 pub fn unique(prefix: &str) -> String {
     format!(
         "{prefix}-{}-{}",

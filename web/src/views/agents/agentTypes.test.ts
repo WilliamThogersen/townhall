@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { anAgentTypeSummary } from "../../api/fixtures";
-import { defaultTypeName, filterTypes, isConversationType, pipelineStep, sortTypes } from "./agentTypes";
+import { defaultTypeName, filterTypes, isAdviserType, isConversationType, pipelineStep, sortTypes } from "./agentTypes";
 
 describe("sortTypes", () => {
   const named = (...names: string[]) => names.map((name) => anAgentTypeSummary({ name }));
@@ -91,6 +91,22 @@ describe("defaultTypeName", () => {
     expect(defaultTypeName(named("default", "zed"))).toBe("zed");
     expect(defaultTypeName(named("Default", "builder"))).toBe("builder");
     expect(defaultTypeName(named("default"))).toBeNull();
+  });
+});
+
+describe("the adviser", () => {
+  const named = (...names: string[]) => names.map((name) => anAgentTypeSummary({ name }));
+
+  it("is the type named adviser, ignoring case", () => {
+    expect(isAdviserType("adviser")).toBe(true);
+    expect(isAdviserType("Adviser")).toBe(true);
+    expect(isAdviserType("builder")).toBe(false);
+  });
+
+  it("is never the type tasks default to", () => {
+    expect(defaultTypeName(named("adviser", "zed"))).toBe("zed");
+    expect(defaultTypeName(named("adviser", "default"))).toBeNull();
+    expect(defaultTypeName(named("adviser", "builder"))).toBe("builder");
   });
 });
 

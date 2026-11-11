@@ -11,7 +11,7 @@ import { AgentPrompt } from "./AgentPrompt";
 import { CopyButton } from "./CopyButton";
 import { AvatarEditor } from "./AvatarEditor";
 import { StepBadge } from "./AgentTypeRow";
-import { isConversationType } from "./agentTypes";
+import { isAdviserType, isConversationType } from "./agentTypes";
 import { RUNS_SHOWN, runModel, shownRuns, showsModelColumn } from "./agentRuns";
 import { UsageGraph } from "./UsageGraph";
 
@@ -141,6 +141,11 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
       {isConversationType(data.name) ? (
         <p className="th-cap">
           runs your conversations with townhall: its model, permission mode, tools and prompt apply to every turn. it can be edited but cannot be deleted, and tasks never default to it.
+        </p>
+      ) : null}
+      {isAdviserType(data.name) ? (
+        <p className="th-cap">
+          other agents ask it with the ask_adviser tool instead of asking you. it only reads and answers: its model, effort, tools and prompt apply to every call. delete it and ask_adviser tells agents there is no adviser.
         </p>
       ) : null}
       <Section title="avatar">

@@ -1,5 +1,5 @@
 use townhall_core::definitions::{AdapterKind, Effort, PermissionMode};
-use townhall_core::model::CONVERSATION_AGENT_TYPE;
+use townhall_core::model::{ADVISER_AGENT_TYPE, CONVERSATION_AGENT_TYPE};
 use townhall_core::store::Store;
 use townhall_core::Error;
 
@@ -137,8 +137,8 @@ async fn the_first_open_seeds_builder() {
     let env = store_env();
     let all = env.store.agent_types().await.unwrap();
     let names: Vec<&str> = all.iter().map(|t| t.def.name.as_str()).collect();
-    assert_eq!(names, ["builder", "default"]);
-    let builder = &all[0];
+    assert_eq!(names, ["adviser", "builder", "default"]);
+    let builder = &all[1];
     assert_eq!(builder.def.description, "implements a task, tests first");
     assert_eq!(builder.def.adapter, AdapterKind::Claude);
     assert_eq!(builder.def.model.as_deref(), Some("sonnet"));
@@ -178,7 +178,44 @@ async fn a_deleted_builder_never_comes_back() {
         .into_iter()
         .map(|t| t.def.name)
         .collect();
-    assert_eq!(names, ["coder", "default"]);
+    assert_eq!(names, ["adviser", "coder", "default"]);
+}
+
+#[tokio::test]
+async fn the_first_open_seeds_a_read_only_adviser_on_fable() {
+    let env = store_env();
+    let adviser = env
+        .store
+        .agent_type(ADVISER_AGENT_TYPE)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(ADVISER_AGENT_TYPE, "adviser");
+    assert_eq!(adviser.def.adapter, AdapterKind::Claude);
+    assert_eq!(adviser.def.model.as_deref(), Some("claude-fable-5-2"));
+    assert_eq!(adviser.def.effort, Some(Effort::High));
+    assert_eq!(adviser.def.permission_mode, Some(PermissionMode::Plan));
+    assert_eq!(
+        adviser.def.tools,
+        ["Read", "Grep", "Glob", "WebSearch", "WebFetch"]
+    );
+    let prompt = adviser.def.prompt.as_deref().unwrap().to_lowercase();
+    for rule in ["recommendation", "needs the user", "short"] {
+        assert!(prompt.contains(rule), "{rule}: {prompt}");
+    }
+    assert!(adviser.def.description.contains("never edits code"));
+    assert!(Store::check_agent_type(&adviser.source).is_ok());
+    assert!(!adviser.source.contains('\u{2014}') && !adviser.source.contains('\u{2013}'));
+}
+
+#[tokio::test]
+async fn the_adviser_can_be_deleted_like_builder() {
+    let env = store_env();
+    assert_eq!(
+        env.store.delete_agent_type("ADVISER").await.unwrap(),
+        "adviser"
+    );
+    assert!(env.store.agent_type("adviser").await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -221,6 +258,7 @@ async fn the_conversation_default_is_edited_never_deleted() {
 #[tokio::test]
 async fn the_default_does_not_count_as_a_type_for_tasks() {
     let env = store_env();
+    env.store.delete_agent_type("adviser").await.unwrap();
     let refused = env.store.delete_agent_type("builder").await.unwrap_err();
     assert!(matches!(refused, Error::Conflict(_)), "{refused:?}");
     assert!(env.store.agent_type("builder").await.unwrap().is_some());

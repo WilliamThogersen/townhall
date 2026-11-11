@@ -9,10 +9,13 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 use crate::model::{
-    Conversation, CreateTaskInput, Done, EntryBody, NewTask, Task, DEFAULT_MAX_RETRIES,
+    AgentEvent, Conversation, CreateTaskInput, Done, EntryBody, NewTask, Task, TaskState,
+    DEFAULT_MAX_RETRIES,
 };
+use crate::plugins::hooks;
 use crate::redact::redact;
 
+use super::adviser::{self, Caller, ASK_ADVISER};
 use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
 use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
@@ -25,6 +28,8 @@ use super::{
     status, task_tools_list, tools, ToolDef, CREATE_TASK, INSTRUCTIONS, MAX_TITLE_LEN, SET_TITLE,
     TASK_STATUS,
 };
+
+const MAX_FAILED_TEXT: usize = 300;
 
 /// The tools of the conversation `conversation_id`.
 pub(crate) struct TaskTools<'a> {
@@ -77,6 +82,14 @@ impl ToolRunner for TaskTools<'_> {
             READ_LOGS => log_tools::read(self.ctx, parse(arguments)?).await,
             LOG_SUMMARY => log_tools::summary(self.ctx, parse(arguments)?).await,
             CONVERSATION_INSIGHTS => insight_tools::insights(self.ctx, parse(arguments)?).await,
+            ASK_ADVISER => {
+                adviser::ask(
+                    self.ctx,
+                    Caller::Conversation(self.conversation_id),
+                    parse(arguments)?,
+                )
+                .await
+            }
             other => Err(unknown_tool(other, &tools())),
         }
     }
@@ -158,6 +171,7 @@ impl TaskTools<'_> {
             .create_task(self.conversation_id, new)
             .await
             .map_err(|e| e.to_string())?;
+        let task = self.screen(task).await?;
         if let Err(e) = store
             .note_task_created(self.conversation_id, &task.name)
             .await
@@ -170,6 +184,57 @@ impl TaskTools<'_> {
             );
         }
         Ok(task)
+    }
+
+    async fn screen(&self, task: Task) -> Checked<Task> {
+        let fields = json!({"task": task, "conversationId": self.conversation_id});
+        let asked = hooks::ask(self.ctx, "task.created", fields).await;
+        if asked.blocked.is_none() && asked.prompt.is_empty() {
+            return Ok(task);
+        }
+        let store = self.ctx.store().map_err(|e| e.to_string())?;
+        let moved = "the task moved on";
+        let change = move |t: Task| match (t.state == TaskState::Queued, &asked.blocked) {
+            (false, _) => Err(crate::Error::Conflict(moved.into())),
+            (true, Some(b)) => Ok(Task {
+                state: TaskState::Error,
+                blocked: Some(format!("plugin {}: {}", b.plugin, b.reason)),
+                ..t
+            }),
+            (true, None) => Ok(Task {
+                prompt: asked
+                    .prompt
+                    .iter()
+                    .fold(t.prompt.clone(), |text, (id, more)| {
+                        format!(
+                            "{}\n\n## From plugin {id}\n\n{}",
+                            text.trim_end(),
+                            more.trim_end()
+                        )
+                    }),
+                ..t
+            }),
+        };
+        let saved = match store.update_task(&task.name, change).await {
+            Ok(saved) => saved,
+            Err(crate::Error::Conflict(m)) if m == moved => return Ok(task),
+            Err(e) => return Err(e.to_string()),
+        };
+        if let Some(why) = &saved.blocked {
+            let body = EntryBody::Agent {
+                agent: saved.name.clone(),
+                event: AgentEvent::Failed,
+                text: format!("ended by a plugin when it was created: {why}")
+                    .chars()
+                    .take(MAX_FAILED_TEXT)
+                    .collect(),
+            };
+            store
+                .append_entry(self.conversation_id, body)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(saved)
     }
 
     async fn set_title(&self, input: TitleInput) -> Checked<Conversation> {
@@ -217,6 +282,7 @@ impl ToolRunner for HandBackTools<'_> {
             ADD_ARTIFACT => artifacts::add(self.ctx, self.task, parse(arguments)?).await,
             LIST_ARTIFACTS => artifacts::list(self.ctx, self.task, parse(arguments)?).await,
             OPEN_PR => open_pr::open_pr(self.ctx, self.task, parse(arguments)?).await,
+            ASK_ADVISER => adviser::ask(self.ctx, Caller::Task(self.task), parse(arguments)?).await,
             other => Err(unknown_tool(other, &task_tools_list())),
         }
     }

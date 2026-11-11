@@ -5,13 +5,16 @@ use super::install::cache_root;
 use super::manifest::{self, MAX_MANIFEST_BYTES};
 use super::market::blocking;
 use crate::definitions::{validate_agent, DefinitionError, PermissionMode};
-use crate::model::{AgentType, Origin, CONVERSATION_AGENT_TYPE, DEFAULT_AGENT_TYPE};
+use crate::model::{
+    AgentType, Origin, ADVISER_AGENT_TYPE, CONVERSATION_AGENT_TYPE, DEFAULT_AGENT_TYPE,
+};
 use crate::store::{Plugin, Store};
 use crate::{clock, Error, Home, Result};
 
-const RESERVED: [&str; 5] = [
+const RESERVED: [&str; 6] = [
     CONVERSATION_AGENT_TYPE,
     DEFAULT_AGENT_TYPE,
+    ADVISER_AGENT_TYPE,
     "reflector",
     "tester",
     "reviewer",

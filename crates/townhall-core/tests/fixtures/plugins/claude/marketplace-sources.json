@@ -1,0 +1,10 @@
+{
+  "name": "source-forms",
+  "owner": { "name": "Acme" },
+  "plugins": [
+    { "name": "relative", "source": "./plugins/relative" },
+    { "name": "by-url", "source": { "source": "url", "url": "https://github.com/acme/by-url.git", "sha": "09bf1539d41f9ff355ba3eb5d05d4a75813423bb" } },
+    { "name": "by-subdir", "source": { "source": "git-subdir", "url": "https://github.com/acme/mono.git", "path": "packages/by-subdir", "ref": "main", "sha": "0f487c9b1b98d8e62dfc80ee4d28b29f5471261f" } },
+    { "name": "skills-only", "source": { "source": "git-subdir", "url": "https://github.com/acme/sdk.git", "path": "skills", "ref": "main" }, "strict": false, "skills": ["./skill-a"] }
+  ]
+}

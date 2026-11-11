@@ -249,7 +249,7 @@ mod tests {
     fn tools_list_marks_only_the_store_and_read_tools_read_only() {
         assert_eq!(
             read_only_names(crate::mcp::task_tools_list()),
-            ["hand_back", "add_artifact", "list_artifacts"]
+            ["hand_back", "add_artifact", "list_artifacts", "ask_adviser"]
         );
         assert_eq!(
             read_only_names(crate::mcp::tools()),
@@ -259,7 +259,8 @@ mod tests {
                 "read_agent_type",
                 "read_logs",
                 "log_summary",
-                "conversation_insights"
+                "conversation_insights",
+                "ask_adviser"
             ]
         );
     }
@@ -317,7 +318,8 @@ mod tests {
                 "save_agent_type",
                 "read_logs",
                 "log_summary",
-                "conversation_insights"
+                "conversation_insights",
+                "ask_adviser"
             ]
         );
         assert_eq!(got[2]["error"]["code"], INVALID_REQUEST);

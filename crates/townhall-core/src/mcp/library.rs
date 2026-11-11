@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 use crate::definitions::DefinitionError;
-use crate::model::{AgentType, AgentTypeSummary, DEFAULT_AGENT_TYPE};
+use crate::model::{AgentType, AgentTypeSummary, ADVISER_AGENT_TYPE, DEFAULT_AGENT_TYPE};
 use crate::store::Store;
 
 use super::ask;
@@ -111,7 +111,11 @@ fn default_of(types: &[AgentType]) -> Option<&AgentType> {
     types
         .iter()
         .find(|t| t.def.name.eq_ignore_ascii_case(DEFAULT_AGENT_TYPE))
-        .or_else(|| types.iter().find(|t| t.for_tasks()))
+        .or_else(|| {
+            types
+                .iter()
+                .find(|t| t.for_tasks() && !t.def.name.eq_ignore_ascii_case(ADVISER_AGENT_TYPE))
+        })
 }
 
 /// The stored name of the type a task runs as: `wanted` (ignoring case), else the default.

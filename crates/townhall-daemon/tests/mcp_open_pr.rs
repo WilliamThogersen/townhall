@@ -151,6 +151,84 @@ async fn a_github_origin_opens_the_pr_and_stores_it() {
     assert!(!pushed.is_empty());
 }
 
+async fn with_origin(m: &Mcp, name: &str) {
+    with_worktree(m, name).await;
+    let origin = "https://github.com/acme/shop.git";
+    git(&m.env.startup, &["remote", "add", "origin", origin]).await;
+    let bare = m.env.root.path().join("bare.git");
+    let bare = bare.to_string_lossy().into_owned();
+    git(m.env.root.path(), &["init", "-q", "--bare", &bare]).await;
+    git(&m.env.startup, &["config", "remote.origin.pushurl", &bare]).await;
+}
+
+#[tokio::test]
+async fn a_before_open_hook_that_blocks_is_a_tool_error_and_nothing_is_pushed() {
+    let m = Mcp::new().await;
+    with_origin(&m, "blocked-pr").await;
+    m.install_hook("pr.before_open", "echo 'ticket not approved' >&2; exit 2")
+        .await;
+    let result = open_pr(&m, "blocked-pr", json!({"title": "Fix login"})).await;
+    assert_eq!(result["isError"], true, "{result}");
+    let said = text(&result);
+    assert!(
+        said.contains("gate@acme") && said.contains("ticket not approved"),
+        "{said}"
+    );
+    assert_eq!(task(&m, "blocked-pr").await.pr, None);
+    let bare = m.env.root.path().join("bare.git");
+    let pushed = git(
+        &m.env.startup,
+        &[
+            "ls-remote",
+            &bare.to_string_lossy(),
+            "refs/heads/townhall/blocked-pr",
+        ],
+    )
+    .await;
+    assert!(pushed.is_empty(), "{pushed}");
+}
+
+#[tokio::test]
+async fn a_before_open_hook_can_amend_the_title_and_body() {
+    let m = Mcp::new().await;
+    with_origin(&m, "amended-pr").await;
+    let answer = r#"echo '{"amend":{"title":"ABC-1 Fix login","body":"linked ABC-1"}}'"#;
+    m.install_hook("pr.before_open", answer).await;
+    let got = payload(&open_pr(&m, "amended-pr", json!({"title": "Fix login"})).await);
+    assert_eq!(got["state"], "opened", "{got}");
+    let gh = std::env::var("TOWNHALL_GH_BIN").unwrap();
+    let log = std::fs::read_to_string(format!("{gh}.log")).unwrap();
+    let head = "--head townhall/amended-pr ";
+    let line = log.lines().find(|l| l.contains(head)).unwrap();
+    assert!(
+        line.contains("ABC-1 Fix login") && line.contains("linked ABC-1"),
+        "{line}"
+    );
+}
+
+#[tokio::test]
+async fn a_fail_closed_before_open_hook_that_breaks_blocks_the_pr() {
+    let m = Mcp::new().await;
+    with_origin(&m, "closed-pr").await;
+    let dir = m.install_hook("pr.before_open", "exit 1").await;
+    let root = dir.parent().unwrap().parent().unwrap().parent().unwrap();
+    let file = root.join("cache/acme/gate/abc123/townhall-hooks.json");
+    let hooks = json!({"hooks": {"pr.before_open": [{"command": "exit 1", "failClosed": true}]}});
+    std::fs::write(file, hooks.to_string()).unwrap();
+    let result = open_pr(&m, "closed-pr", json!({"title": "Fix login"})).await;
+    assert_eq!(result["isError"], true, "{result}");
+    assert!(text(&result).contains("failClosed"), "{result}");
+}
+
+#[tokio::test]
+async fn a_fail_open_before_open_hook_that_breaks_lets_the_pr_through() {
+    let m = Mcp::new().await;
+    with_origin(&m, "open-pr").await;
+    m.install_hook("pr.before_open", "exit 1").await;
+    let got = payload(&open_pr(&m, "open-pr", json!({"title": "Fix login"})).await);
+    assert_eq!(got["state"], "opened", "{got}");
+}
+
 async fn opened_against(m: &Mcp, name: &str, start: &str, pr_base: Option<&str>) -> String {
     with_worktree(m, name).await;
     git(&m.env.startup, &["branch", start]).await;

@@ -123,6 +123,12 @@ impl Mcp {
     }
 }
 
+impl Mcp {
+    pub async fn install_hook(&self, event: &str, command: &str) -> std::path::PathBuf {
+        crate::common::install_hook(self.store(), &self.env.home, event, command).await
+    }
+}
+
 pub fn task(name: &str) -> Value {
     json!({"name": name, "title": format!("do {name}"), "prompt": "the brief"})
 }

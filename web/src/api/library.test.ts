@@ -106,6 +106,13 @@ describe("library api", () => {
     expect(sent(fn)).toEqual({ url: "/api/library/agents/my%20type/runs", method: "GET", body: undefined });
   });
 
+  it("reads a consult run of the adviser", async () => {
+    const run = { kind: "consult", conversationId: "c1", task: "one", repo: "alpha", state: "done", model: "claude-fable-5-2", tokens: 1034, createdAt: "2026-11-09T10:00:00Z", endedAt: "2026-11-09T10:00:40Z" };
+    mockFetch(200, [run]);
+    const runs = await listAgentRuns("adviser");
+    expect(runs.map((r) => [r.kind, r.task, r.model, r.tokens])).toEqual([["consult", "one", "claude-fable-5-2", 1034]]);
+  });
+
   it("refuses a run without a token count", async () => {
     mockFetch(200, [{ kind: "task", conversationId: "c1", task: "one", repo: "alpha", state: "ended", model: null, createdAt: "x", endedAt: null }]);
     await expect(listAgentRuns("builder")).rejects.toMatchObject({ kind: "protocol" });
