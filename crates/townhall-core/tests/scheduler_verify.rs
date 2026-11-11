@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use townhall_core::model::{Done, NewTask, Task, TaskState, Verify, VerifyPhase};
 use townhall_core::scheduler::run_once;
+use townhall_core::Pacing;
 
 mod scheduler_support;
 use scheduler_support::{unique, Sched};
@@ -135,6 +136,51 @@ async fn a_check_that_keeps_failing_needs_the_user_after_the_last_retry() {
     let pass = run_once(s.ctx()).await.unwrap();
     assert!(pass.started.is_empty(), "{pass:?}");
     assert_eq!(s.state(&name).await, TaskState::NeedsYou);
+}
+
+#[tokio::test]
+async fn each_retry_of_a_failing_check_waits_twice_as_long_as_the_one_before() {
+    let s = Sched::new().await;
+    let name = verifying(&s, "exit 1", 3).await;
+    for retries in 0..3 {
+        if retries > 0 {
+            run_once(s.ctx()).await.unwrap();
+            mark(&s, &name, retries).await;
+        }
+        let task = judged(&s, &name).await;
+        assert_eq!(task.state, TaskState::Queued, "{task:?}");
+    }
+    let secs: Vec<u64> = s.slept().iter().map(Duration::as_secs).collect();
+    assert_eq!(secs, [60, 120, 240]);
+}
+
+#[tokio::test]
+async fn the_wait_between_retries_stops_growing_at_the_cap() {
+    let s = Sched::new().await;
+    let pacing = Pacing {
+        check_backoff: Duration::from_secs(400),
+        ..s.ctx().pacing()
+    };
+    s.ctx().set_pacing(pacing);
+    let name = verifying(&s, "exit 1", 3).await;
+    for retries in 0..2 {
+        if retries > 0 {
+            run_once(s.ctx()).await.unwrap();
+            mark(&s, &name, retries).await;
+        }
+        judged(&s, &name).await;
+    }
+    let secs: Vec<u64> = s.slept().iter().map(Duration::as_secs).collect();
+    assert_eq!(secs, [400, 600]);
+}
+
+#[tokio::test]
+async fn the_last_failure_does_not_wait_before_it_needs_the_user() {
+    let s = Sched::new().await;
+    let name = verifying(&s, "exit 1", 0).await;
+    let task = judged(&s, &name).await;
+    assert_eq!(task.state, TaskState::NeedsYou);
+    assert!(s.slept().is_empty(), "{:?}", s.slept());
 }
 
 #[tokio::test]
