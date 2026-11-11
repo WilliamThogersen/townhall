@@ -45,7 +45,7 @@ export function SessionPanel({ detail, openTask, onOpenTask }: SessionPanelProps
     <aside className="th-session" id={SESSION_PANEL_ID} aria-label="Session" tabIndex={-1}>
       <SessionHead conversationId={conversation.id} tasks={tasks} />
       <div className="th-session-body">
-        <LoopStrip tasks={tasks} />
+        <LoopStrip conversationId={conversation.id} tasks={tasks} entryCount={detail.entries.length} />
         <h4 className="th-section">tasks {tasks.length}</h4>
         {views.length > 0 ? (
           <TaskList views={views} openTask={openTask} onOpenTask={onOpenTask} listRef={listRef} />

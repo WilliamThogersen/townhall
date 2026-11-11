@@ -2,7 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import * as artifactsApi from "../../../api/artifacts";
-import { aConversation, aDetail, anArtifact, anAttachment, anEntry, aTask } from "../../../api/fixtures";
+import { aConversation, aDetail, anArtifact, anAttachment, anEntry, aRun, aRunStep, aTask } from "../../../api/fixtures";
+import * as runsApi from "../../../api/runs";
 import type { ConversationDetail } from "../../../api/types";
 import { renderWithHints } from "../../../test/renderWithHints";
 import { SessionPanel } from "./index";
@@ -29,8 +30,10 @@ const fullDetail = (over: Partial<ConversationDetail> = {}): ConversationDetail 
   });
 
 let listArtifacts: MockInstance<typeof artifactsApi.listArtifacts>;
+let listRuns: MockInstance<typeof runsApi.listRuns>;
 
 beforeEach(() => {
+  listRuns = vi.spyOn(runsApi, "listRuns").mockResolvedValue([]);
   listArtifacts = vi.spyOn(artifactsApi, "listArtifacts").mockResolvedValue([]);
 });
 afterEach(() => vi.restoreAllMocks());
@@ -111,6 +114,50 @@ describe("SessionPanel loop strip", () => {
       }),
     );
     expect(stagesShown()).toEqual(["plan 0", "code 1", "test 0", "review 3", "ship 0"]);
+  });
+
+  it("keeps the fixed line while the conversation has no run", async () => {
+    renderPanel();
+    await waitFor(() => expect(listRuns).toHaveBeenCalledWith("login-loop", expect.anything()));
+    expect(stagesShown()).toEqual(["plan 1", "code 1", "test 0", "review 2", "ship 1"]);
+    expect(screen.queryByLabelText("Steps of the run")).toBeNull();
+  });
+
+  it("keeps the fixed line when the runs cannot be read", async () => {
+    listRuns.mockRejectedValue(new Error("daemon down"));
+    renderPanel();
+    await waitFor(() => expect(listRuns).toHaveBeenCalled());
+    expect(stagesShown()).toEqual(["plan 1", "code 1", "test 0", "review 2", "ship 1"]);
+  });
+
+  it("shows the newest run's own step ids, their states and skipped", async () => {
+    listRuns.mockResolvedValue([
+      aRun({
+        conversationId: "login-loop",
+        steps: [
+          aRunStep({ id: "plan", state: "done", round: 1 }),
+          aRunStep({ id: "build", state: "started", round: 1 }),
+          aRunStep({ id: "test" }),
+          aRunStep({ id: "review", state: "skipped", round: 1, note: "no changed file matches" }),
+          aRunStep({ id: "land" }),
+        ],
+      }),
+      aRun({ id: "older", steps: [aRunStep({ id: "old", state: "done", round: 1 })] }),
+    ]);
+    renderPanel();
+    const loop = await screen.findByLabelText("Steps of the run");
+    const steps = [...loop.querySelectorAll(".th-loop-stage:not(.th-loop-stage--you)")];
+    expect(steps.map((s) => s.textContent)).toEqual(["plan ✓", "build 1", "test ·", "review skipped", "land ·"]);
+    expect(steps.map((s) => s.getAttribute("data-active"))).toEqual([null, "true", null, null, null]);
+    expect(loop.querySelectorAll(".th-loop-arrow")).toHaveLength(4);
+    expect(screen.queryByLabelText("Tasks per stage")).toBeNull();
+  });
+
+  it("keeps the needs you badge beside the run's steps", async () => {
+    listRuns.mockResolvedValue([aRun({ steps: [aRunStep({ id: "plan", state: "done", round: 1 })] })]);
+    renderPanel();
+    await screen.findByLabelText("Steps of the run");
+    expect(panel().querySelector(".th-loop-stage--you")).toHaveTextContent("needs you 1");
   });
 
   it("puts needs you on its own line only while a task needs you", () => {

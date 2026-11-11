@@ -16,6 +16,8 @@ import type {
   PluginPreview,
   PluginSettingField,
   Repo,
+  Run,
+  RunStep,
   Stats,
   Step,
   Task,
@@ -92,6 +94,29 @@ export const anArtifact = (over: Partial<Artifact> = {}): Artifact => ({
   authorRole: "tester",
   caption: null,
   createdAt: FIXTURE_TIME,
+  ...over,
+});
+
+export const aRunStep = (over: Partial<RunStep> = {}): RunStep => ({
+  id: "build",
+  agent: "builder",
+  state: "pending",
+  round: 0,
+  task: null,
+  verdict: null,
+  note: null,
+  ...over,
+});
+
+export const aRun = (over: Partial<Run> = {}): Run => ({
+  id: "fix-login",
+  workflow: "standard",
+  conversationId: "c1",
+  repo: "shop",
+  baseBranch: "main",
+  state: "running",
+  input: "fix the login redirect",
+  steps: [],
   ...over,
 });
 

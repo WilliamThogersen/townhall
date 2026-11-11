@@ -14,6 +14,7 @@ import type {
   PatchRepoInput,
   PutRepoAccountsInput,
   Repo,
+  Run,
   Stats,
   Step,
   Task,
@@ -99,6 +100,10 @@ export interface StepsState extends Loadable {
 
 export interface ArtifactsState extends Loadable {
   readonly artifacts: readonly Artifact[];
+}
+
+export interface RunsState extends Loadable {
+  readonly runs: readonly Run[];
 }
 
 export interface ConversationActions {

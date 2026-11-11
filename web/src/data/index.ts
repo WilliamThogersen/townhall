@@ -16,6 +16,7 @@ export { useContributions } from "./useContributions";
 export { usePlugins } from "./usePlugins";
 export { useRepos } from "./useRepos";
 export { useStats } from "./useStats";
+export { RUNS_POLL_MS, useRuns } from "./useRuns";
 export { STEPS_POLL_MS, useSteps } from "./useSteps";
 export { useTasks } from "./useTasks";
 export { USAGE_POLL_MS, useUsage } from "./useUsage";
@@ -30,6 +31,7 @@ export type {
   Loadable,
   PluginsState,
   ReposState,
+  RunsState,
   StatsState,
   StepsOptions,
   StepsState,
