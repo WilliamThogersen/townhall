@@ -93,6 +93,42 @@ async fn until(s: &Sched, name: &str, want: impl Fn(&Task) -> bool) -> Task {
     panic!("`{name}` never got there: {task:?}");
 }
 
+async fn floor(s: &Sched, gb: u32) {
+    let put = s
+        .store()
+        .set_setting(SettingKey::MinFreeDiskGb, serde_json::json!(gb));
+    put.await.unwrap();
+}
+
+async fn queued(s: &Sched, name: &str) -> Task {
+    floor(s, 100_000).await;
+    let task = until(s, name, |t| t.state == TaskState::Queued).await;
+    floor(s, 0).await;
+    task
+}
+
+async fn polled(s: &Sched, name: &str, times: usize) {
+    for _ in 0..100 {
+        if asked(name).len() >= times {
+            return;
+        }
+        run_once(s.ctx()).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("`{name}` was not polled {times} times: {:?}", asked(name));
+}
+
+async fn heard(s: &Sched) -> Vec<String> {
+    for _ in 0..100 {
+        let told = s.ctx().notes().waiting(&s.conversation);
+        if !told.is_empty() {
+            return told;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("nothing told to the conversation");
+}
+
 async fn passes(s: &Sched, count: usize) {
     for _ in 0..count {
         run_once(s.ctx()).await.unwrap();
@@ -116,13 +152,14 @@ async fn a_task_that_ended_with_pending_checks_waits_then_is_relaunched_once() {
     let before = session(&s, &name).await;
     until(&s, &name, |t| t.state == TaskState::InCi).await;
     passes(&s, 4).await;
+    polled(&s, &name, 2).await;
     assert_eq!(s.state(&name).await, TaskState::InCi);
     assert_eq!(session(&s, &name).await, before);
     assert!(s.store().handoffs(&name).await.unwrap().is_empty());
     assert!(asked(&name).len() >= 2, "{:?}", asked(&name));
 
     reports(&name, RED);
-    until(&s, &name, |t| t.state == TaskState::Queued).await;
+    queued(&s, &name).await;
     let pass = run_once(s.ctx()).await.unwrap();
     assert_eq!(pass.started, std::slice::from_ref(&name), "{pass:?}");
     assert_eq!(s.state(&name).await, TaskState::Working);
@@ -239,7 +276,7 @@ async fn a_task_that_keeps_ending_with_pending_checks_needs_you_after_the_last_w
     let name = lander(&s, PENDING).await;
     until(&s, &name, |t| t.state == TaskState::InCi).await;
     reports(&name, GREEN);
-    until(&s, &name, |t| t.state == TaskState::Queued).await;
+    queued(&s, &name).await;
     run_once(s.ctx()).await.unwrap();
     assert_eq!(s.state(&name).await, TaskState::Working);
 
@@ -260,7 +297,7 @@ async fn a_task_that_keeps_ending_with_pending_checks_needs_you_after_the_last_w
             .is_some_and(|b| b.contains("build: IN_PROGRESS")),
         "{task:?}"
     );
-    let told = s.ctx().notes().waiting(&s.conversation);
+    let told = heard(&s).await;
     let line = format!("task {name} needs you");
     assert!(
         told.iter()
