@@ -111,6 +111,45 @@ pub fn contribution(
     Ok(out)
 }
 
+pub fn for_planner(
+    manifest: &TownhallManifest,
+    plugin: &str,
+    found: Contribution,
+) -> Option<Contribution> {
+    if !manifest.permissions.claude.planner {
+        return None;
+    }
+    let declared = &manifest.permissions.claude.mcp.as_ref()?.servers;
+    let read_only: Vec<String> = declared
+        .iter()
+        .filter(|(_, tools)| matches!(tools, McpTools::Detailed(d) if d.read_only))
+        .map(|(name, _)| format!("plugin_{plugin}_{name}"))
+        .collect();
+    let servers: Vec<(String, Value)> = found
+        .servers
+        .into_iter()
+        .filter(|(key, _)| read_only.contains(key))
+        .collect();
+    if servers.is_empty() {
+        return None;
+    }
+    let tools = found
+        .tools
+        .into_iter()
+        .filter(|tool| {
+            read_only.iter().any(|key| {
+                tool.strip_prefix(&format!("mcp__{key}"))
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with("__"))
+            })
+        })
+        .collect();
+    Some(Contribution {
+        plugin: found.plugin,
+        servers,
+        tools,
+    })
+}
+
 pub fn merge(base: Option<&str>, parts: &[Contribution]) -> String {
     let mut servers = base
         .and_then(|text| serde_json::from_str::<Value>(text).ok())
@@ -130,7 +169,7 @@ pub(super) fn failed(plugin: &Plugin, why: impl std::fmt::Display) -> Error {
     Error::InvalidInput(format!("plugin {}: {why}", plugin.id))
 }
 
-fn load(home: &Home, plugin: &Plugin) -> Result<Option<Contribution>> {
+fn load(home: &Home, plugin: &Plugin, planner: bool) -> Result<Option<Contribution>> {
     let root = cache_root(home, &plugin.marketplace, &plugin.name)?.join(&plugin.sha);
     if !root.join(".townhall-plugin/plugin.json").is_file() {
         return Ok(None);
@@ -146,6 +185,9 @@ fn load(home: &Home, plugin: &Plugin) -> Result<Option<Contribution>> {
     let text = read_inside(&root, "claude.mcp", rel)?;
     let mut found = contribution(&plugin.name, &root, &manifest, &text)?;
     found.plugin = plugin.id.clone();
+    if planner {
+        return Ok(for_planner(&manifest, &plugin.name, found));
+    }
     Ok(Some(found))
 }
 
@@ -156,6 +198,14 @@ pub(super) fn selects(selected: &[String], plugin: &Plugin) -> bool {
 }
 
 pub async fn selected(store: &Store, names: &[String]) -> Result<Vec<Contribution>> {
+    chosen(store, names, false).await
+}
+
+pub async fn selected_for_planner(store: &Store, names: &[String]) -> Result<Vec<Contribution>> {
+    chosen(store, names, true).await
+}
+
+async fn chosen(store: &Store, names: &[String], planner: bool) -> Result<Vec<Contribution>> {
     if names.is_empty() {
         return Ok(Vec::new());
     }
@@ -172,7 +222,7 @@ pub async fn selected(store: &Store, names: &[String]) -> Result<Vec<Contributio
     blocking(move || {
         let mut all = Vec::new();
         for plugin in &plugins {
-            if let Some(found) = load(&home, plugin).map_err(|e| failed(plugin, e))? {
+            if let Some(found) = load(&home, plugin, planner).map_err(|e| failed(plugin, e))? {
                 all.push(found);
             }
         }
