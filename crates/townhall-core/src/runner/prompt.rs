@@ -155,10 +155,14 @@ pub fn deny_message(tool: &str) -> String {
 }
 
 pub fn deny_line(request_id: &str, tool: &str) -> String {
+    deny_with(request_id, &deny_message(tool))
+}
+
+pub fn deny_with(request_id: &str, message: &str) -> String {
     control_response(json!({
         "subtype": "success",
         "request_id": request_id,
-        "response": { "behavior": "deny", "message": deny_message(tool) }
+        "response": { "behavior": "deny", "message": message }
     }))
 }
 

@@ -12,6 +12,7 @@
 //! `Background::stop` aborts it.
 
 mod actions;
+mod advice;
 mod answer;
 mod args;
 mod content;
@@ -32,6 +33,7 @@ pub use actions::{
     create, create_with_files, end, patch, send, send_as_plugin, stop, StartFile, MAX_ATTACHMENTS,
     MAX_MESSAGE_CHARS,
 };
+pub use advice::{consult, Advice};
 pub use args::{allowed_tools, DENIED_TOOLS, ISOLATION, READ_ONLY_TOOLS};
 pub use content::user_content;
 pub use notify::{notify, Notes};

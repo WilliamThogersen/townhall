@@ -1,4 +1,4 @@
-use townhall_core::model::AgentUsage;
+use townhall_core::model::{AdviserCall, AgentUsage};
 use townhall_core::steps::{transcript_model, transcript_tokens};
 
 mod common;
@@ -212,4 +212,63 @@ async fn turns_are_listed_with_their_conversation_and_matched_ignoring_case() {
     assert_eq!(builder[0].kind, "task");
     assert_eq!(builder[0].conversation_id, c.id);
     assert!(env.store.agent_runs("default", 0).await.unwrap().is_empty());
+}
+
+fn call(conversation: &str, task: Option<&str>, tokens: u64, at: &str) -> AdviserCall {
+    AdviserCall {
+        conversation_id: conversation.into(),
+        task: task.map(String::from),
+        agent: "adviser".into(),
+        repo: "shop".into(),
+        question: "which approach?".into(),
+        answer: Some("the second".into()),
+        state: "done".into(),
+        model: Some("claude-fable-5-2".into()),
+        tokens,
+        created_at: at.into(),
+        ended_at: at.into(),
+    }
+}
+
+#[tokio::test]
+async fn adviser_calls_count_as_runs_of_the_adviser() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    env.store.create_task(&c.id, new_task("a")).await.unwrap();
+    env.store.set_task_tokens("a", 100).await.unwrap();
+    let at = "2099-01-01T00:00:00.000Z";
+    env.store
+        .record_adviser_call(call(&c.id, Some("a"), 400, at))
+        .await
+        .unwrap();
+    env.store
+        .record_adviser_call(call(&c.id, None, 50, "2099-01-02T00:00:00.000Z"))
+        .await
+        .unwrap();
+    let usage = env.store.agent_usage().await.unwrap();
+    let adviser = usage.iter().find(|u| u.agent == "adviser").unwrap();
+    assert_eq!((adviser.runs, adviser.tokens), (2, 450));
+    let builder = usage.iter().find(|u| u.agent == "builder").unwrap();
+    assert_eq!((builder.runs, builder.tokens), (1, 100));
+
+    let runs = env.store.agent_runs("ADVISER", 10).await.unwrap();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].kind, "consult");
+    assert_eq!(runs[0].task, c.title);
+    assert_eq!(runs[1].task, "a");
+    assert_eq!(
+        (
+            runs[1].tokens,
+            runs[1].state.as_str(),
+            runs[1].model.as_deref()
+        ),
+        (400, "done", Some("claude-fable-5-2"))
+    );
+    assert_eq!(env.store.agent_runs("builder", 10).await.unwrap().len(), 1);
+
+    assert!(env
+        .store
+        .record_adviser_call(call("nope", None, 1, at))
+        .await
+        .is_err());
 }

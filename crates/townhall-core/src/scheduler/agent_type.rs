@@ -7,7 +7,7 @@ use crate::agent::{AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter}
 use crate::context::Context;
 use crate::definitions::AdapterKind;
 use crate::mcp;
-use crate::model::{AgentType, Task};
+use crate::model::{AgentType, Task, ADVISER_AGENT_TYPE};
 use crate::plugins::agent_types;
 use crate::{Error, Result};
 
@@ -59,10 +59,11 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
         AdapterKind::Claude => (Box::new(ClaudeCodeAdapter::new(ctx.claude_bin())), true),
         AdapterKind::Shell => (Box::new(ShellAdapter), false),
     };
+    let advises = found.def.name.eq_ignore_ascii_case(ADVISER_AGENT_TYPE);
     if claude && !targets.is_empty() {
         options.mcp_config = Some(mcp::task_config_json(ctx.base_url(), &task.name));
         options.mcp_tools = mcp::task_allowed_tools();
-        options.system_prompt = Some(with_hand_back(options.system_prompt, &targets));
+        options.system_prompt = Some(with_rules(options.system_prompt, &targets, !advises));
     }
     Ok(Launcher {
         adapter,
@@ -84,15 +85,26 @@ pub(super) fn own_rules(worktree: &Path) -> Vec<String> {
     ]
 }
 
-/// The type's own prompt, then what the agent may hand back to.
-fn with_hand_back(own: Option<String>, targets: &[String]) -> String {
-    let line = format!(
-        "you can hand back to: {}. when the work needs one of those types, call the hand_back tool with `to` and `reason`, then stop.",
-        targets.join(", ")
-    );
-    match own.filter(|p| !p.trim().is_empty()) {
-        Some(own) => format!("{own}\n\n{line}"),
-        None => line,
+const ASK_ADVISER_RULE: &str = "before you stop to ask the user, ask the adviser: call the ask_adviser tool with your question and what it needs to know. ask the user only when the adviser's answer says it needs the user (needsUser is true).";
+
+fn with_rules(own: Option<String>, targets: &[String], ask_adviser: bool) -> String {
+    let hand_back = (!targets.is_empty()).then(|| {
+        format!(
+            "you can hand back to: {}. when the work needs one of those types, call the hand_back tool with `to` and `reason`, then stop.",
+            targets.join(", ")
+        )
+    });
+    let adviser = ask_adviser.then(|| ASK_ADVISER_RULE.to_string());
+    let rules = hand_back
+        .into_iter()
+        .chain(adviser)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let own = own.filter(|p| !p.trim().is_empty());
+    match (own, rules.is_empty()) {
+        (Some(own), false) => format!("{own}\n\n{rules}"),
+        (Some(own), true) => own,
+        (None, _) => rules,
     }
 }
 
@@ -119,6 +131,30 @@ mod tests {
             assert!(!wide.iter().any(|w| rule.starts_with(w)), "{rule}");
             assert!(!rule.contains("rm") && !rule.contains("git"), "{rule}");
         }
+    }
+
+    #[test]
+    fn the_rules_follow_the_type_prompt_and_tell_agents_to_ask_the_adviser_first() {
+        let targets = ["tester".to_string()];
+        let rules = with_rules(Some("be kind".into()), &targets, true);
+        let parts: Vec<&str> = rules.split("\n\n").collect();
+        assert_eq!(parts[0], "be kind");
+        assert!(parts[1].starts_with("you can hand back to: tester."));
+        assert!(parts[1].contains(" before you stop to ask the user, ask the adviser"));
+        assert!(parts[1].ends_with("(needsUser is true)."));
+        assert_eq!(with_rules(None, &[], true), ASK_ADVISER_RULE);
+        assert_eq!(
+            with_rules(None, &targets, false).matches("adviser").count(),
+            0
+        );
+        assert_eq!(with_rules(None, &targets, true).lines().count(), 1);
+        assert_eq!(with_rules(Some("be kind".into()), &[], false), "be kind");
+        assert_eq!(with_rules(Some("  ".into()), &[], false), "");
+    }
+
+    #[test]
+    fn ask_adviser_is_in_the_task_allow_list() {
+        assert!(mcp::task_allowed_tools().contains(&"mcp__townhall__ask_adviser".to_string()));
     }
 
     #[test]

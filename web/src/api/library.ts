@@ -22,7 +22,7 @@ const mode = oneOf<AgentTypeMode>(["default", "acceptEdits", "plan", "bypassPerm
 const effort = oneOf<AgentTypeEffort>(["low", "medium", "high", "xhigh", "max"]);
 const origin = oneOf<"user" | "plugin">(["user", "plugin"]);
 const range =oneOf<UsageRange>(["24h", "7d", "30d"]);
-const runKind = oneOf<AgentRunKind>(["task", "turn"]);
+const runKind = oneOf<AgentRunKind>(["task", "turn", "consult"]);
 
 const PART_NAMES = Object.keys(AVATAR_PARTS) as readonly AvatarPart[];
 

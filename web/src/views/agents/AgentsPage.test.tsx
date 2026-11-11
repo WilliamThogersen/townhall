@@ -166,6 +166,59 @@ describe("AgentsPage", () => {
     });
   });
 
+  describe("the adviser", () => {
+    const adviser = anAgentTypeSummary({
+      name: "adviser",
+      description: "a senior sparring partner other agents consult; read-only, answers questions, never edits code",
+      model: "claude-fable-5-2",
+      effort: "high",
+      permissionMode: "plan",
+    });
+
+    beforeEach(() => {
+      vi.spyOn(library, "listAgentTypes").mockResolvedValue([adviser, builder, planner]);
+      vi.mocked(library.getAgentType).mockImplementation((name) =>
+        Promise.resolve(anAgentType({ ...(name === "adviser" ? adviser : builder), name, tools: ["Read", "Grep"], source: `name = "${name}"\n` })),
+      );
+    });
+
+    it("is listed like the other built-ins, with its model, effort and mode, and is not the task default", async () => {
+      render(<AgentsPage />);
+      const row = within(await rowOf("adviser"));
+      expect(row.getByText("claude-fable-5-2")).toBeInTheDocument();
+      expect(row.getByText("high")).toBeInTheDocument();
+      expect(row.getByText("plan", { selector: ".th-agent-mode" })).toBeInTheDocument();
+      expect(row.getByText("consulted by agents")).toBeInTheDocument();
+      expect(row.queryByText("task default")).not.toBeInTheDocument();
+      expect(within(await rowOf("builder")).getByText("task default")).toBeInTheDocument();
+    });
+
+    it("says in its detail that agents ask it with ask_adviser and that it only reads", async () => {
+      render(<AgentsPage />);
+      await userEvent.click(await rowOf("adviser"));
+      expect(await screen.findByText(/other agents ask it with the ask_adviser tool/)).toBeInTheDocument();
+      expect(screen.getByText(/only reads and answers/)).toBeInTheDocument();
+    });
+
+    it("lists its consult runs with their model and tokens", async () => {
+      vi.spyOn(library, "listAgentRuns").mockResolvedValue([
+        { kind: "consult", conversationId: "c1", task: "fix-login", repo: "alpha", state: "done", model: "claude-fable-5-2", tokens: 1034, createdAt: "2026-11-09T10:00:00Z", endedAt: "2026-11-09T10:00:40Z" },
+      ]);
+      render(<AgentsPage />);
+      await userEvent.click(await rowOf("adviser"));
+      const detail = within(await screen.findByRole("region", { name: "adviser" }));
+      expect(await detail.findByText("fix-login")).toBeInTheDocument();
+      expect(detail.getAllByText("claude-fable-5-2").length).toBeGreaterThan(0);
+    });
+
+    it("gives other types no such note", async () => {
+      render(<AgentsPage />);
+      await userEvent.click(await rowOf("planner"));
+      await screen.findByLabelText("planner");
+      expect(screen.queryByText(/ask_adviser/)).not.toBeInTheDocument();
+    });
+  });
+
   it("badges a type with its pipeline step and leaves unknown types bare", async () => {
     render(<AgentsPage />);
     expect(within(await rowOf("planner")).getByText("plan", { selector: ".th-tag" })).toBeInTheDocument();
