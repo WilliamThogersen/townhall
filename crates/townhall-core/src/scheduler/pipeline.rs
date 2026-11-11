@@ -2,11 +2,14 @@ use std::collections::HashSet;
 
 use crate::context::Context;
 use crate::definitions::{parse_workflow, render, variables, Step, Values, Var, WorkflowDef};
-use crate::model::{CreateTaskInput, EntryBody, Task, TaskState, TASK_BRANCH_PREFIX};
+use crate::model::{
+    AdviserCall, CreateTaskInput, EntryBody, Task, TaskState, ADVISER_AGENT_TYPE,
+    TASK_BRANCH_PREFIX,
+};
 use crate::store::{
     Run, RunStep, StepUpdate, RUN_FAILED, RUN_FINISHED, RUN_NEEDS_YOU, RUN_RUNNING,
 };
-use crate::{cmd, runner, Error, Result};
+use crate::{clock, cmd, runner, Error, Result};
 
 use super::gate::report_of;
 use super::launch::commit_of;
@@ -19,6 +22,10 @@ const FAILED: &str = "failed";
 const SKIPPED: &str = "skipped";
 const FIXING: &str = "fixing";
 const REDONE: &str = "redone";
+const ANSWERED: &str = "adviser answered";
+const BUDGET_USED: &str = "adviser budget used";
+const MAX_LISTED_FILES: usize = 200;
+const MAX_NOTE_CHARS: usize = 300;
 
 pub fn task_name(run: &str, step: &str, round: u32) -> String {
     match round {
@@ -127,8 +134,10 @@ async fn begin(
 ) -> Result<Began> {
     let store = ctx.store()?;
     let name = task_name(&run.id, &step.id, round);
-    let patterns = step.when.as_ref().map(|w| &w.paths[..]).unwrap_or(&[]);
-    if patterns.is_empty() || store.find_task(&name).await?.is_some() {
+    let when = step.when.as_ref();
+    let patterns = when.map(|w| &w.paths[..]).unwrap_or(&[]);
+    let ask = when.and_then(|w| w.ask.as_deref());
+    if (patterns.is_empty() && ask.is_none()) || store.find_task(&name).await?.is_some() {
         return Ok(match ensure_task(ctx, run, def, step, round).await? {
             Some(task) => Began::Task(Box::new(task)),
             None => Began::Ended,
@@ -148,19 +157,31 @@ async fn begin(
             return Ok(Began::Ended);
         }
     };
-    if paths::any_match(patterns, &files) {
-        return Ok(match ensure_task(ctx, run, def, step, round).await? {
-            Some(task) => Began::Task(Box::new(task)),
-            None => Began::Ended,
-        });
+    if !patterns.is_empty() && !paths::any_match(patterns, &files) {
+        let why = format!(
+            "no changed file matches {} ({} changed)",
+            patterns.join(", "),
+            files.len()
+        );
+        return skip(ctx, run, step, round, &why).await;
     }
-    let why = format!(
-        "no changed file matches {} ({} changed)",
-        patterns.join(", "),
-        files.len()
-    );
+    if let Some(question) = ask {
+        match ask_adviser(ctx, run, def, step, round, question, &files).await? {
+            Asked::Yes => {}
+            Asked::No(why) => return skip(ctx, run, step, round, &why).await,
+            Asked::Ended => return Ok(Began::Ended),
+        }
+    }
+    Ok(match ensure_task(ctx, run, def, step, round).await? {
+        Some(task) => Began::Task(Box::new(task)),
+        None => Began::Ended,
+    })
+}
+
+async fn skip(ctx: &Context, run: &Run, step: &Step, round: u32, why: &str) -> Result<Began> {
+    let store = ctx.store()?;
     let update = StepUpdate {
-        note: Some(&why),
+        note: Some(why),
         ..StepUpdate::state(SKIPPED)
     };
     store.set_run_step(&run.id, &step.id, round, update).await?;
@@ -169,6 +190,141 @@ async fn begin(
         .append_entry(&run.conversation_id, EntryBody::Event { text })
         .await?;
     Ok(Began::Skipped)
+}
+
+enum Asked {
+    Yes,
+    No(String),
+    Ended,
+}
+
+fn says_yes(answer: &str) -> bool {
+    answer
+        .trim_start()
+        .split(|c: char| !c.is_alphanumeric())
+        .next()
+        .is_some_and(|word| word.eq_ignore_ascii_case("yes"))
+}
+
+fn answer_note(yes: bool, answer: &str) -> String {
+    let said: String = answer.split_whitespace().collect::<Vec<_>>().join(" ");
+    let said: String = said.chars().take(MAX_NOTE_CHARS).collect();
+    let verdict = if yes { "YES" } else { "NO" };
+    format!("{ANSWERED} {verdict}: {said}")
+}
+
+fn adviser_prompt(question: &str, files: &[String]) -> String {
+    let listed: Vec<&str> = files
+        .iter()
+        .take(MAX_LISTED_FILES)
+        .map(String::as_str)
+        .collect();
+    let more = files.len().saturating_sub(MAX_LISTED_FILES);
+    let mut text = format!(
+        "A pipeline step has a condition. Answer this yes/no question about the change the build step made:\n\n{question}\n\nFiles the build changed ({}):\n{}",
+        files.len(),
+        listed.join("\n")
+    );
+    if more > 0 {
+        text.push_str(&format!("\n... and {more} more"));
+    }
+    text.push_str("\n\nStart your answer with YES or NO, then give one short reason.");
+    text
+}
+
+async fn ask_adviser(
+    ctx: &Context,
+    run: &Run,
+    def: &WorkflowDef,
+    step: &Step,
+    round: u32,
+    question: &str,
+    files: &[String],
+) -> Result<Asked> {
+    let store = ctx.store()?;
+    let rows = store.run_steps(&run.id).await?;
+    let earlier = rows
+        .iter()
+        .find(|r| r.step_id == step.id && r.round == round)
+        .and_then(|r| r.note.as_deref())
+        .filter(|n| n.starts_with(ANSWERED));
+    if let Some(note) = earlier {
+        let yes = note[ANSWERED.len()..].trim_start().starts_with("YES");
+        return Ok(if yes {
+            Asked::Yes
+        } else {
+            Asked::No(note.into())
+        });
+    }
+    let Some(adviser) = store.agent_type(ADVISER_AGENT_TYPE).await? else {
+        let why = format!(
+            "no adviser type: save an agent type named `{ADVISER_AGENT_TYPE}` to answer `{question}`"
+        );
+        return Ok(Asked::No(why));
+    };
+    let used = rows
+        .iter()
+        .filter(|r| r.note.as_deref().is_some_and(|n| n.starts_with(ANSWERED)))
+        .count();
+    if used >= usize::try_from(def.max_adviser_calls).unwrap_or(usize::MAX) {
+        return Ok(Asked::No(BUDGET_USED.into()));
+    }
+    let repo = ctx.repo(&run.repo).await?;
+    let ws = ctx.workspace(&repo)?;
+    let started_at = clock::now_rfc3339();
+    let asked = adviser_prompt(question, files);
+    let outcome = runner::consult(
+        ctx.claude_bin(),
+        &adviser.def,
+        ws.repo(),
+        &asked,
+        crate::mcp::ADVICE_TIMEOUT,
+    )
+    .await;
+    let (state, answer, tokens, model) = match &outcome {
+        Ok(advice) => (
+            "done",
+            Some(advice.text.clone()),
+            advice.tokens,
+            Some(advice.model.clone()),
+        ),
+        Err(_) => ("failed", None, 0, adviser.def.model.clone()),
+    };
+    let call = AdviserCall {
+        conversation_id: run.conversation_id.clone(),
+        task: None,
+        agent: adviser.def.name.clone(),
+        repo: run.repo.clone(),
+        question: question.to_string(),
+        answer,
+        state: state.into(),
+        model,
+        tokens,
+        created_at: started_at,
+        ended_at: clock::now_rfc3339(),
+    };
+    store.record_adviser_call(call).await?;
+    let advice = match outcome {
+        Ok(advice) => advice,
+        Err(e) => {
+            let why = format!("step `{}` could not ask the adviser: {e}", step.id);
+            let update = StepUpdate {
+                note: Some(&why),
+                ..StepUpdate::state(FAILED)
+            };
+            store.set_run_step(&run.id, &step.id, round, update).await?;
+            end_run(ctx, run, RUN_FAILED, &why).await?;
+            return Ok(Asked::Ended);
+        }
+    };
+    let yes = says_yes(&advice.text);
+    let note = answer_note(yes, &advice.text);
+    let update = StepUpdate {
+        note: Some(&note),
+        ..StepUpdate::state(STARTING)
+    };
+    store.set_run_step(&run.id, &step.id, round, update).await?;
+    Ok(if yes { Asked::Yes } else { Asked::No(note) })
 }
 
 async fn changed_files(
@@ -419,10 +575,19 @@ async fn ensure_task(
         .start_run_step(&run.id, &step.id, round, &task.name)
         .await?
     {
-        let text = format!(
+        let mut text = format!(
             "run `{}`: step `{}` started as task `{}`",
             run.id, step.id, task.name
         );
+        let rows = store.run_steps(&run.id).await?;
+        let answered = rows
+            .iter()
+            .find(|r| r.step_id == step.id && r.round == round)
+            .and_then(|r| r.note.as_deref())
+            .filter(|n| n.starts_with(ANSWERED));
+        if let Some(note) = answered {
+            text.push_str(&format!(" ({note})"));
+        }
         store
             .append_entry(&run.conversation_id, EntryBody::Event { text })
             .await?;
