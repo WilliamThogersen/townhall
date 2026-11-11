@@ -96,7 +96,13 @@ async fn verify(ctx: Context, task: &Task) -> Result<()> {
         let repo = ctx.repo(&task.repo).await?;
         ctx.workspace(&repo)?.worktrees_dir().join(&task.name)
     };
-    match run_check(&command, &dir).await {
+    let asked = hooks::ask(
+        &ctx,
+        "task.check",
+        json!({"task": task, "worktree": dir, "check": command}),
+    )
+    .await;
+    match run_all(&command, &asked.checks, &dir).await {
         Ok(()) => passed(&ctx, task).await,
         Err(output) => {
             let retries = task.done.verify.as_ref().map_or(0, |v| v.retries);
@@ -132,6 +138,20 @@ async fn verify(ctx: Context, task: &Task) -> Result<()> {
             Ok(())
         }
     }
+}
+
+async fn run_all(
+    own: &str,
+    added: &[String],
+    dir: &std::path::Path,
+) -> std::result::Result<(), String> {
+    run_check(own, dir).await?;
+    for command in added {
+        run_check(command, dir)
+            .await
+            .map_err(|why| format!("added check `{command}` failed:\n{why}"))?;
+    }
+    Ok(())
 }
 
 /// `Err` is the failure as the next brief and the user read it: the output's tail, then why.
@@ -245,6 +265,30 @@ mod tests {
             .unwrap_err();
         assert_eq!(err, "out\nerr\n(exit code 4)");
         assert_eq!(run_check("true", &dir).await, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn added_checks_run_after_the_own_check_and_fail_the_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let none: Vec<String> = vec![];
+        assert_eq!(run_all("true", &none, dir.path()).await, Ok(()));
+        let ok = ["touch one".to_string(), "touch two".to_string()];
+        assert_eq!(run_all("true", &ok, dir.path()).await, Ok(()));
+        assert!(dir.path().join("one").exists() && dir.path().join("two").exists());
+        let bad = ["echo lint says no; exit 3".to_string(), "touch never".to_string()];
+        let err = run_all("true", &bad, dir.path()).await.unwrap_err();
+        assert!(err.contains("echo lint says no; exit 3"), "{err}");
+        assert!(err.contains("lint says no") && err.contains("exit code 3"), "{err}");
+        assert!(!dir.path().join("never").exists());
+    }
+
+    #[tokio::test]
+    async fn a_failing_own_check_skips_the_added_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let extra = ["touch ran".to_string()];
+        let err = run_all("exit 1", &extra, dir.path()).await.unwrap_err();
+        assert_eq!(err, "(exit code 1)");
+        assert!(!dir.path().join("ran").exists());
     }
 
     #[tokio::test]

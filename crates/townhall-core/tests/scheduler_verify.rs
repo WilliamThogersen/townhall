@@ -193,6 +193,77 @@ async fn a_check_that_cannot_run_counts_as_a_failure() {
     assert!(output.contains("definitely-not-a-command-xyz"), "{output}");
 }
 
+async fn install_check_hook(s: &Sched, answer: &str) {
+    use townhall_core::store::{Marketplace, Plugin};
+    let store = s.store();
+    let source = serde_json::json!({"source": "github", "repo": "acme/market"});
+    let market = Marketplace {
+        name: "acme".into(),
+        source,
+        account: None,
+        enabled: true,
+        official: false,
+        head_sha: None,
+        fetched_at: None,
+        error: None,
+    };
+    store.add_marketplace(market).await.unwrap();
+    let plugin = Plugin {
+        id: String::new(),
+        marketplace: "acme".into(),
+        name: "lint".into(),
+        version: Some("1.0.0".into()),
+        sha: "abc123".into(),
+        source: serde_json::json!({"source": "git-subdir", "path": "plugins/lint"}),
+        enabled: true,
+        pinned: false,
+        permissions_hash: "sha256:aa".into(),
+        approved: serde_json::json!(["hook:task.check"]),
+        installed_at: String::new(),
+        updated_at: String::new(),
+        error: None,
+    };
+    store.add_plugin(plugin).await.unwrap();
+    let plugins = s.ws.home().plugins_dir().unwrap();
+    let root = plugins.join("cache/acme/lint/abc123");
+    std::fs::create_dir_all(root.join(".townhall-plugin")).unwrap();
+    let manifest = serde_json::json!({
+        "name": "lint", "version": "1.0.0", "apiVersion": 1,
+        "permissions": {"hooks": ["task.check"]},
+        "contributes": {"hooks": "townhall-hooks.json"}
+    });
+    let file = root.join(".townhall-plugin/plugin.json");
+    std::fs::write(file, manifest.to_string()).unwrap();
+    let hooks = serde_json::json!({"hooks": {"task.check": [{"command": answer}]}});
+    std::fs::write(root.join("townhall-hooks.json"), hooks.to_string()).unwrap();
+    std::fs::create_dir_all(plugins.join("data/acme/lint")).unwrap();
+}
+
+#[tokio::test]
+async fn a_check_a_plugin_added_fails_the_verify_loop_like_the_own_check() {
+    let s = Sched::new().await;
+    let add = r#"echo '{"checks":["echo lint-red; exit 4"]}'"#;
+    install_check_hook(&s, add).await;
+    let name = verifying(&s, "touch own-ran", 2).await;
+    let task = judged(&s, &name).await;
+    assert!(s.worktree(&name).join("own-ran").exists());
+    assert_eq!(task.state, TaskState::Queued, "{task:?}");
+    let verify = task.done.verify.unwrap();
+    assert_eq!((verify.phase, verify.retries), (VerifyPhase::Retrying, 1));
+    let output = verify.output.unwrap();
+    assert!(output.contains("lint-red") && output.contains("exit code 4"), "{output}");
+}
+
+#[tokio::test]
+async fn a_check_a_plugin_added_that_passes_ends_the_task() {
+    let s = Sched::new().await;
+    install_check_hook(&s, r#"echo '{"checks":["touch added-ran"]}'"#).await;
+    let name = verifying(&s, "true", 2).await;
+    let task = judged(&s, &name).await;
+    assert_eq!(task.state, TaskState::Ended);
+    assert!(s.worktree(&name).join("added-ran").exists());
+}
+
 #[tokio::test]
 async fn a_task_without_a_check_is_left_alone() {
     let s = Sched::new().await;
