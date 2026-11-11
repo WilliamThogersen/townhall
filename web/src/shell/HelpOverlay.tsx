@@ -43,7 +43,7 @@ export function HelpOverlay({ onClose }: HelpOverlayProps) {
   useEffect(() => closeRef.current?.focus(), []);
   useCapturedKeys(rootRef, onClose);
   return createPortal(
-    <div className="th-help" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="th-help-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={rootRef} className="th-help-box" role="dialog" aria-modal="true" aria-label="keyboard shortcuts">
         <header className="th-help-head">
           <h2>keyboard shortcuts</h2>

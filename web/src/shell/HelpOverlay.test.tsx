@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HelpOverlay } from "./HelpOverlay";
 import { KEY_MAP } from "./keyMap";
+import shellCss from "./shell.css?raw";
 
 beforeEach(() => window.history.replaceState(null, "", "/townhall"));
 
@@ -70,6 +71,14 @@ describe("help overlay", () => {
     expect(close).toHaveFocus();
     fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
     expect(close).toHaveFocus();
+  });
+
+  it("does not reuse the composer hint class for its scrim", () => {
+    const { container } = render(<HelpOverlay onClose={() => {}} />);
+    expect(container.ownerDocument.querySelector(".th-help")).toBeNull();
+    expect(container.ownerDocument.querySelector(".th-help-scrim")).not.toBeNull();
+    expect(shellCss).not.toMatch(/(^|[\s,}])\.th-help\s*[{,]/m);
+    expect(shellCss).toMatch(/\.th-help-scrim\s*\{/);
   });
 
   it("keeps other keys away from the screen behind it", () => {

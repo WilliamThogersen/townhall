@@ -2,7 +2,7 @@ a.th-btn {
   text-decoration: none;
 }
 
-.th-help {
+.th-help-scrim {
   position: fixed;
   inset: 0;
   z-index: var(--th-z-overlay);
