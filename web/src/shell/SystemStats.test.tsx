@@ -107,4 +107,37 @@ describe("SystemStats", () => {
     expect(screen.getByText("ram 31/32 GB")).toHaveAttribute("data-level", "hot");
     expect(screen.getByText("disk 50/994 GB")).not.toHaveAttribute("data-level");
   });
+
+  it("draws a meter per stat with its fill and aria values", async () => {
+    vi.spyOn(systemApi, "getSystem").mockResolvedValue(aSystem());
+    render(<SystemStats />);
+    await flush();
+    const cpu = screen.getByRole("meter", { name: "cpu 23%" });
+    expect(cpu).toHaveAttribute("aria-valuenow", "23");
+    expect(cpu).toHaveAttribute("aria-valuemin", "0");
+    expect(cpu).toHaveAttribute("aria-valuemax", "100");
+    expect(cpu.firstElementChild).toHaveStyle({ width: "23%" });
+    expect(screen.getByRole("meter", { name: "ram 35%" }).firstElementChild).toHaveStyle({ width: "35%" });
+    expect(screen.getByRole("meter", { name: "disk 41%" }).firstElementChild).toHaveStyle({ width: "41%" });
+  });
+
+  it("puts the meter in the tint state of its stat at the thresholds", async () => {
+    vi.spyOn(systemApi, "getSystem").mockResolvedValue(
+      aSystem({ cpuPercent: 85, memoryUsedBytes: 31 * GB, memoryTotalBytes: 32 * GB, diskUsedBytes: 50 * GB }),
+    );
+    render(<SystemStats />);
+    await flush();
+    expect(screen.getByRole("meter", { name: "cpu 85%" }).parentElement).not.toHaveAttribute("data-level");
+    expect(screen.getByRole("meter", { name: "ram 97%" }).parentElement).toHaveAttribute("data-level", "hot");
+    expect(screen.getByRole("meter", { name: "disk 5%" }).parentElement).not.toHaveAttribute("data-level");
+  });
+
+  it("clamps the fill to the track", async () => {
+    vi.spyOn(systemApi, "getSystem").mockResolvedValue(aSystem({ cpuPercent: 250 }));
+    render(<SystemStats />);
+    await flush();
+    const cpu = screen.getByRole("meter", { name: "cpu 100%" });
+    expect(cpu.firstElementChild).toHaveStyle({ width: "100%" });
+    expect(cpu.parentElement).toHaveAttribute("data-level", "hot");
+  });
 });

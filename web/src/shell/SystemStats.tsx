@@ -26,6 +26,8 @@ const levelOf = (percent: number): "warn" | "hot" | undefined =>
 
 const share = (used: number, total: number): number => (total > 0 ? (used / total) * 100 : 0);
 
+const clamp = (percent: number): number => Math.min(100, Math.max(0, percent));
+
 function useSystemStats(): Stats | null {
   const visible = useDocumentVisible();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -55,15 +57,31 @@ export function SystemStats() {
   const stats = useSystemStats();
   if (!stats) return null;
   const text = formatSystem(stats);
-  const cells = [
-    { key: "cpu", text: text.cpu, level: levelOf(stats.cpuPercent) },
-    { key: "ram", text: text.ram, level: levelOf(share(stats.memoryUsedBytes, stats.memoryTotalBytes)) },
-    { key: "disk", text: text.disk, level: levelOf(share(stats.diskUsedBytes, stats.diskTotalBytes)) },
-  ];
+  const percents = {
+    cpu: stats.cpuPercent,
+    ram: share(stats.memoryUsedBytes, stats.memoryTotalBytes),
+    disk: share(stats.diskUsedBytes, stats.diskTotalBytes),
+  };
+  const cells = (["cpu", "ram", "disk"] as const).map((key) => ({
+    key,
+    text: text[key],
+    percent: Math.round(clamp(percents[key])),
+    level: levelOf(percents[key]),
+  }));
   return (
     <span className="th-keybar-system">
       {cells.map((cell) => (
         <span key={cell.key} data-level={cell.level}>
+          <span
+            className="th-meter"
+            role="meter"
+            aria-label={`${cell.key} ${cell.percent}%`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={cell.percent}
+          >
+            <span className="th-meter-fill" style={{ width: `${cell.percent}%` }} />
+          </span>
           {cell.text}
         </span>
       ))}
