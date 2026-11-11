@@ -5,15 +5,15 @@ use axum::http::request::Parts;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use townhall_core::model::{NotifyWhen, RepoUnclear};
+use townhall_core::model::{CreateTaskInput, NotifyWhen, RepoUnclear};
 use townhall_core::plugins::{storage, tokens};
-use townhall_core::{fleet, Error};
+use townhall_core::{fleet, mcp, runner, Error};
 
 use super::agents::RepoQuery;
 use super::search::SearchParams;
 use super::tasks::TaskQuery;
-use super::{artifacts, conversations, stats, tasks};
-use crate::envelope::ok;
+use super::{artifacts, conversations, library, stats, tasks};
+use crate::envelope::{created, ok};
 use crate::error::ApiError;
 use crate::extract::JsonBody;
 use crate::state::AppState;
@@ -76,6 +76,15 @@ impl Caller {
         }
     }
 
+    async fn in_own_conversation(&self, state: &AppState, id: &str) -> Result<(), ApiError> {
+        match self.own_conversation(state).await? {
+            Some(own) if own != id => Err(ApiError::Forbidden(
+                "a task token only reaches the conversation of its task".into(),
+            )),
+            _ => Ok(()),
+        }
+    }
+
     async fn own_conversation(&self, state: &AppState) -> Result<Option<String>, ApiError> {
         let Some(task) = &self.0.task else {
             return Ok(None);
@@ -112,6 +121,81 @@ struct TownhallSettings {
 #[serde(deny_unknown_fields)]
 pub struct PutValue {
     value: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PostMessage {
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutAgent {
+    conversation: String,
+    source: String,
+    #[serde(default)]
+    confirmed: bool,
+}
+
+pub async fn task_create(
+    caller: Caller,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    JsonBody(input): JsonBody<CreateTaskInput>,
+) -> Result<Response, ApiError> {
+    caller.require("tasks:create")?;
+    caller.in_own_conversation(&state, &id).await?;
+    let task = mcp::create_task_as_plugin(state.ctx(), &id, &caller.0.plugin, input).await?;
+    Ok(created(task))
+}
+
+pub async fn message_post(
+    caller: Caller,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    JsonBody(body): JsonBody<PostMessage>,
+) -> Result<Response, ApiError> {
+    caller.require("conversations:write")?;
+    caller.in_own_conversation(&state, &id).await?;
+    let entry = runner::send_as_plugin(state.ctx(), &id, &caller.0.plugin, body.text).await?;
+    Ok(ok(entry))
+}
+
+pub async fn library_list(
+    caller: Caller,
+    State(state): State<AppState>,
+) -> Result<Response, ApiError> {
+    caller.require("library:read")?;
+    library::list_agents(State(state)).await
+}
+
+pub async fn library_get(
+    caller: Caller,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Response, ApiError> {
+    caller.require("library:read")?;
+    library::get_agent(State(state), Path(name)).await
+}
+
+pub async fn library_put(
+    caller: Caller,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    JsonBody(body): JsonBody<PutAgent>,
+) -> Result<Response, ApiError> {
+    caller.require("library:write")?;
+    caller.not_for_task_tokens("write the library")?;
+    let saved = mcp::save_as_plugin(
+        state.ctx(),
+        &body.conversation,
+        &name,
+        body.source,
+        body.confirmed,
+    )
+    .await?;
+    Ok(ok(saved))
 }
 
 pub async fn info(caller: Caller) -> Response {

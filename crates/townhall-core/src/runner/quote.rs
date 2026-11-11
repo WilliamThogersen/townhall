@@ -40,6 +40,7 @@ fn said(body: &EntryBody) -> Option<(&str, &str)> {
             },
         )),
         EntryBody::Event { text } => Some(("task event", text)),
+        EntryBody::Plugin { plugin, text } => Some((plugin, text)),
         EntryBody::Handoff { from, reason, .. } => Some((from, reason)),
         EntryBody::Error { message } => Some(("townhall", message)),
         EntryBody::Repo { .. } | EntryBody::TasksCreated { .. } => None,

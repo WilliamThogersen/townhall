@@ -63,6 +63,7 @@ fn from_agents(body: &EntryBody) -> bool {
             | EntryBody::Agent { .. }
             | EntryBody::TasksCreated { .. }
             | EntryBody::Event { .. }
+            | EntryBody::Plugin { .. }
     )
 }
 

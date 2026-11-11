@@ -8,7 +8,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::context::Context;
-use crate::model::{Conversation, CreateTaskInput, Done, NewTask, Task, DEFAULT_MAX_RETRIES};
+use crate::model::{
+    Conversation, CreateTaskInput, Done, EntryBody, NewTask, Task, DEFAULT_MAX_RETRIES,
+};
 use crate::redact::redact;
 
 use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
@@ -84,6 +86,30 @@ impl ToolRunner for TaskTools<'_> {
 #[serde(deny_unknown_fields)]
 struct TitleInput {
     title: String,
+}
+
+pub async fn create_task_as_plugin(
+    ctx: &Context,
+    conversation_id: &str,
+    plugin: &str,
+    raw: CreateTaskInput,
+) -> crate::Result<Task> {
+    let store = ctx.store()?;
+    store.conversation(conversation_id).await?;
+    let tools = TaskTools {
+        ctx,
+        conversation_id,
+    };
+    let task = tools
+        .create_task(raw)
+        .await
+        .map_err(crate::Error::InvalidInput)?;
+    let body = EntryBody::Plugin {
+        plugin: plugin.to_string(),
+        text: format!("created by plugin {plugin}: task `{}`", task.name),
+    };
+    store.append_entry(conversation_id, body).await?;
+    Ok(task)
 }
 
 impl TaskTools<'_> {
