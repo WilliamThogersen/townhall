@@ -1,0 +1,9 @@
+{
+  "name": "panel",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "permissions": { "ui": ["page"] },
+  "contributes": {
+    "ui": [{ "slot": "page", "title": "Panel", "entry": "ui/panel.html" }]
+  }
+}
