@@ -476,7 +476,7 @@ Agent types (2.12, `mcp/library.rs` and `mcp/ask.rs`):
 - Caps: `samples` at most 3 per pattern, each redacted, on one line and cut to 160 chars (`pattern` too); `conversations` and `tasks` at most 5 ids each; the whole result at most 24 KB (`MAX_OUTPUT_BYTES`): the lowest ranked patterns are dropped first and `truncated` is `true` (also when `top` cut some). All text goes through `redact` first.
 - The system prompt tells the planner to start from it when asked what to automate, citing each pattern's fingerprint and `suggested_automation`.
 
-`ask_adviser` (`mcp/adviser.rs`, run in `runner/advice.rs`): one non-interactive `claude -p` turn of the agent type `adviser`, seeded by `0810_seed_adviser` (model `claude-fable-5-2`, effort `high`, permission mode `plan`, tools `Read Grep Glob WebSearch WebFetch`) and appended to the seeded `default` tools by `0811_default_ask_adviser`. Both the conversation's endpoint and a task's endpoint list it, and `task_allowed_tools()` and `allowed_tools()` grant it.
+`ask_adviser` (`mcp/adviser.rs`, run in `runner/advice.rs`): one non-interactive `claude -p` turn of the agent type `adviser`, seeded by `0810_seed_adviser` (model `claude-fable-5-2`, moved to the alias `fable` by `0813_adviser_model_alias` unless you edited the line, effort `high`, permission mode `plan`, tools `Read Grep Glob WebSearch WebFetch`) and appended to the seeded `default` tools by `0811_default_ask_adviser`. Both the conversation's endpoint and a task's endpoint list it, and `task_allowed_tools()` and `allowed_tools()` grant it.
 
 | tool | input | result |
 |------|-------|--------|
