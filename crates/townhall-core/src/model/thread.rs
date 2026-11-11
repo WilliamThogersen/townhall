@@ -48,7 +48,9 @@ pub enum EntryBody {
         reply_to: Option<u64>,
     },
     /// Townhall's reply, Markdown.
-    Townhall { text: String },
+    Townhall {
+        text: String,
+    },
     /// `~ repo shop · develop, it has src/search/query.ts`.
     Repo {
         repo: String,
@@ -63,7 +65,9 @@ pub enum EntryBody {
         offer_all: bool,
     },
     /// The tasks one reply created, by name.
-    TasksCreated { tasks: Vec<String> },
+    TasksCreated {
+        tasks: Vec<String>,
+    },
     /// An agent waits for you: its question verbatim and direct answers.
     NeedsYou {
         agent: String,
@@ -77,7 +81,9 @@ pub enum EntryBody {
     },
     /// A system event for the planner, not a message from you: a task of the
     /// conversation ended, failed or asked something. It starts a planner turn.
-    Event { text: String },
+    Event {
+        text: String,
+    },
     /// An agent handed its task back to another agent type, with why.
     Handoff {
         task: String,
@@ -85,9 +91,14 @@ pub enum EntryBody {
         to: String,
         reason: String,
     },
-    Plugin { plugin: String, text: String },
+    Plugin {
+        plugin: String,
+        text: String,
+    },
     /// Townhall's own failure, for example its session exited.
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 #[cfg(test)]
