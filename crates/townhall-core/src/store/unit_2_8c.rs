@@ -353,6 +353,20 @@ impl Store {
         .await
     }
 
+    pub async fn runs_of(&self, conversation_id: &str) -> Result<Vec<Run>> {
+        let conversation_id = conversation_id.to_string();
+        self.call(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "select {RUN_COLUMNS} from runs where conversation_id = ?1
+                 order by created_at desc, rowid desc"
+            ))?;
+            let found: rusqlite::Result<Vec<Run>> =
+                stmt.query_map([conversation_id], run_of)?.collect();
+            Ok(found?)
+        })
+        .await
+    }
+
     pub async fn runs_in(&self, state: &str) -> Result<Vec<Run>> {
         let state = state.to_string();
         self.call(move |conn| {

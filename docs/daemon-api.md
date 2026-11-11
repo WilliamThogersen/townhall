@@ -88,7 +88,8 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET, PUT, DELETE | `/library/workflows/{name}` | PUT: TOML text | | 501 | 2.8c |
 | POST | `/library/import` | one agent type's `.toml` as the body, like PUT | `201 AgentType` | 400 like PUT; 403 origin; 409 the name exists (replace it with PUT); 501 a workflow (a `[[step]]` table) | 2.12 |
 | POST | `/workflows/{name}/runs` | `{ repo, input }` | the run | | 2.8c |
-| GET | `/runs/{id}` | | run state | | 2.8c |
+| GET | `/runs/{id}` | | `Run` = `{ id, workflow, conversationId, repo, baseBranch, state: "running" \| "needsYou" \| "finished" \| "failed", input, steps: RunStep[] }`. `steps` has every step of the run's saved definition, in its order, each as `RunStep` = `{ id, agent, state, round, task, verdict, note }` for the newest round of that step. `state` is the `run_steps` state (`starting`, `started`, `done`, `failed`, `skipped`, `fixing`, `redone`), or `pending` with `round` 0 and null `task`, `verdict` and `note` when the step has not begun. `note` holds why a step was skipped | 404 unknown run; 500 its saved definition cannot be read | 2.8c |
+| GET | `/runs?conversation=` | | `Run[]` of that conversation, newest first (`[]` when it has none). The conversation view shows the first one in its session strip and loads it again on every task or thread change in that conversation and every 5 seconds | 400 without `conversation` | 2.8c |
 
 Every route above is registered in `crates/townhall-daemon/src/routes/mod.rs` now. A unit replaces the `501` handlers in its own file and keeps the handler names; it adds extractors (`State`, `Path`, `Query`, `JsonBody`) to the signatures as needed. The upload route already carries `DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)` (20 MB plus framing).
 

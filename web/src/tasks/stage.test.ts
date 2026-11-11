@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { anAgentTypeSummary, aStep, aTask } from "../api/fixtures";
+import { anAgentTypeSummary, aRun, aRunStep, aStep, aTask } from "../api/fixtures";
 import type { TaskState } from "../api/types";
-import { LOOP_STAGES, loopSummary, stageOf, stepKind, stepVerb } from "./stage";
+import { LOOP_STAGES, loopSummary, runSteps, stageOf, stepKind, stepVerb } from "./stage";
 
 const bash = (summary: string) => aStep({ tool: "Bash", summary });
 
@@ -175,5 +175,51 @@ describe("loopSummary", () => {
     const summary = loopSummary([], () => null);
     expect(summary.stages.every((s) => s.count === 0 && !s.active)).toBe(true);
     expect(summary.needsYou).toBe(0);
+  });
+});
+
+describe("runSteps", () => {
+  it("shows the run's own step ids with each step's state", () => {
+    const run = aRun({
+      steps: [
+        aRunStep({ id: "plan", state: "done", round: 1 }),
+        aRunStep({ id: "build", state: "started", round: 1 }),
+        aRunStep({ id: "test" }),
+        aRunStep({ id: "review", state: "skipped", round: 1, note: "no changed file matches" }),
+        aRunStep({ id: "land" }),
+      ],
+    });
+    expect(runSteps(run).map((s) => `${s.id} ${s.mark}`)).toEqual([
+      "plan ✓",
+      "build 1",
+      "test ·",
+      "review skipped",
+      "land ·",
+    ]);
+  });
+
+  it("shows the round of a step that runs again and a failed step", () => {
+    const run = aRun({
+      steps: [
+        aRunStep({ id: "build", state: "started", round: 2 }),
+        aRunStep({ id: "test", state: "failed", round: 1 }),
+        aRunStep({ id: "review", state: "fixing", round: 1 }),
+        aRunStep({ id: "land", state: "redone", round: 1 }),
+      ],
+    });
+    expect(runSteps(run).map((s) => `${s.id} ${s.mark}`)).toEqual(["build 2", "test ✗", "review 1", "land ✓"]);
+  });
+
+  it("lights the steps that are running and carries the skip note as the title", () => {
+    const run = aRun({
+      steps: [
+        aRunStep({ id: "plan", state: "done", round: 1 }),
+        aRunStep({ id: "build", state: "starting", round: 1 }),
+        aRunStep({ id: "review", state: "skipped", round: 1, note: "no changed file matches" }),
+      ],
+    });
+    const shown = runSteps(run);
+    expect(shown.map((s) => s.active)).toEqual([false, true, false]);
+    expect(shown.map((s) => s.title)).toEqual(["plan: done", "build: running", "review: no changed file matches"]);
   });
 });

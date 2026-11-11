@@ -1,4 +1,4 @@
-import type { AgentTypeSummary, Step, Task, TaskState } from "../api/types";
+import type { AgentTypeSummary, Run, RunStep, RunStepState, Step, Task, TaskState } from "../api/types";
 import { pipelineStep } from "../views/agents/agentTypes";
 
 export type AgentKind = Pick<AgentTypeSummary, "name" | "permissionMode">;
@@ -101,6 +101,37 @@ export interface StageCount {
 export interface LoopSummary {
   readonly stages: readonly StageCount[];
   readonly needsYou: number;
+}
+
+export interface RunStepMark {
+  readonly id: string;
+  readonly mark: string;
+  readonly active: boolean;
+  readonly title: string;
+}
+
+const STEP_MARKS: Readonly<Partial<Record<RunStepState, string>>> = {
+  pending: "·",
+  done: "✓",
+  redone: "✓",
+  failed: "✗",
+  skipped: "skipped",
+};
+
+const RUNNING_STEPS: ReadonlySet<RunStepState> = new Set(["starting", "started", "fixing"]);
+
+function stepTitle(step: RunStep): string {
+  if (step.state === "skipped" && step.note !== null) return `${step.id}: ${step.note}`;
+  return `${step.id}: ${RUNNING_STEPS.has(step.state) ? "running" : step.state}`;
+}
+
+export function runSteps(run: Run): readonly RunStepMark[] {
+  return run.steps.map((step) => ({
+    id: step.id,
+    mark: STEP_MARKS[step.state] ?? String(step.round),
+    active: RUNNING_STEPS.has(step.state),
+    title: stepTitle(step),
+  }));
 }
 
 const NO_STEP = (): Step | null => null;
