@@ -29,6 +29,7 @@ mod unit_2_7;
 mod unit_2_8b;
 mod unit_2_8c;
 mod unit_2_9;
+mod unit_graph;
 mod unit_history;
 mod unit_plugins;
 
@@ -46,6 +47,7 @@ pub use settings::MAX_PROFILE_CHARS;
 pub use unit_2_8c::{
     NewRun, Run, RunStep, StepUpdate, RUN_FAILED, RUN_FINISHED, RUN_NEEDS_YOU, RUN_RUNNING,
 };
+pub use unit_graph::{AgentStat, GraphAnswer, GraphQuery, GraphTask, NodeKind};
 pub use unit_history::{HistoryHit, HistoryKind, HistoryQuery};
 pub use unit_plugins::{Marketplace, Plugin};
 
