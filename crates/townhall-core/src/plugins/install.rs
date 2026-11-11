@@ -153,7 +153,7 @@ pub(super) fn cache_root(home: &Home, market: &str, plugin: &str) -> Result<Path
         .join(plugin))
 }
 
-fn data_root(home: &Home, market: &str, plugin: &str) -> Result<PathBuf> {
+pub(super) fn data_root(home: &Home, market: &str, plugin: &str) -> Result<PathBuf> {
     Ok(home.plugins_dir()?.join(DATA_DIR).join(market).join(plugin))
 }
 

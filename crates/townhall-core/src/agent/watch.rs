@@ -20,6 +20,7 @@ use tokio::time::MissedTickBehavior;
 use crate::context::Context;
 use crate::home::{repo_key, WORKTREES_DIR};
 use crate::model::{AgentInfo, AgentState, Done, ServerEvent, Task};
+use crate::plugins::hooks;
 use crate::{fleet, runner, tmux, Error, Result, Workspace};
 use sync::Change;
 
@@ -325,6 +326,9 @@ impl Watcher {
                     task.name
                 ));
                 return false;
+            }
+            if let Some((name, fields)) = event::hook_for(&self.ctx, task, &entry).await {
+                hooks::fire(&self.ctx, name, fields);
             }
             if let Some(text) = event::for_entry(&self.ctx, task, &entry).await {
                 runner::notify(&self.ctx, &task.conversation_id, text);

@@ -3,8 +3,10 @@
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
+use serde_json::json;
 use townhall_core::fleet;
 use townhall_core::model::{AddRepo, PatchRepo, PutRepoAccounts};
+use townhall_core::plugins::hooks;
 
 use crate::envelope::{created, ok};
 use crate::error::ApiError;
@@ -21,7 +23,9 @@ pub async fn add(
 ) -> Result<Response, ApiError> {
     let ctx = state.ctx();
     ctx.ensure_startup_repo().await;
-    Ok(created(ctx.registry()?.add(&req).await?))
+    let repo = ctx.registry()?.add(&req).await?;
+    hooks::fire(ctx, "repo.added", json!({"repo": repo}));
+    Ok(created(repo))
 }
 
 /// Body `{"name"?, "baseBranch"?, "path"?, "moveFolder"?}`: renames the repo, changes its base
