@@ -46,10 +46,11 @@ export interface PluginSlotProps {
   readonly only?: { readonly plugin: string; readonly entry: string };
   readonly heading?: boolean;
   readonly wrap?: (entry: PluginUiEntry, frame: ReactNode) => ReactNode;
+  readonly onInsert?: (text: string) => void;
   readonly services?: Partial<SlotServices>;
 }
 
-export function PluginSlot({ name, context, only, heading, wrap, services }: PluginSlotProps) {
+export function PluginSlot({ name, context, only, heading, wrap, onInsert, services }: PluginSlotProps) {
   const all = useMemo<SlotServices>(() => ({ ...REAL, ...services }), [services]);
   const found = useUiEntries(name, all.listUi);
   const entries = only ? found.filter((e) => e.plugin === only.plugin && e.entry === only.entry) : found;
@@ -58,7 +59,7 @@ export function PluginSlot({ name, context, only, heading, wrap, services }: Plu
   return (
     <>
       {entries.map((entry) => {
-        const frame = <SlotFrame slot={name} entry={entry} context={context} services={all} />;
+        const frame = <SlotFrame slot={name} entry={entry} context={context} onInsert={onInsert} services={all} />;
         return (
           <Fragment key={`${entry.plugin}/${entry.entry}`}>
             {heading ? <h4 className="th-section">{entry.title}</h4> : null}
@@ -80,11 +81,17 @@ interface SlotFrameProps {
   readonly slot: string;
   readonly entry: PluginUiEntry;
   readonly context: Readonly<Record<string, unknown>> | undefined;
+  readonly onInsert: ((text: string) => void) | undefined;
   readonly services: SlotServices;
 }
 
-function SlotFrame({ slot, entry, context, services }: SlotFrameProps) {
+function SlotFrame({ slot, entry, context, onInsert, services }: SlotFrameProps) {
   const toasts = useToasts();
+  const insertRef = useRef(onInsert);
+  useEffect(() => {
+    insertRef.current = onInsert;
+  }, [onInsert]);
+  const canInsert = onInsert !== undefined;
   const frame = useRef<HTMLIFrameElement>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -116,6 +123,7 @@ function SlotFrame({ slot, entry, context, services }: SlotFrameProps) {
         resize: setHeight,
         toast: showToast,
         navigate: services.navigate,
+        insert: canInsert ? (text) => insertRef.current?.(text) : undefined,
         ready: () => {
           window.clearTimeout(timer);
           setPhase({ kind: "ready" });
@@ -137,7 +145,7 @@ function SlotFrame({ slot, entry, context, services }: SlotFrameProps) {
       window.removeEventListener("message", onMessage);
       bridge.dispose();
     };
-  }, [slot, entry.plugin, contextKey, services, showToast, attempt]);
+  }, [slot, entry.plugin, contextKey, services, showToast, canInsert, attempt]);
 
   const again = (forget: boolean) => {
     if (forget) forgetHostSession(entry.plugin);

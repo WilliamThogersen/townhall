@@ -364,9 +364,11 @@ describe("ui", () => {
 });
 
 describe("composer.insert", () => {
+  const composerUi = (insert: ReturnType<typeof vi.fn>) =>
+    ({ ...rig([]).ui, insert }) as unknown as BridgeOptions["ui"];
   const composerRig = async () => {
     const insert = vi.fn();
-    const r = await ready([], { slot: "composer.action", ui: { ...rig([]).ui, insert } });
+    const r = await ready([], { slot: "composer.action", ui: composerUi(insert) });
     return { r, insert };
   };
 
@@ -392,7 +394,7 @@ describe("composer.insert", () => {
   });
 
   it("tells a composer frame its action was fired right after init", async () => {
-    const r = rig([], { slot: "composer.action", ui: { ...rig([]).ui, insert: vi.fn() } });
+    const r = rig([], { slot: "composer.action", ui: composerUi(vi.fn()) });
     await r.say(hello);
     expect(r.sent().map((m) => m.type)).toEqual(["init", "composer.action"]);
   });
