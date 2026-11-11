@@ -20,6 +20,7 @@ pub struct Persona {
     pub tools: Vec<String>,
     /// The personality and rules, before the repo notes and the profile.
     pub prompt: String,
+    pub plugins: Vec<String>,
 }
 
 impl Persona {
@@ -30,6 +31,7 @@ impl Persona {
             permission_mode: PermissionMode::Default,
             tools: allowed_tools(),
             prompt: INSTRUCTIONS.into(),
+            plugins: Vec::new(),
         }
     }
 
@@ -55,6 +57,7 @@ impl Persona {
                 tools
             },
             prompt: fields.system_prompt.unwrap_or(built_in.prompt),
+            plugins: def.plugins.clone(),
         }
     }
 }
@@ -75,6 +78,7 @@ mod tests {
             permission_mode: PermissionMode::Default,
             tools: allowed_tools(),
             prompt: INSTRUCTIONS.into(),
+            plugins: Vec::new(),
         }
     }
 
@@ -114,6 +118,14 @@ mod tests {
         assert_eq!(got.model, "haiku");
         assert_eq!(got.tools, ["Read", "mcp__townhall__create_task"]);
         assert_eq!(got.prompt, "be kind");
+    }
+
+    #[test]
+    fn the_plugins_of_the_type_are_kept_and_the_built_in_has_none() {
+        let d = def("plugins = [\"notes@acme\"]\n");
+        assert_eq!(Persona::from_type(Some(&d)).plugins, ["notes@acme"]);
+        assert!(Persona::from_type(None).plugins.is_empty());
+        assert!(Persona::from_type(Some(&def(""))).plugins.is_empty());
     }
 
     #[test]

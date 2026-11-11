@@ -3,6 +3,8 @@
 
 pub(crate) mod agent_types;
 mod check;
+pub mod claude_hooks;
+pub mod claude_mcp;
 pub mod declared;
 pub mod hooks;
 pub mod install;
@@ -17,5 +19,6 @@ pub mod storage;
 pub mod theme;
 pub mod tokens;
 pub mod tree;
+pub mod ui;
 
 pub use official::{Official, OFFICIAL};

@@ -31,6 +31,9 @@ pub struct LaunchOptions {
     /// The MCP tools of that server (`mcp__<server>__<tool>`), allowed without asking and
     /// kept apart from `allowed_tools`: they never turn a type with no tool list into one.
     pub mcp_tools: Vec<String>,
+    /// `claude --settings`: the path of the generated settings file that carries plugin
+    /// hooks. `None` keeps the inline isolated settings.
+    pub settings: Option<String>,
     /// Extra environment variables for the process, set after the ones townhall unsets.
     /// Names are checked and values quoted when the command is built; values are never logged.
     pub env: BTreeMap<String, String>,

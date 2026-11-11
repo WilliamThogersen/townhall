@@ -205,6 +205,22 @@ fn only_allowed(listed: &[&str], allowed: &[&str]) -> Vec<String> {
     }
 }
 
+fn isolation(options: &LaunchOptions) -> Result<Vec<String>> {
+    let settings = match options.settings.as_deref().filter(|s| !s.is_empty()) {
+        Some(path) => {
+            plain("settings", path)?;
+            format!("--settings={path}")
+        }
+        None => ISOLATED_SETTINGS.to_string(),
+    };
+    Ok(AGENT_ISOLATION
+        .map(|flag| match flag == ISOLATED_SETTINGS {
+            true => settings.clone(),
+            false => flag.to_string(),
+        })
+        .to_vec())
+}
+
 fn mcp_config(options: &LaunchOptions) -> Result<Vec<String>> {
     match options.mcp_config.as_deref().filter(|c| !c.is_empty()) {
         Some(config) => {
@@ -293,7 +309,7 @@ impl ClaudeCodeAdapter {
             tools(&listed, &extra),
             only_allowed(&listed, &unlisted),
             add_dirs(options)?,
-            AGENT_ISOLATION.map(String::from).to_vec(),
+            isolation(options)?,
             mcp_config(options)?,
             prompt(options),
         ]
