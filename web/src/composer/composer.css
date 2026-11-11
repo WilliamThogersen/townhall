@@ -39,3 +39,48 @@
 .th-reply-cancel:focus-visible {
   color: var(--th-fg);
 }
+
+.th-queue {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: var(--th-border) solid var(--th-line-control);
+  color: var(--th-fg-faint);
+}
+
+.th-queue-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--th-space-2);
+  min-width: 0;
+  padding: 2px var(--th-space-3);
+}
+
+.th-queue-row::before {
+  content: "›";
+  flex: none;
+  color: var(--th-accent);
+}
+
+.th-queue-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-queue-remove {
+  flex: none;
+  padding: 0 var(--th-space-1);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.th-queue-remove:hover,
+.th-queue-remove:focus-visible {
+  color: var(--th-fg);
+}

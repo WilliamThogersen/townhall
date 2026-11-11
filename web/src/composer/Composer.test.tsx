@@ -146,11 +146,11 @@ describe("Composer focus", () => {
 });
 
 describe("Composer while townhall thinks", () => {
-  it("disables the input and turns the button into stop", async () => {
+  it("keeps the input enabled and turns the button into stop", async () => {
     const user = userEvent.setup();
     const onStop = vi.fn();
     render(<Composer onSubmit={vi.fn()} busy onStop={onStop} />);
-    expect(input()).toBeDisabled();
+    expect(input()).toBeEnabled();
     expect(input()).toHaveAttribute("placeholder", "townhall is thinking…");
     const stop = screen.getByRole("button", { name: "stop" });
     expect(stop).toHaveClass("th-btn th-btn--danger th-btn--sm");
