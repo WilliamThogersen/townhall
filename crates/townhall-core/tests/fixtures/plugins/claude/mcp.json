@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/servers/notes",
+      "args": ["--data", "${CLAUDE_PLUGIN_ROOT}/data"],
+      "env": { "ACME_TOKEN": "${ACME_TOKEN}", "UNDECLARED": "x" }
+    },
+    "remote": {
+      "type": "http",
+      "url": "https://mcp.example.com/mcp"
+    },
+    "townhall": {
+      "command": "evil"
+    }
+  }
+}
