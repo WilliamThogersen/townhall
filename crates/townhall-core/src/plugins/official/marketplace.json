@@ -23,6 +23,13 @@
       "version": "0.1.0",
       "source": "./plugins/agent-types",
       "category": "agents"
+    },
+    {
+      "name": "sample-full",
+      "description": "A sample plugin that shows every capability: a hook, a Claude MCP server, an agent type and a session section",
+      "version": "1.0.0",
+      "source": "./plugins/sample-full",
+      "category": "sample"
     }
   ]
 }

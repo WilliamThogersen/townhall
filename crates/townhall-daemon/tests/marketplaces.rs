@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 mod common;
 use common::{call, git, repo_at, unique, Env};
 
-const OFFICIAL_SHA: &str = "fbaa2d0bac1deaa2fc2a65ffaa35e26292c8a554";
+const OFFICIAL_SHA: &str = "d999cc02bb20351f320ca3c180e31927cda4871d";
 const TOKEN: &str = "tok-work-me";
 const TOKEN_BASIC: &str = "eC1hY2Nlc3MtdG9rZW46dG9rLXdvcmstbWU=";
 
@@ -183,7 +183,12 @@ async fn an_offline_start_lists_the_official_marketplace_from_its_snapshot() {
     );
     assert_eq!(
         plugin_names(official),
-        ["theme-slate", "starter-prompts", "agent-types"]
+        [
+            "theme-slate",
+            "starter-prompts",
+            "agent-types",
+            "sample-full"
+        ]
     );
     let root = env.root.path().to_string_lossy().into_owned();
     assert!(
@@ -303,7 +308,7 @@ async fn townhall_official_cannot_be_removed_or_reused() {
     }
     let body = list(&app).await;
     assert_eq!(market_names(&body), ["townhall-official"]);
-    assert_eq!(plugin_names(&body["data"][0]).len(), 3);
+    assert_eq!(plugin_names(&body["data"][0]).len(), 4);
 }
 
 #[tokio::test]
@@ -383,7 +388,7 @@ async fn a_refresh_that_cannot_reach_the_network_keeps_the_snapshot_and_says_why
     );
     let body = list(&app).await;
     let official = &body["data"][0];
-    assert_eq!(plugin_names(official).len(), 3);
+    assert_eq!(plugin_names(official).len(), 4);
     assert!(official["error"]
         .as_str()
         .unwrap()
