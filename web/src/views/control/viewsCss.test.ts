@@ -9,4 +9,8 @@ describe("trace css on a one column window", () => {
       "var(--th-trace-label) minmax(0, 1fr)",
     );
   });
+
+  it("clips the bar text to its track instead of scrolling the trace sideways", () => {
+    expect(declarationsFor(viewsCss, ".th-trace-body .th-span-track")?.getPropertyValue("overflow")).toBe("hidden");
+  });
 });

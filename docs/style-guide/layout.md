@@ -48,6 +48,7 @@ Starting from home creates the conversation and moves to `/c/:id`. There is no o
 |-------|--------|
 | 1200px and up | Everything side by side, session panel open |
 | 1024 to 1199px | Session panel starts folded and opens as an overlay from the right (`session` button, `s`) |
+| 1024 to 1131px | Sidebar 272px. An open terminal stacks under the chat, because the chat (min 420px) and terminal (min 440px) do not fit next to the sidebar |
 | 640 to 1023px | Sidebar 232px. An open terminal stacks under the chat. Tiles go 2 by 2. Control center label column 220px |
 | under 640px (browser only; the Tauri window is at least 640px) | One column. `data-view="main"` on the shell swaps the sidebar for the main area. Key bar hidden |
 

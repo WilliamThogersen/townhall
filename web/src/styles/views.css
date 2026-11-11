@@ -605,6 +605,10 @@
     grid-template-columns: var(--th-trace-label) minmax(0, 1fr);
   }
 
+  .th-trace-body .th-span-track {
+    overflow: hidden;
+  }
+
   .th-repo {
     grid-template-columns: minmax(0, 1fr) auto;
   }
