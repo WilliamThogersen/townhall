@@ -213,10 +213,7 @@ async fn a_task_agent_gets_the_answer_of_the_advisers_model_read_only_in_its_wor
     assert_eq!(got["needsUser"], false);
     assert_eq!(fake.runs(), 1);
     let argv = fake.argv(1);
-    assert_eq!(
-        value_of(&argv, "--model").as_deref(),
-        Some("claude-fable-5-2")
-    );
+    assert_eq!(value_of(&argv, "--model").as_deref(), Some("fable"));
     assert_eq!(value_of(&argv, "--effort").as_deref(), Some("high"));
     assert_eq!(
         value_of(&argv, "--permission-mode").as_deref(),
@@ -253,7 +250,7 @@ async fn the_call_is_recorded_as_a_run_of_the_adviser_with_its_tokens() {
             runs[0].tokens,
             runs[0].model.as_deref()
         ),
-        ("done", 1034, Some("claude-fable-5-2"))
+        ("done", 1034, Some("fable"))
     );
     let usage = m.store().agent_usage().await.unwrap();
     let adviser = usage.iter().find(|u| u.agent == "adviser").unwrap();

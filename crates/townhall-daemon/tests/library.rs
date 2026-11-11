@@ -38,7 +38,7 @@ async fn the_list_starts_with_builder() {
     let rows = v["data"].as_array().unwrap();
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0]["name"], "adviser");
-    assert_eq!(rows[0]["model"], "claude-fable-5-2");
+    assert_eq!(rows[0]["model"], "fable");
     assert_eq!(rows[0]["effort"], "high");
     assert_eq!(rows[0]["permissionMode"], "plan");
     assert_eq!(rows[2]["name"], "default");
