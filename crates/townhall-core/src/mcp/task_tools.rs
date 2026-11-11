@@ -20,7 +20,10 @@ use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
 use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
 use super::insights::{self as insight_tools, CONVERSATION_INSIGHTS};
-use super::library::{self, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
+use super::library::{
+    self, LIST_AGENT_TYPES, LIST_PIPELINES, READ_AGENT_TYPE, READ_PIPELINE, SAVE_AGENT_TYPE,
+    SAVE_PIPELINE,
+};
 use super::logs::{self as log_tools, LOG_SUMMARY, READ_LOGS};
 use super::open_pr::{self, OPEN_PR};
 use super::rpc::ToolRunner;
@@ -78,6 +81,11 @@ impl ToolRunner for TaskTools<'_> {
             READ_AGENT_TYPE => library::read(self.ctx, parse(arguments)?).await,
             SAVE_AGENT_TYPE => {
                 library::save(self.ctx, self.conversation_id, parse(arguments)?).await
+            }
+            LIST_PIPELINES => library::list_pipelines(self.ctx, parse(arguments)?).await,
+            READ_PIPELINE => library::read_pipeline(self.ctx, parse(arguments)?).await,
+            SAVE_PIPELINE => {
+                library::save_pipeline(self.ctx, self.conversation_id, parse(arguments)?).await
             }
             READ_LOGS => log_tools::read(self.ctx, parse(arguments)?).await,
             LOG_SUMMARY => log_tools::summary(self.ctx, parse(arguments)?).await,

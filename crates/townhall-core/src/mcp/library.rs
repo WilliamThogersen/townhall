@@ -18,6 +18,9 @@ use super::{ToolDef, MAX_NAME_LEN, NAME_PATTERN};
 pub const LIST_AGENT_TYPES: &str = "list_agent_types";
 pub const READ_AGENT_TYPE: &str = "read_agent_type";
 pub const SAVE_AGENT_TYPE: &str = "save_agent_type";
+pub const LIST_PIPELINES: &str = "list_pipelines";
+pub const READ_PIPELINE: &str = "read_pipeline";
+pub const SAVE_PIPELINE: &str = "save_pipeline";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,7 +60,43 @@ pub fn tools() -> Vec<ToolDef> {
             input_schema: save_schema(),
             read_only: false,
         },
+        ToolDef {
+            name: LIST_PIPELINES,
+            description: "The saved pipelines: name, description, the repos each is limited to (none means every repo), whether it is the default and its step ids. A pipeline is a saved line of steps, each run by an agent type; reuse one before you design a new one.",
+            input_schema: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+            read_only: true,
+        },
+        ToolDef {
+            name: READ_PIPELINE,
+            description: "One saved pipeline: its TOML as written (`source`) and the parsed fields.",
+            input_schema: read_schema(),
+            read_only: true,
+        },
+        ToolDef {
+            name: SAVE_PIPELINE,
+            description: "Save a pipeline written as TOML. Returns its errors to fix, `saved`, or `asked`: townhall showed the user the TOML and asked them to confirm, so end your turn and wait. Once they say yes, call it again with the same source and `confirmed: true`.",
+            input_schema: save_pipeline_schema(),
+            read_only: false,
+        },
     ]
+}
+
+fn save_pipeline_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "source": {
+                "type": "string", "minLength": 1, "maxLength": Store::MAX_WORKFLOW_SOURCE,
+                "description": "The whole pipeline as TOML, in the shape read_pipeline shows: name, description, repos (limit it to these repos; empty means every repo), default (true: tasks without a pipeline use it), work (id of the step that writes the code), max_fix_rounds (default 1), and one [[step]] per step with id, agent (a saved agent type), after (step ids that finish first), prompt, check (shell command, exit 0 means done), max_retries and when = { paths = [globs] } (run the step only when the work changed a matching file). Every agent must exist. A step whose agent type has `requires` needs an earlier step of each required type in its `after` chain, without `when`."
+            },
+            "confirmed": {
+                "type": "boolean",
+                "description": "True only after townhall asked the user to confirm this exact TOML and they said yes."
+            }
+        },
+        "required": ["source"],
+        "additionalProperties": false
+    })
 }
 
 fn read_schema() -> Value {
@@ -205,13 +244,104 @@ pub(super) async fn save(ctx: &Context, conversation_id: &str, input: SaveInput)
     let name = parsed.def.name.clone();
     let replaces = store.agent_type(&name).await.map_err(text)?.is_some();
     if !input.confirmed {
-        return ask::ask(store, conversation_id, &name, &parsed.source, replaces).await;
+        let kind = ask::Kind::AgentType;
+        return ask::ask(
+            store,
+            kind,
+            conversation_id,
+            &name,
+            &parsed.source,
+            replaces,
+        )
+        .await;
     }
-    ask::check_confirmed(store, conversation_id, &name, &parsed.source).await?;
+    let kind = ask::Kind::AgentType;
+    ask::check_confirmed(store, kind, conversation_id, &name, &parsed.source).await?;
     let (saved, replaced) = store.save_agent_type(&parsed.source).await.map_err(text)?;
     store
         .forget_agent_type_ask(conversation_id, &name)
         .await
         .map_err(text)?;
     Ok(json!({ "status": "saved", "name": saved.def.name, "replaced": replaced }))
+}
+
+pub(super) async fn list_pipelines(ctx: &Context, _input: ListInput) -> Checked<Value> {
+    let found = ctx.store().map_err(text)?.workflows().await.map_err(text)?;
+    let rows: Vec<Value> = found
+        .iter()
+        .map(|w| {
+            json!({
+                "name": w.def.name,
+                "description": w.def.description,
+                "repos": w.def.repos,
+                "default": w.def.default,
+                "steps": w.def.steps.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+                "updatedAt": w.updated_at,
+            })
+        })
+        .collect();
+    Ok(json!({ "pipelines": rows }))
+}
+
+pub(super) async fn read_pipeline(ctx: &Context, input: ReadInput) -> Checked<Value> {
+    let store = ctx.store().map_err(text)?;
+    match store.workflow(input.name.trim()).await.map_err(text)? {
+        Some(found) => serde_json::to_value(found).map_err(|e| e.to_string()),
+        None => {
+            let saved = store.workflows().await.map_err(text)?;
+            let names = match saved.is_empty() {
+                true => "none: save one with save_pipeline first".to_string(),
+                false => saved
+                    .iter()
+                    .map(|w| w.def.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            };
+            Err(format!(
+                "no pipeline named `{}`: the saved pipelines are {names}",
+                input.name
+            ))
+        }
+    }
+}
+
+pub(super) async fn save_pipeline(
+    ctx: &Context,
+    conversation_id: &str,
+    input: SaveInput,
+) -> Checked<Value> {
+    let store = ctx.store().map_err(text)?;
+    let parsed = store
+        .check_pipeline(&input.source)
+        .await
+        .map_err(|e| pipeline_errors_text(&e))?;
+    let name = parsed.def.name.clone();
+    let replaces = store.workflow(&name).await.map_err(text)?.is_some();
+    let kind = ask::Kind::Pipeline;
+    if !input.confirmed {
+        return ask::ask(
+            store,
+            kind,
+            conversation_id,
+            &name,
+            &parsed.source,
+            replaces,
+        )
+        .await;
+    }
+    ask::check_confirmed(store, kind, conversation_id, &name, &parsed.source).await?;
+    let (saved, replaced) = store.save_workflow(&parsed.source).await.map_err(text)?;
+    store
+        .forget_workflow_ask(conversation_id, &name)
+        .await
+        .map_err(text)?;
+    Ok(json!({ "status": "saved", "name": saved.def.name, "replaced": replaced }))
+}
+
+fn pipeline_errors_text(errors: &[DefinitionError]) -> String {
+    let lines: Vec<String> = errors.iter().map(ToString::to_string).collect();
+    format!(
+        "{}\nfix the toml and call save_pipeline again.",
+        lines.join("\n")
+    )
 }
