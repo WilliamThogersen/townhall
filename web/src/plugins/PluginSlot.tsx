@@ -45,10 +45,11 @@ export interface PluginSlotProps {
   readonly context?: Readonly<Record<string, unknown>>;
   readonly only?: { readonly plugin: string; readonly entry: string };
   readonly heading?: boolean;
+  readonly wrap?: (entry: PluginUiEntry, frame: ReactNode) => ReactNode;
   readonly services?: Partial<SlotServices>;
 }
 
-export function PluginSlot({ name, context, only, heading, services }: PluginSlotProps) {
+export function PluginSlot({ name, context, only, heading, wrap, services }: PluginSlotProps) {
   const all = useMemo<SlotServices>(() => ({ ...REAL, ...services }), [services]);
   const found = useUiEntries(name, all.listUi);
   const entries = only ? found.filter((e) => e.plugin === only.plugin && e.entry === only.entry) : found;
@@ -56,12 +57,15 @@ export function PluginSlot({ name, context, only, heading, services }: PluginSlo
   if (entries.length === 0) return null;
   return (
     <>
-      {entries.map((entry) => (
-        <Fragment key={`${entry.plugin}/${entry.entry}`}>
-          {heading ? <h4 className="th-section">{entry.title}</h4> : null}
-          <SlotFrame slot={name} entry={entry} context={context} services={all} />
-        </Fragment>
-      ))}
+      {entries.map((entry) => {
+        const frame = <SlotFrame slot={name} entry={entry} context={context} services={all} />;
+        return (
+          <Fragment key={`${entry.plugin}/${entry.entry}`}>
+            {heading ? <h4 className="th-section">{entry.title}</h4> : null}
+            {wrap ? wrap(entry, frame) : frame}
+          </Fragment>
+        );
+      })}
     </>
   );
 }
