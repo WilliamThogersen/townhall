@@ -264,8 +264,6 @@
   color: var(--th-danger);
 }
 
-/* ---------- pipelines ---------- */
-
 .th-pipeline-bar {
   display: flex;
   flex: none;
