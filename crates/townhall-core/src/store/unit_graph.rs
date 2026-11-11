@@ -9,6 +9,7 @@ use super::migrate::Migration;
 use super::tasks::{find, select};
 use super::Store;
 use crate::logs::normalize;
+use crate::redact::redact;
 use crate::model::{Task, TaskState, TASK_BRANCH_PREFIX};
 use crate::{clock, Result};
 
@@ -387,7 +388,7 @@ fn area(path: &str) -> String {
 }
 
 fn reason(text: &str, task: &str) -> String {
-    let text = normalize(text.trim(), &[("task", task)]);
+    let text = normalize(&redact(text.trim()), &[("task", task)]);
     text.chars().take(REASON_CHARS).collect()
 }
 

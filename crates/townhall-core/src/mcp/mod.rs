@@ -10,6 +10,7 @@ mod adviser;
 mod artifacts;
 mod ask;
 mod checks;
+mod graph;
 mod hand_back;
 mod history;
 mod insights;
@@ -124,6 +125,7 @@ pub fn task_tools_list() -> Vec<ToolDef> {
         open_pr::tools(),
         artifacts::tools(),
         history::tools(),
+        graph::tools(),
         adviser::tools(),
     ]
     .concat()
@@ -230,6 +232,7 @@ pub fn tools() -> Vec<ToolDef> {
         logs::tools(),
         insights::tools(),
         history::tools(),
+        graph::tools(),
         adviser::tools(),
     ]
     .concat()
@@ -286,6 +289,8 @@ mod tests {
                 "mcp__townhall__conversation_insights",
                 "mcp__townhall__search_history",
                 "mcp__townhall__read_conversation",
+                "mcp__townhall__history_graph",
+                "mcp__townhall__agent_stats",
                 "mcp__townhall__ask_adviser"
             ]
         );
@@ -294,7 +299,7 @@ mod tests {
     #[test]
     fn schemas_match_the_input_types() {
         let tools = tools();
-        assert_eq!(tools.len(), 15);
+        assert_eq!(tools.len(), 17);
         let create = &tools[0].input_schema;
         let props: Vec<&String> = create["properties"].as_object().unwrap().keys().collect();
         assert_eq!(
@@ -348,8 +353,13 @@ mod tests {
         assert_eq!(tools[12].input_schema["properties"]["limit"]["maximum"], 50);
         assert_eq!(tools[13].name, "read_conversation");
         assert_eq!(tools[13].input_schema["required"], json!(["id"]));
-        assert_eq!(tools[14].name, "ask_adviser");
-        assert_eq!(tools[14].input_schema["required"], json!(["question"]));
+        assert_eq!(tools[14].name, "history_graph");
+        assert_eq!(tools[14].input_schema["required"], json!(["node"]));
+        assert_eq!(tools[14].input_schema["properties"]["depth"]["maximum"], 2);
+        assert_eq!(tools[15].name, "agent_stats");
+        assert!(tools[15].input_schema.get("required").is_none());
+        assert_eq!(tools[16].name, "ask_adviser");
+        assert_eq!(tools[16].input_schema["required"], json!(["question"]));
         assert!(INSTRUCTIONS.contains("log_summary") && INSTRUCTIONS.contains("~/.townhall/logs"));
         assert!(tools
             .iter()
