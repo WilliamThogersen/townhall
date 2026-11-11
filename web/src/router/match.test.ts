@@ -45,6 +45,25 @@ describe("matchRoute", () => {
   });
 });
 
+describe("plugin page route", () => {
+  it("matches /p/:plugin/:page and decodes both parts", () => {
+    const route = matchRoute("/p/panel%40acme/ui%2Fpanel.html");
+    expect(route.name).toBe("plugin-page");
+    expect(route.params).toEqual({ plugin: "panel@acme", page: "ui/panel.html" });
+  });
+
+  it("round trips through PATHS.pluginPage", () => {
+    expect(matchRoute(PATHS.pluginPage("panel@acme", "ui/panel.html")).params).toEqual({
+      plugin: "panel@acme",
+      page: "ui/panel.html",
+    });
+  });
+
+  it.each(["/p", "/p/panel", "/p/panel/a/b"])("sends %s to not found", (path) => {
+    expect(matchRoute(path).name).toBe("not-found");
+  });
+});
+
 describe("PATHS", () => {
   it("builds every route path", () => {
     expect(PATHS.home).toBe("/");
