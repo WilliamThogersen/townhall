@@ -104,6 +104,58 @@ after = ["review"]
 prompt = "Land it."
 "#;
 
+fn asking(name: &str, when: &str, steps: usize) -> String {
+    let mut source = format!(
+        "name = \"{name}\"\nwork = \"build\"\n\n[[step]]\nid = \"build\"\nagent = \"builder\"\nprompt = \"Build it.\"\n"
+    );
+    for n in 1..=steps {
+        source.push_str(&format!(
+            "\n[[step]]\nid = \"s{n}\"\nagent = \"planner\"\nafter = [\"build\"]\nprompt = \"Look.\"\nwhen = {when}\n"
+        ));
+    }
+    source
+}
+
+const ADVISER_STUB: &str = r#"#!/bin/sh
+if [ -t 0 ]; then exec sleep 120; fi
+dir='@DIR@'
+n=$(( $(cat "$dir/count" 2>/dev/null || echo 0) + 1 ))
+echo "$n" > "$dir/count"
+IFS= read -r first || exit 4
+printf '%s\n' "$first" > "$dir/stdin-$n"
+echo '{"type":"system","subtype":"init","session_id":"fake","tools":[]}'
+case "$first" in
+  *ANSWER_YES*) said='YES, it touches auth' ;;
+  *ANSWER_NO*) said='NO. docs only' ;;
+  *) said='hard to say, honestly' ;;
+esac
+echo '{"type":"result","subtype":"success","is_error":false,"result":"'"$said"'","usage":{"input_tokens":10,"output_tokens":3}}'
+cat >> "$dir/stdin-$n"
+"#;
+
+fn adviser_dir(s: &Sched) -> std::path::PathBuf {
+    s.root.path().join("adviser-calls")
+}
+
+fn install_adviser_stub(s: &Sched) {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = adviser_dir(s);
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = ADVISER_STUB.replace("@DIR@", &dir.to_string_lossy());
+    std::fs::write(&s.claude, script).unwrap();
+    std::fs::set_permissions(&s.claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+fn adviser_calls(s: &Sched) -> usize {
+    std::fs::read_to_string(adviser_dir(s).join("count"))
+        .map(|text| text.trim().parse().unwrap())
+        .unwrap_or(0)
+}
+
+fn adviser_was_told(s: &Sched, n: usize) -> String {
+    std::fs::read_to_string(adviser_dir(s).join(format!("stdin-{n}"))).unwrap()
+}
+
 static PROJECTS: OnceLock<TempDir> = OnceLock::new();
 
 fn projects() -> &'static Path {
@@ -126,7 +178,12 @@ async fn setup() -> Sched {
     for source in [STANDARD, CHECKED, UNFIXED, GUARDED] {
         s.store().save_workflow(source).await.unwrap();
     }
+    install_adviser_stub(&s);
     s
+}
+
+async fn save(s: &Sched, source: &str) {
+    s.store().save_workflow(source).await.unwrap();
 }
 
 async fn start(s: &Sched, run: &str, pipeline: &str) -> Task {
@@ -420,7 +477,11 @@ async fn an_unknown_pipeline_is_refused_and_starts_nothing() {
 }
 
 async fn build_touching(s: &Sched, run: &str, file: &str) {
-    start(s, run, "guarded").await;
+    build_touching_in(s, run, "guarded", file).await;
+}
+
+async fn build_touching_in(s: &Sched, run: &str, pipeline: &str, file: &str) {
+    start(s, run, pipeline).await;
     run_once(s.ctx()).await.unwrap();
     let build = format!("{run}-build");
     let path = s.worktree(&build).join(file);
@@ -526,4 +587,138 @@ async fn a_second_fail_needs_the_user_with_exactly_one_event() {
     let told = waiting(&s);
     assert_eq!(told.len(), 1, "{told:?}");
     assert!(told[0].contains("chk-test-r2"), "{told:?}");
+}
+
+async fn step_row(s: &Sched, run: &str, step: &str) -> townhall_core::store::RunStep {
+    let steps = s.store().run_steps(run).await.unwrap();
+    steps.into_iter().find(|r| r.step_id == step).unwrap()
+}
+
+async fn ask_run(s: &Sched, question: &str, file: &str) {
+    let when = format!("{{ ask = \"{question}\" }}");
+    save(s, &asking("asked", &when, 1)).await;
+    build_touching_in(s, "ask", "asked", file).await;
+}
+
+#[tokio::test]
+async fn a_yes_from_the_adviser_runs_the_step() {
+    let s = setup().await;
+    ask_run(&s, "ANSWER_YES: does it touch auth?", "src/auth/login.rs").await;
+    assert_eq!(names(&s).await, ["ask-build", "ask-s1"]);
+    assert_eq!(adviser_calls(&s), 1);
+    let told = adviser_was_told(&s, 1);
+    assert!(told.contains("does it touch auth?"), "{told}");
+    assert!(told.contains("src/auth/login.rs"), "{told}");
+    let row = step_row(&s, "ask", "s1").await;
+    assert_eq!(row.state, "started");
+    let note = row.note.unwrap_or_default();
+    assert!(note.starts_with("adviser answered YES"), "{note}");
+    assert!(note.contains("it touches auth"), "{note}");
+    let said = events(&s).await;
+    let started: Vec<&String> = said.iter().filter(|e| e.contains("`s1` started")).collect();
+    assert!(started[0].contains("YES"), "{said:?}");
+    for _ in 0..2 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_eq!(adviser_calls(&s), 1);
+}
+
+#[tokio::test]
+async fn a_no_from_the_adviser_skips_the_step() {
+    let s = setup().await;
+    ask_run(&s, "ANSWER_NO: does it touch auth?", "README.md").await;
+    assert_eq!(names(&s).await, ["ask-build"]);
+    assert_eq!(adviser_calls(&s), 1);
+    let row = step_row(&s, "ask", "s1").await;
+    assert_eq!(row.state, "skipped");
+    let note = row.note.unwrap_or_default();
+    assert!(note.starts_with("adviser answered NO"), "{note}");
+    let said = events(&s).await;
+    let skipped: Vec<&String> = said.iter().filter(|e| e.contains("skipped")).collect();
+    assert_eq!(skipped.len(), 1, "{said:?}");
+    assert!(skipped[0].contains("NO"), "{said:?}");
+    for _ in 0..2 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_eq!(adviser_calls(&s), 1);
+}
+
+#[tokio::test]
+async fn an_answer_that_is_neither_yes_nor_no_counts_as_no() {
+    let s = setup().await;
+    ask_run(&s, "does it touch auth?", "src/auth/login.rs").await;
+    assert_eq!(names(&s).await, ["ask-build"]);
+    let row = step_row(&s, "ask", "s1").await;
+    assert_eq!(row.state, "skipped");
+    let note = row.note.unwrap_or_default();
+    assert!(note.starts_with("adviser answered NO"), "{note}");
+    assert!(note.contains("hard to say"), "{note}");
+}
+
+#[tokio::test]
+async fn the_fourth_question_of_a_run_is_skipped_without_a_call() {
+    let s = setup().await;
+    save(&s, &asking("many", "{ ask = \"ANSWER_YES: ok?\" }", 4)).await;
+    build_touching_in(&s, "many", "many", "src/a.rs").await;
+    assert_eq!(adviser_calls(&s), 3);
+    assert_eq!(
+        names(&s).await,
+        ["many-build", "many-s1", "many-s2", "many-s3"]
+    );
+    let row = step_row(&s, "many", "s4").await;
+    assert_eq!(row.state, "skipped");
+    assert_eq!(row.note.as_deref(), Some("adviser budget used"));
+    for _ in 0..2 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_eq!(adviser_calls(&s), 3);
+}
+
+#[tokio::test]
+async fn max_adviser_calls_sets_the_budget() {
+    let s = setup().await;
+    let source = asking("tight", "{ ask = \"ANSWER_YES: ok?\" }", 2)
+        .replace("work =", "max_adviser_calls = 1\nwork =");
+    save(&s, &source).await;
+    build_touching_in(&s, "tight", "tight", "src/a.rs").await;
+    assert_eq!(adviser_calls(&s), 1);
+    assert_eq!(names(&s).await, ["tight-build", "tight-s1"]);
+    let row = step_row(&s, "tight", "s2").await;
+    assert_eq!(row.note.as_deref(), Some("adviser budget used"));
+}
+
+#[tokio::test]
+async fn a_pipeline_without_ask_never_calls_the_adviser() {
+    let s = setup().await;
+    build_touching(&s, "db", "db/migrations/1.sql").await;
+    build_touching(&s, "doc", "README.md").await;
+    assert_eq!(adviser_calls(&s), 0);
+}
+
+#[tokio::test]
+async fn a_step_asking_without_an_adviser_type_is_skipped_with_a_note() {
+    let s = setup().await;
+    s.store().delete_agent_type("adviser").await.unwrap();
+    ask_run(&s, "ANSWER_YES: ok?", "src/a.rs").await;
+    assert_eq!(adviser_calls(&s), 0);
+    assert_eq!(names(&s).await, ["ask-build"]);
+    let row = step_row(&s, "ask", "s1").await;
+    assert_eq!(row.state, "skipped");
+    let note = row.note.unwrap_or_default();
+    assert!(note.contains("no adviser type"), "{note}");
+}
+
+#[tokio::test]
+async fn ask_and_paths_must_both_hold_and_paths_is_checked_first() {
+    let s = setup().await;
+    let when = "{ paths = [\"**/migrations/**\"], ask = \"ANSWER_YES: ok?\" }";
+    save(&s, &asking("both", when, 1)).await;
+    build_touching_in(&s, "miss", "both", "README.md").await;
+    assert_eq!(adviser_calls(&s), 0);
+    let row = step_row(&s, "miss", "s1").await;
+    assert_eq!(row.state, "skipped");
+    assert!(row.note.unwrap_or_default().contains("**/migrations/**"));
+    build_touching_in(&s, "hit", "both", "db/migrations/1.sql").await;
+    assert_eq!(adviser_calls(&s), 1);
+    assert_eq!(step_row(&s, "hit", "s1").await.state, "started");
 }
