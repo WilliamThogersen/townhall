@@ -12,6 +12,8 @@ pub const DEFAULT_AGENT_TYPE: &str = "builder";
 /// never deleted, and never the type a task defaults to.
 pub const CONVERSATION_AGENT_TYPE: &str = "default";
 
+pub const ADVISER_AGENT_TYPE: &str = "adviser";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Origin {

@@ -128,6 +128,104 @@ fn a_fresh_database_seeds_the_default_type_with_opus() {
     assert!(source.lines().any(|l| l == "model = \"opus\""), "{source}");
 }
 
+fn at(last: u32) -> Connection {
+    let mut conn = Connection::open_in_memory().unwrap();
+    let before: Vec<_> = townhall_core::store::migrate::all()
+        .into_iter()
+        .filter(|m| m.id <= last)
+        .collect();
+    townhall_core::store::migrate::apply(&mut conn, &before).unwrap();
+    conn
+}
+
+fn source_of(conn: &Connection, name: &str) -> Option<String> {
+    conn.query_row(
+        "select source from agents where name = ?1 collate nocase",
+        [name],
+        |r| r.get(0),
+    )
+    .ok()
+}
+
+fn count_of(conn: &Connection, name: &str) -> i64 {
+    conn.query_row(
+        "select count(*) from agents where name = ?1 collate nocase",
+        [name],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_fresh_database_has_builder_default_and_adviser() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    upgrade(&mut conn);
+    let names: Vec<String> = conn
+        .prepare("select name from agents order by name")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(names, ["adviser", "builder", "default"]);
+    let adviser = source_of(&conn, "adviser").unwrap();
+    assert!(adviser.contains("model = \"claude-fable-5-2\""), "{adviser}");
+    assert!(adviser.contains("permission_mode = \"plan\""), "{adviser}");
+}
+
+#[test]
+fn an_existing_install_gets_the_adviser_when_it_migrates() {
+    let mut conn = at(809);
+    assert_eq!(count_of(&conn, "adviser"), 0);
+    upgrade(&mut conn);
+    assert_eq!(count_of(&conn, "adviser"), 1);
+    assert_eq!(count_of(&conn, "builder"), 1);
+}
+
+#[test]
+fn an_existing_type_named_adviser_is_left_untouched() {
+    let mut conn = at(809);
+    let own = "name = \"Adviser\"\nadapter = \"claude\"\nmodel = \"haiku\"\n";
+    conn.execute(
+        "insert into agents (name, description, source, updated_at) values ('Adviser', '', ?1, 'then')",
+        [own],
+    )
+    .unwrap();
+    upgrade(&mut conn);
+    assert_eq!(count_of(&conn, "adviser"), 1);
+    assert_eq!(source_of(&conn, "adviser").unwrap(), own);
+}
+
+#[test]
+fn the_seeded_default_type_gains_ask_adviser_once() {
+    let mut conn = at(809);
+    let seeded = default_source(&conn).unwrap();
+    assert!(!seeded.contains("ask_adviser"), "{seeded}");
+    upgrade(&mut conn);
+    let source = default_source(&conn).unwrap();
+    assert_eq!(source.matches("ask_adviser").count(), 1, "{source}");
+    assert!(
+        source.contains("  \"mcp__townhall__conversation_insights\",\n  \"mcp__townhall__ask_adviser\",\n  \"Read\","),
+        "{source}"
+    );
+}
+
+#[test]
+fn a_default_type_that_has_it_or_has_its_own_tools_is_left_alone() {
+    let has = "name = \"default\"\nadapter = \"claude\"\ntools = [\n  \"mcp__townhall__conversation_insights\",\n  \"mcp__townhall__ask_adviser\"\n]\n";
+    let own = "name = \"default\"\nadapter = \"claude\"\ntools = [\"Read\"]\n";
+    for source in [has, own] {
+        let mut conn = at(809);
+        conn.execute(
+            "update agents set source = ?1 where name = 'default'",
+            [source],
+        )
+        .unwrap();
+        upgrade(&mut conn);
+        assert_eq!(default_source(&conn).unwrap(), source);
+    }
+}
+
 #[tokio::test]
 async fn an_empty_home_gets_a_migrated_database() {
     let dir = TempDir::new().unwrap();
