@@ -171,7 +171,7 @@ Design: `docs/plugins.md` sections 8.5, 9 and 10.3. A curated, versioned subset 
 
 - Auth: `Authorization: Bearer <token>` on every route. No header, a scheme other than `Bearer`, an unknown token, a revoked token, or the token of a plugin that is disabled or uninstalled is `401`. A token without the scope the route needs is `403` (`this token has no \`<scope>\` scope`). The `401` comes first. A browser origin sends no token and CORS does not allow the `Authorization` header, so a page of another origin cannot use a plugin's scopes.
 - Tokens: 32 bytes from `/dev/urandom`, written as 64 hex characters. Only `sha256(token)` is stored, in `plugin_tokens (token_hash pk, plugin_id, task, created_at, revoked_at)` (migration `0952`); the clear text is returned once by `plugins::tokens::issue` and never read back. A plugin token (`task` null) is created when `PATCH /api/plugins/{id}` turns `enabled` from false to true. Disabling and uninstalling revoke every token of the plugin, task tokens too. A task token (`issue(store, plugin, Some(task))`, `revoke_task`) is supported by the store; the scheduler does not create them until phase 3.
-- Scopes of a caller are the `api:<scope>` items of the plugin's approved permission list. A task token keeps at most `tasks:read`, `conversations:read` and `storage` of them, and sees only its own task and the conversation of that task: another task or conversation is `403`, lists hold only its own rows, and the routes that span everything (`/stats`, `/search`) are `403`. `settings:read` is never given to a task token.
+- Scopes of a caller are the `api:<scope>` items of the plugin's approved permission list. A task token keeps at most `tasks:read`, `conversations:read` and `storage` of them (plus `tasks:create` and `conversations:write` only through `permissions.claude.api`, below), and sees only its own task and the conversation of that task: another task or conversation is `403`, lists hold only its own rows, and the routes that span everything (`/stats`, `/search`) are `403`. `settings:read` is never given to a task token.
 
 | Method | Path | Scope | Answer | Errors |
 |--------|------|-------|--------|--------|
@@ -191,7 +191,22 @@ Design: `docs/plugins.md` sections 8.5, 9 and 10.3. A curated, versioned subset 
 
 - Storage: rows of `plugin_storage (plugin_id, key, value, updated_at)` (migration `0952`), keyed by the plugin of the token, so a plugin never sees another plugin's rows and a task token shares its plugin's. A key is 1 to 128 characters of letters, digits, `.`, `_` and `-` (not `.` or `..`). A value is text of at most 65 536 bytes; a plugin's values total at most 5 242 880 bytes, and replacing a value counts only the new one. The rows are kept on uninstall and removed with `purge=true`.
 - Versioning: the version is in the path. New routes and optional fields stay in `v1`.
-- Not in 2.1: `tasks:create`, `conversations:write`, `profile:read`, `library:*`, `events` (2.2) and the hooks (2.3). The plugin token's clear text is not handed to anything yet: delivery to a hook or MCP server environment arrives with them.
+- Not in 2.1 or 2.2: `profile:read`, `events` and the hooks (2.3). The plugin token's clear text is not handed to anything yet: delivery to a hook or MCP server environment arrives with them.
+
+### Plugin API v1, writes and the library (plugins 2.2)
+
+| Method | Path | Scope | Body | Answer | Errors |
+|--------|------|-------|------|--------|--------|
+| POST | `/conversations/{id}/tasks` | `tasks:create` | the `create_task` input, camelCase: `name`, `title`, `prompt`, `repo`, `baseBranch`, `after`, `attachments`, `agent`, `prBase`, `doneWhen`, `check`, `maxRetries` | `201` the `Task` | 400 the planner's checks (name, repo, base branch, agent type, `after`, `check`, `requires`, a taken name) or an unknown field; 401; 403; 404 conversation |
+| POST | `/conversations/{id}/messages` | `conversations:write` | `{ text }` | `200` the new `plugin` `ThreadEntry` | 400 blank or over 100 000 characters, or an unknown field; 401; 403; 404; 409 a turn is running |
+| GET | `/library/agents` | `library:read` | | `AgentTypeSummary[]` as `GET /api/library/agents` | 401; 403 |
+| GET | `/library/agents/{name}` | `library:read` | | `AgentType` as `GET /api/library/agents/{name}` | 401; 403; 404 |
+| PUT | `/library/agents/{name}` | `library:write` | `{ conversation, source, confirmed? }`, `source` the whole type as TOML | `200` `{ status: "asked", name, replaces, next }` or `{ status: "saved", name, replaced }` | 400 the TOML's errors, a `name` that is not the path's, a `confirmed` save before the user answered, or a different TOML than the one asked about; 401; 403; 404 conversation |
+
+- `POST .../tasks` is `create_task` (`mcp::create_task_as_plugin` runs the planner's own code, so the checks cannot drift). No route of the plugin API takes a permission mode: `permissionMode` and `permission_mode` are unknown fields (`400`), and the task gets the saved setting narrowed by its agent type when the scheduler starts it. After the task is created a `plugin` entry `created by plugin <id>: task \`<name>\`` is written next to the `tasksCreated` entry, so the thread shows who made it.
+- `POST .../messages` writes a `plugin` entry (author `plugin <id>`, never `you`, so a plugin cannot post as the user) and starts a planner turn like a message does. The planner reads `message from plugin <id> (automatic, the user did not write this):` before the text, as it does for task events, and repo inference is skipped as for an event. A `plugin` entry does not answer a `repoAsk` or an agent type ask.
+- `PUT /library/agents/{name}` is `save_agent_type` (`mcp::save_as_plugin`). The ask needs a conversation to show the TOML in, so the body names one. Without `confirmed` townhall writes the TOML and the question into that conversation as a `townhall` entry and answers `asked`; nothing is saved. With `confirmed: true` it saves only that exact TOML, and only after a `you` entry was written after the ask; a `plugin` entry never counts, so only the user can say yes. Saved types are the same as the planner's, whatever they set. `DELETE` of a type is not part of the API.
+- A task token never has `tasks:create` or `conversations:write` from `permissions.api`. It has them only when the manifest lists them under `permissions.claude.api` (the approved item `claude.api:<scope>`), and then only for the conversation of its task (another is `403`). It never has `library:write`.
 
 ## Types
 
@@ -215,6 +230,7 @@ All in `townhall_core::model`, mirrored in `web/src/api/types.ts`.
 | `agent` | `agent, event: "sent" \| "passed" \| "failed" \| "ended" \| "allowed", text` | `→` `✓` `×` `○` `+` lines. `allowed` has the text `<tool> to <agent type>` |
 | `event` | `text` | `◇` line: a task event townhall's own session was woken with, not a message from you (see below) |
 | `handoff` | `task, from, to, reason` | `↩ <task>: <from> handed back to <to>, <reason>` |
+| `plugin` | `plugin, text` | `◇ plugin <id>: <text>`: a message or a note from an enabled plugin through the plugin API (`plugin` is the plugin id, `name@marketplace`). Never shown as you, and never counts as your answer to an ask |
 | `error` | `message` | townhall's own failure |
 
 - `RepoRule`: `named`, `code`, `only` (2.4's `repo_infer::Rule`, same names), `picked` (an answer to a `repoAsk`), `linked` (the row menu).

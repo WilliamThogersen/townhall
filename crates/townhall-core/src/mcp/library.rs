@@ -172,6 +172,27 @@ fn errors_text(errors: &[DefinitionError]) -> String {
     )
 }
 
+pub async fn save_as_plugin(
+    ctx: &Context,
+    conversation_id: &str,
+    name: &str,
+    source: String,
+    confirmed: bool,
+) -> crate::Result<Value> {
+    ctx.store()?.conversation(conversation_id).await?;
+    let parsed = Store::check_agent_type(&source)
+        .map_err(|e| crate::Error::InvalidInput(errors_text(&e)))?;
+    if parsed.def.name != name {
+        return Err(crate::Error::InvalidInput(format!(
+            "the toml's name `{}` must match the path `{name}`",
+            parsed.def.name
+        )));
+    }
+    save(ctx, conversation_id, SaveInput { source, confirmed })
+        .await
+        .map_err(crate::Error::InvalidInput)
+}
+
 /// Saves only a type the user confirmed, whatever it sets (skip all included); anything
 /// else asks in the thread.
 pub(super) async fn save(ctx: &Context, conversation_id: &str, input: SaveInput) -> Checked<Value> {

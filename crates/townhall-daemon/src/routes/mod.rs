@@ -89,6 +89,16 @@ fn plugin_api_routes() -> Router<AppState> {
         .route("/conversations", get(plugin_api::conversation_list))
         .route("/conversations/{id}", get(plugin_api::conversation_detail))
         .route("/search", get(plugin_api::search))
+        .route("/conversations/{id}/tasks", post(plugin_api::task_create))
+        .route(
+            "/conversations/{id}/messages",
+            post(plugin_api::message_post),
+        )
+        .route("/library/agents", get(plugin_api::library_list))
+        .route(
+            "/library/agents/{name}",
+            get(plugin_api::library_get).put(plugin_api::library_put),
+        )
         .route("/settings", get(plugin_api::settings))
         .route(
             "/storage/{key}",

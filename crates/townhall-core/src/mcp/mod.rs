@@ -27,10 +27,11 @@ use crate::model::MAX_HANDOFFS;
 pub use artifacts::{ADD_ARTIFACT, LIST_ARTIFACTS};
 pub use hand_back::HAND_BACK;
 pub(crate) use hand_back::{summary_of, worktree_of};
-pub use library::{LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
+pub use library::{save_as_plugin, LIST_AGENT_TYPES, READ_AGENT_TYPE, SAVE_AGENT_TYPE};
 pub use open_pr::OPEN_PR;
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
 pub use status::{MAX_MESSAGE_CHARS, MAX_STEPS, RECENT_ENTRIES};
+pub use task_tools::create_task_as_plugin;
 
 /// Answers one JSON-RPC message or batch for the conversation `conversation_id` (which the
 /// route checked exists). `None` when there is nothing to send back: the route answers `202`.

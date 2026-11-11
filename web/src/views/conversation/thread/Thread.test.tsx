@@ -104,6 +104,15 @@ describe("Thread messages", () => {
     expect(document.querySelector(".th-msg-you, [data-from='you']")).toBeNull();
   });
 
+  it("shows a plugin's entry with the plugin as its author, never as you", () => {
+    renderThread([
+      entry(1, { kind: "plugin", plugin: "lint@acme", text: "created by plugin lint@acme: task `fix`" }),
+    ]);
+    const line = document.querySelector(".th-event[data-kind='plugin']");
+    expect(line).toHaveTextContent("plugin lint@acme: created by plugin lint@acme: task `fix`10:42");
+    expect(document.querySelector(".th-msg--you")).toBeNull();
+  });
+
   it("writes a handoff with who handed to whom and why", () => {
     renderThread([
       entry(1, { kind: "handoff", task: "fix-login", from: "shipper", to: "coder", reason: "ci fails on lint" }),
