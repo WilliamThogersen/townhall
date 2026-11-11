@@ -34,7 +34,12 @@ mod tests {
         let names: Vec<&str> = market.plugins.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(
             names,
-            ["theme-slate", "starter-prompts", "agent-types", "sample-full"]
+            [
+                "theme-slate",
+                "starter-prompts",
+                "agent-types",
+                "sample-full"
+            ]
         );
     }
 
