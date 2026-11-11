@@ -31,6 +31,16 @@ async fn said(ctx: &Context, task: &Task) -> Option<String> {
 /// The event for `entry`, the one just appended to `task`'s conversation, or none.
 pub(super) async fn for_entry(ctx: &Context, task: &Task, entry: &EntryBody) -> Option<String> {
     let name = &task.name;
+    let ended = matches!(
+        entry,
+        EntryBody::Agent {
+            event: AgentEvent::Ended,
+            ..
+        }
+    );
+    if ended && of_a_run(ctx, task).await {
+        return None;
+    }
     match entry {
         EntryBody::NeedsYou { question, .. } => {
             Some(format!("task {name} needs you, its agent asks: {question}"))
@@ -49,6 +59,24 @@ pub(super) async fn for_entry(ctx: &Context, task: &Task, entry: &EntryBody) -> 
             None => format!("task {name} ended ({text})"),
         }),
         _ => None,
+    }
+}
+
+async fn of_a_run(ctx: &Context, task: &Task) -> bool {
+    let found = match ctx.store() {
+        Ok(store) => store.run_task_names().await,
+        Err(e) => Err(e),
+    };
+    match found {
+        Ok(names) => names.contains(&task.name.to_lowercase()),
+        Err(e) => {
+            tracing::warn!(
+                target: "townhall::agent", event = "agent.run_tasks_unread", task = %task.name,
+                error = %crate::redact::redact(&e.to_string()),
+                "could not tell whether a task belongs to a run"
+            );
+            false
+        }
     }
 }
 
