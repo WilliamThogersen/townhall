@@ -176,7 +176,10 @@ async fn a_task_token_is_bound_to_its_task_and_has_the_read_scopes_and_storage_a
         .unwrap()
         .unwrap();
     assert_eq!(caller.task.as_deref(), Some("one"));
-    assert_eq!(caller.scopes, ["tasks:read", "conversations:read", "storage"]);
+    assert_eq!(
+        caller.scopes,
+        ["tasks:read", "conversations:read", "storage"]
+    );
     let rows = env.store.plugin_tokens("lint@acme").await.unwrap();
     assert_eq!(rows[0].task.as_deref(), Some("one"));
 }
@@ -212,7 +215,12 @@ async fn enabling_creates_the_plugin_token_and_disabling_revokes_every_token() {
     let env = store_env();
     add(&env.store, "lint", false, &ALL).await;
     let registry = PluginRegistry::new(env.store.clone());
-    assert!(env.store.plugin_tokens("lint@acme").await.unwrap().is_empty());
+    assert!(env
+        .store
+        .plugin_tokens("lint@acme")
+        .await
+        .unwrap()
+        .is_empty());
 
     registry.patch("lint@acme", &patch(true)).await.unwrap();
     let rows = env.store.plugin_tokens("lint@acme").await.unwrap();
@@ -253,8 +261,12 @@ async fn uninstalling_revokes_the_tokens_and_purging_clears_the_storage() {
     add(&env.store, "lint", true, &ALL).await;
     add(&env.store, "fmt", true, &ALL).await;
     let clear = tokens::issue(&env.store, "lint@acme", None).await.unwrap();
-    storage::put(&env.store, "lint@acme", "k", "v").await.unwrap();
-    storage::put(&env.store, "fmt@acme", "k", "w").await.unwrap();
+    storage::put(&env.store, "lint@acme", "k", "v")
+        .await
+        .unwrap();
+    storage::put(&env.store, "fmt@acme", "k", "w")
+        .await
+        .unwrap();
     let registry = PluginRegistry::new(env.store.clone());
 
     registry.uninstall("lint@acme", false).await.unwrap();
@@ -276,21 +288,32 @@ async fn uninstalling_revokes_the_tokens_and_purging_clears_the_storage() {
 
     add(&env.store, "lint", true, &ALL).await;
     registry.uninstall("lint@acme", true).await.unwrap();
-    let err = storage::get(&env.store, "lint@acme", "k").await.unwrap_err();
+    let err = storage::get(&env.store, "lint@acme", "k")
+        .await
+        .unwrap_err();
     assert!(matches!(err, Error::Missing { .. }), "{err}");
-    assert_eq!(storage::get(&env.store, "fmt@acme", "k").await.unwrap(), "w");
+    assert_eq!(
+        storage::get(&env.store, "fmt@acme", "k").await.unwrap(),
+        "w"
+    );
 }
 
 #[tokio::test]
 async fn storage_round_trips_per_plugin() {
     let env = store_env();
-    storage::put(&env.store, "lint@acme", "k", "one").await.unwrap();
-    storage::put(&env.store, "fmt@acme", "k", "other").await.unwrap();
+    storage::put(&env.store, "lint@acme", "k", "one")
+        .await
+        .unwrap();
+    storage::put(&env.store, "fmt@acme", "k", "other")
+        .await
+        .unwrap();
     assert_eq!(
         storage::get(&env.store, "lint@acme", "k").await.unwrap(),
         "one"
     );
-    storage::put(&env.store, "lint@acme", "k", "two").await.unwrap();
+    storage::put(&env.store, "lint@acme", "k", "two")
+        .await
+        .unwrap();
     assert_eq!(
         storage::get(&env.store, "LINT@ACME", "k").await.unwrap(),
         "two"
@@ -300,7 +323,9 @@ async fn storage_round_trips_per_plugin() {
         "other"
     );
     storage::delete(&env.store, "lint@acme", "k").await.unwrap();
-    let err = storage::get(&env.store, "lint@acme", "k").await.unwrap_err();
+    let err = storage::get(&env.store, "lint@acme", "k")
+        .await
+        .unwrap_err();
     assert!(matches!(err, Error::Missing { .. }), "{err}");
     let err = storage::delete(&env.store, "lint@acme", "k")
         .await

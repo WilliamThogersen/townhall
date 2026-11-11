@@ -13,6 +13,8 @@ pub const NOT_IMPLEMENTED: &str = "not implemented yet";
 pub enum ApiError {
     Core(Error),
     BadRequest(String),
+    Unauthorized(String),
+    Forbidden(String),
     NotImplemented,
 }
 
@@ -37,6 +39,8 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
             Self::BadRequest(msg) => failure(StatusCode::BAD_REQUEST, msg),
+            Self::Unauthorized(msg) => failure(StatusCode::UNAUTHORIZED, msg),
+            Self::Forbidden(msg) => failure(StatusCode::FORBIDDEN, msg),
             Self::NotImplemented => failure(StatusCode::NOT_IMPLEMENTED, NOT_IMPLEMENTED.into()),
             Self::Core(e) => {
                 let status = status_for(&e);
