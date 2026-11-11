@@ -19,6 +19,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "0951_plugin_settings",
         sql: include_str!("migrations/0951_plugin_settings.sql"),
     },
+    Migration {
+        id: 952,
+        name: "0952_plugin_tokens",
+        sql: include_str!("migrations/0952_plugin_tokens.sql"),
+    },
 ];
 
 const THEME: &str = "plugins.theme";

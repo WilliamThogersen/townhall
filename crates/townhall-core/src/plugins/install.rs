@@ -8,7 +8,7 @@ use super::market::{
     blocking, head_of, listed, marketplaces_dir, place_of, MarketplaceRegistry, Place,
 };
 use super::marketplace::{Entry, Source};
-use super::tree;
+use super::{tokens, tree};
 use crate::model::ForgeAccount;
 use crate::redact::redact;
 use crate::repos::publish::Programs;
@@ -607,13 +607,21 @@ impl PluginRegistry {
             ));
         }
         let mut plugin = self.store.plugin(id).await?;
+        let was_enabled = plugin.enabled;
         if let Some(enabled) = req.enabled {
             plugin.enabled = enabled;
         }
         if let Some(pinned) = req.pinned {
             plugin.pinned = pinned;
         }
-        view_of(self.store.update_plugin(plugin).await?)
+        let saved = self.store.update_plugin(plugin).await?;
+        if saved.enabled && !was_enabled {
+            tokens::issue(&self.store, &saved.id, None).await?;
+        }
+        if !saved.enabled && was_enabled {
+            tokens::revoke_plugin(&self.store, &saved.id).await?;
+        }
+        view_of(saved)
     }
 
     pub async fn update(&self, id: &str, approve: Option<&str>) -> Result<UpdateResult> {
@@ -741,11 +749,13 @@ impl PluginRegistry {
                 ..plugin
             })
             .await?;
+        tokens::revoke_plugin(&self.store, &plugin.id).await?;
         let home = self.store.home();
         remove_tree(&cache_root(home, &plugin.marketplace, &plugin.name)?)?;
         if purge {
             remove_tree(&data_root(home, &plugin.marketplace, &plugin.name)?)?;
             self.store.clear_plugin_settings(&plugin.id).await?;
+            self.store.clear_plugin_storage(&plugin.id).await?;
         }
         let theme = self.store.plugin_theme().await?;
         if theme.is_some_and(|id| id.eq_ignore_ascii_case(&plugin.id)) {

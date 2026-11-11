@@ -14,6 +14,7 @@ mod library;
 mod logs;
 mod marketplaces;
 mod mcp;
+mod plugin_api;
 mod plugins;
 mod profile;
 mod repos;
@@ -74,6 +75,26 @@ fn conversation_routes() -> Router<AppState> {
         .route(
             "/conversations/{id}/attachments/{attachment}",
             get(attachments::download),
+        )
+}
+
+fn plugin_api_routes() -> Router<AppState> {
+    Router::new()
+        .route("/info", get(plugin_api::info))
+        .route("/tasks", get(plugin_api::task_list))
+        .route("/tasks/{name}", get(plugin_api::task_get))
+        .route("/tasks/{name}/artifacts", get(plugin_api::task_artifacts))
+        .route("/agents", get(plugin_api::agent_list))
+        .route("/stats", get(plugin_api::stats))
+        .route("/conversations", get(plugin_api::conversation_list))
+        .route("/conversations/{id}", get(plugin_api::conversation_detail))
+        .route("/search", get(plugin_api::search))
+        .route("/settings", get(plugin_api::settings))
+        .route(
+            "/storage/{key}",
+            get(plugin_api::storage_get)
+                .put(plugin_api::storage_put)
+                .delete(plugin_api::storage_delete),
         )
 }
 
@@ -151,6 +172,7 @@ pub fn router(state: AppState) -> Router {
         .merge(agent_routes())
         .merge(conversation_routes())
         .merge(library_routes())
-        .merge(logs::routes());
+        .merge(logs::routes())
+        .nest("/plugin/v1", plugin_api_routes());
     Router::new().nest("/api", api).with_state(state)
 }

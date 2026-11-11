@@ -15,6 +15,7 @@ mod handoffs;
 mod import;
 mod lock;
 pub mod migrate;
+mod plugin_tokens;
 mod repos;
 mod search;
 mod settings;
@@ -39,6 +40,7 @@ use rusqlite::Connection;
 pub use import::IMPORTED_SUFFIX;
 pub use lock::LOCK_FILE;
 pub use migrate::Migration;
+pub use plugin_tokens::TokenRow;
 pub use settings::MAX_PROFILE_CHARS;
 pub use unit_plugins::{Marketplace, Plugin};
 
