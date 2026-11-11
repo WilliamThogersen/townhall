@@ -24,6 +24,7 @@ mod settings;
 mod stats;
 mod steps;
 mod stream;
+mod system;
 mod tasks;
 mod usage;
 
@@ -177,6 +178,7 @@ pub fn router(state: AppState) -> Router {
         .route("/tasks/{name}/artifacts/{id}", get(artifacts::download))
         .route("/stats", get(stats::get))
         .route("/usage", get(usage::get))
+        .route("/system", get(system::get))
         .route("/search", get(search::search))
         .route("/events", get(events::socket))
         .merge(agent_routes())

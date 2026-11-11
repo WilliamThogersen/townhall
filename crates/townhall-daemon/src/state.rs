@@ -4,12 +4,15 @@ use townhall_core::store::Store;
 use townhall_core::usage::UsageService;
 use townhall_core::{Context, ContextOptions, Result, Workspace};
 
+use crate::system::SystemSampler;
+
 /// Shared state for every handler: the core `Context` (startup repo, store with the repo
 /// registry, event bus, base URL, claude binary) built once per daemon, and the usage service.
 #[derive(Debug, Clone)]
 pub struct AppState {
     ctx: Context,
     usage: Arc<UsageService>,
+    system: Arc<SystemSampler>,
 }
 
 impl AppState {
@@ -36,7 +39,8 @@ impl AppState {
 
     fn from_context(ctx: Context) -> Self {
         let usage = Arc::new(UsageService::system(ctx.home()));
-        Self { ctx, usage }
+        let system = Arc::new(SystemSampler::new(ctx.home().root()));
+        Self { ctx, usage, system }
     }
 
     /// Swaps the usage service, so tests need no Keychain and no network.
@@ -50,6 +54,10 @@ impl AppState {
 
     pub fn usage(&self) -> &Arc<UsageService> {
         &self.usage
+    }
+
+    pub fn system(&self) -> &Arc<SystemSampler> {
+        &self.system
     }
 
     /// The startup repo's workspace.

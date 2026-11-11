@@ -548,3 +548,11 @@ export interface ClaudeUsage {
   readonly updatedAt: number;
   readonly error: string | null;
 }
+
+export interface SystemStats {
+  readonly cpuPercent: number;
+  readonly memoryUsedBytes: number;
+  readonly memoryTotalBytes: number;
+  readonly diskUsedBytes: number;
+  readonly diskTotalBytes: number;
+}

@@ -54,6 +54,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/agents/{name}/steps` | | `Step[]` | 404 | 2.7 |
 | GET | `/stats?repo=` | | `{ days: ShippedDay[] }`: last 730 days, days with activity only, summed across repos unless `repo` | 404 repo | 2.7 |
 | GET | `/usage` | | `ClaudeUsage`: Claude plan usage, never the token. Always `200`; trouble is `error`, next to the last numbers read | | usage meter |
+| GET | `/system` | | `SystemStats { cpuPercent, memoryUsedBytes, memoryTotalBytes, diskUsedBytes, diskTotalBytes }`: whole machine cpu percent (0 to 100, since the previous read, from a sampler kept in state), RAM bytes, and the bytes of the volume that holds `~/.townhall`. Read only | 500 the machine's stats or disks could not be read (logged) | key bar stats |
 | GET | `/settings` | | `Settings` | 503 | 2.1 (was 2.0) |
 | PUT | `/settings/{key}` | `{ value }` | `Settings` after the change | 400 unknown key or invalid value | 2.1 (was 2.0) |
 | GET | `/profile` | | `{ text }`: the user's profile, `""` when none | 503 | 2.14 |
