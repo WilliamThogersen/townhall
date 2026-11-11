@@ -8,6 +8,7 @@ export interface ComposerToolsProps {
   readonly help: string;
   readonly error: string | null;
   readonly tools?: ReactNode;
+  readonly pluginActions?: ReactNode;
   readonly onAttach: (() => void) | null;
   readonly attachDisabled: boolean;
   readonly onRetry: (() => void) | null;
@@ -39,7 +40,7 @@ function SubmitButton({ look, submitLabel, onStop, canSubmit, submitting }: Comp
 }
 
 export function ComposerTools(props: ComposerToolsProps) {
-  const { tools, help, error, onAttach, attachDisabled, onRetry } = props;
+  const { tools, pluginActions, help, error, onAttach, attachDisabled, onRetry } = props;
   return (
     <div className="th-composer-tools">
       {onAttach && (
@@ -48,6 +49,7 @@ export function ComposerTools(props: ComposerToolsProps) {
         </Button>
       )}
       {tools}
+      {pluginActions}
       <span className="th-help" data-tone={error === null ? undefined : "error"} aria-live="polite">
         {error === null ? help : `error: ${error}`}
       </span>

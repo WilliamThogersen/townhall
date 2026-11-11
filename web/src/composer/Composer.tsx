@@ -18,6 +18,7 @@ import { useUploads, type Uploads } from "../attachments/useUploads";
 import { ACCEPTED_FILES } from "../attachments/validate";
 import { ComposerTools } from "./ComposerTools";
 import { readDraft, writeDraft } from "./drafts";
+import { PluginComposerActions } from "./PluginComposerActions";
 import { QueueList } from "./QueueList";
 import { readReply, useReply, writeReply } from "./replies";
 import { ReplyBar } from "./ReplyBar";
@@ -199,6 +200,7 @@ function useComposer(props: ComposerProps) {
   useAutoGrow(inputRef, text);
   useFocusKey(inputRef, props.focusKey);
   useComposerHandle(props.ref, inputRef, setText, uploads);
+  const insert = (inserted: string) => setText(text + inserted);
   const onSubmitForm = (event: FormEvent) => {
     event.preventDefault();
     void sending.submit();
@@ -217,6 +219,7 @@ function useComposer(props: ComposerProps) {
     reply,
     cancelReply,
     queue,
+    insert,
   };
 }
 
@@ -235,6 +238,7 @@ export function Composer(props: ComposerProps) {
     reply,
     cancelReply,
     queue,
+    insert,
   } = useComposer(props);
   const submitLabel = props.submitLabel ?? look.submitLabel;
   const restingPlaceholder = props.placeholder ?? (uploads.enabled ? look.attachPlaceholder : look.placeholder);
@@ -270,6 +274,7 @@ export function Composer(props: ComposerProps) {
           help={helpText(submitLabel, uploads.enabled)}
           error={sending.error ?? queue.error ?? uploads.error}
           tools={props.tools}
+          pluginActions={<PluginComposerActions conversationId={props.conversationId ?? null} onInsert={insert} />}
           onAttach={uploads.enabled ? () => fileRef.current?.click() : null}
           attachDisabled={disabled}
           onRetry={uploads.canRetry ? uploads.retryFailed : null}

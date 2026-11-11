@@ -3,6 +3,7 @@ import { useAgentsContext } from "../agents/AgentsProvider";
 import { countByState } from "../agents/agentState";
 import { useRepos } from "../data";
 import { PluginNavItems } from "../plugins/PluginNavItems";
+import { PluginSlot } from "../plugins/PluginSlot";
 import { Link, PATHS, useRoute } from "../router";
 import { SearchNavItem } from "../sidebar/SearchNavItem";
 import { SidebarConversations } from "../sidebar/SidebarConversations";
@@ -72,6 +73,7 @@ export function Sidebar({ foot }: { readonly foot?: ReactNode }) {
       <SidebarConversations query={search.query} />
       <div className="th-sidebar-foot">
         <UsageMeter />
+        <PluginSlot name="sidebar.foot" />
         {foot}
         <Link className="th-btn th-btn--ghost th-btn--sm" to={PATHS.settings} aria-current={currentPage(name === "settings")}>
           settings
