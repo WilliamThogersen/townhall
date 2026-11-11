@@ -3,6 +3,7 @@ import { countByState } from "../agents/agentState";
 import { Kbd } from "../ui/Kbd";
 import { GlyphCounts } from "../ui/StatusGlyph";
 import { useCurrentKeyHints } from "./keyHints";
+import { SystemStats } from "./SystemStats";
 
 export function KeyBar() {
   const hints = useCurrentKeyHints();
@@ -16,6 +17,7 @@ export function KeyBar() {
         </span>
       ))}
       <span className="th-keybar-status">
+        <SystemStats />
         <GlyphCounts counts={countByState(agents)} labelled />
       </span>
     </footer>
