@@ -4,6 +4,7 @@ import type {
   AgentTypeSummary,
   Artifact,
   Attachment,
+  Pipeline,
   ClaudeUsage,
   SystemStats,
   Conversation,
@@ -244,7 +245,24 @@ export const aUsage = (over: Partial<ClaudeUsage> = {}): ClaudeUsage => ({
   ...over,
 });
 
-export const anAgentTypeSummary = (over: Partial<AgentTypeSummary> = {}): AgentTypeSummary => ({
+export const aPipeline = (over: Partial<Pipeline> = {}): Pipeline => ({
+  name: "standard",
+  description: "plan then build",
+  repos: [],
+  default: false,
+  work: "build",
+  steps: [
+    { id: "plan", agent: "planner" },
+    { id: "build", agent: "builder" },
+  ],
+  source: 'name = "standard"\nwork = "build"\n',
+  updatedAt: "2026-01-01T00:00:00Z",
+  origin: "user",
+  plugin: null,
+  ...over,
+});
+
+export const anAgentTypeSummary =(over: Partial<AgentTypeSummary> = {}): AgentTypeSummary => ({
   name: "builder",
   description: "implements a task, tests first",
   adapter: "claude",
