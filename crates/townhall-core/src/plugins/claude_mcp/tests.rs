@@ -28,7 +28,10 @@ fn declared() -> TownhallManifest {
 
 fn without_townhall() -> String {
     let mut all: Value = serde_json::from_str(MCP).unwrap();
-    all["mcpServers"].as_object_mut().unwrap().remove("townhall");
+    all["mcpServers"]
+        .as_object_mut()
+        .unwrap()
+        .remove("townhall");
     all.to_string()
 }
 
@@ -92,7 +95,10 @@ fn merging_keeps_townhalls_own_server_and_adds_the_plugins() {
         keys,
         ["plugin_notes_notes", "plugin_notes_remote", "townhall"]
     );
-    assert_eq!(merged["mcpServers"]["townhall"], own["mcpServers"]["townhall"]);
+    assert_eq!(
+        merged["mcpServers"]["townhall"],
+        own["mcpServers"]["townhall"]
+    );
     let alone: Value = serde_json::from_str(&merge(None, &[found])).unwrap();
     assert!(alone["mcpServers"].get("townhall").is_none());
     assert_eq!(merge(None, &[]), json!({"mcpServers": {}}).to_string());

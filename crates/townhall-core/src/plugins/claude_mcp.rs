@@ -87,7 +87,8 @@ pub fn contribution(
         let mut server = server.clone();
         with_root(&mut server, &root);
         declared_env_only(&mut server, &manifest.permissions.env);
-        out.servers.push((format!("plugin_{plugin}_{name}"), server));
+        out.servers
+            .push((format!("plugin_{plugin}_{name}"), server));
         out.tools.extend(approved_tools(plugin, name, tools));
     }
     Ok(out)

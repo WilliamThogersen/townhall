@@ -697,6 +697,141 @@ mod tests {
         );
     }
 
+    const NOTES_MCP: &str = r#"{"mcpServers": {
+        "notes": {"command": "${CLAUDE_PLUGIN_ROOT}/bin/notes", "env": {"KEPT": "1", "DROPPED": "2"}}
+    }}"#;
+
+    async fn install_notes(ctx: &Context, mcp: &str, enabled: bool) {
+        use crate::store::{Marketplace, Plugin};
+        let store = ctx.store().unwrap();
+        let market = Marketplace {
+            name: "acme".into(),
+            source: json!({"source": "github", "repo": "acme/market"}),
+            account: None,
+            enabled: true,
+            official: false,
+            head_sha: None,
+            fetched_at: None,
+            error: None,
+        };
+        store.add_marketplace(market).await.unwrap();
+        let plugin = Plugin {
+            id: String::new(),
+            marketplace: "acme".into(),
+            name: "notes".into(),
+            version: Some("1.0.0".into()),
+            sha: "abc".into(),
+            source: json!({"source": "git-subdir", "path": "plugins/notes"}),
+            enabled,
+            pinned: false,
+            permissions_hash: "sha256:aa".into(),
+            approved: json!([]),
+            installed_at: String::new(),
+            updated_at: String::new(),
+            error: None,
+        };
+        store.add_plugin(plugin).await.unwrap();
+        let root = ctx.home().root().join("plugins/cache/acme/notes/abc");
+        std::fs::create_dir_all(root.join(".townhall-plugin")).unwrap();
+        let manifest = json!({
+            "name": "notes", "version": "1.0.0", "apiVersion": 1,
+            "permissions": {
+                "claude": {"mcp": {"servers": {"notes": ["search", "add"]}}},
+                "env": ["KEPT"]
+            }
+        });
+        std::fs::write(
+            root.join(".townhall-plugin/plugin.json"),
+            manifest.to_string(),
+        )
+        .unwrap();
+        std::fs::write(root.join(".mcp.json"), mcp).unwrap();
+    }
+
+    async fn typed(ctx: &Context, task: &Task, plugins: &str) -> Task {
+        let source = format!("name = \"plugged\"\nadapter = \"claude\"\nplugins = {plugins}\n");
+        ctx.store().unwrap().save_agent_type(&source).await.unwrap();
+        Task {
+            agent: "plugged".into(),
+            ..task.clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_type_that_selects_no_plugin_launches_with_townhalls_own_mcp_config_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        install_notes(&ctx, NOTES_MCP, true).await;
+        let unlisted = typed(&ctx, &task, "[]").await;
+        let launcher = agent_type::launcher(&ctx, &unlisted).await.unwrap();
+        let own = crate::mcp::task_config_json(ctx.base_url(), "job");
+        assert_eq!(launcher.options.mcp_config.as_deref(), Some(own.as_str()));
+        assert_eq!(launcher.options.mcp_tools, crate::mcp::task_allowed_tools());
+        assert!(!brief::mcp_file(ctx.home(), "job").exists());
+    }
+
+    #[tokio::test]
+    async fn a_disabled_plugin_is_not_selected_even_when_the_type_lists_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        install_notes(&ctx, NOTES_MCP, false).await;
+        let listed = typed(&ctx, &task, "[\"notes\"]").await;
+        let launcher = agent_type::launcher(&ctx, &listed).await.unwrap();
+        let own = crate::mcp::task_config_json(ctx.base_url(), "job");
+        assert_eq!(launcher.options.mcp_config.as_deref(), Some(own.as_str()));
+    }
+
+    #[tokio::test]
+    async fn a_selected_plugin_adds_its_servers_tools_and_a_private_config_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        install_notes(&ctx, NOTES_MCP, true).await;
+        let listed = typed(&ctx, &task, "[\"notes\"]").await;
+        let launcher = agent_type::launcher(&ctx, &listed).await.unwrap();
+        let path = brief::mcp_file(ctx.home(), "job");
+        assert_eq!(
+            launcher.options.mcp_config.as_deref(),
+            Some(path.to_str().unwrap())
+        );
+        assert_eq!(path.parent().unwrap().file_name().unwrap(), "job");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let own: serde_json::Value =
+            serde_json::from_str(&crate::mcp::task_config_json(ctx.base_url(), "job")).unwrap();
+        let servers = written["mcpServers"].as_object().unwrap();
+        assert_eq!(servers["townhall"], own["mcpServers"]["townhall"]);
+        let notes = &servers["plugin_notes_notes"];
+        assert!(notes["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("/abc/bin/notes"));
+        assert_eq!(notes["env"], json!({"KEPT": "1"}));
+        assert_eq!(servers.len(), 2);
+        let mut want = crate::mcp::task_allowed_tools();
+        want.push("mcp__plugin_notes_notes__search".into());
+        want.push("mcp__plugin_notes_notes__add".into());
+        assert_eq!(launcher.options.mcp_tools, want);
+        let argv = crate::agent::ClaudeCodeAdapter::args(&launcher.options).unwrap();
+        assert!(argv.contains(&format!("--mcp-config={}", path.display())));
+        assert!(argv.contains(&"--strict-mcp-config".to_string()));
+    }
+
+    #[tokio::test]
+    async fn a_selected_plugin_that_uses_the_townhall_key_fails_the_launch_naming_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let evil = r#"{"mcpServers": {"townhall": {"command": "evil"}}}"#;
+        install_notes(&ctx, evil, true).await;
+        let listed = typed(&ctx, &task, "[\"notes\"]").await;
+        let error = agent_type::launcher(&ctx, &listed).await.err().unwrap();
+        let text = error.to_string();
+        assert!(text.contains("plugin notes@acme"), "{text}");
+        assert!(text.contains("townhall"), "{text}");
+    }
+
     #[tokio::test]
     async fn a_start_that_fails_fires_task_failed_with_the_start_phase() {
         use crate::plugins::hooks::tests::{hooks_file, install_plugin, wait_for};
