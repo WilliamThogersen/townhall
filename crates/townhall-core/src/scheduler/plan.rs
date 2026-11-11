@@ -247,7 +247,7 @@ mod tests {
         let files = [PathBuf::from("/a/b.png")];
         for text in [
             brief_text("fix", "do it", &Done::default(), &[], &[]),
-            brief_text("fix", "do it\n\n", &done, &files, &[hand.clone()]),
+            brief_text("fix", "do it\n\n", &done, &files, &[hand]),
             String::new(),
         ] {
             assert_eq!(with_plugin_sections(text.clone(), &[]), text);
