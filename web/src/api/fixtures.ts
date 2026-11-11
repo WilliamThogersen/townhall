@@ -262,7 +262,7 @@ export const aPipeline = (over: Partial<Pipeline> = {}): Pipeline => ({
   ...over,
 });
 
-export const anAgentTypeSummary =(over: Partial<AgentTypeSummary> = {}): AgentTypeSummary => ({
+export const anAgentTypeSummary = (over: Partial<AgentTypeSummary> = {}): AgentTypeSummary => ({
   name: "builder",
   description: "implements a task, tests first",
   adapter: "claude",
