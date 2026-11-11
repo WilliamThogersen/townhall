@@ -19,6 +19,7 @@
 
 mod agent_type;
 mod brief;
+mod ci;
 mod gate;
 mod launch;
 mod merged;
@@ -69,6 +70,7 @@ pub struct Pass {
     pub reflected: Vec<String>,
     /// Tasks whose check this pass started (`verify.rs`).
     pub verifying: Vec<String>,
+    pub reading_ci: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -130,10 +132,12 @@ pub async fn run_once(ctx: &Context) -> Result<Pass> {
         tasks = ctx.store()?.all_tasks().await?;
     }
     let verifying = verify::start(ctx, &tasks);
+    let reading_ci = ci::start(ctx, &tasks);
     let pass = launch::start_ready(ctx, &tasks).await?;
     let (merged, warnings) = merged::detect(ctx, &tasks).await?;
     Ok(Pass {
         verifying,
+        reading_ci,
         merged,
         reflected,
         warnings: [pass.warnings.clone(), reflect_warnings, warnings].concat(),

@@ -33,7 +33,7 @@ fn hands_off(task: &Task) -> bool {
     }
     match task.state {
         TaskState::Queued | TaskState::Merged | TaskState::InCi | TaskState::InReview => true,
-        TaskState::Error => task.blocked.is_some(),
+        TaskState::Error | TaskState::NeedsYou => task.blocked.is_some(),
         _ => false,
     }
 }
@@ -138,7 +138,8 @@ pub(super) fn plan(task: &Task, now: &AgentState, before: Option<&AgentState>) -
 
 /// The agent is gone, worktree and session: a task still running or waiting ended.
 pub(super) fn removed(task: &Task) -> Option<Change> {
-    matches!(task.state, TaskState::Working | TaskState::NeedsYou).then(|| Change {
+    let running = matches!(task.state, TaskState::Working | TaskState::NeedsYou);
+    (running && task.blocked.is_none()).then(|| Change {
         state: Some(TaskState::Ended),
         entry: Some(agent_line(&task.name, AgentEvent::Ended, REMOVED.into())),
         verify: None,
@@ -372,6 +373,19 @@ mod tests {
         assert_eq!(asked.state, Some(TaskState::NeedsYou));
         let passed = checked(TaskState::Ended, Some(verify(VerifyPhase::Passed, 0, None)));
         assert_eq!(plan(&passed, &AgentState::Ended, None), None);
+    }
+
+    #[test]
+    fn a_task_parked_for_the_user_stays_parked() {
+        let parked = Task {
+            blocked: Some("its pull request still has pending checks".into()),
+            ..task(TaskState::NeedsYou)
+        };
+        assert_eq!(plan(&parked, &AgentState::Ended, None), None);
+        assert_eq!(removed(&parked), None);
+        let asking_user = task(TaskState::NeedsYou);
+        assert!(plan(&asking_user, &AgentState::Ended, None).is_some());
+        assert!(removed(&asking_user).is_some());
     }
 
     #[test]

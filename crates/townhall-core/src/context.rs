@@ -70,6 +70,38 @@ impl std::fmt::Debug for FreeSource {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pacing {
+    pub check_backoff: Duration,
+    pub check_backoff_max: Duration,
+    pub ci_poll: Duration,
+    pub ci_timeout: Duration,
+    pub ci_waits: usize,
+}
+
+impl Default for Pacing {
+    fn default() -> Self {
+        Self {
+            check_backoff: Duration::from_secs(60),
+            check_backoff_max: Duration::from_secs(600),
+            ci_poll: Duration::from_secs(30),
+            ci_timeout: Duration::from_secs(3600),
+            ci_waits: 3,
+        }
+    }
+}
+
+type Sleeper = Arc<dyn Fn(Duration) + Send + Sync>;
+
+#[derive(Default)]
+struct SleepSource(Mutex<Option<Sleeper>>);
+
+impl std::fmt::Debug for SleepSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SleepSource")
+    }
+}
+
 #[derive(Debug)]
 struct Inner {
     startup: Workspace,
@@ -82,6 +114,8 @@ struct Inner {
     notes: Notes,
     disk_told: Mutex<HashSet<String>>,
     free_source: FreeSource,
+    pacing: Mutex<Pacing>,
+    sleeper: SleepSource,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +180,8 @@ impl Context {
             notes: Notes::default(),
             disk_told: Mutex::default(),
             free_source: FreeSource::default(),
+            pacing: Mutex::new(Pacing::default()),
+            sleeper: SleepSource::default(),
         };
         Self {
             inner: Arc::new(inner),
@@ -239,6 +275,39 @@ impl Context {
             .0
             .lock()
             .unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(read));
+    }
+
+    pub fn pacing(&self) -> Pacing {
+        *self.inner.pacing.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub fn set_pacing(&self, pacing: Pacing) {
+        *self.inner.pacing.lock().unwrap_or_else(|p| p.into_inner()) = pacing;
+    }
+
+    pub fn sleep(&self, delay: Duration) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let fake = self
+            .inner
+            .sleeper
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        async move {
+            match fake {
+                Some(record) => record(delay),
+                None => tokio::time::sleep(delay).await,
+            }
+        }
+    }
+
+    pub fn set_sleeper(&self, record: impl Fn(Duration) + Send + Sync + 'static) {
+        *self
+            .inner
+            .sleeper
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(record));
     }
 
     pub fn notify_delay(&self) -> Duration {

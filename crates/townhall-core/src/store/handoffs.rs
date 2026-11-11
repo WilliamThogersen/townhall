@@ -57,6 +57,7 @@ fn target(conn: &Connection, to: &str) -> Result<String> {
 enum Takes {
     Running,
     Ended,
+    Waiting,
 }
 
 impl Takes {
@@ -64,6 +65,7 @@ impl Takes {
         match self {
             Self::Running => matches!(state, TaskState::Working | TaskState::NeedsYou),
             Self::Ended => state == TaskState::Ended,
+            Self::Waiting => state == TaskState::InCi,
         }
     }
 
@@ -74,6 +76,11 @@ impl Takes {
             }
             Self::Ended => {
                 format!("task `{task}` has not ended: only an ended task can be handed on")
+            }
+            Self::Waiting => {
+                format!(
+                    "task `{task}` is not waiting for CI: only a waiting task can be relaunched"
+                )
             }
         }
     }
@@ -254,6 +261,10 @@ impl Store {
     ) -> Result<Handoff> {
         self.hand_over(name, to, reason, summary, Takes::Ended)
             .await
+    }
+
+    pub async fn hand_after_ci(&self, name: &str, to: &str, reason: &str) -> Result<Handoff> {
+        self.hand_over(name, to, reason, "", Takes::Waiting).await
     }
 
     async fn hand_over(
