@@ -6,12 +6,35 @@ use super::names::MAX_STEP_ID_LEN;
 use super::vars::{tokens, Token, Var};
 use super::workflow::{Step, WorkflowDef, MAX_STEPS};
 
+#[derive(Debug, Clone, Copy)]
+pub struct KnownAgent<'a> {
+    pub name: &'a str,
+    pub requires: &'a [String],
+}
+
+impl<'a> KnownAgent<'a> {
+    pub fn new(name: &'a str, requires: &'a [String]) -> Self {
+        Self { name, requires }
+    }
+}
+
 /// Check a workflow against every rule and return all errors found, workflow
 /// level first, then each step in written order. Over `MAX_STEPS` steps, only
 /// the workflow level is checked.
 pub fn validate_workflow(
     def: &WorkflowDef,
     known_agents: &[&str],
+) -> Result<(), Vec<DefinitionError>> {
+    let agents: Vec<KnownAgent> = known_agents
+        .iter()
+        .map(|name| KnownAgent::new(name, &[]))
+        .collect();
+    validate_pipeline(def, &agents)
+}
+
+pub fn validate_pipeline(
+    def: &WorkflowDef,
+    known_agents: &[KnownAgent],
 ) -> Result<(), Vec<DefinitionError>> {
     if def.steps.len() > MAX_STEPS {
         return into_result(workflow_errors(def));
@@ -36,6 +59,11 @@ fn workflow_errors(def: &WorkflowDef) -> Vec<DefinitionError> {
         DefinitionError::field(DefKind::Workflow, &def.name, field, message)
     };
     let name = invalid_name(&def.name).map(|m| error("name", m));
+    let work = def
+        .work
+        .as_deref()
+        .filter(|id| !def.steps.iter().any(|s| s.id == *id))
+        .map(|id| format!("\"{id}\" is not a step"));
     let count = def.steps.len();
     let steps = match count {
         0 => Some("is missing: add at least one [[step]]".to_string()),
@@ -44,13 +72,14 @@ fn workflow_errors(def: &WorkflowDef) -> Vec<DefinitionError> {
     };
     name.into_iter()
         .chain(steps.map(|m| error("step", m)))
+        .chain(work.map(|m| error("work", m)))
         .collect()
 }
 
 struct StepCheck<'a> {
     def: &'a WorkflowDef,
     graph: &'a Graph<'a>,
-    known_agents: &'a [&'a str],
+    known_agents: &'a [KnownAgent<'a>],
     index: usize,
     ancestors: HashSet<usize>,
 }
@@ -73,6 +102,7 @@ impl StepCheck<'_> {
             self.check_cycles(cycles),
             self.check_from(),
             self.check_prompt(),
+            self.check_requires(),
         ]
         .concat()
     }
@@ -102,10 +132,50 @@ impl StepCheck<'_> {
 
     fn check_agent(&self) -> Vec<DefinitionError> {
         let agent = &self.step().agent;
-        let saved = self.known_agents.contains(&agent.as_str());
+        let saved = self.known_agents.iter().any(|a| a.name == agent);
         (!saved)
             .then(|| self.error("agent", format!("\"{agent}\" is not a saved agent")))
             .into_iter()
+            .collect()
+    }
+
+    fn check_requires(&self) -> Vec<DefinitionError> {
+        let step = self.step();
+        let Some(agent) = self.known_agents.iter().find(|a| a.name == step.agent) else {
+            return Vec::new();
+        };
+        agent
+            .requires
+            .iter()
+            .flat_map(|wanted| {
+                let before: Vec<&Step> = self
+                    .ancestors
+                    .iter()
+                    .map(|&j| &self.def.steps[j])
+                    .filter(|s| s.agent.eq_ignore_ascii_case(wanted))
+                    .collect();
+                let always = before.iter().any(|s| s.when.is_none());
+                let missing = (!always).then(|| {
+                    self.error(
+                        "agent",
+                        format!(
+                            "\"{}\" requires \"{wanted}\": add a step of that type that this step waits for, with no `when`",
+                            step.agent
+                        ),
+                    )
+                });
+                let conditional = before.iter().find(|s| s.when.is_some());
+                let both = step.when.as_ref().zip(conditional).map(|(_, found)| {
+                    self.error(
+                        "when",
+                        format!(
+                            "cannot be set: the step requires \"{wanted}\", which runs as a step that has one (\"{}\")",
+                            found.id
+                        ),
+                    )
+                });
+                missing.into_iter().chain(both)
+            })
             .collect()
     }
 
