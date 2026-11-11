@@ -40,6 +40,8 @@ pub struct Workflow {
     pub def: WorkflowDef,
     pub source: String,
     pub updated_at: String,
+    pub origin: Origin,
+    pub plugin: Option<String>,
 }
 
 /// One row of the library's agent list.

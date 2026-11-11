@@ -4,6 +4,7 @@ import type {
   AgentTypeSummary,
   Artifact,
   Attachment,
+  Pipeline,
   ClaudeUsage,
   SystemStats,
   Conversation,
@@ -241,6 +242,23 @@ export const aUsage = (over: Partial<ClaudeUsage> = {}): ClaudeUsage => ({
   weekly: { usedPercent: 54, resetsAt: Date.UTC(2026, 10, 11, 7, 0), ratePerHour: 1.125 },
   updatedAt: Date.UTC(2026, 10, 5, 11, 39),
   error: null,
+  ...over,
+});
+
+export const aPipeline = (over: Partial<Pipeline> = {}): Pipeline => ({
+  name: "standard",
+  description: "plan then build",
+  repos: [],
+  default: false,
+  work: "build",
+  steps: [
+    { id: "plan", agent: "planner" },
+    { id: "build", agent: "builder" },
+  ],
+  source: 'name = "standard"\nwork = "build"\n',
+  updatedAt: "2026-01-01T00:00:00Z",
+  origin: "user",
+  plugin: null,
   ...over,
 });
 

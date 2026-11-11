@@ -77,7 +77,7 @@ export async function exchange(
   }
   const env = parseEnvelope(json);
   if (!res.ok || !env.success) {
-    const err = new ApiError("http", env.error ?? `HTTP ${res.status}`, res.status);
+    const err = new ApiError("http", env.error ?? `HTTP ${res.status}`, res.status, env.data);
     if (res.status >= 500) return fail(err, "api.http");
     throw err;
   }

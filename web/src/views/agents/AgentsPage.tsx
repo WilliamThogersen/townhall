@@ -6,12 +6,21 @@ import { Banner } from "../../ui/Banner";
 import { DRAG_REGION } from "../../ui/dragRegion";
 import { EmptyState } from "../../ui/EmptyState";
 import { Loading } from "../../ui/Loading";
+import { Segmented, type SegmentedOption } from "../../ui/Segmented";
 import { AgentTypeDetail } from "./AgentTypeDetail";
 import { AgentTypeRow } from "./AgentTypeRow";
 import { defaultTypeName, filterTypes, sortTypes, usageOf } from "./agentTypes";
 import { dropLegacyAvatarPrefs } from "./legacyAvatarPrefs";
+import { PipelinesSection } from "./PipelinesSection";
 import "../settings/cap.css";
 import "./agents.css";
+
+type Section = "types" | "pipelines";
+
+const SECTIONS: readonly SegmentedOption<Section>[] = [
+  { value: "types", label: "agent types" },
+  { value: "pipelines", label: "pipelines" },
+];
 
 const ROW_STEPS: Readonly<Record<string, number>> = { ArrowDown: 1, ArrowUp: -1 };
 
@@ -22,6 +31,8 @@ export function AgentsPage() {
   useEffect(dropLegacyAvatarPrefs, []);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [section, setSection] = useState<Section>("types");
+  const types = section === "types";
   const listRef = useRef<HTMLDivElement>(null);
   const defaultName = data === null ? null : defaultTypeName(data);
   const visible = useMemo(
@@ -55,19 +66,23 @@ export function AgentsPage() {
     <div className="th-page">
       <header className="th-page-head" {...DRAG_REGION}>
         <h1>agents</h1>
-        {data === null ? null : <span className="th-cap">{data.length}</span>}
+        {data === null || !types ? null : <span className="th-cap">{data.length}</span>}
+        <div className="th-page-head-actions">
+          <Segmented name="agents-section" label="section" value={section} options={SECTIONS} onChange={setSection} />
+        </div>
       </header>
       <div className="th-page-body">
-        {error !== null ? <Banner level="error">{`agent types not loaded: ${error}`}</Banner> : null}
-        {data === null && loading ? (
+        {section === "pipelines" ? <PipelinesSection /> : null}
+        {types && error !== null ? <Banner level="error">{`agent types not loaded: ${error}`}</Banner> : null}
+        {types && data === null && loading ? (
           <div className="th-empty">
             <Loading verb="loading agent types" />
           </div>
         ) : null}
-        {data !== null && data.length === 0 ? (
+        {types && data !== null && data.length === 0 ? (
           <EmptyState title="no agent types yet">save one and it shows up here with its TOML</EmptyState>
         ) : null}
-        {data !== null && data.length > 0 ? (
+        {types && data !== null && data.length > 0 ? (
           <div className="th-agents">
             <div className="th-agent-column">
               <input

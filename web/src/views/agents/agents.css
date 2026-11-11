@@ -264,6 +264,56 @@
   color: var(--th-danger);
 }
 
+.th-pipeline-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--th-space-2) var(--th-space-4);
+  border-bottom: var(--th-border) solid var(--th-line);
+}
+
+.th-pipeline-detail .th-agent-detail-head {
+  flex-wrap: wrap;
+}
+
+.th-pipeline-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--th-space-2);
+  min-width: 0;
+}
+
+.th-pipeline-detail .th-pipeline-source {
+  display: block;
+  width: calc(100% - 2 * var(--th-space-4));
+  height: auto;
+  min-height: 24em;
+  margin: var(--th-space-3) var(--th-space-4) 0;
+  padding: var(--th-space-2) 10px;
+  box-sizing: border-box;
+  font-family: var(--th-font-mono, monospace);
+  font-size: var(--th-text-sm);
+  resize: vertical;
+}
+
+.th-pipeline-detail .th-pipeline-source:focus-visible {
+  border-color: var(--th-accent);
+  box-shadow: none;
+}
+
+.th-pipeline-errors {
+  margin: var(--th-space-2) var(--th-space-4) 0;
+  padding-left: var(--th-space-4);
+  color: var(--th-danger);
+}
+
+.th-pipeline-detail > .th-banner {
+  margin: var(--th-space-2) var(--th-space-4) 0;
+}
+
 /* ---------- usage ---------- */
 
 .th-usage {

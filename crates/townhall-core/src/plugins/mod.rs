@@ -12,6 +12,7 @@ pub mod manifest;
 pub mod market;
 pub mod marketplace;
 mod official;
+pub(crate) mod pipelines;
 pub mod prompts;
 pub mod schema;
 mod sha256;
