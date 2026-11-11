@@ -89,7 +89,7 @@ fn merging_keeps_townhalls_own_server_and_adds_the_plugins() {
     let found = contribution("notes", Path::new(ROOT), &declared(), &without_townhall()).unwrap();
     let own = json!({"mcpServers": {"townhall": {"type": "http", "url": "http://x/mcp"}}});
     let merged: Value =
-        serde_json::from_str(&merge(Some(&own.to_string()), &[found.clone()])).unwrap();
+        serde_json::from_str(&merge(Some(&own.to_string()), std::slice::from_ref(&found))).unwrap();
     let keys: Vec<&String> = merged["mcpServers"].as_object().unwrap().keys().collect();
     assert_eq!(
         keys,
