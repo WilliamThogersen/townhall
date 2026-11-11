@@ -386,6 +386,6 @@ describe("ConversationPage composer and live thread", () => {
     const log = screen.getByRole("log", { name: "Thread" });
     expect(log.querySelector("strong")).toHaveTextContent("it");
     expect(within(log).getByRole("status")).toHaveTextContent("thinking");
-    expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeEnabled();
   });
 });

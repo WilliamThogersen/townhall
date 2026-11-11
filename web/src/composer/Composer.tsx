@@ -18,9 +18,11 @@ import { useUploads, type Uploads } from "../attachments/useUploads";
 import { ACCEPTED_FILES } from "../attachments/validate";
 import { ComposerTools } from "./ComposerTools";
 import { readDraft, writeDraft } from "./drafts";
+import { QueueList } from "./QueueList";
 import { readReply, useReply, writeReply } from "./replies";
 import { ReplyBar } from "./ReplyBar";
 import { useAutoGrow } from "./useAutoGrow";
+import { useMessageQueue, type MessageQueue } from "./useMessageQueue";
 import { useSubmit, type SubmitHandler } from "./useSubmit";
 import { helpText, LOOKS, THINKING_PLACEHOLDER, type ComposerVariant } from "./variants";
 import "./composer.css";
@@ -82,25 +84,59 @@ function useComposerHandle(
 
 interface InputActions {
   readonly uploads: Uploads;
+  readonly queue: MessageQueue;
+  readonly conversationId: string | null;
+  readonly busy: boolean;
+  readonly disabled: boolean;
+  readonly text: string;
   readonly submit: () => Promise<void>;
   readonly setText: (text: string) => void;
   readonly clearError: () => void;
   readonly cancelReply: () => boolean;
 }
 
-function useInputHandlers({ uploads, submit, setText, clearError, cancelReply }: InputActions) {
+const hasModifier = (event: KeyboardEvent): boolean =>
+  event.shiftKey || event.ctrlKey || event.altKey || event.metaKey;
+
+function useInputHandlers(actions: InputActions) {
+  const { uploads, queue, conversationId, busy, disabled, text, submit, setText, clearError, cancelReply } = actions;
   const onChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setText(event.target.value);
     clearError();
+    queue.clearError();
+  };
+  const addToQueue = () => {
+    if (disabled || uploads.uploading) return;
+    const reply = conversationId === null ? null : readReply(conversationId);
+    if (!queue.add(text.trim(), uploads.attachmentIds, reply)) return;
+    setText("");
+    uploads.clear();
+    cancelReply();
+  };
+  const pullLast = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (hasModifier(event) || text !== "") return;
+    const pulled = queue.pullLast();
+    if (pulled === null) return;
+    event.preventDefault();
+    setText(pulled.text);
+    if (conversationId !== null && pulled.reply !== null) writeReply(conversationId, pulled.reply);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Escape") {
-      if (!cancelReply()) event.currentTarget.blur();
+      if (queue.restore()) {
+        setText("");
+        cancelReply();
+      } else if (!cancelReply()) event.currentTarget.blur();
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      pullLast(event);
       return;
     }
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
-    void submit();
+    if (busy || queue.items.length > 0) addToQueue();
+    else void submit();
   };
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = clipboardFiles(event.clipboardData);
@@ -135,13 +171,26 @@ function useComposer(props: ComposerProps) {
     writeReply(conversationId, null);
     return true;
   }, [conversationId]);
+  const queue = useMessageQueue({ conversationId, busy, disabled, onSubmit: props.onSubmit });
+  const { editing, finishEdit } = queue;
+  const { onSubmit } = props;
+  const submitEdited = useCallback<SubmitHandler>(
+    (message, attachmentIds, files) => onSubmit(message, [...(editing?.attachmentIds ?? []), ...attachmentIds], files),
+    [onSubmit, editing],
+  );
   const onSent = useCallback(() => {
     setText("");
     cancelReply();
-  }, [setText, cancelReply]);
-  const sending = useSubmit({ text, uploads, blocked: disabled || busy, onSubmit: props.onSubmit, onSent });
+    finishEdit();
+  }, [setText, cancelReply, finishEdit]);
+  const sending = useSubmit({ text, uploads, blocked: disabled || busy, onSubmit: submitEdited, onSent });
   const handlers = useInputHandlers({
     uploads,
+    queue,
+    conversationId,
+    busy,
+    disabled,
+    text,
     submit: sending.submit,
     setText,
     clearError: sending.clearError,
@@ -167,12 +216,26 @@ function useComposer(props: ComposerProps) {
     onSubmitForm,
     reply,
     cancelReply,
+    queue,
   };
 }
 
 export function Composer(props: ComposerProps) {
-  const { look, disabled, busy, inputRef, fileRef, text, uploads, sending, handlers, onSubmitForm, reply, cancelReply } =
-    useComposer(props);
+  const {
+    look,
+    disabled,
+    busy,
+    inputRef,
+    fileRef,
+    text,
+    uploads,
+    sending,
+    handlers,
+    onSubmitForm,
+    reply,
+    cancelReply,
+    queue,
+  } = useComposer(props);
   const submitLabel = props.submitLabel ?? look.submitLabel;
   const restingPlaceholder = props.placeholder ?? (uploads.enabled ? look.attachPlaceholder : look.placeholder);
   return (
@@ -182,6 +245,7 @@ export function Composer(props: ComposerProps) {
       )}
       <div className="th-composer-box">
         {reply === null ? null : <ReplyBar target={reply} onCancel={() => void cancelReply()} />}
+        <QueueList items={queue.items} onRemove={queue.remove} />
         <UploadChips items={uploads.items} onRemove={uploads.remove} />
         <span className="th-composer-sign" aria-hidden="true">
           ›
@@ -193,7 +257,7 @@ export function Composer(props: ComposerProps) {
           value={text}
           placeholder={busy ? THINKING_PLACEHOLDER : restingPlaceholder}
           aria-label={props.ariaLabel ?? look.ariaLabel}
-          disabled={disabled || busy}
+          disabled={disabled}
           readOnly={sending.submitting}
           autoFocus={props.autoFocus}
           onChange={handlers.onChange}
@@ -204,7 +268,7 @@ export function Composer(props: ComposerProps) {
           look={look}
           submitLabel={submitLabel}
           help={helpText(submitLabel, uploads.enabled)}
-          error={sending.error ?? uploads.error}
+          error={sending.error ?? queue.error ?? uploads.error}
           tools={props.tools}
           onAttach={uploads.enabled ? () => fileRef.current?.click() : null}
           attachDisabled={disabled}
