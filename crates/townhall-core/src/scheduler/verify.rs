@@ -16,10 +16,12 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use serde_json::json;
 use tokio::process::Command;
 
 use crate::context::Context;
 use crate::model::{AgentEvent, Done, EntryBody, Task, TaskState, Verify, VerifyPhase};
+use crate::plugins::hooks;
 use crate::{runner, Error, Result};
 
 use super::plan;
@@ -99,6 +101,11 @@ async fn verify(ctx: &Context, task: &Task) -> Result<()> {
                     plan::capped(&output, 500)
                 );
                 runner::notify(ctx, &task.conversation_id, said);
+                hooks::fire(
+                    ctx,
+                    "task.failed",
+                    json!({"task": failed, "reason": plan::capped(&output, 500), "phase": "check"}),
+                );
             }
             Ok(())
         }

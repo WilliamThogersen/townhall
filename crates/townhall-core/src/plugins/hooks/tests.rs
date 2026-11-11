@@ -31,8 +31,20 @@ impl Fixture {
     }
 }
 
-fn hooks_file(event: &str, command: &str, timeout: u64) -> String {
+pub(crate) fn hooks_file(event: &str, command: &str, timeout: u64) -> String {
     json!({"hooks": {event: [{"command": command, "timeout": timeout}]}}).to_string()
+}
+
+pub(crate) async fn wait_for(path: &Path) -> String {
+    for _ in 0..100 {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if !text.is_empty() {
+                return text;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("{} was never written", path.display());
 }
 
 async fn install_with(hooks: &str, approved: Value, enabled: bool) -> Fixture {
@@ -40,6 +52,21 @@ async fn install_with(hooks: &str, approved: Value, enabled: bool) -> Fixture {
     let home = Home::at(dir.path().join("home"));
     let ws = Workspace::new(home.clone(), dir.path()).unwrap();
     let ctx = Context::open(ws, ContextOptions::default()).unwrap();
+    let data = install_plugin(&ctx, hooks, approved, enabled).await;
+    Fixture {
+        _dir: dir,
+        ctx,
+        data,
+    }
+}
+
+pub(crate) async fn install_plugin(
+    ctx: &Context,
+    hooks: &str,
+    approved: Value,
+    enabled: bool,
+) -> PathBuf {
+    let home = ctx.home().clone();
     let store = ctx.store().unwrap();
     store
         .add_marketplace(Marketplace {
@@ -79,15 +106,15 @@ async fn install_with(hooks: &str, approved: Value, enabled: bool) -> Fixture {
         "permissions": {"hooks": ["task.merged"]},
         "contributes": {"hooks": "townhall-hooks.json"}
     });
-    std::fs::write(root.join(".townhall-plugin/plugin.json"), manifest.to_string()).unwrap();
+    std::fs::write(
+        root.join(".townhall-plugin/plugin.json"),
+        manifest.to_string(),
+    )
+    .unwrap();
     std::fs::write(root.join("townhall-hooks.json"), hooks).unwrap();
     let data = data_root(&home, "acme", "lint").unwrap();
     std::fs::create_dir_all(&data).unwrap();
-    Fixture {
-        _dir: dir,
-        ctx,
-        data,
-    }
+    data
 }
 
 async fn install(command: &str, timeout: u64) -> Fixture {
@@ -122,10 +149,20 @@ async fn a_hook_sees_its_own_variables_and_no_ambient_secrets() {
         "TOWNHALL_PLUGIN=lint@acme",
         "TOWNHALL_API_URL=http://127.0.0.1:7777",
     ] {
-        assert!(seen.lines().any(|l| l == wanted), "{wanted} missing in {seen}");
+        assert!(
+            seen.lines().any(|l| l == wanted),
+            "{wanted} missing in {seen}"
+        );
     }
-    for name in ["TOWNHALL_API_TOKEN", "TOWNHALL_PLUGIN_ROOT", "TOWNHALL_PLUGIN_DATA"] {
-        assert!(seen.contains(&format!("{name}=")), "{name} missing in {seen}");
+    for name in [
+        "TOWNHALL_API_TOKEN",
+        "TOWNHALL_PLUGIN_ROOT",
+        "TOWNHALL_PLUGIN_DATA",
+    ] {
+        assert!(
+            seen.contains(&format!("{name}=")),
+            "{name} missing in {seen}"
+        );
     }
     assert!(!seen.contains("ANTHROPIC_"), "{seen}");
     let data_line = format!("TOWNHALL_PLUGIN_DATA={}", f.data.display());
@@ -170,7 +207,11 @@ async fn a_hanging_hook_is_killed_with_its_children_at_the_timeout() {
     let f = install("sleep 60 & echo $! > child.pid; wait", 1).await;
     let started = Instant::now();
     run(&f.ctx, "task.merged", merged()).await;
-    assert!(started.elapsed() < Duration::from_secs(10), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        started.elapsed()
+    );
     let pid: i32 = f.read("child.pid").trim().parse().unwrap();
     let mut alive = true;
     for _ in 0..50 {
@@ -188,7 +229,11 @@ async fn firing_returns_at_once_while_a_slow_hook_runs() {
     let f = install("exec sleep 60", 60).await;
     let started = Instant::now();
     fire(&f.ctx, "task.merged", merged());
-    assert!(started.elapsed() < Duration::from_millis(200), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_millis(200),
+        "{:?}",
+        started.elapsed()
+    );
 }
 
 #[tokio::test]
@@ -242,6 +287,20 @@ async fn a_disabled_plugin_or_an_unapproved_event_runs_nothing() {
     assert!(!on.has("ran"));
     run(&on.ctx, "task.merged", merged()).await;
     assert!(on.has("ran"));
+}
+
+#[tokio::test]
+async fn ending_a_conversation_fires_its_event_off_the_caller() {
+    let hooks = hooks_file("conversation.ended", "cat > payload.json", 10);
+    let dir = tempfile::TempDir::new().unwrap();
+    let ws = Workspace::new(Home::at(dir.path().join("home")), dir.path()).unwrap();
+    let ctx = Context::open(ws, ContextOptions::default()).unwrap();
+    let data = install_plugin(&ctx, &hooks, json!(["hook:conversation.ended"]), true).await;
+    let id = ctx.store().unwrap().create_conversation().await.unwrap().id;
+    crate::runner::end(&ctx, &id).await.unwrap();
+    let got: Value = serde_json::from_str(&wait_for(&data.join("payload.json")).await).unwrap();
+    assert_eq!(got["event"], "conversation.ended");
+    assert_eq!(got["conversationId"], id);
 }
 
 #[tokio::test]

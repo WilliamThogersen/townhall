@@ -104,7 +104,7 @@ async fn run_event(ctx: &Context, event: &str, fields: Value) -> Result<()> {
         .plugins()
         .await?
         .into_iter()
-        .filter(|p| p.enabled && approved(p).iter().any(|a| *a == wanted))
+        .filter(|p| p.enabled && approved(p).contains(&wanted))
         .collect();
     for plugin in plugins {
         if let Err(e) = run_plugin(ctx, &plugin, event, &fields).await {
@@ -124,7 +124,11 @@ fn approved(plugin: &Plugin) -> Vec<String> {
 
 async fn run_plugin(ctx: &Context, plugin: &Plugin, event: &str, fields: &Value) -> Result<()> {
     let home = ctx.home().clone();
-    let (market, name, sha) = (plugin.marketplace.clone(), plugin.name.clone(), plugin.sha.clone());
+    let (market, name, sha) = (
+        plugin.marketplace.clone(),
+        plugin.name.clone(),
+        plugin.sha.clone(),
+    );
     let root = cache_root(&home, &market, &name)?.join(&sha);
     let found = {
         let (root, event) = (root.clone(), event.to_string());
@@ -152,8 +156,14 @@ async fn run_plugin(ctx: &Context, plugin: &Plugin, event: &str, fields: &Value)
     env.extend([
         ("TOWNHALL_EVENT".to_string(), event.to_string()),
         ("TOWNHALL_PLUGIN".to_string(), plugin.id.clone()),
-        ("TOWNHALL_PLUGIN_ROOT".to_string(), root.display().to_string()),
-        ("TOWNHALL_PLUGIN_DATA".to_string(), data.display().to_string()),
+        (
+            "TOWNHALL_PLUGIN_ROOT".to_string(),
+            root.display().to_string(),
+        ),
+        (
+            "TOWNHALL_PLUGIN_DATA".to_string(),
+            data.display().to_string(),
+        ),
         ("TOWNHALL_API_URL".to_string(), ctx.base_url().to_string()),
         ("TOWNHALL_API_TOKEN".to_string(), token),
     ]);
@@ -268,7 +278,10 @@ fn hooks_of(root: &Path, event: &str) -> Result<Vec<Hook>> {
     let manifest = root.join(".townhall-plugin/plugin.json");
     let text = match std::fs::metadata(&manifest) {
         Ok(meta) if meta.len() > MAX_MANIFEST_BYTES as u64 => {
-            return Err(Error::TooLarge(format!("{} is too large", manifest.display())))
+            return Err(Error::TooLarge(format!(
+                "{} is too large",
+                manifest.display()
+            )))
         }
         Ok(_) => std::fs::read_to_string(&manifest)
             .map_err(|e| Error::io(format!("read {}", manifest.display()), e))?,
@@ -407,10 +420,15 @@ async fn exec(
     };
     let Ok((status, out, err)) = tokio::time::timeout(limit, work).await else {
         kill_group(pid);
-        return Err(format!("timed out after {}s and was killed", limit.as_secs()));
+        return Err(format!(
+            "timed out after {}s and was killed",
+            limit.as_secs()
+        ));
     };
     if out.over || err.over {
-        return Err(format!("wrote more than {MAX_OUTPUT_BYTES} bytes of output"));
+        return Err(format!(
+            "wrote more than {MAX_OUTPUT_BYTES} bytes of output"
+        ));
     }
     let status = status.map_err(|e| format!("cannot wait for the hook: {e}"))?;
     match status.code() {
@@ -428,4 +446,4 @@ async fn exec(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

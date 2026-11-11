@@ -23,10 +23,13 @@
 //! Only `tester` and `reviewer` can be required (`report::vocabulary`); a type that names
 //! another in `requires` blocks its tasks with a reason saying so.
 
+use serde_json::json;
+
 use crate::agent::{self, state};
 use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
+use crate::plugins::hooks;
 use crate::{runner, steps, worktree, Error, Result, Workspace};
 
 use super::launch::{commit_of, MAX_FAILED_TEXT};
@@ -283,6 +286,11 @@ pub(super) async fn reject(ctx: &Context, task: &Task, why: &str) -> Result<bool
         Err(Error::Conflict(m)) if m == MOVED => return Ok(false),
         Err(e) => return Err(e),
     }
+    hooks::fire(
+        ctx,
+        "task.failed",
+        json!({"task": task, "reason": why, "phase": "gate"}),
+    );
     let text = format!("task `{}` failed, it will not start: {why}", task.name);
     runner::notify(ctx, &task.conversation_id, text.clone());
     let body = EntryBody::Agent {
