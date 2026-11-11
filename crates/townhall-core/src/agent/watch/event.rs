@@ -3,6 +3,8 @@
 //! to work, `sent` and `passed` lines wake nobody.
 
 use crate::agent::state;
+use serde_json::{json, Value};
+
 use crate::model::{AgentEvent, EntryBody, Task};
 use crate::{steps, Context};
 
@@ -46,6 +48,37 @@ pub(super) async fn for_entry(ctx: &Context, task: &Task, entry: &EntryBody) -> 
             Some(last) => format!("task {name} ended ({text}). its agent's last message: {last}"),
             None => format!("task {name} ended ({text})"),
         }),
+        _ => None,
+    }
+}
+
+pub(super) async fn hook_for(
+    ctx: &Context,
+    task: &Task,
+    entry: &EntryBody,
+) -> Option<(&'static str, Value)> {
+    match entry {
+        EntryBody::NeedsYou {
+            question, choices, ..
+        } => Some((
+            "task.needs_you",
+            json!({"task": task, "question": question, "choices": choices}),
+        )),
+        EntryBody::Agent {
+            event: AgentEvent::Failed,
+            text,
+            ..
+        } => Some((
+            "task.failed",
+            json!({"task": task, "reason": text, "phase": "run"}),
+        )),
+        EntryBody::Agent {
+            event: AgentEvent::Ended,
+            ..
+        } => Some((
+            "task.ended",
+            json!({"task": task, "lastMessage": said(ctx, task).await}),
+        )),
         _ => None,
     }
 }
