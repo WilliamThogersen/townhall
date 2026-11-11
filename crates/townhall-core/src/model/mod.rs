@@ -27,7 +27,7 @@ pub use conversation::{
 };
 pub use event::ServerEvent;
 pub use library::{
-    AgentType, AgentTypeSummary, AgentUsage, Origin, TaskRun, ADVISER_AGENT_TYPE,
+    AdviserCall, AgentType, AgentTypeSummary, AgentUsage, Origin, TaskRun, ADVISER_AGENT_TYPE,
     CONVERSATION_AGENT_TYPE, DEFAULT_AGENT_TYPE,
 };
 pub use repo::{AddRepo, PatchRepo, PutRepoAccounts, Repo};

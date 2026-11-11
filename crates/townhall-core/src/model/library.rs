@@ -121,6 +121,21 @@ pub struct AgentUsage {
     pub tokens: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdviserCall {
+    pub conversation_id: String,
+    pub task: Option<String>,
+    pub agent: String,
+    pub repo: String,
+    pub question: String,
+    pub answer: Option<String>,
+    pub state: String,
+    pub model: Option<String>,
+    pub tokens: u64,
+    pub created_at: String,
+    pub ended_at: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskRun {
