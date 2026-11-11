@@ -1,0 +1,27 @@
+.th-plugin-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.th-plugin-frame--page {
+  height: 100%;
+  min-height: 0;
+}
+
+.th-plugin-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.th-plugin-page > .th-plugin-frame {
+  flex: 1;
+}
+
+.th-plugin-notice {
+  padding: var(--th-space-2);
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-sm);
+}

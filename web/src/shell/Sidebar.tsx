@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useAgentsContext } from "../agents/AgentsProvider";
 import { countByState } from "../agents/agentState";
 import { useRepos } from "../data";
+import { PluginNavItems } from "../plugins/PluginNavItems";
 import { Link, PATHS, useRoute } from "../router";
 import { SearchNavItem } from "../sidebar/SearchNavItem";
 import { SidebarConversations } from "../sidebar/SidebarConversations";
@@ -51,6 +52,7 @@ function Nav({ search }: { readonly search: SidebarSearch }) {
       <NavItem to={PATHS.control} icon="$" label="control center" current={name === "control"}>
         <GlyphCounts counts={countByState(agents)} className="th-nav-count" />
       </NavItem>
+      <PluginNavItems />
     </div>
   );
 }

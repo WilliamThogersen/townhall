@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { connectEvents as realConnectEvents, type ConnectEvents } from "../api/events";
 import { listPluginUi } from "../api/plugins";
 import type { PluginUiEntry } from "../api/types";
-import { logWarn } from "../log/report";
 import { navigate as realNavigate } from "../router";
 import { useToasts } from "../ui/Toasts";
 import { createBridge, DEFAULT_HEIGHT_RANGE, type HostSession, type ThemePayload, type Tone } from "./bridge";
 import { forgetHostSession, hostSession } from "./hostSession";
 import { PluginFrame } from "./PluginFrame";
 import { readThemePayload, subscribeTheme } from "./themeTokens";
+import { useUiEntries } from "./useUiEntries";
+import "./slots.css";
 
 export const HELLO_TIMEOUT_MS = 5000;
 
@@ -42,32 +43,24 @@ const REAL: SlotServices = {
 export interface PluginSlotProps {
   readonly name: string;
   readonly context?: Readonly<Record<string, unknown>>;
+  readonly only?: { readonly plugin: string; readonly entry: string };
+  readonly heading?: boolean;
   readonly services?: Partial<SlotServices>;
 }
 
-export function PluginSlot({ name, context, services }: PluginSlotProps) {
-  const [entries, setEntries] = useState<readonly PluginUiEntry[]>([]);
+export function PluginSlot({ name, context, only, heading, services }: PluginSlotProps) {
   const all = useMemo<SlotServices>(() => ({ ...REAL, ...services }), [services]);
-  const { listUi } = all;
-
-  useEffect(() => {
-    let live = true;
-    listUi().then(
-      (found) => {
-        if (live) setEntries(found.filter((e) => e.slot === name));
-      },
-      (error: unknown) => logWarn("web.plugin_ui_list", "plugin ui entries not loaded", error),
-    );
-    return () => {
-      live = false;
-    };
-  }, [listUi, name]);
+  const found = useUiEntries(name, all.listUi);
+  const entries = only ? found.filter((e) => e.plugin === only.plugin && e.entry === only.entry) : found;
 
   if (entries.length === 0) return null;
   return (
     <>
       {entries.map((entry) => (
-        <SlotFrame key={`${entry.plugin}/${entry.entry}`} slot={name} entry={entry} context={context} services={all} />
+        <Fragment key={`${entry.plugin}/${entry.entry}`}>
+          {heading ? <h4 className="th-section">{entry.title}</h4> : null}
+          <SlotFrame slot={name} entry={entry} context={context} services={all} />
+        </Fragment>
       ))}
     </>
   );
@@ -169,7 +162,8 @@ function SlotFrame({ slot, entry, context, services }: SlotFrameProps) {
       plugin={entry.plugin}
       entry={entry.entry}
       title={entry.title}
-      height={height}
+      height={slot === "page" ? undefined : height}
+      className={slot === "page" ? "th-plugin-frame th-plugin-frame--page" : "th-plugin-frame"}
     />
   );
 }
