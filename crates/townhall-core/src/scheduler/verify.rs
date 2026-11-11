@@ -20,7 +20,7 @@ use tokio::process::Command;
 
 use crate::context::Context;
 use crate::model::{AgentEvent, Done, EntryBody, Task, TaskState, Verify, VerifyPhase};
-use crate::{runner, Error, Result};
+use crate::{runner, Error, Pacing, Result};
 
 use super::plan;
 
@@ -68,7 +68,7 @@ pub(super) fn start(ctx: &Context, tasks: &[Task]) -> Vec<String> {
         started.push(task.name.clone());
         let (ctx, task) = (ctx.clone(), task.clone());
         tokio::spawn(async move {
-            if let Err(e) = verify(&ctx, &task).await {
+            if let Err(e) = verify(ctx, &task).await {
                 tracing::warn!(
                     target: "townhall::task", event = "task.verify_failed", task = %task.name,
                     error_kind = e.kind(), error = %crate::redact::redact(&e.to_string()),
@@ -81,15 +81,37 @@ pub(super) fn start(ctx: &Context, tasks: &[Task]) -> Vec<String> {
     started
 }
 
-async fn verify(ctx: &Context, task: &Task) -> Result<()> {
+fn backoff(pacing: &Pacing, retries: u32) -> Duration {
+    let doubled = pacing
+        .check_backoff
+        .saturating_mul(2u32.saturating_pow(retries));
+    doubled.min(pacing.check_backoff_max.max(pacing.check_backoff))
+}
+
+async fn verify(ctx: Context, task: &Task) -> Result<()> {
     let command = task.done.check.clone().unwrap_or_default();
     let dir = {
         let repo = ctx.repo(&task.repo).await?;
         ctx.workspace(&repo)?.worktrees_dir().join(&task.name)
     };
     match run_check(&command, &dir).await {
-        Ok(()) => passed(ctx, task).await,
+        Ok(()) => passed(&ctx, task).await,
         Err(output) => {
+            let retries = task.done.verify.as_ref().map_or(0, |v| v.retries);
+            let ctx = match retries < task.done.max_retries {
+                true => {
+                    let wait = ctx.sleep(backoff(&ctx.pacing(), retries));
+                    let weak = ctx.downgrade();
+                    drop(ctx);
+                    wait.await;
+                    match weak.upgrade() {
+                        Some(ctx) => ctx,
+                        None => return Ok(()),
+                    }
+                }
+                false => ctx,
+            };
+            let ctx = &ctx;
             let failed = ctx.store()?.check_failed(&task.name, &output).await?;
             if failed.state == TaskState::NeedsYou {
                 let said = format!(

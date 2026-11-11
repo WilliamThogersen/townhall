@@ -3,6 +3,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tempfile::TempDir;
@@ -76,6 +77,7 @@ pub struct Sched {
     pub claude: String,
     pub ctx: Option<Context>,
     pub conversation: String,
+    pub slept: Arc<Mutex<Vec<Duration>>>,
 }
 
 impl Sched {
@@ -92,7 +94,8 @@ impl Sched {
         std::fs::create_dir_all(&args_dir).unwrap();
         let claude = fake_claude(root.path(), &args_dir);
         let ws = Workspace::new(Home::at(root.path().join(".townhall")), &repo).unwrap();
-        let ctx = open(&ws, &claude);
+        let slept = Arc::new(Mutex::new(Vec::new()));
+        let ctx = open(&ws, &claude, &slept);
         ctx.repos().await.unwrap();
         let store = ctx.store().unwrap();
         store.save_agent_type(PLAIN_TYPE).await.unwrap();
@@ -108,7 +111,12 @@ impl Sched {
             claude,
             ctx: Some(ctx),
             conversation,
+            slept,
         }
+    }
+
+    pub fn slept(&self) -> Vec<Duration> {
+        self.slept.lock().unwrap().clone()
     }
 
     pub fn ctx(&self) -> &Context {
@@ -122,7 +130,7 @@ impl Sched {
     /// Drops the context (and the store lock) and opens a fresh one: a daemon restart.
     pub async fn restart(&mut self) {
         self.ctx = None;
-        let ctx = open(&self.ws, &self.claude);
+        let ctx = open(&self.ws, &self.claude, &self.slept);
         ctx.repos().await.unwrap();
         self.ctx = Some(ctx);
     }
@@ -267,13 +275,16 @@ pub fn kill_sessions(ws: &Workspace) {
     }
 }
 
-fn open(ws: &Workspace, claude: &str) -> Context {
+fn open(ws: &Workspace, claude: &str, slept: &Arc<Mutex<Vec<Duration>>>) -> Context {
     let options = ContextOptions {
         claude_bin: claude.to_string(),
         notify_delay: Duration::from_secs(3600),
         ..ContextOptions::default()
     };
-    Context::open(ws.clone(), options).unwrap()
+    let ctx = Context::open(ws.clone(), options).unwrap();
+    let record = Arc::clone(slept);
+    ctx.set_sleeper(move |d| record.lock().unwrap().push(d));
+    ctx
 }
 
 impl Drop for Sched {
