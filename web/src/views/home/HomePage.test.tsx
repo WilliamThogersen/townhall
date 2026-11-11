@@ -1,9 +1,10 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "../../api/client";
 import * as conversationsApi from "../../api/conversations";
 import { ApiError } from "../../api/errors";
-import { aConversation, aDetail, aRepo, someStats } from "../../api/fixtures";
+import { aConversation, aDetail, aRepo, someContributions, someStats } from "../../api/fixtures";
+import * as pluginsApi from "../../api/plugins";
 import * as reposApi from "../../api/repos";
 import * as statsApi from "../../api/stats";
 import type { Repo } from "../../api/types";
@@ -34,10 +35,17 @@ function renderHome(repos: readonly Repo[] | Error = REPOS) {
 
 const composer = () => screen.findByRole("textbox", { name: "Describe the work" });
 
+function startersRow(): HTMLElement {
+  const row = document.querySelector<HTMLElement>(".th-home-starters");
+  if (!row) throw new Error("no starters row");
+  return row;
+}
+
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
   stubInfo("William Thøgersen");
   vi.spyOn(statsApi, "getStats").mockResolvedValue(someStats());
+  vi.spyOn(pluginsApi, "getContributions").mockResolvedValue(someContributions());
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -174,6 +182,50 @@ describe("HomePage", () => {
     await waitFor(() => expect(input).toHaveFocus());
     expect(start).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "start" })).toBeEnabled();
+  });
+
+  it("shows only the built in starters when no plugin adds any", async () => {
+    renderHome();
+    await composer();
+    const labels = within(startersRow()).getAllByRole("button").map((b) => b.textContent);
+    expect(labels).toEqual(["fix the failing tests on townhall main", "find dead code in shop", "tidy the readme in townhall"]);
+  });
+
+  it("adds the starters of enabled plugins after the built in ones and fills the composer with their text", async () => {
+    vi.spyOn(pluginsApi, "getContributions").mockResolvedValue(
+      someContributions({
+        starters: [
+          { plugin: "starter-prompts@official", title: "tidy up", text: "tidy the readme and fix what is stale" },
+          { plugin: "other@acme", title: "tidy up", text: "a second plugin with the same title" },
+        ],
+      }),
+    );
+    const start = vi.spyOn(conversationsApi, "startConversation");
+    renderHome();
+    const input = await composer();
+    await screen.findAllByRole("button", { name: "tidy up" });
+    const labels = within(startersRow()).getAllByRole("button").map((b) => b.textContent);
+    expect(labels).toEqual([
+      "fix the failing tests on townhall main",
+      "find dead code in shop",
+      "tidy the readme in townhall",
+      "tidy up",
+      "tidy up",
+    ]);
+    input.blur();
+    fireEvent.click(screen.getAllByRole("button", { name: "tidy up" })[0]!);
+    expect(input).toHaveValue("tidy the readme and fix what is stale");
+    expect(start).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole("button", { name: "tidy up" })[1]!);
+    expect(input).toHaveValue("a second plugin with the same title");
+  });
+
+  it("keeps the built in starters when the plugin contributions cannot be loaded", async () => {
+    vi.spyOn(pluginsApi, "getContributions").mockRejectedValue(new Error("down"));
+    renderHome();
+    await composer();
+    await waitFor(() => expect(pluginsApi.getContributions).toHaveBeenCalled());
+    expect(within(startersRow()).getAllByRole("button")).toHaveLength(3);
   });
 
   it("starts a conversation on enter and opens it", async () => {

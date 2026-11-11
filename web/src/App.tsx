@@ -4,6 +4,7 @@ import { DataProvider } from "./data";
 import { useRoute } from "./router";
 import { useLoadSettings } from "./settings/useSettings";
 import { Shell } from "./shell/Shell";
+import { PluginTheme } from "./theme/pluginTheme";
 import { AgentsPage } from "./views/agents/AgentsPage";
 import { ControlCenterPage } from "./views/control/ControlCenterPage";
 import { ConversationPage } from "./views/conversation/ConversationPage";
@@ -42,6 +43,7 @@ export function App({ sidebarFoot }: { readonly sidebarFoot?: ReactNode }) {
   useLoadSettings();
   return (
     <DataProvider>
+      <PluginTheme />
       <AgentsProvider>
         <Shell sidebarFoot={sidebarFoot}>
           <Screen />

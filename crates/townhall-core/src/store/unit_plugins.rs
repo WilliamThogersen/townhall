@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
@@ -6,11 +8,20 @@ use super::migrate::Migration;
 use super::Store;
 use crate::{clock, Error, Result};
 
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    id: 950,
-    name: "0950_plugins",
-    sql: include_str!("migrations/0950_plugins.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        id: 950,
+        name: "0950_plugins",
+        sql: include_str!("migrations/0950_plugins.sql"),
+    },
+    Migration {
+        id: 951,
+        name: "0951_plugin_settings",
+        sql: include_str!("migrations/0951_plugin_settings.sql"),
+    },
+];
+
+const THEME: &str = "plugins.theme";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Marketplace {
@@ -357,6 +368,85 @@ impl Store {
         let id = id.to_string();
         self.call(move |conn| delete_plugin(conn, &id)).await
     }
+
+    pub async fn plugin_settings(&self, id: &str) -> Result<BTreeMap<String, Value>> {
+        let id = id.to_string();
+        self.call(move |conn| {
+            let mut stmt = conn.prepare(
+                "select key, value from plugin_settings where plugin_id = ?1 order by key",
+            )?;
+            let rows = stmt.query_map([&id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
+            let mut found = BTreeMap::new();
+            for row in rows {
+                let (key, text) = row?;
+                found.insert(key, from_json("plugin_settings.value", &text)?);
+            }
+            Ok(found)
+        })
+        .await
+    }
+
+    pub async fn set_plugin_setting(&self, id: &str, key: &str, value: Value) -> Result<()> {
+        let (id, key) = (id.to_string(), key.to_string());
+        self.call(move |conn| {
+            conn.execute(
+                "insert into plugin_settings (plugin_id, key, value, updated_at)
+                 values (?1, ?2, ?3, ?4)
+                 on conflict (plugin_id, key) do update
+                 set value = excluded.value, updated_at = excluded.updated_at",
+                params![id, key, to_json(&value)?, clock::now_rfc3339()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn reset_plugin_setting(&self, id: &str, key: &str) -> Result<()> {
+        let (id, key) = (id.to_string(), key.to_string());
+        self.call(move |conn| {
+            conn.execute(
+                "delete from plugin_settings where plugin_id = ?1 and key = ?2",
+                params![id, key],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn clear_plugin_settings(&self, id: &str) -> Result<()> {
+        let id = id.to_string();
+        self.call(move |conn| {
+            conn.execute("delete from plugin_settings where plugin_id = ?1", [&id])?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn plugin_theme(&self) -> Result<Option<String>> {
+        self.call(|conn| {
+            let text: Option<String> = conn
+                .query_row("select value from settings where key = ?1", [THEME], |r| {
+                    r.get(0)
+                })
+                .optional()?;
+            Ok(text.and_then(|t| serde_json::from_str::<String>(&t).ok()))
+        })
+        .await
+    }
+
+    pub async fn set_plugin_theme(&self, id: Option<&str>) -> Result<()> {
+        let id = id.map(str::to_string);
+        self.call(move |conn| match id {
+            Some(id) => super::settings::put(conn, THEME, &Value::String(id)),
+            None => {
+                conn.execute("delete from settings where key = ?1", [THEME])?;
+                Ok(())
+            }
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -551,6 +641,94 @@ mod tests {
         assert!(err.to_string().contains("lint@acme"), "{err}");
         store.remove_plugin("lint@acme").await.unwrap();
         store.remove_marketplace("acme").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn plugin_settings_round_trip_per_plugin_and_reset_to_nothing() {
+        let (_dir, store) = open();
+        assert!(store.plugin_settings("lint@acme").await.unwrap().is_empty());
+        store
+            .set_plugin_setting("lint@acme", "retries", json!(3))
+            .await
+            .unwrap();
+        store
+            .set_plugin_setting("lint@acme", "mode", json!("fast"))
+            .await
+            .unwrap();
+        store
+            .set_plugin_setting("fmt@acme", "retries", json!(9))
+            .await
+            .unwrap();
+        let lint = store.plugin_settings("lint@acme").await.unwrap();
+        assert_eq!(lint.len(), 2);
+        assert_eq!(lint["retries"], json!(3));
+        assert_eq!(lint["mode"], json!("fast"));
+        assert_eq!(
+            store.plugin_settings("fmt@acme").await.unwrap()["retries"],
+            json!(9)
+        );
+
+        store
+            .set_plugin_setting("lint@acme", "retries", json!(4))
+            .await
+            .unwrap();
+        assert_eq!(
+            store.plugin_settings("LINT@ACME").await.unwrap()["retries"],
+            json!(4)
+        );
+
+        store
+            .reset_plugin_setting("lint@acme", "retries")
+            .await
+            .unwrap();
+        store
+            .reset_plugin_setting("lint@acme", "never-set")
+            .await
+            .unwrap();
+        assert_eq!(store.plugin_settings("lint@acme").await.unwrap().len(), 1);
+
+        store.clear_plugin_settings("lint@acme").await.unwrap();
+        assert!(store.plugin_settings("lint@acme").await.unwrap().is_empty());
+        assert_eq!(store.plugin_settings("fmt@acme").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn plugin_settings_outlive_the_plugin_row_and_the_store() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let home = Home::at(dir.path().join(".townhall"));
+        {
+            let store = Store::open(&home, EventBus::new()).unwrap();
+            store
+                .set_plugin_setting("gone@acme", "k", json!({"a": [1, 2]}))
+                .await
+                .unwrap();
+        }
+        let store = Store::open(&home, EventBus::new()).unwrap();
+        assert_eq!(
+            store.plugin_settings("gone@acme").await.unwrap()["k"],
+            json!({"a": [1, 2]})
+        );
+    }
+
+    #[tokio::test]
+    async fn the_active_theme_is_one_row_outside_the_settings_keys() {
+        let (_dir, store) = open();
+        let before = store.settings().await.unwrap();
+        assert_eq!(store.plugin_theme().await.unwrap(), None);
+        store.set_plugin_theme(Some("slate@acme")).await.unwrap();
+        assert_eq!(
+            store.plugin_theme().await.unwrap().as_deref(),
+            Some("slate@acme")
+        );
+        store.set_plugin_theme(Some("other@acme")).await.unwrap();
+        assert_eq!(
+            store.plugin_theme().await.unwrap().as_deref(),
+            Some("other@acme")
+        );
+        assert_eq!(store.settings().await.unwrap(), before);
+        store.set_plugin_theme(None).await.unwrap();
+        assert_eq!(store.plugin_theme().await.unwrap(), None);
+        store.set_plugin_theme(None).await.unwrap();
     }
 
     #[tokio::test]

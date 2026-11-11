@@ -5,6 +5,7 @@ import type {
   AvailablePlugin,
   Marketplace,
   Plugin,
+  PluginContributions,
   ClaudeUsage,
   Conversation,
   ConversationDetail,
@@ -70,6 +71,12 @@ export interface PluginsState extends Loadable {
   readonly patch: PluginActions["patchPlugin"];
   readonly update: PluginActions["updatePlugin"];
   readonly uninstall: PluginActions["deletePlugin"];
+}
+
+export interface ContributionsState extends Loadable, PluginContributions {
+  readonly chooseTheme: PluginActions["chooseTheme"];
+  readonly setSetting: PluginActions["setPluginSetting"];
+  readonly resetSetting: PluginActions["resetPluginSetting"];
 }
 
 export interface StatsState extends Loadable {

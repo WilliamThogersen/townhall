@@ -410,6 +410,53 @@ export interface PatchPluginInput {
   readonly pinned?: boolean;
 }
 
+export interface PluginStarter {
+  readonly plugin: string;
+  readonly title: string;
+  readonly text: string;
+}
+
+export interface PluginThemeChoice {
+  readonly plugin: string;
+  readonly name: string;
+}
+
+export interface ActivePluginTheme {
+  readonly plugin: string;
+  readonly css: string;
+}
+
+export type SettingFieldType = "boolean" | "string" | "integer" | "enum";
+
+export type SettingFieldValue = boolean | string | number;
+
+export interface PluginSettingField {
+  readonly key: string;
+  readonly label: string;
+  readonly description: string | null;
+  readonly type: SettingFieldType;
+  readonly default: SettingFieldValue;
+  readonly min: number | null;
+  readonly max: number | null;
+  readonly choices: readonly string[] | null;
+  readonly secret: boolean;
+  readonly value: SettingFieldValue | null;
+  readonly set: boolean;
+}
+
+export interface PluginSettingsGroup {
+  readonly plugin: string;
+  readonly name: string;
+  readonly fields: readonly PluginSettingField[];
+}
+
+export interface PluginContributions {
+  readonly starters: readonly PluginStarter[];
+  readonly themes: readonly PluginThemeChoice[];
+  readonly theme: ActivePluginTheme | null;
+  readonly settings: readonly PluginSettingsGroup[];
+}
+
 export interface DefinitionError {
   readonly kind: "agent" | "workflow";
   readonly name: string | null;

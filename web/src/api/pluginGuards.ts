@@ -1,14 +1,22 @@
-import { bool, fail, list, listOf, nullable, oneOf, record, str, strings, type Check, type Guard } from "./guardKit";
+import { bool, fail, list, listOf, nullable, num, oneOf, record, str, strings, type Check, type Guard } from "./guardKit";
 import type {
+  ActivePluginTheme,
   AvailablePlugin,
   Marketplace,
   MarketplaceEntry,
   MarketplaceSource,
   Plugin,
+  PluginContributions,
   PluginList,
   PluginPreview,
+  PluginSettingField,
+  PluginSettingsGroup,
+  PluginStarter,
+  PluginThemeChoice,
   PluginUpdate,
   PluginUpdateOutcome,
+  SettingFieldType,
+  SettingFieldValue,
 } from "./types";
 
 const outcome = oneOf<PluginUpdateOutcome>(["unchanged", "updated", "pinned", "needsApproval"]);
@@ -103,6 +111,68 @@ export const parsePreview: Guard<PluginPreview> = (value) => {
     sha: str(r.sha, "preview.sha"),
     permissions: strings(r.permissions, "preview.permissions"),
     permissionsHash: str(r.permissionsHash, "preview.permissionsHash"),
+  };
+};
+
+const FIELD_TYPES = oneOf<SettingFieldType>(["boolean", "string", "integer", "enum"]);
+
+const fieldValue: Check<SettingFieldValue> = (value, what) =>
+  typeof value === "boolean" || typeof value === "string" || (typeof value === "number" && Number.isFinite(value))
+    ? value
+    : fail(what);
+
+const parseField: Check<PluginSettingField> = (value, what) => {
+  const r = record(value, what);
+  return {
+    key: str(r.key, `${what}.key`),
+    label: str(r.label, `${what}.label`),
+    description: nullable(r.description, `${what}.description`, str),
+    type: FIELD_TYPES(r.type, `${what}.type`),
+    default: fieldValue(r.default, `${what}.default`),
+    min: nullable(r.min, `${what}.min`, num),
+    max: nullable(r.max, `${what}.max`, num),
+    choices: nullable(r.choices, `${what}.choices`, strings),
+    secret: bool(r.secret, `${what}.secret`),
+    value: nullable(r.value, `${what}.value`, fieldValue),
+    set: bool(r.set, `${what}.set`),
+  };
+};
+
+const parseGroup: Check<PluginSettingsGroup> = (value, what) => {
+  const r = record(value, what);
+  return {
+    plugin: str(r.plugin, `${what}.plugin`),
+    name: str(r.name, `${what}.name`),
+    fields: list(r.fields, `${what}.fields`, parseField),
+  };
+};
+
+const parseStarter: Check<PluginStarter> = (value, what) => {
+  const r = record(value, what);
+  return {
+    plugin: str(r.plugin, `${what}.plugin`),
+    title: str(r.title, `${what}.title`),
+    text: str(r.text, `${what}.text`),
+  };
+};
+
+const parseThemeChoice: Check<PluginThemeChoice> = (value, what) => {
+  const r = record(value, what);
+  return { plugin: str(r.plugin, `${what}.plugin`), name: str(r.name, `${what}.name`) };
+};
+
+const parseActiveTheme: Check<ActivePluginTheme> = (value, what) => {
+  const r = record(value, what);
+  return { plugin: str(r.plugin, `${what}.plugin`), css: str(r.css, `${what}.css`) };
+};
+
+export const parseContributions: Guard<PluginContributions> = (value) => {
+  const r = record(value, "contributions");
+  return {
+    starters: list(r.starters, "contributions.starters", parseStarter),
+    themes: list(r.themes, "contributions.themes", parseThemeChoice),
+    theme: nullable(r.theme, "contributions.theme", parseActiveTheme),
+    settings: list(r.settings, "contributions.settings", parseGroup),
   };
 };
 

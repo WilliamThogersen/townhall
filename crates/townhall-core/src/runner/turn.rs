@@ -15,6 +15,7 @@ use super::turns::TurnGuard;
 use crate::model::{
     Conversation, ConversationStatus, EntryBody, NewMessage, Repo, CONVERSATION_AGENT_TYPE,
 };
+use crate::plugins::declared;
 use crate::redact::redact;
 use crate::{clock, ids, mcp, Context, Result};
 
@@ -262,7 +263,14 @@ async fn plan(
         false => String::new(),
     };
     let persona = persona(ctx).await?;
-    let system = prompt::system_prompt(&persona.prompt, attempt.note, &repos, Some(&profile));
+    let notes = declared::planner_notes(ctx.store()?).await?;
+    let system = prompt::system_prompt_with(
+        &persona.prompt,
+        attempt.note,
+        &repos,
+        &notes,
+        Some(&profile),
+    );
     let turn = TurnArgs {
         session_id: conversation.session_id.clone(),
         resume: conversation.session_started,

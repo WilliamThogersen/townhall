@@ -119,6 +119,12 @@ pub fn router(state: AppState) -> Router {
         .route("/marketplaces/{name}/refresh", post(marketplaces::refresh))
         .route("/plugins", get(plugins::list).post(plugins::install))
         .route("/plugins/preview", get(plugins::preview))
+        .route("/plugins/contributions", get(plugins::contributions))
+        .route("/plugins/theme", put(plugins::put_theme))
+        .route(
+            "/plugins/{id}/settings/{key}",
+            put(plugins::put_setting).delete(plugins::reset_setting),
+        )
         .route(
             "/plugins/{id}",
             patch(plugins::patch).delete(plugins::uninstall),

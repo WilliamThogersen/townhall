@@ -395,7 +395,8 @@ async fn launch(ctx: &Context, task: &Task, start_commit: &str) -> Result<TaskLa
     let ws = ctx.workspace(&repo)?;
     let files = attachment_paths(ctx, task).await?;
     let handoffs = ctx.store()?.handoffs(&task.name).await?;
-    let brief = brief::write(ctx.home(), task, &files, &handoffs).await?;
+    let sections = brief::plugin_sections(ctx, task).await?;
+    let brief = brief::write(ctx.home(), task, &files, &handoffs, &sections).await?;
     let session_id = launcher.claude.then(ids::new_session_id);
     let options = LaunchOptions {
         prompt: Some(brief::order(&brief)),
@@ -454,7 +455,8 @@ async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch>
     };
     let files = attachment_paths(ctx, task).await?;
     let handoffs = store.handoffs(&task.name).await?;
-    let brief = brief::write(ctx.home(), task, &files, &handoffs).await?;
+    let sections = brief::plugin_sections(ctx, task).await?;
+    let brief = brief::write(ctx.home(), task, &files, &handoffs, &sections).await?;
     let session_id = launcher.claude.then(ids::new_session_id);
     let options = LaunchOptions {
         prompt: Some(brief::order(&brief)),

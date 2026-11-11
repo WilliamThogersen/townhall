@@ -248,7 +248,7 @@ fn every_contributed_file_must_exist_inside_the_plugin() {
     let err = refused(dir.path());
     assert!(err.contains("theme.css"), "{err}");
     assert!(err.contains("does not exist"), "{err}");
-    write(dir.path(), "theme.css", "a{}");
+    write(dir.path(), "theme.css", ":root { --th-bg: #000; }");
     assert!(validate(dir.path(), &entry()).is_ok());
 }
 
@@ -345,4 +345,104 @@ fn a_hook_file_that_is_not_json_is_named_in_the_error() {
     write(dir.path(), "townhall-hooks.json", "{ nope");
     let err = refused(dir.path());
     assert!(err.contains("townhall-hooks.json"), "{err}");
+}
+
+fn declarative(rest: &str, files: &[(&str, &str)]) -> tempfile::TempDir {
+    let dir = plugin(&manifest(
+        r#"{"prompts":["starters","brief","planner"]}"#,
+        rest,
+    ));
+    for (rel, text) in files {
+        write(dir.path(), rel, text);
+    }
+    dir
+}
+
+#[test]
+fn the_official_theme_and_starters_pass_install_validation() {
+    let theme = declarative(
+        r#","contributes":{"theme":"theme.css"}"#,
+        &[("theme.css", include_str!("../theme/slate.css"))],
+    );
+    assert!(validate(theme.path(), &entry()).is_ok());
+    let starters = declarative(
+        r#","contributes":{"prompts":{"starters":"prompts/starters.json"}}"#,
+        &[(
+            "prompts/starters.json",
+            include_str!("../prompts/starters.json"),
+        )],
+    );
+    assert!(validate(starters.path(), &entry()).is_ok());
+}
+
+#[test]
+fn a_theme_the_strict_parser_refuses_is_an_install_error() {
+    for (css, needle) in [
+        ("@import \"x.css\";", "@import"),
+        ("body { --th-bg: #000; }", "selector"),
+        (":root { color: red; }", "--th-"),
+        (":root { --th-bg: url(x); }", "url("),
+    ] {
+        let dir = declarative(
+            r#","contributes":{"theme":"theme.css"}"#,
+            &[("theme.css", css)],
+        );
+        let err = refused(dir.path());
+        assert!(
+            err.contains("contributes.theme") && err.contains(needle),
+            "{css}: {err}"
+        );
+    }
+}
+
+#[test]
+fn starters_prompts_and_settings_that_do_not_validate_are_install_errors() {
+    let long = "x".repeat(8001);
+    let cases = [
+        (
+            r#","contributes":{"prompts":{"starters":"s.json"}}"#,
+            "s.json",
+            "{}",
+            "starters",
+        ),
+        (
+            r#","contributes":{"prompts":{"brief":"b.md"}}"#,
+            "b.md",
+            "  ",
+            "brief",
+        ),
+        (
+            r#","contributes":{"prompts":{"planner":"p.md"}}"#,
+            "p.md",
+            long.as_str(),
+            "planner",
+        ),
+        (
+            r#","contributes":{"settings":"settings.schema.json"}"#,
+            "settings.schema.json",
+            r#"{"fields":[{"key":"a","label":"a","type":"boolean","default":"no"}]}"#,
+            "settings",
+        ),
+    ];
+    for (rest, file, text, needle) in cases {
+        let dir = declarative(rest, &[(file, text)]);
+        let err = refused(dir.path());
+        assert!(err.contains(needle), "{file}: {err}");
+    }
+}
+
+#[test]
+fn a_valid_brief_planner_and_schema_are_accepted() {
+    let dir = declarative(
+        r#","contributes":{"prompts":{"brief":"b.md","planner":"p.md"},"settings":"s.json"}"#,
+        &[
+            ("b.md", "write a changelog line"),
+            ("p.md", "prefer small tasks"),
+            (
+                "s.json",
+                r#"{"fields":[{"key":"a","label":"a","type":"boolean","default":true}]}"#,
+            ),
+        ],
+    );
+    assert!(validate(dir.path(), &entry()).is_ok());
 }

@@ -38,6 +38,7 @@ export const HELP = {
   forgeAccounts:
     "the gh and glab logins townhall may use. no token is stored. pick one per repo on the repos page, else the first for the host is used.",
   theme: "dark is the default.",
+  pluginTheme: "a theme from an enabled plugin, drawn over the built in colours. none keeps the built in look.",
   notifyWhen: "desktop notifications and toasts.",
   learnAboutMe:
     "while on, townhall reads your profile in its own conversations: how you work, your tone of voice, your typical flow. stored locally, edit or reset it below at any time.",

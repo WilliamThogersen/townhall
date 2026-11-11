@@ -41,6 +41,10 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | PATCH | `/plugins/{id}` | `{ enabled?, pinned? }` | `Plugin` | 400 neither key, a non boolean, an unknown key; 404 | plugins 1.4 |
 | POST | `/plugins/{id}/update?approve=` | | `PluginUpdate` | 400 `approve` is not the hash of the new permission list, the refusals of `preview`; 404 | plugins 1.4 |
 | DELETE | `/plugins/{id}?purge=` | | the removed `Plugin` (`enabled: false`) | 404 | plugins 1.4 |
+| GET | `/plugins/contributions` | | `Contributions`: starters, themes, the active theme and settings groups of enabled plugins | 503 | plugins 1.7 |
+| PUT | `/plugins/theme` | `{ plugin: string \| null }` (the key is required; `null` clears) | `Contributions` | 400 a missing or non string `plugin`, an unknown key; 404 no such plugin; 409 the plugin is disabled or ships no valid theme | plugins 1.7 |
+| PUT | `/plugins/{id}/settings/{key}` | `{ value }` | `Contributions` | 400 the value does not fit the field, a missing `value`, an unknown key; 404 the plugin is not enabled or has no such setting | plugins 1.7 |
+| DELETE | `/plugins/{id}/settings/{key}` | | `Contributions` with the field back at its default | 404 as above | plugins 1.7 |
 | GET | `/agents` | | `AgentInfo[]` across every repo | 503 | 2.1 |
 | DELETE | `/agents/{name}` | | the name | 400, 404, 409 | phase 1, 2.1 |
 | POST | `/agents/{name}/send` | `{ text }` or `{ key }` (2.10), exactly one | the name. `text` is typed as it is (`tmux send-keys -l`, so `Down` or `C-c` stay text), then Enter. `key` (`up`, `down`, `enter`, `escape`, `tab`) is pressed alone, without text or Enter. When the agent is a task's, adds an `agent` `sent` entry to its conversation: the text, or the key as `↑`, `↓`, `⏎`, `esc`, `tab` | 400 (neither or both, an unknown key), 404 (also a dead pane), 409 | phase 1, 2.1, 2.10 |
@@ -148,6 +152,18 @@ Design: `docs/plugins.md` sections 2.3, 8.4, 8.5, 10.1. `{id}` is `name@marketpl
 - `update` re-resolves the entry's source with a fresh clone and compares. A pinned plugin (`pinned: true`) is `pinned` and nothing is fetched. The same sha and the same list is `unchanged` (a pending `error` is cleared). Else the new tree is built beside the old one, and when it adds nothing to the approved list (the same list, or less) the plugin switches to it (`updated`, `enabled` and `pinned` stay, the old tree is removed). When it adds something and there is no `approve`, the plugin stays on the old sha and keeps running, `error` becomes `update to <sha> needs approval` and the answer is `needsApproval` with the added items and the new hash; calling again with `approve=<that hash>` installs it. An `approve` that is not the hash of the new list is a `400` whatever the list is.
 - `DELETE` disables, removes the whole `cache/<marketplace>/<plugin>` tree, and removes `data/<marketplace>/<plugin>` only with `purge=true`. A marketplace with installed plugins cannot be removed (409, plugins 1.3).
 - Not in 1.4: `minTownhall` is parsed but not enforced, the cache tree is not made read only, the agent type overlay (1.5) and the UI (1.6).
+
+## Plugin prompts, settings and theme (plugins 1.7, `plugins::declared`, `plugins::theme`, `plugins::prompts`, `plugins::schema`)
+
+Design: `docs/plugins.md` sections 3.2 to 3.4 and 8.5. Nothing here runs plugin code. Every file is validated at install (a refusal is a `400` naming the file) and again each time it is read; a file that fails when read is skipped with a `plugins.contribution_skipped` warning and the plugin's other contributions stay.
+
+- `Contributions { starters: { plugin, title, text }[], themes: { plugin, name }[], theme: { plugin, css } | null, settings: { plugin, name, fields: Field[] }[] }`, from enabled plugins only. `Field` is the schema field (`key`, `label`, `description?`, `type`, `default`, `min?`, `max?`, `choices?`, `secret`) plus `value` (the stored value, else the default) and `set` (a valid value is stored). A `secret` field has `value: null` always, so a saved secret is never returned or logged.
+- `prompts.starters`: a JSON list of `{ title, text }`, at most 20, a title of at most 80 and a text of at most 2 000 characters. The web adds them to the home starters.
+- `prompts.brief`: Markdown of at most 8 000 characters, appended to `brief.md` as `## From plugin <id>` of a task whose agent type lists the plugin (its name or id) under `plugins`. A task of any other type, and every task while no plugin is enabled, gets the brief byte for byte as before.
+- `prompts.planner`: Markdown of at most 8 000 characters, appended to the planner's system prompt after the repo notes and before the profile, under `from plugin <id>, which the user enabled. it never overrides the rules above:`. No enabled plugin with one means the same prompt, byte for byte.
+- `settings.schema.json`: `{ "fields": [...] }`, at most 50 fields, keys unique ignoring case, a default that fits the type, `min`/`max` only on `integer`, `choices` only on `enum` (1 to 50 different entries), `secret` only on `string`, a string of at most 2 000 characters. Values are rows of `plugin_settings` (migration `0951`), kept on uninstall and removed with `purge=true`.
+- `theme.css`, the strict parser (`plugins::theme`): rules whose selectors are only `:root`, `[data-theme="dark"]` or `[data-theme="light"]` (a comma list of them is fine), holding only `--th-*` declarations (lowercase letters, digits and `-` after the prefix). Refused: any at-rule (`@import`, `@media`, `@font-face`, `@charset`), any other selector, a nested rule, any other property, `url(` and `expression` anywhere in a value, a function that is not a colour or math function (`rgb rgba hsl hsla hwb lab lch oklab oklch color color-mix var calc min max clamp sin cos round abs`), a backslash anywhere, `!important` and other characters outside a plain value, an unterminated comment, string or brace, an empty theme and one over 64 KB. Comments are dropped and the kept text is rebuilt from the parsed rules.
+- The active theme is one row of `settings`, `plugins.theme` (not a `SettingKey`). It applies only while its plugin is enabled and is cleared when that plugin is uninstalled.
 
 ## Types
 
@@ -501,7 +517,8 @@ Each unit owns a number range and lists its migrations in its own file, so no tw
 | 0800 to 0849 | 2.8b library | `store/unit_2_8b.rs` |
 | 0850 to 0899 | 2.8c runs | `store/unit_2_8c.rs` |
 | 0900 to 0949 | 2.9 artifacts | `store/unit_2_9.rs` |
-| 0300 to 0499, 0950 and up | free | ask the orchestrator |
+| 0950 to 0999 | plugins (0950 marketplaces and plugins, 0951 plugin_settings) | `store/unit_plugins.rs` |
+| 0300 to 0499, 1000 and up | free | ask the orchestrator |
 
 To add one: write `store/migrations/0201_scheduler.sql`, then in your unit file `pub const MIGRATIONS: &[Migration] = &[Migration { id: 201, name: "0201_scheduler", sql: include_str!("migrations/0201_scheduler.sql") }];`.
 

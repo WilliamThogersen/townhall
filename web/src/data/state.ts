@@ -6,6 +6,7 @@ import type {
   ConversationDetail,
   Marketplace,
   Plugin,
+  PluginContributions,
   Repo,
   Task,
 } from "../api/types";
@@ -31,6 +32,7 @@ export interface DataState {
   readonly agents: Resource<readonly AgentInfo[]> | null;
   readonly repos: Resource<readonly Repo[]> | null;
   readonly plugins: Resource<PluginsData> | null;
+  readonly contributions: Resource<PluginContributions> | null;
 }
 
 export const INITIAL_STATE: DataState = {
@@ -42,6 +44,7 @@ export const INITIAL_STATE: DataState = {
   agents: null,
   repos: null,
   plugins: null,
+  contributions: null,
 };
 
 export function pending<T>(): Resource<T> {

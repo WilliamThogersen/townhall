@@ -1,6 +1,14 @@
-import { parsePlugin, parsePluginList, parsePluginUpdate, parsePreview } from "./pluginGuards";
+import { parseContributions, parsePlugin, parsePluginList, parsePluginUpdate, parsePreview } from "./pluginGuards";
 import { request } from "./request";
-import type { PatchPluginInput, Plugin, PluginList, PluginPreview, PluginUpdate } from "./types";
+import type {
+  PatchPluginInput,
+  Plugin,
+  PluginContributions,
+  PluginList,
+  PluginPreview,
+  PluginUpdate,
+  SettingFieldValue,
+} from "./types";
 
 const path = (id: string): string => `/plugins/${encodeURIComponent(id)}`;
 
@@ -25,3 +33,17 @@ export const updatePlugin = (id: string, approve?: string): Promise<PluginUpdate
 
 export const deletePlugin = (id: string, purge = false): Promise<Plugin> =>
   request("DELETE", `${path(id)}${purge ? "?purge=true" : ""}`, parsePlugin);
+
+export const getContributions = (signal?: AbortSignal): Promise<PluginContributions> =>
+  request("GET", "/plugins/contributions", parseContributions, undefined, signal);
+
+export const putPluginTheme = (plugin: string | null): Promise<PluginContributions> =>
+  request("PUT", "/plugins/theme", parseContributions, { plugin });
+
+const settingPath = (id: string, key: string): string => `${path(id)}/settings/${encodeURIComponent(key)}`;
+
+export const putPluginSetting = (id: string, key: string, value: SettingFieldValue): Promise<PluginContributions> =>
+  request("PUT", settingPath(id, key), parseContributions, { value });
+
+export const resetPluginSetting = (id: string, key: string): Promise<PluginContributions> =>
+  request("DELETE", settingPath(id, key), parseContributions);

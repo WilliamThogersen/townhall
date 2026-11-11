@@ -7,7 +7,10 @@ use super::agent_types;
 use super::check;
 use super::manifest::{self, McpTools, Permissions, MAX_MANIFEST_BYTES};
 use super::marketplace::Entry;
+use super::prompts;
+use super::schema;
 use super::sha256;
+use super::theme;
 use crate::{Error, Result};
 
 pub const PLUGIN_API_VERSION: u32 = 1;
@@ -104,8 +107,24 @@ pub fn validate_with(root: &Path, entry: &Entry, limits: &Limits) -> Result<Chec
 
     for (what, rel) in &files.others {
         let path = tree.file(what, rel)?;
-        if *what == "contributes.agentTypes" {
-            agent_types::refuse_skip_all_at_install(rel, &path)?;
+        match *what {
+            "contributes.agentTypes" => agent_types::refuse_skip_all_at_install(rel, &path)?,
+            "contributes.theme" => {
+                theme::parse(&tree.read(what, rel)?)?;
+            }
+            "contributes.settings" => {
+                schema::parse(&tree.read(what, rel)?)?;
+            }
+            "contributes.prompts.starters" => {
+                prompts::parse_starters(&tree.read(what, rel)?)?;
+            }
+            "contributes.prompts.brief" => {
+                prompts::parse_markdown("brief", &tree.read(what, rel)?)?;
+            }
+            "contributes.prompts.planner" => {
+                prompts::parse_markdown("planner", &tree.read(what, rel)?)?;
+            }
+            _ => {}
         }
     }
 
@@ -216,8 +235,14 @@ fn others(contributes: &manifest::Contributes) -> Vec<(&'static str, String)> {
     for path in &contributes.agent_types {
         found.push(("contributes.agentTypes", path.clone()));
     }
-    for path in contributes.prompts.values() {
-        found.push(("contributes.prompts", path.clone()));
+    for (kind, path) in &contributes.prompts {
+        let what = match kind.as_str() {
+            "starters" => "contributes.prompts.starters",
+            "brief" => "contributes.prompts.brief",
+            "planner" => "contributes.prompts.planner",
+            _ => "contributes.prompts",
+        };
+        found.push((what, path.clone()));
     }
     if let Some(path) = &contributes.settings {
         found.push(("contributes.settings", path.clone()));

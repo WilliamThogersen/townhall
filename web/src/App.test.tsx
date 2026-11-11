@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "./api/client";
 import * as conversationsApi from "./api/conversations";
 import * as events from "./api/events";
-import { aConversation, aDetail, aRepo, aUsage, someStats } from "./api/fixtures";
+import { aConversation, aDetail, aRepo, aUsage, someContributions, someStats } from "./api/fixtures";
 import * as marketsApi from "./api/marketplaces";
 import * as pluginsApi from "./api/plugins";
 import * as reposApi from "./api/repos";
@@ -30,6 +30,7 @@ beforeEach(() => {
   vi.spyOn(usageApi, "getUsage").mockResolvedValue(aUsage());
   vi.spyOn(marketsApi, "listMarketplaces").mockResolvedValue([]);
   vi.spyOn(pluginsApi, "listPlugins").mockResolvedValue({ available: [], installed: [] });
+  vi.spyOn(pluginsApi, "getContributions").mockResolvedValue(someContributions());
 });
 
 afterEach(() => {
@@ -87,6 +88,18 @@ describe("App routes", () => {
     expect(container.querySelectorAll(".th-shell")).toHaveLength(1);
     expect(screen.getByText("foot")).toBeInTheDocument();
     await waitFor(() => expect(client.listAgents).toHaveBeenCalledOnce());
+  });
+
+  it("applies the theme a plugin chose, at start, on any screen", async () => {
+    const css = ":root {\n  --th-accent: #ff00aa;\n}\n";
+    vi.spyOn(pluginsApi, "getContributions").mockResolvedValue(
+      someContributions({ theme: { plugin: "theme-slate@official", css } }),
+    );
+    window.history.replaceState(null, "", "/nope");
+    const { unmount } = render(<App />);
+    await waitFor(() => expect(document.head.querySelector("style[data-th-plugin-theme]")?.textContent).toBe(css));
+    unmount();
+    expect(document.head.querySelector("style[data-th-plugin-theme]")).toBeNull();
   });
 
   it("moves browser settings to the daemon at start, without opening /settings", async () => {

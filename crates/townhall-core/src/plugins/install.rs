@@ -745,6 +745,11 @@ impl PluginRegistry {
         remove_tree(&cache_root(home, &plugin.marketplace, &plugin.name)?)?;
         if purge {
             remove_tree(&data_root(home, &plugin.marketplace, &plugin.name)?)?;
+            self.store.clear_plugin_settings(&plugin.id).await?;
+        }
+        let theme = self.store.plugin_theme().await?;
+        if theme.is_some_and(|id| id.eq_ignore_ascii_case(&plugin.id)) {
+            self.store.set_plugin_theme(None).await?;
         }
         view_of(self.store.remove_plugin(&plugin.id).await?)
     }

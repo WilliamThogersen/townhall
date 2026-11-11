@@ -36,7 +36,7 @@ fn skipped(plugin: &str, file: &str, reason: &str) {
     );
 }
 
-fn read_manifest(root: &Path) -> Result<manifest::TownhallManifest> {
+pub(super) fn read_manifest(root: &Path) -> Result<manifest::TownhallManifest> {
     let path = root.join(".townhall-plugin/plugin.json");
     let meta =
         std::fs::metadata(&path).map_err(|e| Error::io(format!("read {}", path.display()), e))?;

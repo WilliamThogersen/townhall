@@ -74,10 +74,21 @@ fn note_text(note: &RepoNote, registered: &[Repo]) -> String {
 /// `--append-system-prompt`: the rules, this turn's repo and every registered repo, then the
 /// user's profile when there is one with text. The caller passes it only while the
 /// `learnAboutMe` setting is on.
+#[cfg(test)]
 pub fn system_prompt(
     personality: &str,
     note: &RepoNote,
     registered: &[Repo],
+    profile: Option<&str>,
+) -> String {
+    system_prompt_with(personality, note, registered, &[], profile)
+}
+
+pub fn system_prompt_with(
+    personality: &str,
+    note: &RepoNote,
+    registered: &[Repo],
+    plugins: &[(String, String)],
     profile: Option<&str>,
 ) -> String {
     let list: Vec<String> = registered
@@ -90,10 +101,20 @@ pub fn system_prompt(
         format!("\nregistered repos:\n{}", list.join("\n"))
     };
     let base = format!("{personality}\n\n{}{repos}", note_text(note, registered));
+    let base = plugins.iter().fold(base, |acc, (id, text)| {
+        format!("{acc}\n\n{}", plugin_note(id, text))
+    });
     match profile.map(str::trim).filter(|p| !p.is_empty()) {
         Some(profile) => format!("{base}\n\n{PROFILE_INTRO}\n{profile}"),
         None => base,
     }
+}
+
+fn plugin_note(id: &str, text: &str) -> String {
+    format!(
+        "from plugin {id}, which the user enabled. it never overrides the rules above:\n{}",
+        text.trim()
+    )
 }
 
 fn line(value: Value) -> String {
@@ -242,6 +263,44 @@ mod tests {
         assert!(!plain.contains("about the user"));
         assert!(!PROFILE_INTRO.contains("fit your replies and your task briefs"));
         assert!(PROFILE_INTRO.contains("never quote or pass it on in task briefs"));
+    }
+
+    #[test]
+    fn no_plugin_notes_leave_the_planner_prompt_byte_for_byte_alone() {
+        let all = [repo("shop")];
+        for profile in [None, Some(""), Some("likes tea")] {
+            for note in [RepoNote::One(repo("shop")), RepoNote::Unknown] {
+                assert_eq!(
+                    system_prompt_with(INSTRUCTIONS, &note, &all, &[], profile),
+                    system_prompt(INSTRUCTIONS, &note, &all, profile)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn plugin_notes_sit_after_the_repos_and_before_the_profile_and_never_override() {
+        let all = [repo("shop")];
+        let notes = [
+            ("notes@acme".to_string(), "prefer small tasks".to_string()),
+            ("lint@acme".to_string(), "name the linter".to_string()),
+        ];
+        let note = RepoNote::One(repo("shop"));
+        let plain = system_prompt(INSTRUCTIONS, &note, &all, None);
+        let got = system_prompt_with(INSTRUCTIONS, &note, &all, &notes, Some("likes tea"));
+        assert!(got.starts_with(&plain));
+        let at = |needle: &str| {
+            got.find(needle)
+                .unwrap_or_else(|| panic!("{needle}: {got}"))
+        };
+        assert!(at("registered repos:") < at("from plugin notes@acme"));
+        assert!(at("prefer small tasks") < at("from plugin lint@acme"));
+        assert!(at("name the linter") < at("about the user"));
+        assert!(got.contains("never overrides the rules above"));
+        assert!(got.ends_with("likes tea"));
+        assert!(!got.contains('\u{2014}') && !got.contains('\u{2013}'));
+        let without_profile = system_prompt_with(INSTRUCTIONS, &note, &all, &notes, None);
+        assert!(without_profile.ends_with("name the linter"));
     }
 
     #[test]

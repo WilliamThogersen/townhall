@@ -3,12 +3,16 @@
 
 pub(crate) mod agent_types;
 mod check;
+pub mod declared;
 pub mod install;
 pub mod manifest;
 pub mod market;
 pub mod marketplace;
 mod official;
+pub mod prompts;
+pub mod schema;
 mod sha256;
+pub mod theme;
 pub mod tree;
 
 pub use official::{Official, OFFICIAL};

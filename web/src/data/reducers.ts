@@ -2,6 +2,7 @@ import type {
   AgentInfo,
   Conversation,
   ConversationDetail,
+  PluginContributions,
   Repo,
   ServerEvent,
   Task,
@@ -121,6 +122,8 @@ export function applyRepoEdited(state: DataState, oldName: string, repo: Repo): 
 export const keepRepos = (list: readonly Repo[]): readonly Repo[] => list;
 
 export const keepPlugins = (data: PluginsData): PluginsData => data;
+
+export const keepContributions = (data: PluginContributions): PluginContributions => data;
 
 export function applyEvent(state: DataState, event: ServerEvent): DataState {
   const next: DataState = {

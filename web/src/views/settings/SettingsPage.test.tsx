@@ -1,6 +1,9 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { aSettingField, someContributions } from "../../api/fixtures";
+import type { PluginContributions } from "../../api/types";
+import { TestDataProvider } from "../../data/testing";
 import { DEFAULT_SETTINGS, isSettingValue, SETTING_KEYS, type Settings } from "../../settings/settings";
 import { createSettingsStore } from "../../settings/settingsStore";
 import { SettingsStoreContext } from "../../settings/useSettings";
@@ -27,13 +30,28 @@ interface Found {
   readonly host: string;
 }
 
-function fakeDaemon(initial: Partial<Settings> = {}, found: readonly Found[] = []) {
+function fakeDaemon(
+  initial: Partial<Settings> = {},
+  found: readonly Found[] = [],
+  start: PluginContributions = someContributions(),
+) {
   let settings: Settings = { ...DEFAULT_SETTINGS, ...initial };
   let calls: readonly Call[] = [];
   let profile = "";
+  let contributions = start;
   const failing = new Set<string>();
   const warnings: string[] = [];
-  const answer = (method: string, url: string, body: { value?: unknown; text?: string } | undefined): Response => {
+  const answer = (
+    method: string,
+    url: string,
+    body: { value?: unknown; text?: string; plugin?: string | null } | undefined,
+  ): Response => {
+    if (url === "/api/plugins/contributions") return reply(200, contributions, null);
+    if (url === "/api/plugins/theme" && method === "PUT") {
+      const chosen = contributions.themes.find((t) => t.plugin === body?.plugin);
+      contributions = { ...contributions, theme: chosen ? { plugin: chosen.plugin, css: ":root {}\n" } : null };
+      return reply(200, contributions, null);
+    }
     if (url === "/api/forge-accounts/detected") {
       if (failing.has("detected")) return reply(400, null, "`gh` did not answer within 15 seconds");
       const registered = (f: Found) =>
@@ -66,7 +84,7 @@ function fakeDaemon(initial: Partial<Settings> = {}, found: readonly Found[] = [
     const method = init?.method ?? "GET";
     const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
     calls = [...calls, { method, url, body }];
-    return answer(method, url, body as { value?: unknown; text?: string } | undefined);
+    return answer(method, url, body as { value?: unknown; text?: string; plugin?: string | null } | undefined);
   });
   return {
     fetch,
@@ -82,7 +100,11 @@ let daemon = fakeDaemon();
 
 function renderPage(children = <SettingsPage />) {
   const store = createSettingsStore();
-  return render(<SettingsStoreContext value={store}>{children}</SettingsStoreContext>);
+  return render(
+    <SettingsStoreContext value={store}>
+      <TestDataProvider>{children}</TestDataProvider>
+    </SettingsStoreContext>,
+  );
 }
 
 async function renderLoaded() {
@@ -566,5 +588,64 @@ describe("detected forge accounts", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await userEvent.type(screen.getByRole("textbox", { name: "Login" }), "me");
     expect(screen.getByRole("button", { name: "add account" })).toBeEnabled();
+  });
+});
+
+describe("plugin settings and theme", () => {
+  const slate = { plugin: "theme-slate@official", name: "theme-slate" };
+  const dawn = { plugin: "dawn@acme", name: "dawn" };
+  const withPlugins = (over: Partial<PluginContributions>) => {
+    daemon = fakeDaemon({}, [], someContributions(over));
+    vi.stubGlobal("fetch", daemon.fetch);
+  };
+  const headings = () => screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+
+  it("adds no group and no row while no plugin contributes", async () => {
+    await renderLoaded();
+    expect(headings()).toEqual([
+      "agents",
+      "conversations",
+      "repos",
+      "forge accounts",
+      "appearance and notifications",
+      "about you",
+    ]);
+    expect(screen.queryByRole("radiogroup", { name: "Plugin theme" })).not.toBeInTheDocument();
+  });
+
+  it("adds a group for each plugin with settings, after appearance and before about you", async () => {
+    withPlugins({
+      settings: [{ plugin: "lint@acme-tools", name: "lint", fields: [aSettingField()] }],
+    });
+    await renderLoaded();
+    expect(await screen.findByRole("heading", { level: 2, name: "lint (plugin)" })).toBeInTheDocument();
+    expect(headings().slice(-3)).toEqual(["appearance and notifications", "lint (plugin)", "about you"]);
+    const version = await screen.findByText(VERSION);
+    expect(version.previousElementSibling).toContainElement(screen.getByRole("heading", { level: 2, name: "about you" }));
+  });
+
+  it("lets the user pick a plugin theme or none, saved on the daemon", async () => {
+    withPlugins({ themes: [slate, dawn] });
+    await renderLoaded();
+    const themes = await screen.findByRole("radiogroup", { name: "Plugin theme" });
+    expect(within(themes).getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual([
+      "",
+      slate.plugin,
+      dawn.plugin,
+    ]);
+    expect(within(themes).getByRole("radio", { name: "none" })).toBeChecked();
+    await userEvent.click(within(themes).getByRole("radio", { name: "theme-slate" }));
+    await waitFor(() => expect(lastPut()).toEqual(["/api/plugins/theme", { plugin: slate.plugin }]));
+    await waitFor(() => expect(within(themes).getByRole("radio", { name: "theme-slate" })).toBeChecked());
+    await userEvent.click(within(themes).getByRole("radio", { name: "none" }));
+    await waitFor(() => expect(lastPut()).toEqual(["/api/plugins/theme", { plugin: null }]));
+    await waitFor(() => expect(within(themes).getByRole("radio", { name: "none" })).toBeChecked());
+  });
+
+  it("checks the theme that is active", async () => {
+    withPlugins({ themes: [slate], theme: { plugin: slate.plugin, css: ":root {}\n" } });
+    await renderLoaded();
+    const themes = await screen.findByRole("radiogroup", { name: "Plugin theme" });
+    expect(within(themes).getByRole("radio", { name: "theme-slate" })).toBeChecked();
   });
 });

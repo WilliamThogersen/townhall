@@ -4,8 +4,10 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::context::Context;
 use crate::fsutil::write_atomic;
 use crate::model::{Handoff, Task};
+use crate::plugins::declared;
 use crate::{Error, Home, Result};
 
 use super::plan;
@@ -27,6 +29,14 @@ pub fn order(brief: &Path) -> String {
     )
 }
 
+pub(super) async fn plugin_sections(ctx: &Context, task: &Task) -> Result<Vec<(String, String)>> {
+    let store = ctx.store()?;
+    match store.agent_type(&task.agent).await? {
+        Some(found) => declared::brief_sections(store, &found.def.plugins).await,
+        None => Ok(Vec::new()),
+    }
+}
+
 /// Writes (or rewrites) the task's brief with its hand backs and attachments' paths; returns
 /// its path.
 pub async fn write(
@@ -34,9 +44,13 @@ pub async fn write(
     task: &Task,
     files: &[PathBuf],
     handoffs: &[Handoff],
+    sections: &[(String, String)],
 ) -> Result<PathBuf> {
     let path = brief_file(home, &task.name);
-    let text = plan::brief_text(&task.title, &task.prompt, &task.done, files, handoffs);
+    let text = plan::with_plugin_sections(
+        plan::brief_text(&task.title, &task.prompt, &task.done, files, handoffs),
+        sections,
+    );
     let (home, target) = (home.clone(), path.clone());
     tokio::task::spawn_blocking(move || {
         if let Some(dir) = target.parent() {
