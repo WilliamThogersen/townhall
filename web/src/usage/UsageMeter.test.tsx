@@ -131,6 +131,33 @@ describe("UsageMeter popover", () => {
     expect(within(dialog).getByText("Updated 12:39")).toBeInTheDocument();
   });
 
+  it("draws a labelled bar per window with its width and level", async () => {
+    renderMeter(
+      reading({
+        session: { usedPercent: 48, resetsAt: local(5, 15, 10), ratePerHour: 1 },
+        weekly: { usedPercent: 85, resetsAt: local(11, 8), ratePerHour: 1 },
+      }),
+    );
+    fireEvent.click(await button());
+    const dialog = screen.getByRole("dialog");
+    const bars = within(dialog).getAllByRole("progressbar");
+    expect(bars.map((b) => b.getAttribute("aria-label"))).toEqual(["5 hours", "Week"]);
+    expect(bars.map((b) => b.getAttribute("aria-valuenow"))).toEqual(["48", "85"]);
+    expect(bars.map((b) => b.getAttribute("aria-valuemin"))).toEqual(["0", "0"]);
+    expect(bars.map((b) => b.getAttribute("aria-valuemax"))).toEqual(["100", "100"]);
+    expect(bars.map((b) => b.getAttribute("data-level"))).toEqual(["ok", "hot"]);
+    const fills = bars.map((b) => b.querySelector<HTMLElement>(".th-usage-fill")?.style.getPropertyValue("--used"));
+    expect(fills).toEqual(["48%", "85%"]);
+  });
+
+  it("draws a window whose reset has passed as an empty bar", async () => {
+    renderMeter(reading({ session: { usedPercent: 90, resetsAt: NOW - 60_000, ratePerHour: 3 } }));
+    fireEvent.click(await button());
+    const [bar] = within(screen.getByRole("dialog")).getAllByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "0");
+    expect(bar).toHaveAttribute("data-level", "ok");
+  });
+
   it("warns on the window that will run out before it resets", async () => {
     renderMeter(
       reading({
