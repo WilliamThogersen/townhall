@@ -364,7 +364,7 @@ All messages are `{ th: 1, id?, type, ... }`. The host checks `event.source === 
   - `ui.resize { height }` (clamped to the slot's limits), `ui.toast { text, tone }` (plain text, 200 characters), `ui.navigate { path }` (townhall routes only, `PATHS`), `composer.insert { text }` (composer slot only; inserts into the draft, never sends), `clipboard.write { text }` (only from a user gesture the host saw in the last second).
 - Rate limit: 50 messages per second per frame, then the frame is paused and a notice shown; a frame that throws or never says `hello` within 5 s is replaced by a `plugin <id> failed to load: <why>` line with a retry.
 - Decision (phase 4.2): the host is `web/src/plugins/PluginSlot.tsx` (frame, hello timeout, pause and failure notices), `bridge.ts` (the protocol, no React), `scopes.ts` (the route and scope table of section 9.2; a path outside `/api/plugin/v1/`, with a dot or empty segment, or a route or method the plugin API lacks is refused without a request) and `hostSession.ts` (the token, in memory only). The daemon adds `GET /api/plugins/ui` (the `contributes.ui` entries of enabled plugins, `plugin`, `slot`, `title`, `entry`, `height`) and `POST /api/plugins/{id}/host-token`, which issues a plugin token and answers `{ plugin, version, token, scopes }`; it needs an `Origin` header of an allowed web origin (a script or hook without one gets `403`), and the CORS policy now allows the `Authorization` header so the host can call the plugin API from the desktop shell. `events.subscribe` needs the `events` scope and the scope of every topic asked for (`taskUpdated` and `agentUpdated` need `tasks:read`, `entryAppended` and `conversationUpdated` need `conversations:read`); it replaces the frame's earlier subscription. `ui.resize` is clamped to 24 to 400 px, `sidebar.foot` to 24 to 120 px. `composer.insert` and `clipboard.write` are not part of 4.2 and answer an unknown-type error.
-- The SDK is a tiny script (`townhall-plugin-sdk.js`, vendored by the plugin author, about 100 lines) wrapping this; the protocol, not the SDK, is the contract.
+- Decision (phase 4.4): the SDK is `web/src/plugins/sdk/townhall-plugin-sdk.js` (about 110 lines, no dependencies, no build step, tested by `web/src/plugins/sdk.test.ts`). It is not served by the daemon: a frame may only load files of its own plugin folder (section 7.2), so the author copies it into the plugin's `ui/` folder and loads it with `<script src="townhall-plugin-sdk.js">`. The protocol, not the SDK, is the contract. See section 14 for its API.
 
 ## 8. Marketplaces, install, state
 
@@ -555,3 +555,80 @@ The user accepted every recommendation below on 2026-11-09. Each item states the
 - Every build task above starts by reading `docs/daemon-api.md` for the files it touches and ends by updating it (this document stays the design; `docs/daemon-api.md` becomes the contract as each part lands). Plugin routes, tables and the events go there, in the same tables.
 - Code that is added must follow the repo's rules: no new code comments (CI runs `no-added-comments`), one `--name=value` argv element per option, no value starting with `-` (`plain`), `redact` on anything logged.
 - `web/src/api/types.ts` mirrors every new Rust type field for field, with its type test.
+
+## 14. Writing a plugin
+
+A plugin is a folder in a git repo; a marketplace is a git repo with a `marketplace.json` that lists plugins. The complete working example is `crates/townhall-core/tests/fixtures/plugins/sample-marketplace/` (marketplace) with `plugins/notes/` (plugin): one townhall hook, one Claude MCP server, one agent type and one UI section. Copy it and rename.
+
+### 14.1 Layout and manifest
+
+```
+my-plugin/
+  .townhall-plugin/plugin.json
+  townhall-hooks.json
+  bin/on-started.sh
+  agent-types/note-taker.toml
+  mcp/servers.json
+  mcp/server.mjs
+  ui/session.html
+  ui/session.js
+  ui/townhall-plugin-sdk.js
+```
+
+`.townhall-plugin/plugin.json` names every part (section 2.3). Every path is relative to the plugin root and stays inside it. Unknown keys are an install error, so a typo is caught at once. The smallest useful manifest:
+
+```json
+{
+  "name": "notes",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "permissions": {
+    "api": ["tasks:read", "storage"],
+    "hooks": ["task.started"],
+    "claude": { "mcp": { "servers": { "notes": ["search_notes"] } } },
+    "ui": ["session.section"]
+  },
+  "contributes": {
+    "agentTypes": ["agent-types/note-taker.toml"],
+    "hooks": "townhall-hooks.json",
+    "ui": [{ "slot": "session.section", "title": "notes", "entry": "ui/session.html", "height": 120 }]
+  },
+  "claude": { "mcp": "mcp/servers.json" }
+}
+```
+
+### 14.2 Permissions
+
+`permissions` is what the user approves when installing (the install prompt lists it and its hash must be sent back), and it is checked against use: a hook on an event, an MCP server or a UI slot that is not declared is an install error. Declare only what you use. `api` scopes bound what the plugin's token may call (section 9.2); `hooks` lists townhall events (section 4.1); `claude.mcp.servers` maps each server name in the MCP file to the tool names townhall may allow without asking (`["*"]` for all); `ui` lists slots; `env` names the daemon environment variables the plugin's hooks and servers may read. An update that adds a permission stays on the old version until the user approves again.
+
+### 14.3 Hooks
+
+`townhall-hooks.json` maps an event to commands (section 4). The command runs as `sh -c` with the plugin's data folder as working directory, the payload as JSON on stdin and `TOWNHALL_EVENT`, `TOWNHALL_PLUGIN`, `TOWNHALL_PLUGIN_ROOT`, `TOWNHALL_PLUGIN_DATA`, `TOWNHALL_API_URL` and `TOWNHALL_API_TOKEN` in its environment. `${TOWNHALL_PLUGIN_ROOT}` in the command is replaced by the plugin's folder. Exit 0 continues, exit 2 blocks where the event allows it (stderr is the reason), anything else fails open. The sample's `bin/on-started.sh` writes the payload of `task.started` to its data folder.
+
+### 14.4 Agent types and Claude MCP servers
+
+An agent type is the `AgentDef` TOML of section 3.1; it is listed as `<plugin>-<name>` (`notes-note-taker`). A type a plugin ships selects that plugin's Claude-side parts by itself; a user type must name the plugin in `plugins = [...]`. The MCP file is Claude Code's `.mcp.json` shape (`mcpServers`) at the path `claude.mcp` names; `${CLAUDE_PLUGIN_ROOT}` is replaced by the plugin's folder, and townhall renames each server to `plugin_<plugin>_<server>`, so the sample's `search_notes` is `mcp__plugin_notes_notes__search_notes`. The config is written to the task's folder, never the command line. Each stdio server gets `TOWNHALL_API_URL` and `TOWNHALL_TOKEN`, a token for that task only (at most `tasks:read`, `conversations:read` and `storage`, revoked when the task ends). Other environment variables reach the server only if declared under `permissions.env`.
+
+### 14.5 UI and the SDK
+
+A `contributes.ui` entry is an HTML file in a folder of your plugin; the daemon serves that folder (and only it) into a sandboxed frame (section 7.2): scripts must be files, nothing can be fetched, every call to townhall goes through the host. Copy `web/src/plugins/sdk/townhall-plugin-sdk.js` into the folder and load it before your own script. It sends `hello` at load and defines `window.townhall`:
+
+| call | does |
+|------|------|
+| `townhall.ready` | promise of the `init` message: `slot`, `context`, `theme`, `plugin`, `scopes` |
+| `townhall.api.call(method, path, body?)` | `api.call`; resolves with the data, rejects with the host's error text. Paths are under `/api/plugin/v1/` and need a scope |
+| `townhall.events.subscribe(topics, handler)` | `events.subscribe`; the handler gets each event of those topics |
+| `townhall.ui.resize(height)`, `toast(text, tone?)`, `navigate(path)` | `ui.resize`, `ui.toast`, `ui.navigate` |
+| `townhall.composer.insert(text)`, `onAction(handler)` | `composer.insert` and the `composer.action` click (composer slot) |
+| `townhall.theme.onChange(handler)` | the `theme` message |
+
+Every request returns a promise. You may skip the SDK and speak the protocol of section 7.3 directly.
+
+### 14.6 Testing with a local marketplace
+
+A marketplace is any local git repo, so no network is needed:
+
+1. `git init` a folder holding `.townhall-plugin/marketplace.json` and your plugin folder (`"source": "./plugins/notes"`), then `git add -A` and commit. A change reaches townhall only once committed.
+2. Add it: `POST /api/marketplaces {"source": "/path/to/folder"}` (the plugins page, "add marketplace").
+3. Install: `GET /api/plugins/preview?plugin=notes@<marketplace>`, then `POST /api/plugins {"plugin": ..., "approve": <permissionsHash>}`, then `PATCH /api/plugins/<id> {"enabled": true}`. After a new commit, `POST /api/plugins/<id>/update`.
+4. Create a task of your agent type. `crates/townhall-core/tests/plugin_e2e.rs` does these steps against a fake `claude` (`tests/scheduler_support`): it asserts the `--mcp-config` file and the task token, that the hook ran and wrote to its data folder, and that the UI files are served, and it runs the sample's MCP server over stdio. Copy its shape for your own plugin.

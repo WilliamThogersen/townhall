@@ -1,0 +1,14 @@
+{
+  "name": "sample-market",
+  "description": "One sample plugin that uses every part of the plugin system",
+  "owner": { "name": "Townhall" },
+  "plugins": [
+    {
+      "name": "notes",
+      "description": "Counts started tasks, lets note-taker agents search notes, shows a notes section",
+      "version": "1.0.0",
+      "source": "./plugins/notes",
+      "category": "sample"
+    }
+  ]
+}
