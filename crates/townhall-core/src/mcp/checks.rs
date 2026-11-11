@@ -91,6 +91,7 @@ pub(super) fn input(raw: CreateTaskInput) -> Checked<CreateTaskInput> {
         base_branch: given(raw.base_branch.as_deref()),
         agent: given(raw.agent.as_deref()),
         pr_base: given(raw.pr_base.as_deref()),
+        pipeline: given(raw.pipeline.as_deref()),
         done_when,
         check,
         ..raw
