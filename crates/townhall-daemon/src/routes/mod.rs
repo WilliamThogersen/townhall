@@ -152,6 +152,8 @@ pub fn router(state: AppState) -> Router {
         .route("/plugins", get(plugins::list).post(plugins::install))
         .route("/plugins/preview", get(plugins::preview))
         .route("/plugins/contributions", get(plugins::contributions))
+        .route("/plugins/ui", get(plugins::ui_entries))
+        .route("/plugins/{id}/host-token", post(plugins::host_token))
         .route("/plugins/theme", put(plugins::put_theme))
         .route(
             "/plugins/{id}/settings/{key}",
