@@ -8,8 +8,10 @@ use crate::context::Context;
 use crate::definitions::AdapterKind;
 use crate::mcp;
 use crate::model::{AgentType, Task, ADVISER_AGENT_TYPE};
-use crate::plugins::agent_types;
+use crate::plugins::{agent_types, claude_mcp};
 use crate::{Error, Result};
+
+use super::brief;
 
 /// How a task's agent starts, before the brief, session id and folders are added.
 pub(super) struct Launcher {
@@ -64,6 +66,19 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
         options.mcp_config = Some(mcp::task_config_json(ctx.base_url(), &task.name));
         options.mcp_tools = mcp::task_allowed_tools();
         options.system_prompt = Some(with_rules(options.system_prompt, &targets, !advises));
+    }
+    if claude {
+        let mut chosen = found.def.plugins.clone();
+        chosen.extend(found.plugin.clone());
+        let parts = claude_mcp::selected(store, &chosen).await?;
+        if !parts.is_empty() {
+            let config = claude_mcp::merge(options.mcp_config.as_deref(), &parts);
+            let path = brief::write_mcp(ctx.home(), &task.name, config).await?;
+            options.mcp_config = Some(path.display().to_string());
+            options
+                .mcp_tools
+                .extend(parts.into_iter().flat_map(|p| p.tools));
+        }
     }
     Ok(Launcher {
         adapter,
