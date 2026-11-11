@@ -6,7 +6,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::migrate::Migration;
 use super::unit_2_8b::joined;
 use super::Store;
-use crate::definitions::{check_pipeline, DefinitionError, KnownAgent, Parsed, WorkflowDef};
+use crate::definitions::{
+    check_default, check_pipeline, DefinitionError, KnownAgent, Parsed, WorkflowDef,
+};
 use crate::model::Workflow;
 use crate::{clock, Error, Result};
 
@@ -125,7 +127,32 @@ impl Store {
             .iter()
             .map(|t| KnownAgent::new(&t.def.name, &t.def.requires))
             .collect();
-        check_pipeline(source, &agents)
+        let parsed = check_pipeline(source, &agents)?;
+        let others: Vec<WorkflowDef> = self
+            .workflows()
+            .await
+            .map_err(|e| vec![unreadable_agents(&e)])?
+            .into_iter()
+            .map(|w| w.def)
+            .collect();
+        match check_default(&parsed.def, &others) {
+            conflicts if conflicts.is_empty() => Ok(parsed),
+            conflicts => Err(conflicts),
+        }
+    }
+
+    pub async fn default_workflow(&self, repo: &str) -> Result<Option<Workflow>> {
+        let all = self.workflows().await?;
+        let defaults = |w: &Workflow| w.def.default;
+        let named = all
+            .iter()
+            .filter(|w| defaults(w))
+            .find(|w| w.def.repos.iter().any(|r| r.eq_ignore_ascii_case(repo)));
+        let any = all
+            .iter()
+            .filter(|w| defaults(w))
+            .find(|w| w.def.repos.is_empty());
+        Ok(named.or(any).cloned())
     }
 
     pub async fn workflows(&self) -> Result<Vec<Workflow>> {
@@ -484,5 +511,136 @@ fn unreadable_agents(e: &Error) -> DefinitionError {
         field: None,
         message: format!("the saved agent types could not be read: {e}"),
         line: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::events::EventBus;
+    use crate::store::Store;
+    use crate::{Error, Home};
+
+    fn pipeline(name: &str, repos: &[&str], default: bool) -> String {
+        let repos: Vec<String> = repos.iter().map(|r| format!("\"{r}\"")).collect();
+        format!(
+            "name = \"{name}\"\nrepos = [{}]\ndefault = {default}\nwork = \"build\"\n\n[[step]]\nid = \"build\"\nagent = \"builder\"\n",
+            repos.join(", ")
+        )
+    }
+
+    fn store() -> (tempfile::TempDir, Store) {
+        let dir = tempfile::tempdir().unwrap();
+        let home = Home::at(dir.path().join("h"));
+        let store = Store::open(&home, EventBus::new()).unwrap();
+        (dir, store)
+    }
+
+    async fn default_of(store: &Store, repo: &str) -> Option<String> {
+        store
+            .default_workflow(repo)
+            .await
+            .unwrap()
+            .map(|w| w.def.name)
+    }
+
+    #[tokio::test]
+    async fn no_default_means_none() {
+        let (_dir, store) = store();
+        store
+            .save_workflow(&pipeline("plain", &[], false))
+            .await
+            .unwrap();
+        assert_eq!(default_of(&store, "shop").await, None);
+    }
+
+    #[tokio::test]
+    async fn a_default_for_every_repo_applies_to_any_repo() {
+        let (_dir, store) = store();
+        store
+            .save_workflow(&pipeline("all", &[], true))
+            .await
+            .unwrap();
+        assert_eq!(default_of(&store, "shop").await.as_deref(), Some("all"));
+        assert_eq!(default_of(&store, "admin").await.as_deref(), Some("all"));
+    }
+
+    #[tokio::test]
+    async fn a_default_naming_the_repo_beats_one_for_every_repo() {
+        let (_dir, store) = store();
+        store
+            .save_workflow(&pipeline("all", &[], true))
+            .await
+            .unwrap();
+        store
+            .save_workflow(&pipeline("shop-only", &["Shop"], true))
+            .await
+            .unwrap();
+        assert_eq!(
+            default_of(&store, "shop").await.as_deref(),
+            Some("shop-only")
+        );
+        assert_eq!(default_of(&store, "admin").await.as_deref(), Some("all"));
+    }
+
+    #[tokio::test]
+    async fn a_default_for_other_repos_does_not_apply() {
+        let (_dir, store) = store();
+        store
+            .save_workflow(&pipeline("admin-only", &["admin"], true))
+            .await
+            .unwrap();
+        assert_eq!(default_of(&store, "shop").await, None);
+    }
+
+    #[tokio::test]
+    async fn a_second_default_for_the_same_scope_is_refused() {
+        let (_dir, store) = store();
+        store
+            .save_workflow(&pipeline("one", &[], true))
+            .await
+            .unwrap();
+        let Err(Error::InvalidInput(text)) = store.save_workflow(&pipeline("two", &[], true)).await
+        else {
+            panic!("expected a refusal");
+        };
+        assert!(
+            text.contains("\"one\" is already the default for every repo"),
+            "{text}"
+        );
+        assert!(store.workflow("two").await.unwrap().is_none());
+
+        store
+            .save_workflow(&pipeline("shop-a", &["shop"], true))
+            .await
+            .unwrap();
+        let Err(Error::InvalidInput(text)) = store
+            .save_workflow(&pipeline("shop-b", &["admin", "SHOP"], true))
+            .await
+        else {
+            panic!("expected a refusal");
+        };
+        assert!(text.contains("\"shop-a\" is already the default"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn saving_a_default_again_and_non_defaults_are_allowed() {
+        let (_dir, store) = store();
+        store
+            .save_workflow(&pipeline("one", &[], true))
+            .await
+            .unwrap();
+        let (_, replaced) = store
+            .save_workflow(&pipeline("one", &[], true))
+            .await
+            .unwrap();
+        assert!(replaced);
+        store
+            .save_workflow(&pipeline("two", &[], false))
+            .await
+            .unwrap();
+        store
+            .save_workflow(&pipeline("shop-only", &["shop"], true))
+            .await
+            .unwrap();
     }
 }
