@@ -12,6 +12,7 @@ use tokio::sync::OnceCell;
 use crate::agent::DEFAULT_CLAUDE_BIN;
 use crate::events::EventBus;
 use crate::model::{Repo, Settings};
+use crate::plugins::hooks;
 use crate::repos::{names, RepoRegistry};
 use crate::runner::{Notes, Turns};
 use crate::store::Store;
@@ -80,6 +81,7 @@ struct Inner {
     startup_name: OnceCell<Option<String>>,
     turns: Turns,
     notes: Notes,
+    hooks: hooks::State,
     disk_told: Mutex<HashSet<String>>,
     free_source: FreeSource,
 }
@@ -144,6 +146,7 @@ impl Context {
             startup_name: OnceCell::new(),
             turns: Turns::default(),
             notes: Notes::default(),
+            hooks: hooks::State::default(),
             disk_told: Mutex::default(),
             free_source: FreeSource::default(),
         };
@@ -193,6 +196,10 @@ impl Context {
     /// The task events waiting to wake each conversation's planner.
     pub fn notes(&self) -> &Notes {
         &self.inner.notes
+    }
+
+    pub(crate) fn hooks(&self) -> &hooks::State {
+        &self.inner.hooks
     }
 
     /// Marks a conversation as told the disk is too full; false when it already was.
