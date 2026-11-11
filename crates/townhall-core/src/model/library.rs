@@ -33,8 +33,6 @@ pub struct AgentType {
     pub plugin: Option<String>,
 }
 
-/// One saved pipeline (a workflow in code): the parsed definition, the TOML as written and
-/// when it was saved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workflow {

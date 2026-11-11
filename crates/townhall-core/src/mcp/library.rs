@@ -1,6 +1,5 @@
 //! Agent type tools (2.12, in unit 2.8b's file): `list_agent_types`, `read_agent_type` and
-//! `save_agent_type`, plus the type `create_task` runs a task as, and the same three for
-//! pipelines: `list_pipelines`, `read_pipeline` and `save_pipeline`. A save is never made
+//! `save_agent_type`, plus the type `create_task` runs a task as. A save is never made
 //! at once: townhall shows the TOML in the thread and asks (`ask.rs`); the session saves it with `confirmed: true` once you
 //! answered.
 
@@ -246,7 +245,15 @@ pub(super) async fn save(ctx: &Context, conversation_id: &str, input: SaveInput)
     let replaces = store.agent_type(&name).await.map_err(text)?.is_some();
     if !input.confirmed {
         let kind = ask::Kind::AgentType;
-        return ask::ask(store, kind, conversation_id, &name, &parsed.source, replaces).await;
+        return ask::ask(
+            store,
+            kind,
+            conversation_id,
+            &name,
+            &parsed.source,
+            replaces,
+        )
+        .await;
     }
     let kind = ask::Kind::AgentType;
     ask::check_confirmed(store, kind, conversation_id, &name, &parsed.source).await?;
@@ -259,12 +266,7 @@ pub(super) async fn save(ctx: &Context, conversation_id: &str, input: SaveInput)
 }
 
 pub(super) async fn list_pipelines(ctx: &Context, _input: ListInput) -> Checked<Value> {
-    let found = ctx
-        .store()
-        .map_err(text)?
-        .workflows()
-        .await
-        .map_err(text)?;
+    let found = ctx.store().map_err(text)?.workflows().await.map_err(text)?;
     let rows: Vec<Value> = found
         .iter()
         .map(|w| {
@@ -303,7 +305,6 @@ pub(super) async fn read_pipeline(ctx: &Context, input: ReadInput) -> Checked<Va
     }
 }
 
-/// Saves only a pipeline the user confirmed; anything else asks in the thread.
 pub(super) async fn save_pipeline(
     ctx: &Context,
     conversation_id: &str,
@@ -318,7 +319,15 @@ pub(super) async fn save_pipeline(
     let replaces = store.workflow(&name).await.map_err(text)?.is_some();
     let kind = ask::Kind::Pipeline;
     if !input.confirmed {
-        return ask::ask(store, kind, conversation_id, &name, &parsed.source, replaces).await;
+        return ask::ask(
+            store,
+            kind,
+            conversation_id,
+            &name,
+            &parsed.source,
+            replaces,
+        )
+        .await;
     }
     ask::check_confirmed(store, kind, conversation_id, &name, &parsed.source).await?;
     let (saved, replaced) = store.save_workflow(&parsed.source).await.map_err(text)?;

@@ -1,6 +1,6 @@
-//! Asking you before an agent type or a pipeline is saved: townhall shows the TOML in a
-//! `townhall` entry with a short question and records the ask. A save with `confirmed: true`
-//! goes through only for that exact TOML, and only once you wrote after the ask.
+//! Asking you before an agent type is saved: townhall shows the TOML in a `townhall`
+//! entry with a short question and records the ask. A save with `confirmed: true` goes
+//! through only for that exact TOML, and only once you wrote after the ask.
 
 use serde_json::{json, Value};
 
@@ -9,7 +9,6 @@ use crate::store::Store;
 
 use super::checks::Checked;
 
-/// What is being saved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Kind {
     AgentType,

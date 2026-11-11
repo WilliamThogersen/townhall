@@ -1,10 +1,5 @@
-//! Unit 2.8c pipelines and runs: the tables it owns and their store functions (`impl Store`
-//! blocks here, using `Store::call`). Migrations 0850 to 0899, files `migrations/08xx_<name>.sql`.
-//! The user-facing name is pipeline, the code's is workflow.
-//! `0850_workflows` adds `workflows` (one row per saved pipeline with its TOML as written),
-//! `workflow_asks` (the pipelines townhall's session asked you to confirm, like
-//! `agent_type_asks`), and `runs` and `run_steps` (no store functions yet).
-//! `0851_default_pipeline_tools` adds the three pipeline tools to the stored `default` type.
+//! Unit 2.8c runs: the tables it owns and their store functions (`impl Store` blocks
+//! here, using `Store::call`). Migrations 0850 to 0899, files `migrations/08xx_<name>.sql`.
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -44,8 +39,6 @@ fn rows(conn: &Connection, filter: &str, name: Option<&str>) -> Result<Vec<Row>>
     Ok(found?)
 }
 
-/// The row parsed again. Agents are not checked again: deleting one later must not hide a
-/// pipeline that names it.
 fn parse_row((name, source, updated_at): Row) -> Result<Workflow> {
     let parsed = crate::definitions::parse_workflow(&source).map_err(|e| Error::Corrupt {
         path: format!("townhall.db workflows.source of `{name}`"),
@@ -61,9 +54,11 @@ fn parse_row((name, source, updated_at): Row) -> Result<Workflow> {
 fn upsert(conn: &mut Connection, def: &WorkflowDef, source: &str) -> Result<(Workflow, bool)> {
     let tx = conn.transaction()?;
     let replaced = tx
-        .query_row("select 1 from workflows where name = ?1", [&def.name], |r| {
-            r.get::<_, i64>(0)
-        })
+        .query_row(
+            "select 1 from workflows where name = ?1",
+            [&def.name],
+            |r| r.get::<_, i64>(0),
+        )
         .optional()?
         .is_some();
     let updated_at = clock::now_rfc3339();
@@ -97,11 +92,8 @@ fn delete(conn: &mut Connection, name: &str) -> Result<String> {
 }
 
 impl Store {
-    /// The longest pipeline TOML, in characters.
     pub const MAX_WORKFLOW_SOURCE: usize = 50_000;
 
-    /// Parses `source` and checks it against the saved agent types: what every save and
-    /// import runs. Returns every error found.
     pub async fn check_pipeline(
         &self,
         source: &str,
@@ -131,13 +123,11 @@ impl Store {
         check_pipeline(source, &agents)
     }
 
-    /// Every saved pipeline by name, ignoring case.
     pub async fn workflows(&self) -> Result<Vec<Workflow>> {
         let found = self.call(|conn| rows(conn, "", None)).await?;
         found.into_iter().map(parse_row).collect()
     }
 
-    /// The pipeline called `name`, ignoring case.
     pub async fn workflow(&self, name: &str) -> Result<Option<Workflow>> {
         let name = name.to_string();
         let found = self
@@ -146,9 +136,6 @@ impl Store {
         found.into_iter().next().map(parse_row).transpose()
     }
 
-    /// Checks `source` and saves it under its `name`, replacing a pipeline of that name
-    /// (ignoring case, the new spelling wins). `true` when it replaced one. An unknown
-    /// agent is `InvalidInput`.
     pub async fn save_workflow(&self, source: &str) -> Result<(Workflow, bool)> {
         let parsed = self
             .check_pipeline(source)
@@ -158,15 +145,11 @@ impl Store {
             .await
     }
 
-    /// Deletes the pipeline called `name` (ignoring case) and returns its stored name.
-    /// `Missing` when unknown.
     pub async fn delete_workflow(&self, name: &str) -> Result<String> {
         let name = name.to_string();
         self.call(move |conn| delete(conn, &name)).await
     }
 
-    /// Records that townhall showed `source` for the pipeline `name` in the entry
-    /// `entry_id` of the conversation and asked you to confirm. Replaces an earlier ask.
     pub async fn ask_workflow(
         &self,
         conversation_id: &str,
@@ -190,7 +173,6 @@ impl Store {
         .await
     }
 
-    /// The source and entry id of the conversation's open ask for the pipeline `name`.
     pub async fn workflow_ask(
         &self,
         conversation_id: &str,
@@ -209,7 +191,6 @@ impl Store {
         .await
     }
 
-    /// Closes the conversation's ask for the pipeline `name`, once it was answered.
     pub async fn forget_workflow_ask(&self, conversation_id: &str, name: &str) -> Result<()> {
         let (cid, name) = (conversation_id.to_string(), name.to_string());
         self.call(move |conn| {

@@ -1,7 +1,6 @@
 //! The definitions library (unit 2.8b, agent types from 2.12): agent types saved as TOML,
 //! and their import. Bodies are the TOML text (`text/plain` or `application/toml`); a type
-//! that fails 2.8a's checks is `400` with every `DefinitionError` as `data`. Workflows wait
-//! for 2.8c and still answer `501`.
+//! that fails 2.8a's checks is `400` with every `DefinitionError` as `data`.
 
 use axum::body::Bytes;
 use std::time::SystemTime;
@@ -12,7 +11,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use townhall_core::agent_usage::UsageRange;
 use townhall_core::clock;
-use townhall_core::definitions::{AgentDef, DefKind, DefinitionError, Parsed};
+use townhall_core::definitions::{AgentDef, DefKind, DefinitionError, Parsed, WorkflowDef};
 use townhall_core::model::{AgentType, AgentTypeSummary};
 use townhall_core::store::Store;
 use townhall_core::Error;
@@ -58,10 +57,10 @@ fn toml_text(headers: &HeaderMap, body: &Bytes) -> Result<String, ApiError> {
         .map_err(|_| ApiError::BadRequest("the toml must be utf-8 text".into()))
 }
 
-fn name_mismatch(def: &AgentDef, path: &str) -> DefinitionError {
+fn name_mismatch(kind: DefKind, name: &str, path: &str) -> DefinitionError {
     DefinitionError {
-        kind: DefKind::Agent,
-        name: Some(def.name.clone()),
+        kind,
+        name: Some(name.to_string()),
         step: None,
         field: Some("name".into()),
         message: format!("must match the path: \"{path}\""),
@@ -149,7 +148,11 @@ pub async fn put_agent(
         Err(errors) => return Ok(invalid(errors)),
     };
     if parsed.def.name != name {
-        return Ok(invalid(vec![name_mismatch(&parsed.def, &name)]));
+        return Ok(invalid(vec![name_mismatch(
+            DefKind::Agent,
+            &parsed.def.name,
+            &name,
+        )]));
     }
     save(&state, parsed).await
 }
@@ -162,24 +165,59 @@ pub async fn delete_agent(
     Ok(ok(state.ctx().store()?.delete_agent_type(&name).await?))
 }
 
-pub async fn list_workflows() -> ApiError {
-    ApiError::NotImplemented
+async fn save_workflow(
+    state: &AppState,
+    parsed: Parsed<WorkflowDef>,
+) -> Result<Response, ApiError> {
+    let store = state.ctx().store()?;
+    let (saved, replaced) = store.save_workflow(&parsed.source).await?;
+    Ok(if replaced { ok(saved) } else { created(saved) })
 }
 
-pub async fn get_workflow() -> ApiError {
-    ApiError::NotImplemented
+pub async fn list_workflows(State(state): State<AppState>) -> Result<Response, ApiError> {
+    Ok(ok(state.ctx().store()?.workflows().await?))
 }
 
-pub async fn put_workflow() -> ApiError {
-    ApiError::NotImplemented
+pub async fn get_workflow(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Response, ApiError> {
+    match state.ctx().store()?.workflow(&name).await? {
+        Some(found) => Ok(ok(found)),
+        None => Err(Error::missing("pipeline", name).into()),
+    }
 }
 
-pub async fn delete_workflow() -> ApiError {
-    ApiError::NotImplemented
+pub async fn put_workflow(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, ApiError> {
+    let source = toml_text(&headers, &body)?;
+    let parsed = match state.ctx().store()?.check_pipeline(&source).await {
+        Ok(parsed) => parsed,
+        Err(errors) => return Ok(invalid(errors)),
+    };
+    if parsed.def.name != name {
+        return Ok(invalid(vec![name_mismatch(
+            DefKind::Workflow,
+            &parsed.def.name,
+            &name,
+        )]));
+    }
+    save_workflow(&state, parsed).await
+}
+
+pub async fn delete_workflow(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Response, ApiError> {
+    Ok(ok(state.ctx().store()?.delete_workflow(&name).await?))
 }
 
 /// One `.toml` agent type as the body: `201` with the saved type. `403` foreign origin
-/// (a `text/plain` post needs no CORS preflight), `409` the name is taken, `501` a workflow.
+/// (a `text/plain` post needs no CORS preflight), `409` the name is taken.
 pub async fn import(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -190,7 +228,7 @@ pub async fn import(
     }
     let source = toml_text(&headers, &body)?;
     if looks_like_workflow(&source) {
-        return Err(ApiError::NotImplemented);
+        return import_workflow(&state, &source).await;
     }
     let parsed = match Store::check_agent_type(&source) {
         Ok(parsed) => parsed,
@@ -204,4 +242,19 @@ pub async fn import(
         return Err(Error::Conflict(why).into());
     }
     save(&state, parsed).await
+}
+
+async fn import_workflow(state: &AppState, source: &str) -> Result<Response, ApiError> {
+    let store = state.ctx().store()?;
+    let parsed = match store.check_pipeline(source).await {
+        Ok(parsed) => parsed,
+        Err(errors) => return Ok(invalid(errors)),
+    };
+    if let Some(taken) = store.workflow(&parsed.def.name).await? {
+        let name = taken.def.name;
+        let why =
+            format!("pipeline `{name}` exists: replace it with PUT /api/library/workflows/{name}");
+        return Err(Error::Conflict(why).into());
+    }
+    save_workflow(state, parsed).await
 }

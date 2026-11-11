@@ -6,7 +6,6 @@ use super::names::MAX_STEP_ID_LEN;
 use super::vars::{tokens, Token, Var};
 use super::workflow::{Step, WorkflowDef, MAX_STEPS};
 
-/// A saved agent a step may name, with the agent types its tasks require.
 #[derive(Debug, Clone, Copy)]
 pub struct KnownAgent<'a> {
     pub name: &'a str,
@@ -19,9 +18,9 @@ impl<'a> KnownAgent<'a> {
     }
 }
 
-/// Check a workflow against every rule but the ones on `requires`, and return all
-/// errors found, workflow level first, then each step in written order. Over
-/// `MAX_STEPS` steps, only the workflow level is checked.
+/// Check a workflow against every rule and return all errors found, workflow
+/// level first, then each step in written order. Over `MAX_STEPS` steps, only
+/// the workflow level is checked.
 pub fn validate_workflow(
     def: &WorkflowDef,
     known_agents: &[&str],
@@ -33,7 +32,6 @@ pub fn validate_workflow(
     validate_pipeline(def, &agents)
 }
 
-/// `validate_workflow` plus the rules on each agent's `requires`.
 pub fn validate_pipeline(
     def: &WorkflowDef,
     known_agents: &[KnownAgent],

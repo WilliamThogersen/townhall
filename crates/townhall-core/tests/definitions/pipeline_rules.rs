@@ -1,5 +1,3 @@
-//! The pipeline fields of a workflow and their save-time checks.
-
 use townhall_core::definitions::{parse_workflow, validate_pipeline, KnownAgent};
 
 const REQUIRES_TESTER: &[&str] = &["tester"];
@@ -82,10 +80,7 @@ fn the_new_fields_parse_with_their_defaults() {
 
 #[test]
 fn a_standard_pipeline_passes_when_a_sound_one_is_unconditional() {
-    let source = STANDARD.replace(
-        "when = { paths = [\"**/migrations/**\"] }\n",
-        "",
-    );
+    let source = STANDARD.replace("when = { paths = [\"**/migrations/**\"] }\n", "");
     assert_eq!(errors(&source), Vec::<String>::new());
 }
 
@@ -96,7 +91,8 @@ fn an_unknown_agent_is_refused() {
     assert!(
         found
             .iter()
-            .any(|e| e.contains("step \"plan\"") && e.contains("agent \"ghost\" is not a saved agent")),
+            .any(|e| e.contains("step \"plan\"")
+                && e.contains("agent \"ghost\" is not a saved agent")),
         "{found:?}"
     );
 }
@@ -117,7 +113,10 @@ fn work_must_name_a_step() {
 fn an_after_cycle_is_refused() {
     let source = STANDARD.replace("after = [\"plan\"]", "after = [\"land\"]");
     let found = errors(&source);
-    assert!(found.iter().any(|e| e.contains("makes a cycle")), "{found:?}");
+    assert!(
+        found.iter().any(|e| e.contains("makes a cycle")),
+        "{found:?}"
+    );
 }
 
 #[test]
@@ -136,10 +135,7 @@ fn a_required_type_needs_an_earlier_step_without_when() {
 fn a_required_step_after_the_step_does_not_count() {
     let source = STANDARD
         .replace("after = [\"test\", \"review\"]", "after = [\"test\"]")
-        .replace(
-            "when = { paths = [\"**/migrations/**\"] }\n",
-            "",
-        );
+        .replace("when = { paths = [\"**/migrations/**\"] }\n", "");
     let found = errors(&source);
     assert!(
         found

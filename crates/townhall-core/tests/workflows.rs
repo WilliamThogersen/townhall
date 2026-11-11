@@ -34,11 +34,16 @@ async fn saving_again_replaces_and_reports_it() {
 #[tokio::test]
 async fn a_pipeline_naming_an_unknown_agent_is_refused() {
     let env = store_env();
-    let bad = PLAN.replace("id = \"plan\"\nagent = \"builder\"", "id = \"plan\"\nagent = \"ghost\"");
+    let bad = PLAN.replace(
+        "id = \"plan\"\nagent = \"builder\"",
+        "id = \"plan\"\nagent = \"ghost\"",
+    );
     let refused = env.store.save_workflow(&bad).await.unwrap_err();
     assert!(matches!(refused, Error::InvalidInput(_)), "{refused:?}");
     assert!(
-        refused.to_string().contains("\"ghost\" is not a saved agent"),
+        refused
+            .to_string()
+            .contains("\"ghost\" is not a saved agent"),
         "{refused}"
     );
     assert!(env.store.workflows().await.unwrap().is_empty());
@@ -57,10 +62,33 @@ async fn checking_returns_every_field_error() {
 async fn delete_removes_and_a_second_delete_is_missing() {
     let env = store_env();
     env.store.save_workflow(PLAN).await.unwrap();
-    assert_eq!(env.store.delete_workflow("PLAN-BUILD").await.unwrap(), "plan-build");
+    assert_eq!(
+        env.store.delete_workflow("PLAN-BUILD").await.unwrap(),
+        "plan-build"
+    );
     assert!(env.store.workflow("plan-build").await.unwrap().is_none());
     let again = env.store.delete_workflow("plan-build").await.unwrap_err();
     assert!(matches!(again, Error::Missing { .. }), "{again:?}");
+}
+
+#[tokio::test]
+async fn the_default_type_gets_the_pipeline_tools_once() {
+    let env = store_env();
+    let sql = townhall_core::store::migrate::all()
+        .into_iter()
+        .find(|m| m.id == 851)
+        .unwrap()
+        .sql;
+    env.store
+        .call(move |c| Ok(c.execute_batch(sql)?))
+        .await
+        .unwrap();
+    let default = env.store.agent_type("default").await.unwrap().unwrap();
+    for tool in ["list_pipelines", "read_pipeline", "save_pipeline"] {
+        let entry = format!("mcp__townhall__{tool}");
+        assert_eq!(default.def.tools.iter().filter(|t| **t == entry).count(), 1);
+    }
+    assert_eq!(default.source.matches("list_pipelines").count(), 1);
 }
 
 #[tokio::test]
