@@ -5,6 +5,7 @@
 use std::path::Path;
 use std::time::Instant;
 
+use serde_json::json;
 use tokio::sync::watch;
 
 use super::args::is_allowed;
@@ -12,6 +13,7 @@ use super::process::{Exit, Proc};
 use super::prompt;
 use super::stream::{parse_line, StreamEvent, TurnResult};
 use crate::model::{ContextUsage, Conversation, EntryBody};
+use crate::plugins::hooks;
 use crate::redact::redact;
 use crate::{Context, Result};
 
@@ -81,8 +83,13 @@ impl Session<'_> {
                 self.mark_started().await?;
             }
             StreamEvent::Text(text) => {
-                let reply = EntryBody::Townhall { text };
-                self.ctx.store()?.append_entry(self.id, reply).await?;
+                let reply = EntryBody::Townhall { text: text.clone() };
+                let entry = self.ctx.store()?.append_entry(self.id, reply).await?;
+                hooks::fire(
+                    self.ctx,
+                    "message.reply",
+                    json!({"conversationId": self.id, "entryId": entry.id, "text": text}),
+                );
             }
             StreamEvent::Usage(used) => self.used = Some(used),
             StreamEvent::ToolRequest {

@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 
 use crate::context::Context;
 use crate::model::{Checks, Pr, Task};
+use crate::plugins::hooks;
 use crate::repos::accounts::Accounts;
 use crate::repos::names;
 use crate::repos::publish::{origin_of, publish, PrRequest, Programs, Published};
@@ -120,6 +121,11 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
                 let change = move |t: Task| Ok(Task { pr: Some(pr), ..t });
                 store.update_task(&task.name, change).await.map_err(text)?;
             }
+            hooks::fire(
+                ctx,
+                "pr.opened",
+                json!({"task": task, "url": url, "number": number, "base": task.pr_target()}),
+            );
             let account = account.map(|a| json!({"login": a.login, "host": a.host}));
             Ok(json!({
                 "state": "opened", "url": url, "number": number, "base": task.pr_target(),
