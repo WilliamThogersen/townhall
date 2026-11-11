@@ -109,6 +109,18 @@ async fn relaunches(s: &Sched, name: &str) -> Vec<String> {
     panic!("`{name}` was never relaunched: {started:?}");
 }
 
+async fn heard(s: &Sched) -> Vec<String> {
+    let give_up = Instant::now() + Duration::from_secs(120);
+    while Instant::now() < give_up {
+        let told = s.ctx().notes().waiting(&s.conversation);
+        if !told.is_empty() {
+            return told;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("nothing told to the conversation");
+}
+
 async fn passes(s: &Sched, count: usize) {
     for _ in 0..count {
         run_once(s.ctx()).await.unwrap();
@@ -258,8 +270,7 @@ async fn a_task_that_keeps_ending_with_pending_checks_needs_you_after_the_last_w
     let name = lander(&s, PENDING).await;
     until(&s, &name, |t| t.state == TaskState::InCi).await;
     reports(&name, GREEN);
-    until(&s, &name, |t| t.state == TaskState::Queued).await;
-    run_once(s.ctx()).await.unwrap();
+    relaunches(&s, &name).await;
     assert_eq!(s.state(&name).await, TaskState::Working);
 
     reports(&name, PENDING);
@@ -279,7 +290,7 @@ async fn a_task_that_keeps_ending_with_pending_checks_needs_you_after_the_last_w
             .is_some_and(|b| b.contains("build: IN_PROGRESS")),
         "{task:?}"
     );
-    let told = s.ctx().notes().waiting(&s.conversation);
+    let told = heard(&s).await;
     let line = format!("task {name} needs you");
     assert!(
         told.iter()
