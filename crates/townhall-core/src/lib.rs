@@ -35,6 +35,6 @@ pub mod usage;
 pub mod version;
 pub mod worktree;
 
-pub use context::{Context, ContextOptions};
+pub use context::{Context, ContextOptions, Pacing};
 pub use error::{Error, Result};
 pub use home::{Home, Workspace};
