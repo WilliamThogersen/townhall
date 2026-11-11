@@ -2,6 +2,7 @@ import { bool, fail, list, listOf, nullable, num, oneOf, record, str, strings, t
 import type {
   ActivePluginTheme,
   AvailablePlugin,
+  HostToken,
   Marketplace,
   MarketplaceEntry,
   MarketplaceSource,
@@ -13,6 +14,7 @@ import type {
   PluginSettingsGroup,
   PluginStarter,
   PluginThemeChoice,
+  PluginUiEntry,
   PluginUpdate,
   PluginUpdateOutcome,
   SettingFieldType,
@@ -173,6 +175,29 @@ export const parseContributions: Guard<PluginContributions> = (value) => {
     themes: list(r.themes, "contributions.themes", parseThemeChoice),
     theme: nullable(r.theme, "contributions.theme", parseActiveTheme),
     settings: list(r.settings, "contributions.settings", parseGroup),
+  };
+};
+
+const parseUiEntry: Check<PluginUiEntry> = (value, what) => {
+  const r = record(value, what);
+  return {
+    plugin: str(r.plugin, `${what}.plugin`),
+    slot: str(r.slot, `${what}.slot`),
+    title: str(r.title, `${what}.title`),
+    entry: str(r.entry, `${what}.entry`),
+    height: nullable(r.height, `${what}.height`, num),
+  };
+};
+
+export const parseUiEntries: Guard<readonly PluginUiEntry[]> = (value) => list(value, "ui", parseUiEntry);
+
+export const parseHostToken: Guard<HostToken> = (value) => {
+  const r = record(value, "hostToken");
+  return {
+    plugin: str(r.plugin, "hostToken.plugin"),
+    version: nullable(r.version, "hostToken.version", str),
+    token: str(r.token, "hostToken.token"),
+    scopes: strings(r.scopes, "hostToken.scopes"),
   };
 };
 
