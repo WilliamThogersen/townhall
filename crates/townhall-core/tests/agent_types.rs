@@ -184,7 +184,12 @@ async fn a_deleted_builder_never_comes_back() {
 #[tokio::test]
 async fn the_first_open_seeds_a_read_only_adviser_on_fable() {
     let env = store_env();
-    let adviser = env.store.agent_type(ADVISER_AGENT_TYPE).await.unwrap().unwrap();
+    let adviser = env
+        .store
+        .agent_type(ADVISER_AGENT_TYPE)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(ADVISER_AGENT_TYPE, "adviser");
     assert_eq!(adviser.def.adapter, AdapterKind::Claude);
     assert_eq!(adviser.def.model.as_deref(), Some("claude-fable-5-2"));

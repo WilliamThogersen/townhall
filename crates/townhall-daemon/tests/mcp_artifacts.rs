@@ -74,7 +74,13 @@ async fn a_task_agent_gets_the_task_tools_with_the_artifact_tools() {
         .collect();
     assert_eq!(
         names,
-        ["hand_back", "open_pr", "add_artifact", "list_artifacts"]
+        [
+            "hand_back",
+            "open_pr",
+            "add_artifact",
+            "list_artifacts",
+            "ask_adviser"
+        ]
     );
     let allowed = townhall_core::mcp::task_allowed_tools();
     assert!(allowed.contains(&"mcp__townhall__add_artifact".to_string()));

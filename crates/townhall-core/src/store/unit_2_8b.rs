@@ -15,9 +15,7 @@ use super::migrate::Migration;
 use super::Store;
 use crate::agent_usage::{aggregate, AgentUsageSeries, UsageRange, UsageRun};
 use crate::definitions::{check_agent, AgentDef, DefKind, DefinitionError, Parsed};
-use crate::model::{
-    AdviserCall, AgentType, AgentUsage, Origin, TaskRun, CONVERSATION_AGENT_TYPE,
-};
+use crate::model::{AdviserCall, AgentType, AgentUsage, Origin, TaskRun, CONVERSATION_AGENT_TYPE};
 use crate::plugins::agent_types;
 use crate::{clock, Error, Result};
 

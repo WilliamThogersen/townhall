@@ -169,7 +169,10 @@ fn a_fresh_database_has_builder_default_and_adviser() {
         .unwrap();
     assert_eq!(names, ["adviser", "builder", "default"]);
     let adviser = source_of(&conn, "adviser").unwrap();
-    assert!(adviser.contains("model = \"claude-fable-5-2\""), "{adviser}");
+    assert!(
+        adviser.contains("model = \"claude-fable-5-2\""),
+        "{adviser}"
+    );
     assert!(adviser.contains("permission_mode = \"plan\""), "{adviser}");
 }
 

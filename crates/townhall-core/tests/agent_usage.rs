@@ -257,7 +257,11 @@ async fn adviser_calls_count_as_runs_of_the_adviser() {
     assert_eq!(runs[0].task, c.title);
     assert_eq!(runs[1].task, "a");
     assert_eq!(
-        (runs[1].tokens, runs[1].state.as_str(), runs[1].model.as_deref()),
+        (
+            runs[1].tokens,
+            runs[1].state.as_str(),
+            runs[1].model.as_deref()
+        ),
         (400, "done", Some("claude-fable-5-2"))
     );
     assert_eq!(env.store.agent_runs("builder", 10).await.unwrap().len(), 1);
