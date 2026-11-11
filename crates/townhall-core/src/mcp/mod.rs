@@ -36,6 +36,7 @@ pub use library::{
 pub use open_pr::OPEN_PR;
 pub use rpc::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND};
 pub use status::{MAX_MESSAGE_CHARS, MAX_STEPS, RECENT_ENTRIES};
+pub(crate) use task_tools::create_step_task;
 pub use task_tools::create_task_as_plugin;
 
 /// Answers one JSON-RPC message or batch for the conversation `conversation_id` (which the
@@ -190,6 +191,10 @@ fn create_task_schema() -> Value {
                 "type": "integer", "minimum": 0, "maximum": MAX_HANDOFFS,
                 "description": "How many times a failing check relaunches the task. Default 2. Each retry counts as one hand back, so the limit is the most hand backs a task gets."
             },
+            "pipeline": {
+                "type": "string", "minLength": 1,
+                "description": "Name of a saved pipeline (list_pipelines). Starts a run instead of one task: `name` is the run's name, `prompt` its input, and townhall creates the tasks `<name>-<step>` itself as each step finishes. Returns the first task."
+            },
             "after": names_array("Names of tasks that must finish before this one starts."),
             "attachments": names_array("Attachment ids of this conversation the agent needs."),
             "agent": {
@@ -297,6 +302,7 @@ mod tests {
                 "doneWhen",
                 "maxRetries",
                 "name",
+                "pipeline",
                 "prBase",
                 "prompt",
                 "repo",

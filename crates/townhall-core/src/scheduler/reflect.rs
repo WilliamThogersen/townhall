@@ -62,9 +62,13 @@ pub(super) async fn queue(ctx: &Context, tasks: &[Task]) -> Result<(Vec<String>,
         return Ok((vec![], vec![]));
     }
     let store = ctx.store()?;
+    let run_tasks = store.run_task_names().await?;
     let (mut queued, mut warnings) = (vec![], vec![]);
     let mut reflector: Option<String> = None;
-    for task in tasks.iter().filter(|t| due(t)) {
+    for task in tasks
+        .iter()
+        .filter(|t| due(t) && !run_tasks.contains(&t.name.to_lowercase()))
+    {
         if !wants_reflection(ctx, task).await? {
             continue;
         }

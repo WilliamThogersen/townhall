@@ -194,6 +194,8 @@ pub struct CreateTaskInput {
     /// Relaunches after a failing check. Default `DEFAULT_MAX_RETRIES`.
     #[serde(default)]
     pub max_retries: Option<u32>,
+    #[serde(default)]
+    pub pipeline: Option<String>,
 }
 
 #[cfg(test)]

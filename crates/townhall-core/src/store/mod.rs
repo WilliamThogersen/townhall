@@ -42,6 +42,9 @@ pub use lock::LOCK_FILE;
 pub use migrate::Migration;
 pub use plugin_tokens::TokenRow;
 pub use settings::MAX_PROFILE_CHARS;
+pub use unit_2_8c::{
+    NewRun, Run, RunStep, StepUpdate, RUN_FAILED, RUN_FINISHED, RUN_NEEDS_YOU, RUN_RUNNING,
+};
 pub use unit_plugins::{Marketplace, Plugin};
 
 use crate::events::EventBus;

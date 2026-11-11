@@ -131,7 +131,7 @@ impl At {
 
 /// The final message of the Claude session recorded for the task: the only place a report is
 /// read from. `Err` is why there is none to read.
-async fn report_of(
+pub(super) async fn report_of(
     ctx: &Context,
     done: &Task,
     who: &str,

@@ -23,6 +23,7 @@ mod ci;
 mod gate;
 mod launch;
 mod merged;
+pub(crate) mod pipeline;
 mod plan;
 pub mod reflect;
 pub mod report;
@@ -71,6 +72,7 @@ pub struct Pass {
     /// Tasks whose check this pass started (`verify.rs`).
     pub verifying: Vec<String>,
     pub reading_ci: Vec<String>,
+    pub piped: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -126,6 +128,7 @@ fn report(result: Result<Pass>, last: String) -> String {
 
 /// One pass: start what may start, then tell merges. Tests call it directly.
 pub async fn run_once(ctx: &Context) -> Result<Pass> {
+    let (piped, pipeline_warnings) = pipeline::drive(ctx).await?;
     let mut tasks = ctx.store()?.all_tasks().await?;
     let (reflected, reflect_warnings) = reflect::queue(ctx, &tasks).await?;
     if !reflected.is_empty() {
@@ -140,7 +143,14 @@ pub async fn run_once(ctx: &Context) -> Result<Pass> {
         reading_ci,
         merged,
         reflected,
-        warnings: [pass.warnings.clone(), reflect_warnings, warnings].concat(),
+        piped,
+        warnings: [
+            pass.warnings.clone(),
+            pipeline_warnings,
+            reflect_warnings,
+            warnings,
+        ]
+        .concat(),
         ..pass
     })
 }
