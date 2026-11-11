@@ -5,6 +5,7 @@ import type { KeyHint } from "./keyHints";
 export const NEW_CONVERSATION_HINT: KeyHint = { keys: "n", label: "new conversation" };
 export const SEARCH_HINT: KeyHint = { keys: "/", label: "search" };
 export const HELP_HINT: KeyHint = { keys: "?", label: "help" };
+export const MENU_HINT: KeyHint = { keys: "m", label: "menu" };
 
 const GLOBAL_KEYS: ReadonlyMap<string, string> = new Map([
   [NEW_CONVERSATION_HINT.keys, PATHS.home],
@@ -48,10 +49,12 @@ function plainKey(e: KeyboardEvent): boolean {
   return !isTextField(e.target) && !inModal(e.target);
 }
 
-export function useGlobalKeys(onHelp?: () => void): void {
+export function useGlobalKeys(onHelp?: () => void, onMenu?: () => void): void {
   const latest = useRef(onHelp);
+  const latestMenu = useRef(onMenu);
   useEffect(() => {
     latest.current = onHelp;
+    latestMenu.current = onMenu;
   });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -59,6 +62,11 @@ export function useGlobalKeys(onHelp?: () => void): void {
       if (e.key === HELP_HINT.keys && latest.current !== undefined) {
         e.preventDefault();
         latest.current();
+        return;
+      }
+      if (e.key === MENU_HINT.keys && latestMenu.current !== undefined) {
+        e.preventDefault();
+        latestMenu.current();
         return;
       }
       const to = GLOBAL_KEYS.get(e.key);

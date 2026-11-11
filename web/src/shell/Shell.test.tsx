@@ -206,6 +206,54 @@ describe("Shell", () => {
   });
 });
 
+describe("Shell menu drawer", () => {
+  const shell = (container: HTMLElement) => container.querySelector(".th-shell");
+  const menuButton = () => screen.getByRole("button", { name: "menu" });
+
+  it("shows the main area first and swaps in the sidebar with the menu button", async () => {
+    const { container } = renderShell();
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    expect(menuButton()).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(menuButton());
+    expect(shell(container)).toHaveAttribute("data-view", "side");
+    expect(menuButton()).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(menuButton());
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("toggles with m, closes with esc, and leaves both alone while typing", async () => {
+    const { container } = renderShell();
+    fireEvent.keyDown(document.body, { key: "m" });
+    expect(shell(container)).toHaveAttribute("data-view", "side");
+    fireEvent.keyDown(document.body, { key: "/" });
+    const search = screen.getByRole("searchbox", { name: "search conversations" });
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(shell(container)).toHaveAttribute("data-view", "side");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    fireEvent.keyDown(search, { key: "m" });
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("goes back to the main area once a link in the sidebar is followed", async () => {
+    const { container } = renderShell();
+    fireEvent.click(menuButton());
+    fireEvent.click(link(/repos/));
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    expect(window.location.pathname).toBe("/repos");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("lists m in the help overlay", async () => {
+    renderShell();
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+    expect(within(screen.getByRole("dialog")).getByText("open or close the sidebar menu")).toBeInTheDocument();
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+});
+
 describe("daemon banner", () => {
   it("shows the poll error and clears it on retry", async () => {
     listAgents.mockRejectedValue(new ApiError("network", "cannot reach the daemon: Failed to fetch"));

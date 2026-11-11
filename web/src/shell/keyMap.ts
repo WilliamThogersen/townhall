@@ -3,7 +3,7 @@ import { REPLY_HINT, SESSION_HINT } from "../views/conversation/useConversationK
 import { CLOSE_TERMINAL_HINT } from "../views/conversation/session/useCloseKey";
 import { OPEN_TASK_HINT, TASK_ROWS_HINT } from "../views/conversation/session/useTaskKeys";
 import { ADD_REPO_HINT } from "../views/repos/useRepoKeys";
-import { HELP_HINT, NEW_CONVERSATION_HINT, SEARCH_HINT } from "./globalKeys";
+import { HELP_HINT, MENU_HINT, NEW_CONVERSATION_HINT, SEARCH_HINT } from "./globalKeys";
 import type { KeyHint } from "./keyHints";
 
 export interface KeyGroup {
@@ -26,6 +26,7 @@ export const KEY_MAP: readonly KeyGroup[] = [
       { keys: NEW_CONVERSATION_HINT.keys, label: "home, composer focused" },
       { keys: SEARCH_HINT.keys, label: "search" },
       { keys: "⌥↑ ⌥↓", label: "previous or next conversation" },
+      { keys: MENU_HINT.keys, label: "open or close the sidebar menu" },
       { keys: HELP_HINT.keys, label: "this help" },
       { keys: "esc", label: "leave a field, close a menu, cancel a confirm" },
     ],
