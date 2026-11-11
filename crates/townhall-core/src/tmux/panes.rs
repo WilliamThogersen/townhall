@@ -11,6 +11,10 @@ const FORMAT: &str = "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{ses
                       #{window_activity}|#{pane_id}|#{@townhall_kind}|#{session_name}";
 /// How long a snapshot answers lookups before tmux is asked again.
 const FRESH_FOR: Duration = Duration::from_secs(1);
+/// tmux marks a pane dead when its output closes, a moment before it reaps the process and
+/// knows the exit status; a dead pane without one is listed again this often, this far apart.
+const STATUS_TRIES: u32 = 20;
+const STATUS_WAIT: Duration = Duration::from_millis(25);
 
 /// How a dead pane's process ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,13 +110,22 @@ fn store(panes: Arc<Vec<Pane>>) {
 
 /// Asks tmux now and keeps the answer for the next lookups. No server means no panes.
 pub(super) async fn fetch() -> Result<Arc<Vec<Pane>>> {
-    let panes = match super::run_tmux(&["list-panes", "-a", "-F", FORMAT]).await {
-        Ok(out) => Arc::new(parse(&out)),
-        Err(e) if no_server(&e) => Arc::new(vec![]),
-        Err(e) => return Err(e),
-    };
-    store(Arc::clone(&panes));
-    Ok(panes)
+    let mut tries = 0;
+    loop {
+        let panes = match super::run_tmux(&["list-panes", "-a", "-F", FORMAT]).await {
+            Ok(out) => Arc::new(parse(&out)),
+            Err(e) if no_server(&e) => Arc::new(vec![]),
+            Err(e) => return Err(e),
+        };
+        let unsettled = panes.iter().any(|p| p.exit == Some(Exit::Unknown));
+        tries += 1;
+        if unsettled && tries < STATUS_TRIES {
+            tokio::time::sleep(STATUS_WAIT).await;
+            continue;
+        }
+        store(Arc::clone(&panes));
+        return Ok(panes);
+    }
 }
 
 /// The kept answer while it is fresh, else a new one.

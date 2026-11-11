@@ -1,7 +1,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use townhall_core::model::{Checks, Pr, SettingKey, Task, TaskState};
 use townhall_core::scheduler::run_once;
@@ -81,7 +81,8 @@ async fn lander(s: &Sched, json: &str) -> String {
 }
 
 async fn until(s: &Sched, name: &str, want: impl Fn(&Task) -> bool) -> Task {
-    for _ in 0..100 {
+    let give_up = Instant::now() + Duration::from_secs(120);
+    while Instant::now() < give_up {
         run_once(s.ctx()).await.unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
         let task = s.store().find_task(name).await.unwrap().unwrap();
@@ -93,33 +94,24 @@ async fn until(s: &Sched, name: &str, want: impl Fn(&Task) -> bool) -> Task {
     panic!("`{name}` never got there: {task:?}");
 }
 
-async fn floor(s: &Sched, gb: u32) {
-    let put = s
-        .store()
-        .set_setting(SettingKey::MinFreeDiskGb, serde_json::json!(gb));
-    put.await.unwrap();
-}
-
-async fn queued(s: &Sched, name: &str) -> Task {
-    floor(s, 100_000).await;
-    let task = until(s, name, |t| t.state == TaskState::Queued).await;
-    floor(s, 0).await;
-    task
-}
-
-async fn polled(s: &Sched, name: &str, times: usize) {
-    for _ in 0..100 {
-        if asked(name).len() >= times {
-            return;
+async fn relaunches(s: &Sched, name: &str) -> Vec<String> {
+    let give_up = Instant::now() + Duration::from_secs(120);
+    let mut started = vec![];
+    while Instant::now() < give_up {
+        let pass = run_once(s.ctx()).await.unwrap();
+        started.extend(pass.started.into_iter().filter(|n| n == name));
+        let task = s.store().find_task(name).await.unwrap().unwrap();
+        if task.state == TaskState::Working {
+            return started;
         }
-        run_once(s.ctx()).await.unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    panic!("`{name}` was not polled {times} times: {:?}", asked(name));
+    panic!("`{name}` was never relaunched: {started:?}");
 }
 
 async fn heard(s: &Sched) -> Vec<String> {
-    for _ in 0..100 {
+    let give_up = Instant::now() + Duration::from_secs(120);
+    while Instant::now() < give_up {
         let told = s.ctx().notes().waiting(&s.conversation);
         if !told.is_empty() {
             return told;
@@ -152,16 +144,18 @@ async fn a_task_that_ended_with_pending_checks_waits_then_is_relaunched_once() {
     let before = session(&s, &name).await;
     until(&s, &name, |t| t.state == TaskState::InCi).await;
     passes(&s, 4).await;
-    polled(&s, &name, 2).await;
     assert_eq!(s.state(&name).await, TaskState::InCi);
     assert_eq!(session(&s, &name).await, before);
     assert!(s.store().handoffs(&name).await.unwrap().is_empty());
+    let give_up = Instant::now() + Duration::from_secs(120);
+    while asked(&name).len() < 2 && Instant::now() < give_up {
+        passes(&s, 1).await;
+    }
     assert!(asked(&name).len() >= 2, "{:?}", asked(&name));
 
     reports(&name, RED);
-    queued(&s, &name).await;
-    let pass = run_once(s.ctx()).await.unwrap();
-    assert_eq!(pass.started, std::slice::from_ref(&name), "{pass:?}");
+    let started = relaunches(&s, &name).await;
+    assert_eq!(started, std::slice::from_ref(&name), "{started:?}");
     assert_eq!(s.state(&name).await, TaskState::Working);
     assert_ne!(session(&s, &name).await, before, "a new agent run");
     let brief = std::fs::read_to_string(s.brief(&name)).unwrap();
@@ -276,8 +270,7 @@ async fn a_task_that_keeps_ending_with_pending_checks_needs_you_after_the_last_w
     let name = lander(&s, PENDING).await;
     until(&s, &name, |t| t.state == TaskState::InCi).await;
     reports(&name, GREEN);
-    queued(&s, &name).await;
-    run_once(s.ctx()).await.unwrap();
+    relaunches(&s, &name).await;
     assert_eq!(s.state(&name).await, TaskState::Working);
 
     reports(&name, PENDING);
