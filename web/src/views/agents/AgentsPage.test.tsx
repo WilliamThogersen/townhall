@@ -2,9 +2,10 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/errors";
-import { anAgentType, anAgentTypeSummary } from "../../api/fixtures";
+import { anAgentType, anAgentTypeSummary, aPipeline } from "../../api/fixtures";
 import * as conversations from "../../api/conversations";
 import * as library from "../../api/library";
+import * as pipelines from "../../api/pipelines";
 import { AgentsPage } from "./AgentsPage";
 
 const builder = anAgentTypeSummary({ name: "builder" });
@@ -616,6 +617,26 @@ describe("AgentsPage", () => {
     render(<AgentsPage />);
     await rowOf("builder");
     expect(localStorage.getItem("th-agent-avatars")).toBeNull();
+  });
+
+  it("opens on agent types and never loads pipelines until asked", async () => {
+    const listPipelines = vi.spyOn(pipelines, "listPipelines").mockResolvedValue([]);
+    render(<AgentsPage />);
+    await rowOf("builder");
+    expect(screen.getByRole("radio", { name: "agent types" })).toBeChecked();
+    expect(listPipelines).not.toHaveBeenCalled();
+  });
+
+  it("switches to the pipelines section and back", async () => {
+    vi.spyOn(pipelines, "listPipelines").mockResolvedValue([aPipeline({ name: "standard", description: "plan then build" })]);
+    render(<AgentsPage />);
+    await rowOf("builder");
+    await userEvent.click(screen.getByRole("radio", { name: "pipelines" }));
+    expect(await rowOf("standard")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^planner/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "new pipeline" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "agent types" }));
+    expect(await rowOf("planner")).toBeInTheDocument();
   });
 
   it("still lists the types when usage fails to load", async () => {
