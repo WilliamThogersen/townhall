@@ -17,14 +17,14 @@
 
 Early. The core runs agents, and the daemon now runs conversations that turn into tasks
 across several repos, with agent states, attachments, steps and shipped stats. The
-interface for them works; polish comes next.
+interface for them works, with the full key map, small windows and end to end tests.
 
 |   | part | what it does |
 |---|------|--------------|
 | ● | core | one git worktree and one tmux session per agent, adapters for `claude` and `shell` |
 | ● | daemon | http and websocket api on `127.0.0.1:7777`: several repos, conversations, tasks, agent states, attachments, steps and shipped stats, live terminal snapshots |
 | ● | desktop | tauri app with repo picker, tray and a notification when an agent ends |
-| ◐ | interface | terminal-native redesign from [`docs/style-guide`](docs/style-guide/README.md): home with shipped stats, conversations, a sidebar with search, attachments, the control center, repos and first run. the full key map, small windows and end to end tests come next |
+| ● | interface | terminal-native redesign from [`docs/style-guide`](docs/style-guide/README.md): home with shipped stats, conversations, a sidebar with search, attachments, the control center, repos and first run. the full key map with a key bar that follows the context and a `?` help overlay, a menu drawer and stacked layouts for small windows, accessibility fixes, and Playwright end to end tests (`npm run test:e2e` in `web/`) that run against the seeded demo daemon |
 | ● | conversations | talk to townhall; it finds the repo and creates tasks, and each task starts its own agent. a thread with task blocks and direct answers, a session panel and an agent's terminal in a split |
 | ● | control center | one timeline for every agent in every conversation: the loop strip, stats, conversations, tasks and their steps, a now line and a repo filter |
 
