@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useRoute } from "../router";
 import { isInTerminal, isTextField } from "./globalKeys";
 
 export interface MenuDrawer {
   readonly open: boolean;
   readonly toggle: () => void;
+  readonly buttonRef: RefObject<HTMLButtonElement | null>;
 }
 
 function escapeIgnored(e: KeyboardEvent): boolean {
@@ -15,6 +16,7 @@ function escapeIgnored(e: KeyboardEvent): boolean {
 
 export function useMenuDrawer(): MenuDrawer {
   const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const { path, query } = useRoute();
   const place = `${path}?${JSON.stringify(query)}`;
   const [seen, setSeen] = useState(place);
@@ -28,10 +30,11 @@ export function useMenuDrawer(): MenuDrawer {
       if (e.key !== "Escape" || escapeIgnored(e)) return;
       e.preventDefault();
       setOpen(false);
+      buttonRef.current?.focus();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
   const toggle = useCallback(() => setOpen((was) => !was), []);
-  return { open, toggle };
+  return { open, toggle, buttonRef };
 }

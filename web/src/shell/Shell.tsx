@@ -20,14 +20,9 @@ function Frame({ children, sidebarFoot }: ShellProps) {
   useGlobalKeys(openHelp, menu.toggle);
   return (
     <div className="th-shell" data-view={menu.open ? "side" : "main"}>
-      <Sidebar foot={sidebarFoot} />
-      <main className="th-main">
-        <DaemonBanner />
-        {children}
-      </main>
-      <KeyBar />
       <header className="th-navbar">
         <button
+          ref={menu.buttonRef}
           type="button"
           className="th-btn th-btn--ghost th-btn--sm"
           aria-expanded={menu.open}
@@ -38,6 +33,12 @@ function Frame({ children, sidebarFoot }: ShellProps) {
         </button>
         <span className="th-wordmark">townhall</span>
       </header>
+      <Sidebar foot={sidebarFoot} />
+      <main className="th-main">
+        <DaemonBanner />
+        {children}
+      </main>
+      <KeyBar />
       {helpOpen ? <HelpOverlay onClose={closeHelp} /> : null}
     </div>
   );

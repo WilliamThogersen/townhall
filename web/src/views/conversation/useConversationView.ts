@@ -8,6 +8,7 @@ import { navigate, PATHS, useRoute } from "../../router";
 import { useSettings } from "../../settings/useSettings";
 import type { ThreadContextValue } from "./thread/threadContext";
 import { pressKeys } from "./thread/trustDialog";
+import { SESSION_PANEL_ID } from "./session";
 import { isInTerminal, isPlainKey } from "./session/keys";
 import { useNarrow } from "./useNarrow";
 
@@ -66,10 +67,13 @@ function useOverlayRail(pane: PaneRoute): Rail {
   const visible = open && !paneOpen;
   useEffect(() => {
     if (!visible) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.getElementById(SESSION_PANEL_ID)?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || !isPlainKey(e) || isInTerminal(e.target)) return;
       e.preventDefault();
       setOpen(false);
+      opener?.focus();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

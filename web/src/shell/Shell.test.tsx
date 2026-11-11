@@ -61,9 +61,10 @@ describe("Shell", () => {
   it("lays out sidebar, main and key bar", async () => {
     const { container } = renderShell();
     const shell = container.querySelector(".th-shell");
-    expect(shell?.children[0]).toHaveClass("th-sidebar");
-    expect(shell?.children[1]).toHaveClass("th-main");
-    expect(shell?.children[2]).toHaveClass("th-keybar");
+    expect(shell?.children[0]).toHaveClass("th-navbar");
+    expect(shell?.children[1]).toHaveClass("th-sidebar");
+    expect(shell?.children[2]).toHaveClass("th-main");
+    expect(shell?.children[3]).toHaveClass("th-keybar");
     expect(within(screen.getByRole("main")).getByText("screen")).toBeInTheDocument();
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
   });
@@ -219,6 +220,25 @@ describe("Shell menu drawer", () => {
     expect(menuButton()).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(menuButton());
     expect(shell(container)).toHaveAttribute("data-view", "main");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("hands focus back to the menu button when esc closes the drawer", async () => {
+    renderShell();
+    fireEvent.click(menuButton());
+    const brand = document.querySelector<HTMLElement>(".th-sidebar-brand");
+    brand?.focus();
+    fireEvent.keyDown(brand as HTMLElement, { key: "Escape" });
+    expect(menuButton()).toHaveFocus();
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("puts the menu button before the sidebar and main area in tab order", async () => {
+    const { container } = renderShell();
+    const after = (other: Element | null) =>
+      Boolean(other && menuButton().compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(after(container.querySelector(".th-sidebar"))).toBe(true);
+    expect(after(container.querySelector(".th-main"))).toBe(true);
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
   });
 
