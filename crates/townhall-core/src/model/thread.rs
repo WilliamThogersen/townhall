@@ -85,6 +85,7 @@ pub enum EntryBody {
         to: String,
         reason: String,
     },
+    Plugin { plugin: String, text: String },
     /// Townhall's own failure, for example its session exited.
     Error { message: String },
 }
@@ -136,6 +137,13 @@ mod tests {
                 text: "task fix ended".into(),
             },
             json!({"kind": "event", "text": "task fix ended"}),
+        );
+        round_trip(
+            EntryBody::Plugin {
+                plugin: "lint@acme".into(),
+                text: "created by plugin lint@acme".into(),
+            },
+            json!({"kind": "plugin", "plugin": "lint@acme", "text": "created by plugin lint@acme"}),
         );
         round_trip(
             EntryBody::Error {

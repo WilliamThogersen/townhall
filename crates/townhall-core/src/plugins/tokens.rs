@@ -6,7 +6,10 @@ use crate::{Error, Result};
 
 pub const TASK_SCOPES: [&str; 3] = ["tasks:read", "conversations:read", "storage"];
 
+const CLAUDE_ONLY_SCOPES: [&str; 2] = ["tasks:create", "conversations:write"];
+
 const API_PREFIX: &str = "api:";
+const CLAUDE_API_PREFIX: &str = "claude.api:";
 const TOKEN_BYTES: usize = 32;
 const RANDOM: &str = "/dev/urandom";
 
@@ -76,6 +79,12 @@ pub async fn authenticate(store: &Store, token: &str) -> Result<Option<Caller>> 
         .collect();
     if row.task.is_some() {
         scopes.retain(|s| TASK_SCOPES.contains(&s.as_str()));
+        for scope in CLAUDE_ONLY_SCOPES {
+            let asked = format!("{CLAUDE_API_PREFIX}{scope}");
+            if approved.contains(&asked) {
+                scopes.push(scope.to_string());
+            }
+        }
     }
     Ok(Some(Caller {
         plugin: plugin.id,

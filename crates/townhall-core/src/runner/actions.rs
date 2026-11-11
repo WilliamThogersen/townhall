@@ -139,6 +139,36 @@ pub async fn send(ctx: &Context, id: &str, message: NewMessage) -> Result<Thread
     open_turn(ctx, id, guard, vec![yours], message, false).await
 }
 
+fn plugin_intro(plugin: &str) -> String {
+    format!("message from plugin {plugin} (automatic, the user did not write this):")
+}
+
+pub async fn send_as_plugin(
+    ctx: &Context,
+    id: &str,
+    plugin: &str,
+    text: String,
+) -> Result<ThreadEntry> {
+    let message = NewMessage {
+        text,
+        attachments: vec![],
+        reply_to: None,
+    };
+    check_message(&message)?;
+    let store = ctx.store()?;
+    store.conversation(id).await?;
+    let guard = ctx.turns().begin(id)?;
+    let said = EntryBody::Plugin {
+        plugin: plugin.to_string(),
+        text: message.text.clone(),
+    };
+    let to_planner = NewMessage {
+        text: format!("{}\n{}", plugin_intro(plugin), message.text),
+        ..message
+    };
+    open_turn(ctx, id, guard, vec![said], to_planner, true).await
+}
+
 /// Sets `thinking`, appends `entries` (your message, or the task events) and spawns the
 /// turn for `message`. Returns the last entry. `event` turns leave `ended` alone and skip
 /// repo inference.
