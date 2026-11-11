@@ -29,6 +29,7 @@ pub fn cors_layer() -> CorsLayer {
         ])
         .allow_headers([
             header::CONTENT_TYPE,
+            header::AUTHORIZATION,
             HeaderName::from_static(REQUEST_ID_HEADER),
         ])
 }
@@ -41,6 +42,10 @@ pub fn origin_allowed(headers: &HeaderMap) -> bool {
         None => true,
         Some(origin) => ALLOWED_ORIGINS.iter().any(|o| origin == o),
     }
+}
+
+pub fn browser_origin(headers: &HeaderMap) -> bool {
+    headers.contains_key(header::ORIGIN) && origin_allowed(headers)
 }
 
 #[cfg(test)]

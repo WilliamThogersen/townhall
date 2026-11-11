@@ -1,11 +1,21 @@
-import { parseContributions, parsePlugin, parsePluginList, parsePluginUpdate, parsePreview } from "./pluginGuards";
+import {
+  parseContributions,
+  parseHostToken,
+  parsePlugin,
+  parsePluginList,
+  parsePluginUpdate,
+  parsePreview,
+  parseUiEntries,
+} from "./pluginGuards";
 import { request } from "./request";
 import type {
+  HostToken,
   PatchPluginInput,
   Plugin,
   PluginContributions,
   PluginList,
   PluginPreview,
+  PluginUiEntry,
   PluginUpdate,
   SettingFieldValue,
 } from "./types";
@@ -36,6 +46,12 @@ export const deletePlugin = (id: string, purge = false): Promise<Plugin> =>
 
 export const getContributions = (signal?: AbortSignal): Promise<PluginContributions> =>
   request("GET", "/plugins/contributions", parseContributions, undefined, signal);
+
+export const listPluginUi = (signal?: AbortSignal): Promise<readonly PluginUiEntry[]> =>
+  request("GET", "/plugins/ui", parseUiEntries, undefined, signal);
+
+export const mintHostToken = (id: string): Promise<HostToken> =>
+  request("POST", `${path(id)}/host-token`, parseHostToken);
 
 export const putPluginTheme = (plugin: string | null): Promise<PluginContributions> =>
   request("PUT", "/plugins/theme", parseContributions, { plugin });

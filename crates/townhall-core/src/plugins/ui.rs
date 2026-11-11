@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 use super::agent_types::read_manifest;
 use super::install::cache_root;
 use super::market::blocking;
@@ -94,4 +96,58 @@ pub async fn file(store: &Store, id: &str, rel: &str) -> Result<UiFile> {
     })
     .await?;
     found.ok_or_else(missing)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlotEntry {
+    pub plugin: String,
+    pub slot: String,
+    pub title: String,
+    pub entry: String,
+    pub height: Option<u32>,
+}
+
+pub async fn entries(store: &Store) -> Result<Vec<SlotEntry>> {
+    let plugins: Vec<_> = store
+        .plugins()
+        .await?
+        .into_iter()
+        .filter(|p| p.enabled)
+        .collect();
+    let home = store.home().clone();
+    blocking(move || {
+        let mut all = Vec::new();
+        for plugin in plugins {
+            let root = cache_root(&home, &plugin.marketplace, &plugin.name)?.join(&plugin.sha);
+            let read = root
+                .canonicalize()
+                .map_err(|e| Error::io(format!("read {}", root.display()), e))
+                .and_then(|root| read_manifest(&root));
+            let manifest = match read {
+                Ok(manifest) => manifest,
+                Err(e) => {
+                    skipped(&plugin.id, &e.to_string());
+                    continue;
+                }
+            };
+            all.extend(manifest.contributes.ui.into_iter().map(|ui| SlotEntry {
+                plugin: plugin.id.clone(),
+                slot: ui.slot,
+                title: ui.title,
+                entry: ui.entry,
+                height: ui.height,
+            }));
+        }
+        Ok(all)
+    })
+    .await
+}
+
+fn skipped(plugin: &str, reason: &str) {
+    tracing::warn!(
+        target: "townhall::plugins", event = "plugins.ui_skipped",
+        plugin, reason = %crate::redact::redact(reason),
+        "plugin ui entries skipped"
+    );
 }
