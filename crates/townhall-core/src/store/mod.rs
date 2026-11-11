@@ -29,6 +29,7 @@ mod unit_2_7;
 mod unit_2_8b;
 mod unit_2_8c;
 mod unit_2_9;
+mod unit_history;
 mod unit_plugins;
 
 use std::path::PathBuf;
