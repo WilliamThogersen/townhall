@@ -8,7 +8,7 @@ pub struct Official {
 pub const OFFICIAL: Official = Official {
     name: "townhall-official",
     repo: "WilliamThogersen/townhall-plugins",
-    sha: "fbaa2d0bac1deaa2fc2a65ffaa35e26292c8a554",
+    sha: "d999cc02bb20351f320ca3c180e31927cda4871d",
     snapshot: include_str!("official/marketplace.json"),
 };
 
@@ -32,7 +32,10 @@ mod tests {
         let market = marketplace::parse(OFFICIAL.snapshot).unwrap();
         assert_eq!(market.name, OFFICIAL.name);
         let names: Vec<&str> = market.plugins.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["theme-slate", "starter-prompts", "agent-types"]);
+        assert_eq!(
+            names,
+            ["theme-slate", "starter-prompts", "agent-types", "sample-full"]
+        );
     }
 
     #[test]

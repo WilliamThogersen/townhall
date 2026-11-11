@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 mod common;
 use common::{call, git, repo_at, unique, Env};
 
-const OFFICIAL_SHA: &str = "fbaa2d0bac1deaa2fc2a65ffaa35e26292c8a554";
+const OFFICIAL_SHA: &str = "d999cc02bb20351f320ca3c180e31927cda4871d";
 const TOKEN: &str = "tok-work-me";
 const TOKEN_BASIC: &str = "eC1hY2Nlc3MtdG9rZW46dG9rLXdvcmstbWU=";
 
@@ -183,7 +183,7 @@ async fn an_offline_start_lists_the_official_marketplace_from_its_snapshot() {
     );
     assert_eq!(
         plugin_names(official),
-        ["theme-slate", "starter-prompts", "agent-types"]
+        ["theme-slate", "starter-prompts", "agent-types", "sample-full"]
     );
     let root = env.root.path().to_string_lossy().into_owned();
     assert!(
