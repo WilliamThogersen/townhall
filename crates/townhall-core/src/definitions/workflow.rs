@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::error::{DefKind, DefinitionError};
 use super::parse::{parse, Parsed};
-use super::validate::validate_workflow;
+use super::validate::{validate_pipeline, KnownAgent};
 
 /// The most steps a workflow may have. Validation is quadratic in the step count.
 pub const MAX_STEPS: usize = 200;
@@ -17,6 +17,31 @@ pub struct WorkflowDef {
     pub description: String,
     #[serde(default, rename(serialize = "steps", deserialize = "step"))]
     pub steps: Vec<Step>,
+    /// Repos this pipeline is limited to. Empty means every repo.
+    #[serde(default)]
+    pub repos: Vec<String>,
+    /// Whether tasks without a pipeline of their own use it.
+    #[serde(default)]
+    pub default: bool,
+    /// Step id of the step that writes the code: failed verdicts hand work back to it.
+    #[serde(default)]
+    pub work: Option<String>,
+    /// How many times a failed verdict step hands the work back before the run needs the user.
+    #[serde(default = "default_fix_rounds")]
+    pub max_fix_rounds: u32,
+}
+
+fn default_fix_rounds() -> u32 {
+    1
+}
+
+/// A condition on a step: it runs only when every part holds.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all(serialize = "camelCase"))]
+pub struct When {
+    /// Globs (`*`, `**`, `?`) matched against the files the work step changed.
+    #[serde(default)]
+    pub paths: Vec<String>,
 }
 
 /// One step: a saved agent started with a prompt once its `after` steps finish.
@@ -33,6 +58,15 @@ pub struct Step {
     pub from: Option<String>,
     #[serde(default)]
     pub prompt: Option<String>,
+    /// The step runs only when this holds. Without it the step always runs.
+    #[serde(default)]
+    pub when: Option<When>,
+    /// A shell command run when the step's agent ends; exit 0 means done.
+    #[serde(default)]
+    pub check: Option<String>,
+    /// How many times a failing `check` relaunches the step's task.
+    #[serde(default)]
+    pub max_retries: Option<u32>,
 }
 
 impl WorkflowDef {
@@ -58,6 +92,20 @@ pub fn check_workflow(
     known_agents: &[&str],
 ) -> Result<Parsed<WorkflowDef>, Vec<DefinitionError>> {
     let parsed = parse_workflow(source).map_err(|e| vec![e])?;
-    validate_workflow(&parsed.def, known_agents)?;
+    let agents: Vec<KnownAgent> = known_agents
+        .iter()
+        .map(|name| KnownAgent::new(name, &[]))
+        .collect();
+    validate_pipeline(&parsed.def, &agents)?;
+    Ok(parsed)
+}
+
+/// Like `check_workflow`, with each agent's `requires` so the pipeline rules can run.
+pub fn check_pipeline(
+    source: &str,
+    agents: &[KnownAgent],
+) -> Result<Parsed<WorkflowDef>, Vec<DefinitionError>> {
+    let parsed = parse_workflow(source).map_err(|e| vec![e])?;
+    validate_pipeline(&parsed.def, agents)?;
     Ok(parsed)
 }
