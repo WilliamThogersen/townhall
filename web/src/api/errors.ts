@@ -4,12 +4,14 @@ export type ApiErrorKind = "network" | "http" | "protocol";
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly status: number | null;
+  readonly data: unknown;
 
-  constructor(kind: ApiErrorKind, message: string, status: number | null = null) {
+  constructor(kind: ApiErrorKind, message: string, status: number | null = null, data: unknown = null) {
     super(message);
     this.name = "ApiError";
     this.kind = kind;
     this.status = status;
+    this.data = data;
   }
 }
 

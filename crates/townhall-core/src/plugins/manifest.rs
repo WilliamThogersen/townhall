@@ -143,6 +143,8 @@ pub struct Contributes {
     #[serde(default)]
     pub agent_types: Vec<String>,
     #[serde(default)]
+    pub pipelines: Vec<String>,
+    #[serde(default)]
     pub prompts: BTreeMap<String, String>,
     #[serde(default)]
     pub settings: Option<String>,
@@ -335,6 +337,9 @@ impl Contributes {
     fn validate(&self, permissions: &Permissions) -> Result<()> {
         for path in &self.agent_types {
             check::rel_path("contributes.agentTypes", path)?;
+        }
+        for path in &self.pipelines {
+            check::rel_path("contributes.pipelines", path)?;
         }
         for (kind, path) in &self.prompts {
             check::one_of("contributes.prompts", kind, PROMPT_KINDS)?;

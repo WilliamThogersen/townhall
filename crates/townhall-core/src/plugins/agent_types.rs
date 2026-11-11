@@ -20,7 +20,7 @@ const RESERVED: [&str; 6] = [
     "reviewer",
 ];
 
-fn joined(errors: &[DefinitionError]) -> String {
+pub(super) fn joined(errors: &[DefinitionError]) -> String {
     errors
         .iter()
         .map(|e| {

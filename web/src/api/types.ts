@@ -326,6 +326,24 @@ export interface AgentType {
   readonly plugin?: string | null;
 }
 
+export interface PipelineStepSummary {
+  readonly id: string;
+  readonly agent: string;
+}
+
+export interface Pipeline {
+  readonly name: string;
+  readonly description: string;
+  readonly repos: readonly string[];
+  readonly default: boolean;
+  readonly work: string | null;
+  readonly steps: readonly PipelineStepSummary[];
+  readonly source: string;
+  readonly updatedAt: string;
+  readonly origin: "user" | "plugin";
+  readonly plugin: string | null;
+}
+
 export type MarketplaceSource =
   | { readonly source: "github"; readonly repo: string }
   | { readonly source: "url"; readonly url: string }
