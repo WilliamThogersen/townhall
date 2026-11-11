@@ -427,19 +427,30 @@ textarea {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--th-fg-faint);
+  color: var(--th-fg-muted);
   font: inherit;
   font-size: var(--th-text-xs);
-  cursor: default;
+  cursor: pointer;
 }
 
-.th-usage[data-stale="true"] .th-usage-btn {
-  opacity: 0.55;
+.th-usage-btn:hover,
+.th-usage-btn:focus-visible,
+.th-usage-btn[aria-expanded="true"] {
+  color: var(--th-fg);
+}
+
+.th-usage[data-stale="true"] .th-usage-track {
+  opacity: 0.5;
 }
 
 .th-usage-icon {
   flex: none;
-  color: var(--th-accent);
+  width: 8px;
+  height: 8px;
+  fill: none;
+  stroke: var(--th-accent);
+  stroke-width: 1.2;
+  stroke-linecap: square;
 }
 
 .th-usage-meter {
