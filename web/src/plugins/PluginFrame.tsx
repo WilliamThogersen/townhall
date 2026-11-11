@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { httpBase } from "../api/base";
 
 export function pluginUiUrl(plugin: string, entry: string, win: object = window): string {
@@ -10,11 +11,13 @@ export interface PluginFrameProps {
   entry: string;
   title: string;
   height?: number;
+  ref?: Ref<HTMLIFrameElement>;
 }
 
-export function PluginFrame({ plugin, entry, title, height }: PluginFrameProps) {
+export function PluginFrame({ plugin, entry, title, height, ref }: PluginFrameProps) {
   return (
     <iframe
+      ref={ref}
       src={pluginUiUrl(plugin, entry)}
       title={title}
       sandbox="allow-scripts"

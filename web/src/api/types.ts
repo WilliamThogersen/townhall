@@ -458,6 +458,21 @@ export interface PluginContributions {
   readonly settings: readonly PluginSettingsGroup[];
 }
 
+export interface PluginUiEntry {
+  readonly plugin: string;
+  readonly slot: string;
+  readonly title: string;
+  readonly entry: string;
+  readonly height: number | null;
+}
+
+export interface HostToken {
+  readonly plugin: string;
+  readonly version: string | null;
+  readonly token: string;
+  readonly scopes: readonly string[];
+}
+
 export interface DefinitionError {
   readonly kind: "agent" | "workflow";
   readonly name: string | null;

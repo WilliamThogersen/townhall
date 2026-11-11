@@ -1,14 +1,17 @@
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
+use serde_json::json;
 use serde_json::Value;
 use townhall_core::plugins::install::{InstallPlugin, PatchPlugin, PluginRegistry};
-use townhall_core::plugins::{declared, ui};
+use townhall_core::plugins::{declared, tokens, ui};
 use townhall_core::Error;
 
-use crate::envelope::{created, ok};
+use super::events::FOREIGN_ORIGIN;
+use crate::cors::browser_origin;
+use crate::envelope::{created, failure, ok};
 use crate::error::ApiError;
 use crate::extract::JsonBody;
 use crate::state::AppState;
@@ -75,6 +78,35 @@ pub async fn ui_file(
         (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
     ];
     Ok((StatusCode::OK, headers, Body::from(bytes)).into_response())
+}
+
+pub async fn ui_entries(State(state): State<AppState>) -> Result<Response, ApiError> {
+    Ok(ok(ui::entries(state.ctx().store()?).await?))
+}
+
+pub async fn host_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    if !browser_origin(&headers) {
+        return Ok(failure(StatusCode::FORBIDDEN, FOREIGN_ORIGIN.into()));
+    }
+    let store = state.ctx().store()?;
+    let plugin = store.plugin(&id).await?;
+    if !plugin.enabled {
+        return Err(Error::missing("enabled plugin", &id).into());
+    }
+    let token = tokens::issue(store, &plugin.id, None).await?;
+    let caller = tokens::authenticate(store, &token)
+        .await?
+        .ok_or_else(|| Error::missing("plugin", &id))?;
+    Ok(ok(json!({
+        "plugin": plugin.id,
+        "version": plugin.version,
+        "token": token,
+        "scopes": caller.scopes,
+    })))
 }
 
 pub async fn contributions(State(state): State<AppState>) -> Result<Response, ApiError> {

@@ -21,6 +21,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "0851_default_pipeline_tools",
         sql: include_str!("migrations/0851_default_pipeline_tools.sql"),
     },
+    Migration {
+        id: 852,
+        name: "0852_run_input",
+        sql: include_str!("migrations/0852_run_input.sql"),
+    },
 ];
 
 type Row = (String, String, String);
@@ -199,6 +204,259 @@ impl Store {
                 params![cid, name],
             )?;
             Ok(())
+        })
+        .await
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Run {
+    pub id: String,
+    pub workflow: String,
+    pub snapshot: String,
+    pub conversation_id: String,
+    pub repo: String,
+    pub base_branch: String,
+    pub state: String,
+    pub input: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunStep {
+    pub run_id: String,
+    pub step_id: String,
+    pub round: u32,
+    pub task: Option<String>,
+    pub state: String,
+    pub verdict: Option<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct StepUpdate<'a> {
+    pub state: &'a str,
+    pub task: Option<&'a str>,
+    pub verdict: Option<&'a str>,
+    pub note: Option<&'a str>,
+}
+
+impl<'a> StepUpdate<'a> {
+    pub fn state(state: &'a str) -> Self {
+        Self {
+            state,
+            task: None,
+            verdict: None,
+            note: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewRun {
+    pub id: String,
+    pub workflow: String,
+    pub snapshot: String,
+    pub conversation_id: String,
+    pub repo: String,
+    pub base_branch: String,
+    pub input: String,
+}
+
+pub const RUN_RUNNING: &str = "running";
+pub const RUN_NEEDS_YOU: &str = "needsYou";
+pub const RUN_FINISHED: &str = "finished";
+pub const RUN_FAILED: &str = "failed";
+
+const RUN_COLUMNS: &str =
+    "id, workflow, snapshot, conversation_id, repo, base_branch, state, input";
+
+fn run_of(r: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
+    Ok(Run {
+        id: r.get(0)?,
+        workflow: r.get(1)?,
+        snapshot: r.get(2)?,
+        conversation_id: r.get(3)?,
+        repo: r.get(4)?,
+        base_branch: r.get(5)?,
+        state: r.get(6)?,
+        input: r.get(7)?,
+    })
+}
+
+fn step_of(r: &rusqlite::Row<'_>) -> rusqlite::Result<RunStep> {
+    Ok(RunStep {
+        run_id: r.get(0)?,
+        step_id: r.get(1)?,
+        round: r.get(2)?,
+        task: r.get(3)?,
+        state: r.get(4)?,
+        verdict: r.get(5)?,
+        note: r.get(6)?,
+    })
+}
+
+impl Store {
+    pub async fn create_run(&self, new: NewRun) -> Result<Run> {
+        self.call(move |conn| {
+            let taken = conn
+                .query_row("select 1 from runs where id = ?1", [&new.id], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .optional()?
+                .is_some();
+            if taken {
+                return Err(Error::Conflict(format!(
+                    "a run named `{}` already exists",
+                    new.id
+                )));
+            }
+            conn.execute(
+                "insert into runs (id, workflow, snapshot, conversation_id, repo, base_branch, state, input, created_at)
+                 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    new.id,
+                    new.workflow,
+                    new.snapshot,
+                    new.conversation_id,
+                    new.repo,
+                    new.base_branch,
+                    RUN_RUNNING,
+                    new.input,
+                    clock::now_rfc3339()
+                ],
+            )?;
+            Ok(Run {
+                id: new.id,
+                workflow: new.workflow,
+                snapshot: new.snapshot,
+                conversation_id: new.conversation_id,
+                repo: new.repo,
+                base_branch: new.base_branch,
+                state: RUN_RUNNING.into(),
+                input: new.input,
+            })
+        })
+        .await
+    }
+
+    pub async fn run(&self, id: &str) -> Result<Option<Run>> {
+        let id = id.to_string();
+        self.call(move |conn| {
+            Ok(conn
+                .query_row(
+                    &format!("select {RUN_COLUMNS} from runs where id = ?1"),
+                    [id],
+                    run_of,
+                )
+                .optional()?)
+        })
+        .await
+    }
+
+    pub async fn runs_in(&self, state: &str) -> Result<Vec<Run>> {
+        let state = state.to_string();
+        self.call(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "select {RUN_COLUMNS} from runs where state = ?1 order by created_at, id"
+            ))?;
+            let found: rusqlite::Result<Vec<Run>> = stmt.query_map([state], run_of)?.collect();
+            Ok(found?)
+        })
+        .await
+    }
+
+    pub async fn move_run(&self, id: &str, from: &str, to: &str) -> Result<bool> {
+        let (id, from, to) = (id.to_string(), from.to_string(), to.to_string());
+        self.call(move |conn| {
+            let ended = (to != RUN_RUNNING).then(clock::now_rfc3339);
+            let changed = conn.execute(
+                "update runs set state = ?3, ended_at = ?4 where id = ?1 and state = ?2",
+                params![id, from, to, ended],
+            )?;
+            Ok(changed == 1)
+        })
+        .await
+    }
+
+    pub async fn run_steps(&self, run_id: &str) -> Result<Vec<RunStep>> {
+        let run_id = run_id.to_string();
+        self.call(move |conn| {
+            let mut stmt = conn.prepare(
+                "select run_id, step_id, round, task, state, verdict, note from run_steps
+                 where run_id = ?1 order by rowid",
+            )?;
+            let found: rusqlite::Result<Vec<RunStep>> =
+                stmt.query_map([run_id], step_of)?.collect();
+            Ok(found?)
+        })
+        .await
+    }
+
+    pub async fn claim_run_step(&self, run_id: &str, step_id: &str, round: u32) -> Result<bool> {
+        let (run_id, step_id) = (run_id.to_string(), step_id.to_string());
+        self.call(move |conn| {
+            let changed = conn.execute(
+                "insert or ignore into run_steps (run_id, step_id, round, state)
+                 values (?1, ?2, ?3, 'starting')",
+                params![run_id, step_id, round],
+            )?;
+            Ok(changed == 1)
+        })
+        .await
+    }
+
+    pub async fn set_run_step(
+        &self,
+        run_id: &str,
+        step_id: &str,
+        round: u32,
+        update: StepUpdate<'_>,
+    ) -> Result<()> {
+        let (run_id, step_id) = (run_id.to_string(), step_id.to_string());
+        let state = update.state.to_string();
+        let (task, verdict, note) = (
+            update.task.map(String::from),
+            update.verdict.map(String::from),
+            update.note.map(String::from),
+        );
+        self.call(move |conn| {
+            conn.execute(
+                "update run_steps set state = ?4, task = coalesce(?5, task),
+                 verdict = coalesce(?6, verdict), note = coalesce(?7, note)
+                 where run_id = ?1 and step_id = ?2 and round = ?3",
+                params![run_id, step_id, round, state, task, verdict, note],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn start_run_step(
+        &self,
+        run_id: &str,
+        step_id: &str,
+        round: u32,
+        task: &str,
+    ) -> Result<bool> {
+        let (run_id, step_id, task) = (run_id.to_string(), step_id.to_string(), task.to_string());
+        self.call(move |conn| {
+            let changed = conn.execute(
+                "update run_steps set state = 'started', task = ?4
+                 where run_id = ?1 and step_id = ?2 and round = ?3 and state = 'starting'",
+                params![run_id, step_id, round, task],
+            )?;
+            Ok(changed == 1)
+        })
+        .await
+    }
+
+    pub async fn run_task_names(&self) -> Result<std::collections::HashSet<String>> {
+        self.call(|conn| {
+            let mut stmt = conn.prepare("select task from run_steps where task is not null")?;
+            let found: rusqlite::Result<std::collections::HashSet<String>> = stmt
+                .query_map([], |r| r.get::<_, String>(0).map(|n| n.to_lowercase()))?
+                .collect();
+            Ok(found?)
         })
         .await
     }

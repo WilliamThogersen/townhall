@@ -14,6 +14,9 @@ use crate::model::{
 };
 use crate::plugins::hooks;
 use crate::redact::redact;
+use crate::repos::names;
+use crate::scheduler::pipeline;
+use crate::store::NewRun;
 
 use super::adviser::{self, Caller, ASK_ADVISER};
 use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
@@ -136,8 +139,118 @@ pub async fn create_task_as_plugin(
     Ok(task)
 }
 
+pub(crate) async fn create_step_task(
+    ctx: &Context,
+    conversation_id: &str,
+    raw: CreateTaskInput,
+) -> Result<Task, String> {
+    let tools = TaskTools {
+        ctx,
+        conversation_id,
+    };
+    tools.make_task(raw).await
+}
+
 impl TaskTools<'_> {
     async fn create_task(&self, raw: CreateTaskInput) -> Checked<Task> {
+        if raw.pipeline.is_some() {
+            return self.start_run(raw).await;
+        }
+        let task = self.make_task(raw).await?;
+        let store = self.ctx.store().map_err(|e| e.to_string())?;
+        if let Err(e) = store
+            .note_task_created(self.conversation_id, &task.name)
+            .await
+        {
+            tracing::warn!(
+                target: "townhall::mcp", event = "mcp.task_note_failed",
+                task = %task.name, conversation = self.conversation_id,
+                error = %redact(&e.to_string()),
+                "task created but not shown in its conversation"
+            );
+        }
+        Ok(task)
+    }
+
+    async fn start_run(&self, raw: CreateTaskInput) -> Checked<Task> {
+        let input = checks::input(raw)?;
+        let wanted = input.pipeline.clone().unwrap_or_default();
+        let mut refused = vec![];
+        for (set, field) in [
+            (!input.after.is_empty(), "after"),
+            (input.agent.is_some(), "agent"),
+            (input.pr_base.is_some(), "prBase"),
+            (input.check.is_some(), "check"),
+            (input.done_when.is_some(), "doneWhen"),
+            (input.max_retries.is_some(), "maxRetries"),
+            (!input.attachments.is_empty(), "attachments"),
+        ] {
+            if set {
+                refused.push(format!("`{field}`"));
+            }
+        }
+        if !refused.is_empty() {
+            return Err(format!(
+                "{} cannot be set together with `pipeline`: the pipeline decides them",
+                refused.join(", ")
+            ));
+        }
+        let store = self.ctx.store().map_err(|e| e.to_string())?;
+        let found = store
+            .workflow(&wanted)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| {
+                format!("no pipeline named `{wanted}`: list_pipelines shows the saved ones")
+            })?;
+        let conversation = store
+            .conversation(self.conversation_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let repo = checks::repo(self.ctx, &conversation, input.repo.as_deref()).await?;
+        if !found.def.repos.is_empty()
+            && !found.def.repos.iter().any(|r| names::same(r, &repo.name))
+        {
+            return Err(format!(
+                "pipeline `{}` is not for repo `{}`: it is limited to {}",
+                found.def.name,
+                repo.name,
+                found.def.repos.join(", ")
+            ));
+        }
+        let base_branch = checks::base_branch(&repo, input.base_branch.as_deref()).await?;
+        for step in &found.def.steps {
+            let name = pipeline::task_name(&input.name, &step.id, 1);
+            if store
+                .find_task(&name)
+                .await
+                .map_err(|e| e.to_string())?
+                .is_some()
+            {
+                return Err(format!(
+                    "a task named `{name}` already exists: pick another run name"
+                ));
+            }
+        }
+        let new = NewRun {
+            id: input.name.clone(),
+            workflow: found.def.name.clone(),
+            snapshot: found.source.clone(),
+            conversation_id: self.conversation_id.to_string(),
+            repo: repo.name,
+            base_branch,
+            input: input.prompt,
+        };
+        let run = store.create_run(new).await.map_err(|e| e.to_string())?;
+        pipeline::advance(self.ctx, &run)
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("run `{}` started no task: its thread says why", input.name))
+    }
+
+    async fn make_task(&self, raw: CreateTaskInput) -> Checked<Task> {
         let input = checks::input(raw)?;
         let store = self.ctx.store().map_err(|e| e.to_string())?;
         if let Some(taken) = store
@@ -182,19 +295,7 @@ impl TaskTools<'_> {
             .create_task(self.conversation_id, new)
             .await
             .map_err(|e| e.to_string())?;
-        let task = self.screen(task).await?;
-        if let Err(e) = store
-            .note_task_created(self.conversation_id, &task.name)
-            .await
-        {
-            tracing::warn!(
-                target: "townhall::mcp", event = "mcp.task_note_failed",
-                task = %task.name, conversation = self.conversation_id,
-                error = %redact(&e.to_string()),
-                "task created but not shown in its conversation"
-            );
-        }
-        Ok(task)
+        self.screen(task).await
     }
 
     async fn screen(&self, task: Task) -> Checked<Task> {
