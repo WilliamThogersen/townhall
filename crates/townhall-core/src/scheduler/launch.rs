@@ -757,7 +757,7 @@ mod tests {
         .await;
         for _ in 0..3 {
             let current = fresh(&ctx, &task).await;
-            let held = admit(&ctx, &current, &[current.clone()], false)
+            let held = admit(&ctx, &current, std::slice::from_ref(&current), false)
                 .await
                 .unwrap();
             assert!(matches!(held, Err(Done::Blocked)));
@@ -784,11 +784,12 @@ mod tests {
             "test -f ok || { echo no >&2; exit 2; }",
         )
         .await;
-        let held = admit(&ctx, &task, &[task.clone()], false).await.unwrap();
+        let all = std::slice::from_ref(&task);
+        let held = admit(&ctx, &task, all, false).await.unwrap();
         assert!(matches!(held, Err(Done::Blocked)));
         std::fs::write(data.join("ok"), "").unwrap();
         let current = fresh(&ctx, &task).await;
-        let open = admit(&ctx, &current, &[current.clone()], false)
+        let open = admit(&ctx, &current, std::slice::from_ref(&current), false)
             .await
             .unwrap();
         assert!(open.is_ok());
@@ -802,10 +803,8 @@ mod tests {
         let answer =
             r#"echo '{"amend":{"prompt":"Ticket ABC-1 is open","env":{"TICKET":"ABC-1"}}}'"#;
         with_hook(&ctx, "task.before_start", answer).await;
-        let (_, asked) = admit(&ctx, &task, &[task.clone()], false)
-            .await
-            .unwrap()
-            .unwrap();
+        let all = std::slice::from_ref(&task);
+        let (_, asked) = admit(&ctx, &task, all, false).await.unwrap().unwrap();
         assert_eq!(asked.env["TICKET"], "ABC-1");
         let sections = asked.prompt;
         let path = brief::write(ctx.home(), &task, &[], &[], &sections)
@@ -819,10 +818,8 @@ mod tests {
     async fn with_no_plugin_admit_is_unchanged() {
         let tmp = tempfile::tempdir().unwrap();
         let (ctx, task) = queued(tmp.path()).await;
-        let (_, asked) = admit(&ctx, &task, &[task.clone()], false)
-            .await
-            .unwrap()
-            .unwrap();
+        let all = std::slice::from_ref(&task);
+        let (_, asked) = admit(&ctx, &task, all, false).await.unwrap().unwrap();
         assert_eq!(asked, hooks::Asked::default());
     }
 
