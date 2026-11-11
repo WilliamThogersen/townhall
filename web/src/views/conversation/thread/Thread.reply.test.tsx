@@ -101,6 +101,15 @@ describe("Thread quoted reply", () => {
     expect(original).not.toHaveAttribute("data-flash");
   });
 
+  it("jumps without smooth scrolling when the user prefers reduced motion", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(prefers-reduced-motion: reduce)" }));
+    renderThread(thread);
+    await user.click(screen.getByRole("button", { name: "Go to the message you replied to" }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "auto" });
+    vi.unstubAllGlobals();
+  });
+
   it("says so when the original is not in the thread", () => {
     renderThread([entry(2, { kind: "you", text: "the shop one", attachments: [], replyTo: 99 })]);
     expect(screen.queryByRole("button", { name: "Go to the message you replied to" })).not.toBeInTheDocument();

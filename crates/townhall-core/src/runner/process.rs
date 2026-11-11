@@ -15,7 +15,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep_until, timeout_at, Instant};
 
 use super::prompt::interrupt_line;
-use crate::agent::OUTER_SESSION_ENV;
+use crate::agent::{mcp_tool_timeout_ms, MCP_TOOL_TIMEOUT_ENV, OUTER_SESSION_ENV};
 use crate::redact::redact;
 use crate::{Error, Result};
 
@@ -101,6 +101,7 @@ fn command(program: &str, args: &[String], cwd: &Path) -> Command {
         command.env_remove(name);
     }
     command
+        .env(MCP_TOOL_TIMEOUT_ENV, mcp_tool_timeout_ms())
         .args(args)
         .current_dir(cwd)
         .stdin(Stdio::piped())

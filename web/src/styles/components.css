@@ -535,9 +535,11 @@ textarea {
 }
 
 .th-usage-meter[data-level="warn"] { color: var(--th-accent); }
-.th-usage-meter[data-level="warn"] .th-usage-fill { background: var(--th-accent); }
+.th-usage-meter[data-level="warn"] .th-usage-fill,
+.th-usage-bar[data-level="warn"] .th-usage-fill { background: var(--th-accent); }
 .th-usage-meter[data-level="hot"] { color: var(--th-danger); }
-.th-usage-meter[data-level="hot"] .th-usage-fill { background: var(--th-danger); }
+.th-usage-meter[data-level="hot"] .th-usage-fill,
+.th-usage-bar[data-level="hot"] .th-usage-fill { background: var(--th-danger); }
 
 .th-usage-pop {
   position: absolute;
@@ -547,7 +549,7 @@ textarea {
   z-index: var(--th-z-overlay);
   display: flex;
   flex-direction: column;
-  gap: var(--th-space-3);
+  gap: var(--th-space-4);
   width: min(240px, 100%);
   box-sizing: border-box;
   padding: var(--th-space-3);
@@ -560,9 +562,30 @@ textarea {
 }
 
 .th-usage-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--th-space-1);
+}
+
+.th-usage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--th-space-3);
+}
+
+.th-usage-pop .th-usage-track {
+  flex: none;
+  width: 100%;
+  height: 6px;
+}
+
+.th-usage-details {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0 var(--th-space-3);
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
 }
 
 .th-usage-name {
@@ -574,10 +597,6 @@ textarea {
   color: var(--th-fg);
   font-variant-numeric: tabular-nums;
   text-align: end;
-}
-
-.th-usage-detail {
-  grid-column: 1 / -1;
 }
 
 .th-usage-detail[data-warn="true"] {
@@ -966,15 +985,33 @@ textarea {
   }
 }
 
+.th-navbar {
+  display: none;
+}
+
 @media (max-width: 639px) {
   .th-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-areas: "side";
+    grid-template-rows: var(--th-bar) minmax(0, 1fr);
+    grid-template-areas:
+      "bar"
+      "side";
   }
 
   .th-shell[data-view="main"] {
-    grid-template-areas: "main";
+    grid-template-areas:
+      "bar"
+      "main";
+  }
+
+  .th-shell > .th-navbar {
+    grid-area: bar;
+    display: flex;
+    align-items: center;
+    gap: var(--th-space-2);
+    padding: 0 var(--th-space-2);
+    border-bottom: var(--th-border) solid var(--th-line);
+    background: var(--th-bg);
   }
 
   .th-shell[data-view="main"] .th-sidebar,
@@ -984,6 +1021,7 @@ textarea {
   }
 
   .th-sidebar {
+    min-width: 0;
     border-right: 0;
   }
 }

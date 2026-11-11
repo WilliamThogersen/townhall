@@ -41,7 +41,7 @@ export function SessionPanel({ detail, openTask, onOpenTask }: SessionPanelProps
   useTaskKeys(listRef);
 
   return (
-    <aside className="th-session" id={SESSION_PANEL_ID} aria-label="Session">
+    <aside className="th-session" id={SESSION_PANEL_ID} aria-label="Session" tabIndex={-1}>
       <SessionHead conversationId={conversation.id} tasks={tasks} />
       <div className="th-session-body">
         <LoopStrip tasks={tasks} />

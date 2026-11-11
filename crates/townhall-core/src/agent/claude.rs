@@ -50,10 +50,24 @@ pub const OUTER_SESSION_ENV: [&str; 5] = [
     "CLAUDE_EFFORT",
 ];
 
+pub const MCP_TOOL_TIMEOUT_ENV: &str = "MCP_TOOL_TIMEOUT";
+const MCP_TOOL_TIMEOUT_MARGIN: std::time::Duration = std::time::Duration::from_secs(60);
+
+pub fn mcp_tool_timeout_ms() -> String {
+    (crate::mcp::ADVICE_TIMEOUT + MCP_TOOL_TIMEOUT_MARGIN)
+        .as_millis()
+        .to_string()
+}
+
 /// `env -u NAME` for each of [`OUTER_SESSION_ENV`], in front of the program.
 fn without_outer_session() -> Vec<String> {
     let unset = OUTER_SESSION_ENV.iter().flat_map(|name| ["-u", name]);
-    ["env"].into_iter().chain(unset).map(String::from).collect()
+    ["env"]
+        .into_iter()
+        .chain(unset)
+        .map(String::from)
+        .chain([format!("{MCP_TOOL_TIMEOUT_ENV}={}", mcp_tool_timeout_ms())])
+        .collect()
 }
 
 /// Launches the `claude` CLI; see the module docs for the exact argv.

@@ -5,7 +5,7 @@ use crate::definitions::Effort;
 
 const ID: &str = "0b8e7f8a-3c1d-4f7e-9a2b-1c2d3e4f5a6b";
 const UNSET: &str = "env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT \
-                     -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT";
+                     -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT MCP_TOOL_TIMEOUT=660000";
 
 /// The launch command of a fake claude running `script`, and the folder that holds it.
 fn fake_command(script: &str, options: &LaunchOptions) -> (tempfile::TempDir, String) {

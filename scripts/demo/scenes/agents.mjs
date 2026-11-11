@@ -34,6 +34,21 @@ export const AGENTS = {
       message: "fix: clear the session before redirecting to /login",
     },
   },
+  "status-flag": {
+    kind: "ask",
+    minutes: 1,
+    steps: [
+      read("src/cli.ts", 52),
+      edit("src/cli.ts", "5 additions"),
+      bash("npm test -- cli", ["✓ src/cli.test.ts (4 tests)"]),
+    ],
+    say: "commit the status flag to townhall/status-flag? (y/n)",
+    commit: {
+      file: "src/cli.ts",
+      text: "export const hasStatusFlag = true;\n",
+      message: "feat: add a status flag to the cli",
+    },
+  },
   "auth-tests": {
     kind: "work",
     minutes: 15,
