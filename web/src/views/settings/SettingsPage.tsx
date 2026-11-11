@@ -4,6 +4,7 @@ import { useKeyHints, type KeyHint } from "../../shell/keyHints";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { DRAG_REGION } from "../../ui/dragRegion";
+import { PluginSettingsFrames } from "./PluginSettingsFrames";
 import { PluginSettingsGroups } from "./PluginSettingsGroups";
 import { AboutYouGroup, AccountsGroup, AgentsGroup, AppearanceGroup, ConversationsGroup, ReposGroup } from "./SettingGroups";
 import "./cap.css";
@@ -58,6 +59,7 @@ export function SettingsPage() {
           <AccountsGroup />
           <AppearanceGroup />
           <PluginSettingsGroups />
+          <PluginSettingsFrames />
           <AboutYouGroup />
           <VersionFooter />
         </div>

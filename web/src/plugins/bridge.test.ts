@@ -363,6 +363,49 @@ describe("ui", () => {
   });
 });
 
+describe("composer.insert", () => {
+  const composerUi = (insert: ReturnType<typeof vi.fn>) =>
+    ({ ...rig([]).ui, insert }) as unknown as BridgeOptions["ui"];
+  const composerRig = async () => {
+    const insert = vi.fn();
+    const r = await ready([], { slot: "composer.action", ui: composerUi(insert) });
+    return { r, insert };
+  };
+
+  it("inserts the text into the draft and answers", async () => {
+    const { r, insert } = await composerRig();
+    await r.say({ th: 1, id: 1, type: "composer.insert", text: "see PR #4" });
+    expect(insert).toHaveBeenCalledWith("see PR #4");
+    expect(r.sent()).toEqual([{ th: 1, type: "response", id: 1, result: {} }]);
+  });
+
+  it("refuses an empty or non-string text", async () => {
+    const { r, insert } = await composerRig();
+    await r.say({ th: 1, id: 1, type: "composer.insert", text: "" });
+    await r.say({ th: 1, id: 2, type: "composer.insert", text: 4 });
+    expect(insert).not.toHaveBeenCalled();
+    expect(r.sent().every((m) => typeof m.error === "string")).toBe(true);
+  });
+
+  it("is unknown outside the composer slot", async () => {
+    const r = await ready([]);
+    await r.say({ th: 1, id: 1, type: "composer.insert", text: "x" });
+    expect(r.sent()).toEqual([{ th: 1, type: "response", id: 1, error: "unknown message type `composer.insert`" }]);
+  });
+
+  it("tells a composer frame its action was fired right after init", async () => {
+    const r = rig([], { slot: "composer.action", ui: composerUi(vi.fn()) });
+    await r.say(hello);
+    expect(r.sent().map((m) => m.type)).toEqual(["init", "composer.action"]);
+  });
+
+  it("sends no composer.action to other slots", async () => {
+    const r = rig([]);
+    await r.say(hello);
+    expect(r.sent().map((m) => m.type)).toEqual(["init"]);
+  });
+});
+
 describe("rate limit", () => {
   it("pauses the frame on the message over the limit and answers nothing after", async () => {
     let allowed = 3;

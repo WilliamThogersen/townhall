@@ -31,6 +31,7 @@ export interface BridgeUi {
   readonly resize: (height: number) => void;
   readonly toast: (text: string, tone: Tone) => void;
   readonly navigate: (path: string) => void;
+  readonly insert?: (text: string) => void;
   readonly ready: () => void;
   readonly paused: () => void;
   readonly failed: (why: string) => void;
@@ -128,6 +129,7 @@ export function createBridge(options: BridgeOptions): Bridge {
       plugin: { id: session.plugin, version: session.version },
       scopes: session.scopes,
     });
+    if (options.ui.insert) send({ type: "composer.action" });
     options.ui.ready();
   };
 
@@ -204,6 +206,12 @@ export function createBridge(options: BridgeOptions): Bridge {
     return { result: {} };
   };
 
+  const insertText = (insert: (text: string) => void, body: Message["body"]): Answer => {
+    if (typeof body.text !== "string" || body.text === "") return fail("text must be a non-empty string");
+    insert(body.text);
+    return { result: {} };
+  };
+
   const request = async (session: HostSession, message: Message): Promise<Answer> => {
     switch (message.type) {
       case "api.call":
@@ -216,6 +224,9 @@ export function createBridge(options: BridgeOptions): Bridge {
         return toast(message.body);
       case "ui.navigate":
         return navigateTo(message.body);
+      case "composer.insert":
+        if (options.ui.insert) return insertText(options.ui.insert, message.body);
+        return fail(`unknown message type \`${message.type}\``);
       default:
         return fail(`unknown message type \`${message.type}\``);
     }
