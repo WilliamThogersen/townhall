@@ -298,6 +298,82 @@ async fn uninstalling_revokes_the_tokens_and_purging_clears_the_storage() {
     );
 }
 
+async fn task_with_token(env: &common::StoreEnv, name: &str) -> String {
+    use townhall_core::model::NewTask;
+    let conversation = env.store.create_conversation().await.unwrap().id;
+    env.store
+        .create_task(
+            &conversation,
+            NewTask {
+                name: name.into(),
+                title: name.into(),
+                prompt: "p".into(),
+                repo: "shop".into(),
+                base_branch: "main".into(),
+                after: vec![],
+                attachments: vec![],
+                agent: "builder".into(),
+                pr_base: None,
+                done: Default::default(),
+            },
+        )
+        .await
+        .unwrap();
+    tokens::issue(&env.store, "lint@acme", Some(name))
+        .await
+        .unwrap()
+}
+
+async fn move_to(env: &common::StoreEnv, name: &str, state: townhall_core::model::TaskState) {
+    env.store
+        .update_task(name, move |t| {
+            Ok(townhall_core::model::Task { state, ..t })
+        })
+        .await
+        .unwrap();
+}
+
+async fn live(env: &common::StoreEnv, token: &str) -> bool {
+    tokens::authenticate(&env.store, token)
+        .await
+        .unwrap()
+        .is_some()
+}
+
+#[tokio::test]
+async fn a_task_token_dies_when_the_task_ends_is_merged_or_fails_and_not_before() {
+    use townhall_core::model::TaskState;
+    let env = store_env();
+    add(&env.store, "lint", true, &ALL).await;
+    for (name, last) in [
+        ("a-ended", TaskState::Ended),
+        ("a-merged", TaskState::Merged),
+        ("a-error", TaskState::Error),
+    ] {
+        let token = task_with_token(&env, name).await;
+        for middle in [TaskState::Working, TaskState::NeedsYou] {
+            move_to(&env, name, middle).await;
+            assert!(live(&env, &token).await, "{name} {middle:?}");
+        }
+        move_to(&env, name, last).await;
+        assert!(!live(&env, &token).await, "{name} {last:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_final_state_leaves_other_tasks_and_the_plugin_token_alone() {
+    use townhall_core::model::TaskState;
+    let env = store_env();
+    add(&env.store, "lint", true, &ALL).await;
+    let one = task_with_token(&env, "one").await;
+    let two = task_with_token(&env, "two").await;
+    let own = tokens::issue(&env.store, "lint@acme", None).await.unwrap();
+    move_to(&env, "one", TaskState::Ended).await;
+    assert!(!live(&env, &one).await);
+    assert!(live(&env, &two).await);
+    assert!(live(&env, &own).await);
+}
+
 #[tokio::test]
 async fn storage_round_trips_per_plugin() {
     let env = store_env();
