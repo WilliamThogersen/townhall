@@ -11,6 +11,7 @@ mod artifacts;
 mod ask;
 mod checks;
 mod hand_back;
+mod history;
 mod insights;
 mod library;
 mod logs;
@@ -29,6 +30,7 @@ pub use adviser::{ADVICE_TIMEOUT, ASK_ADVISER, NEEDS_THE_USER};
 pub use artifacts::{ADD_ARTIFACT, LIST_ARTIFACTS};
 pub use hand_back::HAND_BACK;
 pub(crate) use hand_back::{summary_of, worktree_of};
+pub use history::{READ_CONVERSATION, SEARCH_HISTORY};
 pub use library::{
     save_as_plugin, LIST_AGENT_TYPES, LIST_PIPELINES, READ_AGENT_TYPE, READ_PIPELINE,
     SAVE_AGENT_TYPE, SAVE_PIPELINE,
@@ -67,7 +69,7 @@ pub const MAX_LIST_LEN: u64 = 20;
 pub const MAX_DONE_WHEN_LEN: u64 = 500;
 pub const MAX_CHECK_LEN: u64 = 2_000;
 
-pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to an agent of a saved agent type in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did; list_agent_types, read_agent_type and save_agent_type show and save the agent types tasks run as; list_pipelines, read_pipeline and save_pipeline show and save pipelines, saved lines of steps each run by an agent type; log_summary and read_logs show townhall's own errors and warnings from its logs in ~/.townhall/logs/: when asked to improve townhall, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint; conversation_insights shows the recurring patterns across every conversation (repeated requests, questions, failures, manual steps, hand backs, task chains) with a suggested automation for each; ask_adviser puts one focused question to the adviser, a read-only sparring partner on a bigger model that reads the repo and answers: use it for a design choice or a doubt about a plan before you ask the user, and ask the user only when its answer says needsUser.";
+pub const INSTRUCTIONS: &str = "townhall tools: create_task hands one piece of work to an agent of a saved agent type in its own git worktree; set_title names this conversation once the topic is clear; task_status tells what this conversation's tasks are doing and what they did; list_agent_types, read_agent_type and save_agent_type show and save the agent types tasks run as; list_pipelines, read_pipeline and save_pipeline show and save pipelines, saved lines of steps each run by an agent type; log_summary and read_logs show townhall's own errors and warnings from its logs in ~/.townhall/logs/: when asked to improve townhall, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint; conversation_insights shows the recurring patterns across every conversation (repeated requests, questions, failures, manual steps, hand backs, task chains) with a suggested automation for each; search_history searches every old conversation and read_conversation reads one compactly: call search_history before planning work that may have been done or rejected before; ask_adviser puts one focused question to the adviser, a read-only sparring partner on a bigger model that reads the repo and answers: use it for a design choice or a doubt about a plan before you ask the user, and ask the user only when its answer says needsUser.";
 
 /// One tool as `tools/list` returns it.
 #[derive(Debug, Clone, PartialEq)]
@@ -120,6 +122,7 @@ pub fn task_tools_list() -> Vec<ToolDef> {
         hand_back::tools(),
         open_pr::tools(),
         artifacts::tools(),
+        history::tools(),
         adviser::tools(),
     ]
     .concat()
@@ -221,6 +224,7 @@ pub fn tools() -> Vec<ToolDef> {
         runs::tools(),
         logs::tools(),
         insights::tools(),
+        history::tools(),
         adviser::tools(),
     ]
     .concat()
@@ -275,6 +279,8 @@ mod tests {
                 "mcp__townhall__read_logs",
                 "mcp__townhall__log_summary",
                 "mcp__townhall__conversation_insights",
+                "mcp__townhall__search_history",
+                "mcp__townhall__read_conversation",
                 "mcp__townhall__ask_adviser"
             ]
         );
@@ -283,7 +289,7 @@ mod tests {
     #[test]
     fn schemas_match_the_input_types() {
         let tools = tools();
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 15);
         let create = &tools[0].input_schema;
         let props: Vec<&String> = create["properties"].as_object().unwrap().keys().collect();
         assert_eq!(
@@ -331,8 +337,13 @@ mod tests {
         assert_eq!(tools[11].name, "conversation_insights");
         assert_eq!(tools[11].input_schema["properties"]["top"]["maximum"], 30);
         assert!(tools[11].input_schema.get("required").is_none());
-        assert_eq!(tools[12].name, "ask_adviser");
-        assert_eq!(tools[12].input_schema["required"], json!(["question"]));
+        assert_eq!(tools[12].name, "search_history");
+        assert_eq!(tools[12].input_schema["required"], json!(["query"]));
+        assert_eq!(tools[12].input_schema["properties"]["limit"]["maximum"], 50);
+        assert_eq!(tools[13].name, "read_conversation");
+        assert_eq!(tools[13].input_schema["required"], json!(["id"]));
+        assert_eq!(tools[14].name, "ask_adviser");
+        assert_eq!(tools[14].input_schema["required"], json!(["question"]));
         assert!(INSTRUCTIONS.contains("log_summary") && INSTRUCTIONS.contains("~/.townhall/logs"));
         assert!(tools
             .iter()

@@ -476,6 +476,18 @@ Agent types (2.12, `mcp/library.rs` and `mcp/ask.rs`):
 - Caps: `samples` at most 3 per pattern, each redacted, on one line and cut to 160 chars (`pattern` too); `conversations` and `tasks` at most 5 ids each; the whole result at most 24 KB (`MAX_OUTPUT_BYTES`): the lowest ranked patterns are dropped first and `truncated` is `true` (also when `top` cut some). All text goes through `redact` first.
 - The system prompt tells the planner to start from it when asked what to automate, citing each pattern's fingerprint and `suggested_automation`.
 
+`search_history` and `read_conversation` (`mcp/history.rs`, query in `store/unit_history.rs`): full-text search over old conversations and a compact read of one, so the planner and agents need not carry them in context. Read-only. Both the conversation's endpoint and a task's endpoint list and run them, `allowed_tools()` and `task_allowed_tools()` grant them, so every agent type gets them. `1001_default_history_tools` appends them to the seeded `default` tools and adds one line to its prompt (as in `runner/prompt.rs`): before planning work that may have been done or rejected before, call `search_history`.
+
+| tool | input | result |
+|------|-------|--------|
+| `search_history` | `{ query, repo?, since?, kind?, limit? }`: `query` plain words (stemmed, all must match) or FTS5 syntax; `repo` a conversation linked to it or with a task in it; `since` a duration like `7d` or an RFC 3339 time (default all time); `kind` a list of `message`, `task`, `agent_report`, `needs_you`; `limit` default 10, clamped to 1..50 | `{ hits: [{ kind, conversation, title, task?, agent?, state?, branch?, pr?, prUrl?, at, snippet }] }`, best first |
+| `read_conversation` | `{ id, offset?, limit? }`: `offset` messages to skip (default 0), `limit` default 30, clamped to 1..100 | `{ id, title, repo?, created, updated, total, offset, messages: [{ at, by: "you" or "planner", text }], tasks: [{ name, title, agent, state, branch, pr?, prUrl?, lastMessage? }] }` |
+
+- `1000_history_index` creates the FTS5 table `history_fts` (tokenizer `porter unicode61`; `text` indexed, `kind`, `conversation_id`, `src_id`, `task` and `at` stored unindexed), backfills it and keeps it in sync with insert, update and delete triggers on `messages`, `tasks` and `events` (a conversation delete cascades to them). Indexed: `message` (`you` and `townhall` messages), `task` (title, a newline, then the brief), `needs_you` (the `needsYou` entry's question) and `agent_report` (the `event` entries `task <name> ended (...). its agent's last message: ...` and `task <name> failed: ...` that wake the planner; the agent's last message is not stored anywhere else in the database). An event dropped before delivery (daemon restart, ended conversation) has no report to find.
+- Plain words (no `" ( ) : * ^ { }`, no leading `-` or `+`, no `AND`, `OR`, `NOT`, `NEAR`) are quoted one by one, so `fix-flaky-timing-tests` works. Anything else goes to FTS5 as written; a syntax error is a tool error that says to put words with punctuation in double quotes.
+- Ranked by `bm25`, then newest. `snippet` is the match in `[brackets]` on one line, about 14 words. Task fields come from the task the hit belongs to, when it still exists. Titles, snippets and messages go through `redact`.
+- `read_conversation` only shows `you` and `townhall` entries, each cut to 600 characters, and per task the last `agent_report` line's last message cut the same way. It never returns raw tool output or steps.
+
 `ask_adviser` (`mcp/adviser.rs`, run in `runner/advice.rs`): one non-interactive `claude -p` turn of the agent type `adviser`, seeded by `0810_seed_adviser` (model `claude-fable-5-2`, moved to the alias `fable` by `0813_adviser_model_alias` unless you edited the line, effort `high`, permission mode `plan`, tools `Read Grep Glob WebSearch WebFetch`) and appended to the seeded `default` tools by `0811_default_ask_adviser`. Both the conversation's endpoint and a task's endpoint list it, and `task_allowed_tools()` and `allowed_tools()` grant it.
 
 | tool | input | result |
@@ -601,7 +613,8 @@ Each unit owns a number range and lists its migrations in its own file, so no tw
 | 0850 to 0899 | 2.8c runs | `store/unit_2_8c.rs` |
 | 0900 to 0949 | 2.9 artifacts | `store/unit_2_9.rs` |
 | 0950 to 0999 | plugins (0950 marketplaces and plugins, 0951 plugin_settings, 0952 plugin_storage and plugin_tokens) | `store/unit_plugins.rs` |
-| 0300 to 0499, 1000 and up | free | ask the orchestrator |
+| 1000 to 1049 | history search (1000 history_index, 1001 default_history_tools) | `store/unit_history.rs` |
+| 0300 to 0499, 1050 and up | free | ask the orchestrator |
 
 To add one: write `store/migrations/0201_scheduler.sql`, then in your unit file `pub const MIGRATIONS: &[Migration] = &[Migration { id: 201, name: "0201_scheduler", sql: include_str!("migrations/0201_scheduler.sql") }];`.
 

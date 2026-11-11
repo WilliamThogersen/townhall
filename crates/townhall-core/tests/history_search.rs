@@ -80,7 +80,12 @@ async fn words_are_stemmed_and_hyphenated_words_are_plain_words() {
     let env = store_env();
     let c = env.store.create_conversation().await.unwrap();
     say(&env, &c.id, "we deployed the fix-flaky-timing-tests branch").await;
-    for q in ["deploying", "fix-flaky-timing-tests", "flaky timing", "DEPLOYED"] {
+    for q in [
+        "deploying",
+        "fix-flaky-timing-tests",
+        "flaky timing",
+        "DEPLOYED",
+    ] {
         assert_eq!(find(&env, query(q)).await.len(), 1, "{q}");
     }
     assert!(find(&env, query("deploy rollback")).await.is_empty());
@@ -149,7 +154,10 @@ async fn tasks_and_agent_reports_carry_their_task_agent_state_branch_and_pr() {
         assert_eq!(hit.state, Some(TaskState::Merged));
         assert_eq!(hit.branch.as_deref(), Some("townhall/fix-login"));
         assert_eq!(hit.pr_number, Some(42));
-        assert_eq!(hit.pr_url.as_deref(), Some("https://git.example/shop/pull/42"));
+        assert_eq!(
+            hit.pr_url.as_deref(),
+            Some("https://git.example/shop/pull/42")
+        );
         assert_eq!(hit.title, "login work");
     }
 

@@ -19,6 +19,7 @@ use super::adviser::{self, Caller, ASK_ADVISER};
 use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
 use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
+use super::history::{self, READ_CONVERSATION, SEARCH_HISTORY};
 use super::insights::{self as insight_tools, CONVERSATION_INSIGHTS};
 use super::library::{
     self, LIST_AGENT_TYPES, LIST_PIPELINES, READ_AGENT_TYPE, READ_PIPELINE, SAVE_AGENT_TYPE,
@@ -90,6 +91,8 @@ impl ToolRunner for TaskTools<'_> {
             READ_LOGS => log_tools::read(self.ctx, parse(arguments)?).await,
             LOG_SUMMARY => log_tools::summary(self.ctx, parse(arguments)?).await,
             CONVERSATION_INSIGHTS => insight_tools::insights(self.ctx, parse(arguments)?).await,
+            SEARCH_HISTORY => history::search(self.ctx, parse(arguments)?).await,
+            READ_CONVERSATION => history::read(self.ctx, parse(arguments)?).await,
             ASK_ADVISER => {
                 adviser::ask(
                     self.ctx,
@@ -290,6 +293,8 @@ impl ToolRunner for HandBackTools<'_> {
             ADD_ARTIFACT => artifacts::add(self.ctx, self.task, parse(arguments)?).await,
             LIST_ARTIFACTS => artifacts::list(self.ctx, self.task, parse(arguments)?).await,
             OPEN_PR => open_pr::open_pr(self.ctx, self.task, parse(arguments)?).await,
+            SEARCH_HISTORY => history::search(self.ctx, parse(arguments)?).await,
+            READ_CONVERSATION => history::read(self.ctx, parse(arguments)?).await,
             ASK_ADVISER => adviser::ask(self.ctx, Caller::Task(self.task), parse(arguments)?).await,
             other => Err(unknown_tool(other, &task_tools_list())),
         }

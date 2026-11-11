@@ -79,6 +79,8 @@ async fn a_task_agent_gets_the_task_tools_with_the_artifact_tools() {
             "open_pr",
             "add_artifact",
             "list_artifacts",
+            "search_history",
+            "read_conversation",
             "ask_adviser"
         ]
     );

@@ -126,7 +126,9 @@ fn search(conn: &Connection, query: &HistoryQuery) -> Result<Vec<HistoryHit>> {
             .collect();
         filters.push_str(&format!(" and history_fts.kind in ({})", kinds.join(", ")));
     }
-    params.push(Value::Integer(i64::try_from(query.limit).unwrap_or(i64::MAX)));
+    params.push(Value::Integer(
+        i64::try_from(query.limit).unwrap_or(i64::MAX),
+    ));
     let sql = format!(
         "select history_fts.kind, history_fts.conversation_id, c.title, history_fts.task,
                 t.agent, t.state, t.pr_number, t.pr_url, history_fts.at,

@@ -58,7 +58,10 @@ fn the_migration_indexes_the_rows_that_exist_before_it() {
     assert_eq!(count(&conn, "needs_you"), 1);
     assert_eq!(count(&conn, "agent_report"), 1);
     assert_eq!(count(&conn, "task"), 1);
-    assert_eq!(text_of(&conn, "task"), ["Fix login\nthe login page is broken"]);
+    assert_eq!(
+        text_of(&conn, "task"),
+        ["Fix login\nthe login page is broken"]
+    );
     let task: String = conn
         .query_row(
             "select task from history_fts where kind = 'agent_report'",
@@ -74,7 +77,10 @@ async fn the_index_follows_inserts_updates_and_deletes() {
     let env = store_env();
     let store = &env.store;
     let c = store.create_conversation().await.unwrap();
-    store.append_entry(&c.id, you("fix the login")).await.unwrap();
+    store
+        .append_entry(&c.id, you("fix the login"))
+        .await
+        .unwrap();
     let reply = EntryBody::Townhall { text: "ok".into() };
     store.append_entry(&c.id, reply).await.unwrap();
     store
@@ -97,9 +103,7 @@ async fn the_index_follows_inserts_updates_and_deletes() {
     store.append_entry(&c.id, plain).await.unwrap();
 
     let counts = store
-        .call(|conn| {
-            Ok(["message", "task", "needs_you", "agent_report"].map(|k| count(conn, k)))
-        })
+        .call(|conn| Ok(["message", "task", "needs_you", "agent_report"].map(|k| count(conn, k))))
         .await
         .unwrap();
     assert_eq!(counts, [2, 1, 1, 1]);
@@ -142,9 +146,7 @@ async fn the_index_follows_inserts_updates_and_deletes() {
         .await
         .unwrap();
     let left = store
-        .call(|conn| {
-            Ok(["message", "task", "needs_you", "agent_report"].map(|k| count(conn, k)))
-        })
+        .call(|conn| Ok(["message", "task", "needs_you", "agent_report"].map(|k| count(conn, k))))
         .await
         .unwrap();
     assert_eq!(left, [1, 0, 0, 1]);

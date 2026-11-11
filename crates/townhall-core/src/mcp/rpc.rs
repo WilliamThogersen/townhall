@@ -249,7 +249,14 @@ mod tests {
     fn tools_list_marks_only_the_store_and_read_tools_read_only() {
         assert_eq!(
             read_only_names(crate::mcp::task_tools_list()),
-            ["hand_back", "add_artifact", "list_artifacts", "ask_adviser"]
+            [
+                "hand_back",
+                "add_artifact",
+                "list_artifacts",
+                "search_history",
+                "read_conversation",
+                "ask_adviser"
+            ]
         );
         assert_eq!(
             read_only_names(crate::mcp::tools()),
@@ -262,6 +269,8 @@ mod tests {
                 "read_logs",
                 "log_summary",
                 "conversation_insights",
+                "search_history",
+                "read_conversation",
                 "ask_adviser"
             ]
         );
@@ -324,6 +333,8 @@ mod tests {
                 "read_logs",
                 "log_summary",
                 "conversation_insights",
+                "search_history",
+                "read_conversation",
                 "ask_adviser"
             ]
         );
