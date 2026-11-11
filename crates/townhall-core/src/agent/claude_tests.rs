@@ -514,6 +514,45 @@ fn extra_rules_never_add_a_built_in_tool_to_a_listed_type() {
 }
 
 #[test]
+fn no_settings_file_keeps_the_inline_isolated_settings_exactly() {
+    let argv = ClaudeCodeAdapter::args(&opts("go")).unwrap();
+    assert!(argv.contains(&ISOLATED_SETTINGS.to_string()));
+    assert_eq!(
+        argv.iter().filter(|a| a.starts_with("--settings=")).count(),
+        1
+    );
+}
+
+#[test]
+fn a_settings_file_replaces_the_inline_element_in_the_same_place() {
+    let plain_argv = ClaudeCodeAdapter::args(&opts("go")).unwrap();
+    let o = LaunchOptions {
+        settings: Some("/h/tasks/job/claude-settings.json".into()),
+        ..opts("go")
+    };
+    let argv = ClaudeCodeAdapter::args(&o).unwrap();
+    let at = plain_argv
+        .iter()
+        .position(|a| a == ISOLATED_SETTINGS)
+        .unwrap();
+    assert_eq!(argv[at], "--settings=/h/tasks/job/claude-settings.json");
+    assert_eq!(argv.len(), plain_argv.len());
+    assert!(!argv.iter().any(|a| a.contains("disableAllHooks")));
+    assert!(argv.contains(&"--setting-sources=".to_string()));
+}
+
+#[test]
+fn a_settings_value_is_a_checked_value() {
+    for bad in ["--x", "a\nb"] {
+        let o = LaunchOptions {
+            settings: Some(bad.into()),
+            ..LaunchOptions::default()
+        };
+        assert!(ClaudeCodeAdapter::args(&o).is_err(), "{bad}");
+    }
+}
+
+#[test]
 fn an_extra_rule_is_a_checked_value() {
     for bad in ["--x", "Bash(a,b)", "Read\nx"] {
         let o = LaunchOptions {

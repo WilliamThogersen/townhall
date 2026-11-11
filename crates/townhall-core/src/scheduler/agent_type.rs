@@ -8,7 +8,7 @@ use crate::context::Context;
 use crate::definitions::AdapterKind;
 use crate::mcp;
 use crate::model::{AgentType, Task, ADVISER_AGENT_TYPE};
-use crate::plugins::{agent_types, claude_mcp};
+use crate::plugins::{agent_types, claude_hooks, claude_mcp};
 use crate::{Error, Result};
 
 use super::brief;
@@ -78,6 +78,11 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
             options
                 .mcp_tools
                 .extend(parts.into_iter().flat_map(|p| p.tools));
+        }
+        let hooks = claude_hooks::selected(store, &chosen).await?;
+        if let Some(settings) = claude_hooks::merge(&hooks) {
+            let path = brief::write_settings(ctx.home(), &task.name, settings).await?;
+            options.settings = Some(path.display().to_string());
         }
     }
     Ok(Launcher {

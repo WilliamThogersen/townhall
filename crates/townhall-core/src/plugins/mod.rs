@@ -3,6 +3,7 @@
 
 pub(crate) mod agent_types;
 mod check;
+pub mod claude_hooks;
 pub mod claude_mcp;
 pub mod declared;
 pub mod hooks;

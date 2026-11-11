@@ -21,7 +21,7 @@ pub struct Contribution {
     pub tools: Vec<String>,
 }
 
-fn with_root(value: &mut Value, root: &str) {
+pub(super) fn with_root(value: &mut Value, root: &str) {
     match value {
         Value::String(text) => *text = text.replace(ROOT_VAR, root),
         Value::Array(items) => items.iter_mut().for_each(|v| with_root(v, root)),
@@ -109,7 +109,7 @@ pub fn merge(base: Option<&str>, parts: &[Contribution]) -> String {
     json!({ "mcpServers": Value::Object(servers) }).to_string()
 }
 
-fn failed(plugin: &Plugin, why: impl std::fmt::Display) -> Error {
+pub(super) fn failed(plugin: &Plugin, why: impl std::fmt::Display) -> Error {
     Error::InvalidInput(format!("plugin {}: {why}", plugin.id))
 }
 
@@ -130,7 +130,7 @@ fn load(home: &Home, plugin: &Plugin) -> Result<Option<Contribution>> {
     contribution(&plugin.name, &root, &manifest, &text).map(Some)
 }
 
-fn selects(selected: &[String], plugin: &Plugin) -> bool {
+pub(super) fn selects(selected: &[String], plugin: &Plugin) -> bool {
     selected
         .iter()
         .any(|s| s.eq_ignore_ascii_case(&plugin.id) || s.eq_ignore_ascii_case(&plugin.name))
