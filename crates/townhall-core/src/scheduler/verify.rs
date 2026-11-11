@@ -275,10 +275,16 @@ mod tests {
         let ok = ["touch one".to_string(), "touch two".to_string()];
         assert_eq!(run_all("true", &ok, dir.path()).await, Ok(()));
         assert!(dir.path().join("one").exists() && dir.path().join("two").exists());
-        let bad = ["echo lint says no; exit 3".to_string(), "touch never".to_string()];
+        let bad = [
+            "echo lint says no; exit 3".to_string(),
+            "touch never".to_string(),
+        ];
         let err = run_all("true", &bad, dir.path()).await.unwrap_err();
         assert!(err.contains("echo lint says no; exit 3"), "{err}");
-        assert!(err.contains("lint says no") && err.contains("exit code 3"), "{err}");
+        assert!(
+            err.contains("lint says no") && err.contains("exit code 3"),
+            "{err}"
+        );
         assert!(!dir.path().join("never").exists());
     }
 

@@ -170,12 +170,19 @@ async fn a_before_open_hook_that_blocks_is_a_tool_error_and_nothing_is_pushed() 
     let result = open_pr(&m, "blocked-pr", json!({"title": "Fix login"})).await;
     assert_eq!(result["isError"], true, "{result}");
     let said = text(&result);
-    assert!(said.contains("gate@acme") && said.contains("ticket not approved"), "{said}");
+    assert!(
+        said.contains("gate@acme") && said.contains("ticket not approved"),
+        "{said}"
+    );
     assert_eq!(task(&m, "blocked-pr").await.pr, None);
     let bare = m.env.root.path().join("bare.git");
     let pushed = git(
         &m.env.startup,
-        &["ls-remote", &bare.to_string_lossy(), "refs/heads/townhall/blocked-pr"],
+        &[
+            "ls-remote",
+            &bare.to_string_lossy(),
+            "refs/heads/townhall/blocked-pr",
+        ],
     )
     .await;
     assert!(pushed.is_empty(), "{pushed}");
@@ -193,7 +200,10 @@ async fn a_before_open_hook_can_amend_the_title_and_body() {
     let log = std::fs::read_to_string(format!("{gh}.log")).unwrap();
     let head = "--head townhall/amended-pr ";
     let line = log.lines().find(|l| l.contains(head)).unwrap();
-    assert!(line.contains("ABC-1 Fix login") && line.contains("linked ABC-1"), "{line}");
+    assert!(
+        line.contains("ABC-1 Fix login") && line.contains("linked ABC-1"),
+        "{line}"
+    );
 }
 
 #[tokio::test]

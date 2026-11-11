@@ -4,6 +4,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use serde_json::json;
+
 use super::args::{self, TurnArgs};
 use super::content::user_content;
 use super::persona::Persona;
@@ -15,7 +17,7 @@ use super::turns::TurnGuard;
 use crate::model::{
     Conversation, ConversationStatus, EntryBody, NewMessage, Repo, CONVERSATION_AGENT_TYPE,
 };
-use crate::plugins::declared;
+use crate::plugins::{declared, hooks};
 use crate::redact::redact;
 use crate::{clock, ids, mcp, Context, Result};
 
@@ -141,6 +143,7 @@ async fn drive(
         }
         None => text,
     };
+    let text = with_plugin_context(ctx, id, text, event).await;
     let attempt = Attempt {
         note: &note,
         text: &text,
@@ -157,6 +160,15 @@ async fn drive(
         ..attempt
     };
     run_once(ctx, &fresh, again, guard).await
+}
+
+async fn with_plugin_context(ctx: &Context, id: &str, text: String, event: bool) -> String {
+    let kind = if event { "event" } else { "you" };
+    let fields = json!({"conversationId": id, "text": text, "kind": kind});
+    let asked = hooks::ask(ctx, "message.before_turn", fields).await;
+    asked.context.iter().fold(text, |text, (plugin, more)| {
+        format!("{text}\n\nFrom plugin {plugin}: {more}")
+    })
 }
 
 async fn run_once(

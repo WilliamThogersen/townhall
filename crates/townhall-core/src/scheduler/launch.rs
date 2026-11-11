@@ -749,7 +749,12 @@ mod tests {
     async fn a_blocking_before_start_hook_keeps_the_task_queued_and_tells_the_planner_once() {
         let tmp = tempfile::tempdir().unwrap();
         let (ctx, task) = queued(tmp.path()).await;
-        with_hook(&ctx, "task.before_start", "echo 'ticket closed' >&2; exit 2").await;
+        with_hook(
+            &ctx,
+            "task.before_start",
+            "echo 'ticket closed' >&2; exit 2",
+        )
+        .await;
         for _ in 0..3 {
             let current = fresh(&ctx, &task).await;
             let held = admit(&ctx, &current, &[current.clone()], false)
@@ -760,7 +765,10 @@ mod tests {
         let now = fresh(&ctx, &task).await;
         assert_eq!(now.state, TaskState::Queued);
         let why = now.blocked.unwrap();
-        assert!(why.contains("lint@acme") && why.contains("ticket closed"), "{why}");
+        assert!(
+            why.contains("lint@acme") && why.contains("ticket closed"),
+            "{why}"
+        );
         let told = ctx.notes().waiting(&task.conversation_id);
         assert_eq!(told.len(), 1, "{told:?}");
         assert!(told[0].contains("ticket closed"), "{told:?}");
@@ -770,7 +778,12 @@ mod tests {
     async fn a_task_a_hook_stopped_blocking_starts_and_loses_its_reason() {
         let tmp = tempfile::tempdir().unwrap();
         let (ctx, task) = queued(tmp.path()).await;
-        let data = with_hook(&ctx, "task.before_start", "test -f ok || { echo no >&2; exit 2; }").await;
+        let data = with_hook(
+            &ctx,
+            "task.before_start",
+            "test -f ok || { echo no >&2; exit 2; }",
+        )
+        .await;
         let held = admit(&ctx, &task, &[task.clone()], false).await.unwrap();
         assert!(matches!(held, Err(Done::Blocked)));
         std::fs::write(data.join("ok"), "").unwrap();
@@ -786,7 +799,8 @@ mod tests {
     async fn a_before_start_amend_reaches_the_brief_and_the_launch_env() {
         let tmp = tempfile::tempdir().unwrap();
         let (ctx, task) = queued(tmp.path()).await;
-        let answer = r#"echo '{"amend":{"prompt":"Ticket ABC-1 is open","env":{"TICKET":"ABC-1"}}}'"#;
+        let answer =
+            r#"echo '{"amend":{"prompt":"Ticket ABC-1 is open","env":{"TICKET":"ABC-1"}}}'"#;
         with_hook(&ctx, "task.before_start", answer).await;
         let (_, asked) = admit(&ctx, &task, &[task.clone()], false)
             .await
@@ -794,7 +808,9 @@ mod tests {
             .unwrap();
         assert_eq!(asked.env["TICKET"], "ABC-1");
         let sections = asked.prompt;
-        let path = brief::write(ctx.home(), &task, &[], &[], &sections).await.unwrap();
+        let path = brief::write(ctx.home(), &task, &[], &[], &sections)
+            .await
+            .unwrap();
         let text = std::fs::read_to_string(path).unwrap();
         assert!(text.contains("Ticket ABC-1 is open"), "{text}");
     }

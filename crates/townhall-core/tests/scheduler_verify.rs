@@ -251,7 +251,10 @@ async fn a_check_a_plugin_added_fails_the_verify_loop_like_the_own_check() {
     let verify = task.done.verify.unwrap();
     assert_eq!((verify.phase, verify.retries), (VerifyPhase::Retrying, 1));
     let output = verify.output.unwrap();
-    assert!(output.contains("lint-red") && output.contains("exit code 4"), "{output}");
+    assert!(
+        output.contains("lint-red") && output.contains("exit code 4"),
+        "{output}"
+    );
 }
 
 #[tokio::test]

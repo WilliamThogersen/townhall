@@ -87,8 +87,15 @@ async fn a_task_agent_sees_hand_back_open_pr_and_the_proof_tools() {
 async fn a_hand_back_fires_task_handed_back_with_who_to_whom_and_why() {
     let m = Mcp::new().await;
     running(&m, "fix-login", "shipper").await;
-    let data = m.install_hook("task.handed_back", "cat > payload.json").await;
-    hand_back(&m, "fix-login", json!({"to": "coder", "reason": "lint fails"})).await;
+    let data = m
+        .install_hook("task.handed_back", "cat > payload.json")
+        .await;
+    hand_back(
+        &m,
+        "fix-login",
+        json!({"to": "coder", "reason": "lint fails"}),
+    )
+    .await;
     let file = data.join("payload.json");
     let mut seen = String::new();
     for _ in 0..100 {

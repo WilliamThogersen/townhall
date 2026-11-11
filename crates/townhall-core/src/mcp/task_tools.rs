@@ -193,9 +193,16 @@ impl TaskTools<'_> {
                 ..t
             }),
             (true, None) => Ok(Task {
-                prompt: asked.prompt.iter().fold(t.prompt.clone(), |text, (id, more)| {
-                    format!("{}\n\n## From plugin {id}\n\n{}", text.trim_end(), more.trim_end())
-                }),
+                prompt: asked
+                    .prompt
+                    .iter()
+                    .fold(t.prompt.clone(), |text, (id, more)| {
+                        format!(
+                            "{}\n\n## From plugin {id}\n\n{}",
+                            text.trim_end(),
+                            more.trim_end()
+                        )
+                    }),
                 ..t
             }),
         };

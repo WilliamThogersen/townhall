@@ -66,7 +66,10 @@ async fn a_task_created_hook_that_blocks_ends_the_task_with_the_reason() {
     let created = m.ok("create_task", task(&name)).await;
     assert_eq!(created["state"], "error", "{created}");
     let why = created["blocked"].as_str().unwrap();
-    assert!(why.contains("gate@acme") && why.contains("no ticket for this"), "{why}");
+    assert!(
+        why.contains("gate@acme") && why.contains("no ticket for this"),
+        "{why}"
+    );
     let stored = m.store().find_task(&name).await.unwrap().unwrap();
     assert_eq!(stored.state, TaskState::Error);
     let entries = m.store().entries(&m.id).await.unwrap();
@@ -88,7 +91,10 @@ async fn a_task_created_hook_can_append_to_the_prompt() {
     assert_eq!(created["state"], "queued", "{created}");
     let prompt = created["prompt"].as_str().unwrap();
     assert!(prompt.starts_with("the brief"), "{prompt}");
-    assert!(prompt.contains("From plugin gate@acme") && prompt.contains("Ticket ABC-1 is open"), "{prompt}");
+    assert!(
+        prompt.contains("From plugin gate@acme") && prompt.contains("Ticket ABC-1 is open"),
+        "{prompt}"
+    );
     let stored = m.store().find_task(&name).await.unwrap().unwrap();
     assert_eq!(stored.prompt, prompt);
 }

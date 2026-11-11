@@ -335,7 +335,9 @@ fn apply(plugin: &Plugin, event: &str, ran: &Ran, asked: &mut Asked, budget: &mu
     }
     match (answer.get("additionalContext"), event) {
         (Some(Value::String(text)), "message.before_turn") if !text.trim().is_empty() => {
-            asked.context.push((plugin.id.clone(), text.trim().to_string()));
+            asked
+                .context
+                .push((plugin.id.clone(), text.trim().to_string()));
         }
         (Some(_), "message.before_turn") | (None, _) => {}
         (Some(_), _) => ignored(plugin, event, "additionalContext"),

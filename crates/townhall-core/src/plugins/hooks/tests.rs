@@ -3,9 +3,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use super::{
-    allowed_env, ask, fire, run, Asked, MAX_AMEND_CHARS, MAX_AMEND_ENV, PAUSE_AFTER,
-};
+use super::{allowed_env, ask, fire, run, Asked, MAX_AMEND_CHARS, MAX_AMEND_ENV, PAUSE_AFTER};
 use crate::plugins::install::{cache_root, data_root};
 use crate::store::{Marketplace, Plugin};
 use crate::{Context, ContextOptions, Home, Workspace};
