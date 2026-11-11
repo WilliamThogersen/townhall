@@ -192,7 +192,7 @@ async fn the_first_open_seeds_a_read_only_adviser_on_fable() {
         .unwrap();
     assert_eq!(ADVISER_AGENT_TYPE, "adviser");
     assert_eq!(adviser.def.adapter, AdapterKind::Claude);
-    assert_eq!(adviser.def.model.as_deref(), Some("claude-fable-5-2"));
+    assert_eq!(adviser.def.model.as_deref(), Some("fable"));
     assert_eq!(adviser.def.effort, Some(Effort::High));
     assert_eq!(adviser.def.permission_mode, Some(PermissionMode::Plan));
     assert_eq!(

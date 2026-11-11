@@ -85,6 +85,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "0812_adviser_calls",
         sql: include_str!("migrations/0812_adviser_calls.sql"),
     },
+    Migration {
+        id: 813,
+        name: "0813_adviser_model_alias",
+        sql: include_str!("migrations/0813_adviser_model_alias.sql"),
+    },
 ];
 
 /// A stored row: name, source, updated_at.
