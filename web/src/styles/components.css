@@ -141,8 +141,34 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+.th-keybar-system > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .th-keybar-system > [data-level="warn"] { color: var(--th-accent); }
 .th-keybar-system > [data-level="hot"] { color: var(--th-danger); }
+
+.th-meter {
+  flex: none;
+  width: 48px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--th-line-strong);
+}
+
+.th-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--th-fg-muted);
+  transition: width var(--th-dur) var(--th-ease);
+}
+
+[data-level="warn"] > .th-meter > .th-meter-fill { background: var(--th-accent); }
+[data-level="hot"] > .th-meter > .th-meter-fill { background: var(--th-danger); }
 
 @media (max-width: 1099px) {
   .th-keybar-system > :not(:first-child) {
