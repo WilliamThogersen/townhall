@@ -17,7 +17,7 @@ use super::turns::TurnGuard;
 use crate::model::{
     Conversation, ConversationStatus, EntryBody, NewMessage, Repo, CONVERSATION_AGENT_TYPE,
 };
-use crate::plugins::{declared, hooks};
+use crate::plugins::{claude_mcp, declared, hooks};
 use crate::redact::redact;
 use crate::{clock, ids, mcp, Context, Result};
 
@@ -283,6 +283,12 @@ async fn plan(
         &notes,
         Some(&profile),
     );
+    let parts = claude_mcp::selected_for_planner(ctx.store()?, &persona.plugins).await?;
+    let (mcp_config, tools) = args::with_plugins(
+        mcp::config_json(ctx.base_url(), &conversation.id),
+        persona.tools,
+        &parts,
+    );
     let turn = TurnArgs {
         session_id: conversation.session_id.clone(),
         resume: conversation.session_started,
@@ -290,11 +296,11 @@ async fn plan(
             true => format!("{system}\n\n{}", prompt::LOST_HISTORY),
             false => system,
         },
-        mcp_config: mcp::config_json(ctx.base_url(), &conversation.id),
+        mcp_config,
         add_dirs,
         model: persona.model,
         permission_mode: persona.permission_mode,
-        tools: persona.tools,
+        tools,
         effort: None,
         ephemeral: false,
     };
