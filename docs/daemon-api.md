@@ -54,6 +54,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/agents/{name}/steps` | | `Step[]` | 404 | 2.7 |
 | GET | `/stats?repo=` | | `{ days: ShippedDay[] }`: last 730 days, days with activity only, summed across repos unless `repo` | 404 repo | 2.7 |
 | GET | `/usage` | | `ClaudeUsage`: Claude plan usage, never the token. Always `200`; trouble is `error`, next to the last numbers read | | usage meter |
+| GET | `/system` | | `SystemStats { cpuPercent, memoryUsedBytes, memoryTotalBytes, diskUsedBytes, diskTotalBytes }`: whole machine cpu percent (0 to 100, since the previous read, from a sampler kept in state), RAM bytes, and the bytes of the volume that holds `~/.townhall`. Read only | 500 the machine's stats or disks could not be read (logged) | key bar stats |
 | GET | `/settings` | | `Settings` | 503 | 2.1 (was 2.0) |
 | PUT | `/settings/{key}` | `{ value }` | `Settings` after the change | 400 unknown key or invalid value | 2.1 (was 2.0) |
 | GET | `/profile` | | `{ text }`: the user's profile, `""` when none | 503 | 2.14 |
@@ -459,6 +460,17 @@ Agent types (2.12, `mcp/library.rs` and `mcp/ask.rs`):
 - `fingerprint` is 16 hex chars from the same FNV hash as `log_summary` (`logs::fingerprint`) over the kind and the normalized pattern, so it does not change between builds and the planner can cite it in a task brief. `suggested_automation` is a rule-based hint per kind (new agent type or planner prompt, ask-less default, prompt or tool change, auto-chain after X).
 - Caps: `samples` at most 3 per pattern, each redacted, on one line and cut to 160 chars (`pattern` too); `conversations` and `tasks` at most 5 ids each; the whole result at most 24 KB (`MAX_OUTPUT_BYTES`): the lowest ranked patterns are dropped first and `truncated` is `true` (also when `top` cut some). All text goes through `redact` first.
 - The system prompt tells the planner to start from it when asked what to automate, citing each pattern's fingerprint and `suggested_automation`.
+
+`ask_adviser` (`mcp/adviser.rs`, run in `runner/advice.rs`): one non-interactive `claude -p` turn of the agent type `adviser`, seeded by `0810_seed_adviser` (model `claude-fable-5-2`, effort `high`, permission mode `plan`, tools `Read Grep Glob WebSearch WebFetch`) and appended to the seeded `default` tools by `0811_default_ask_adviser`. Both the conversation's endpoint and a task's endpoint list it, and `task_allowed_tools()` and `allowed_tools()` grant it.
+
+| tool | input | result |
+|------|-------|--------|
+| `ask_adviser` | `{ question, context? }` (`question` at most 20 000 characters, `context` at most 50 000) | `{ answer, needsUser, model }`. `needsUser` is true when the answer starts with `NEEDS THE USER`. A failure is a tool error starting `the adviser could not answer:` |
+
+- It runs in the task's worktree, or in the conversation's repo, with the saved type's model, effort, tools and prompt (read each call, so an edit applies at once). Tools that write, run commands or reach townhall (`Bash`, `Edit`, `MultiEdit`, `Write`, `NotebookEdit`, `mcp__*`) are dropped from the type's list and disallowed, a mode that accepts edits runs as `plan`, no MCP server is passed and the session is not saved (`--no-session-persistence`). Any tool request outside the list is denied.
+- It stops after `ADVICE_TIMEOUT` (600 s) with `the adviser did not answer within 600 seconds`. With no type named `adviser` it answers `no adviser type: ...` without running anything. The adviser type can be deleted like `builder`; a task running as the adviser cannot ask itself.
+- Every call is a row of `adviser_calls` (question, answer, state `done` or `failed`, model, tokens, times), counted as a run of the adviser in `/api/library/agents/usage`, `.../{name}/usage` and `.../{name}/runs` (kind `consult`, `task` is the task name, or the conversation title for the conversation agent). The call is also a step in the caller's own transcript.
+- A task's agent is told in its system prompt (`scheduler/agent_type.rs`) to ask the adviser before it stops to ask the user, and to ask the user only when `needsUser` is true. Like `hand_back`, the tool reaches a task only when its type may hand back to some type, since both come from the task's MCP server. A task with no `agent` never defaults to the adviser.
 
 Workflow tools (`list_workflows`, `save_workflow`) wait for 2.8c, which also adds `run_workflow` in `mcp/runs.rs`. `tools()` and `allowed_tools()` pick them up.
 

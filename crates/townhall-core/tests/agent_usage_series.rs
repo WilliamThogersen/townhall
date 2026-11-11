@@ -203,3 +203,47 @@ async fn conversation_turns_fill_the_default_types_series() {
         .unwrap();
     assert_eq!(builder.runs, 0);
 }
+
+#[tokio::test]
+async fn adviser_calls_fill_the_advisers_series() {
+    let env = store_env();
+    let c = env.store.create_conversation().await.unwrap();
+    env.store.create_task(&c.id, new_task("a")).await.unwrap();
+    let recent = from_unix_millis(NOW - HOUR / 2);
+    let call = |task: Option<&str>, tokens: u64, at: &str| townhall_core::model::AdviserCall {
+        conversation_id: c.id.clone(),
+        task: task.map(String::from),
+        agent: "adviser".into(),
+        repo: "shop".into(),
+        question: "q".into(),
+        answer: None,
+        state: "failed".into(),
+        model: None,
+        tokens,
+        created_at: at.into(),
+        ended_at: at.into(),
+    };
+    env.store
+        .record_adviser_call(call(Some("a"), 300, &recent))
+        .await
+        .unwrap();
+    env.store
+        .record_adviser_call(call(None, 20, &from_unix_millis(NOW - 3 * DAY)))
+        .await
+        .unwrap();
+    let day = env
+        .store
+        .agent_usage_series("ADVISER", UsageRange::Day, NOW)
+        .await
+        .unwrap();
+    assert_eq!(day.agent, "adviser");
+    assert_eq!((day.runs, day.tokens), (1, 300));
+    assert_eq!(day.by_task[0].key, "a");
+    assert_eq!(day.by_repo[0].key, "shop");
+    let week = env
+        .store
+        .agent_usage_series("adviser", UsageRange::Week, NOW)
+        .await
+        .unwrap();
+    assert_eq!((week.runs, week.tokens), (2, 320));
+}

@@ -51,7 +51,11 @@ async fn the_agent_reads_its_brief_in_accept_edits_when_its_type_sets_no_mode() 
     assert!(!brief.starts_with(&s.repo) && !brief.starts_with(s.worktree(&name)));
     assert_eq!(lines[0], "--permission-mode=acceptEdits");
     assert!(
-        lines[1].starts_with("--append-system-prompt=you can hand back to: builder."),
+        lines[1].starts_with("--append-system-prompt=you can hand back to: adviser, builder."),
+        "{args}"
+    );
+    assert!(
+        lines[1].contains(" before you stop to ask the user, ask the adviser"),
         "{args}"
     );
     let id = lines[2].strip_prefix("--session-id=").unwrap();
@@ -72,7 +76,7 @@ async fn the_agent_reads_its_brief_in_accept_edits_when_its_type_sets_no_mode() 
     assert_eq!(
         lines[3],
         format!(
-            "--allowedTools=mcp__townhall__hand_back,mcp__townhall__open_pr,mcp__townhall__add_artifact,mcp__townhall__list_artifacts,Bash(cd {tree}),Bash(cd {tree}/*),Bash(pwd),Read(~/.claude/plans/*)"
+            "--allowedTools=mcp__townhall__hand_back,mcp__townhall__open_pr,mcp__townhall__add_artifact,mcp__townhall__list_artifacts,mcp__townhall__ask_adviser,Bash(cd {tree}),Bash(cd {tree}/*),Bash(pwd),Read(~/.claude/plans/*)"
         )
     );
     assert!(

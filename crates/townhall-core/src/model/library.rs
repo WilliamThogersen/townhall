@@ -12,6 +12,8 @@ pub const DEFAULT_AGENT_TYPE: &str = "builder";
 /// never deleted, and never the type a task defaults to.
 pub const CONVERSATION_AGENT_TYPE: &str = "default";
 
+pub const ADVISER_AGENT_TYPE: &str = "adviser";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Origin {
@@ -117,6 +119,21 @@ pub struct AgentUsage {
     pub agent: String,
     pub runs: u64,
     pub tokens: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdviserCall {
+    pub conversation_id: String,
+    pub task: Option<String>,
+    pub agent: String,
+    pub repo: String,
+    pub question: String,
+    pub answer: Option<String>,
+    pub state: String,
+    pub model: Option<String>,
+    pub tokens: u64,
+    pub created_at: String,
+    pub ended_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

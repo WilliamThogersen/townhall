@@ -15,6 +15,7 @@ use crate::model::{
 use crate::plugins::hooks;
 use crate::redact::redact;
 
+use super::adviser::{self, Caller, ASK_ADVISER};
 use super::artifacts::{self, ADD_ARTIFACT, LIST_ARTIFACTS};
 use super::checks::{self, Checked};
 use super::hand_back::{self, HAND_BACK};
@@ -81,6 +82,14 @@ impl ToolRunner for TaskTools<'_> {
             READ_LOGS => log_tools::read(self.ctx, parse(arguments)?).await,
             LOG_SUMMARY => log_tools::summary(self.ctx, parse(arguments)?).await,
             CONVERSATION_INSIGHTS => insight_tools::insights(self.ctx, parse(arguments)?).await,
+            ASK_ADVISER => {
+                adviser::ask(
+                    self.ctx,
+                    Caller::Conversation(self.conversation_id),
+                    parse(arguments)?,
+                )
+                .await
+            }
             other => Err(unknown_tool(other, &tools())),
         }
     }
@@ -273,6 +282,7 @@ impl ToolRunner for HandBackTools<'_> {
             ADD_ARTIFACT => artifacts::add(self.ctx, self.task, parse(arguments)?).await,
             LIST_ARTIFACTS => artifacts::list(self.ctx, self.task, parse(arguments)?).await,
             OPEN_PR => open_pr::open_pr(self.ctx, self.task, parse(arguments)?).await,
+            ASK_ADVISER => adviser::ask(self.ctx, Caller::Task(self.task), parse(arguments)?).await,
             other => Err(unknown_tool(other, &task_tools_list())),
         }
     }

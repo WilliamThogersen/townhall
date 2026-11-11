@@ -69,7 +69,13 @@ async fn a_task_agent_sees_hand_back_open_pr_and_the_proof_tools() {
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert_eq!(
         names,
-        ["hand_back", "open_pr", "add_artifact", "list_artifacts"]
+        [
+            "hand_back",
+            "open_pr",
+            "add_artifact",
+            "list_artifacts",
+            "ask_adviser"
+        ]
     );
     assert_eq!(tools[0]["inputSchema"]["required"], json!(["to", "reason"]));
     assert_eq!(tools[1]["name"], "open_pr");

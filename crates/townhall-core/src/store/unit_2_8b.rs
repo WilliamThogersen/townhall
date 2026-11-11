@@ -15,7 +15,7 @@ use super::migrate::Migration;
 use super::Store;
 use crate::agent_usage::{aggregate, AgentUsageSeries, UsageRange, UsageRun};
 use crate::definitions::{check_agent, AgentDef, DefKind, DefinitionError, Parsed};
-use crate::model::{AgentType, AgentUsage, Origin, TaskRun, CONVERSATION_AGENT_TYPE};
+use crate::model::{AdviserCall, AgentType, AgentUsage, Origin, TaskRun, CONVERSATION_AGENT_TYPE};
 use crate::plugins::agent_types;
 use crate::{clock, Error, Result};
 
@@ -69,6 +69,21 @@ pub const MIGRATIONS: &[Migration] = &[
         id: 809,
         name: "0809_conversation_turns",
         sql: include_str!("migrations/0809_conversation_turns.sql"),
+    },
+    Migration {
+        id: 810,
+        name: "0810_seed_adviser",
+        sql: include_str!("migrations/0810_seed_adviser.sql"),
+    },
+    Migration {
+        id: 811,
+        name: "0811_default_ask_adviser",
+        sql: include_str!("migrations/0811_default_ask_adviser.sql"),
+    },
+    Migration {
+        id: 812,
+        name: "0812_adviser_calls",
+        sql: include_str!("migrations/0812_adviser_calls.sql"),
     },
 ];
 
@@ -325,7 +340,12 @@ impl Store {
                      select c.title, coalesce(c.linked_repo, ''), t.conversation_id,
                             t.created_at, t.tokens
                      from conversation_turns t join conversations c on c.id = t.conversation_id
-                     where ?1 = ?2 collate nocase",
+                     where ?1 = ?2 collate nocase
+                     union all
+                     select coalesce(a.task, c.title), a.repo, a.conversation_id,
+                            a.created_at, a.tokens
+                     from adviser_calls a join conversations c on c.id = a.conversation_id
+                     where a.agent = ?1 collate nocase",
                 )?;
                 let rows = stmt
                     .query_map(params![wanted, CONVERSATION_AGENT_TYPE], |r| {
@@ -393,6 +413,42 @@ impl Store {
         .await
     }
 
+    pub async fn record_adviser_call(&self, call: AdviserCall) -> Result<()> {
+        let tokens = i64::try_from(call.tokens).unwrap_or(i64::MAX);
+        self.call(move |conn| {
+            let known = conn
+                .query_row(
+                    "select 1 from conversations where id = ?1",
+                    [&call.conversation_id],
+                    |_| Ok(()),
+                )
+                .optional()?;
+            if known.is_none() {
+                return Err(Error::missing("conversation", &call.conversation_id));
+            }
+            conn.execute(
+                "insert into adviser_calls (conversation_id, task, agent, repo, question, answer,
+                                            state, model, tokens, created_at, ended_at)
+                 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    call.conversation_id,
+                    call.task,
+                    call.agent,
+                    call.repo,
+                    call.question,
+                    call.answer,
+                    call.state,
+                    call.model,
+                    tokens,
+                    call.created_at,
+                    call.ended_at
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn set_task_model(&self, task: &str, model: &str) -> Result<()> {
         let (name, model) = (task.to_string(), model.to_string());
         self.call(move |conn| {
@@ -420,6 +476,11 @@ impl Store {
                         null, t.tokens, t.created_at, t.ended_at
                  from conversation_turns t join conversations c on c.id = t.conversation_id
                  where ?1 = ?3 collate nocase
+                 union all
+                 select 'consult', a.conversation_id, coalesce(a.task, c.title), a.repo, a.state,
+                        a.model, a.tokens, a.created_at, a.ended_at
+                 from adviser_calls a join conversations c on c.id = a.conversation_id
+                 where a.agent = ?1 collate nocase
                  order by 8 desc, 3 limit ?2",
             )?;
             let rows = stmt
@@ -449,6 +510,8 @@ impl Store {
                    select agent, tokens from tasks
                    union all
                    select ?1, tokens from conversation_turns
+                   union all
+                   select agent, tokens from adviser_calls
                  ) group by agent order by agent collate nocase",
             )?;
             let rows = stmt

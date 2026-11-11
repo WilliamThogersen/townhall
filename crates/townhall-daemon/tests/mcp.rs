@@ -49,7 +49,8 @@ async fn initialize_echoes_the_version_and_lists_the_tools() {
             "save_agent_type",
             "read_logs",
             "log_summary",
-            "conversation_insights"
+            "conversation_insights",
+            "ask_adviser"
         ]
     );
     for t in tools {

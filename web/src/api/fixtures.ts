@@ -5,6 +5,7 @@ import type {
   Artifact,
   Attachment,
   ClaudeUsage,
+  SystemStats,
   Conversation,
   ConversationDetail,
   EntryBody,
@@ -238,5 +239,14 @@ export const anAgentType = (over: Partial<AgentType> = {}): AgentType => ({
   canHandBackTo: null,
   env: {},
   source: 'name = "builder"\nadapter = "claude"\n',
+  ...over,
+});
+
+export const aSystem = (over: Partial<SystemStats> = {}): SystemStats => ({
+  cpuPercent: 23.4,
+  memoryUsedBytes: 11.2 * 1024 ** 3,
+  memoryTotalBytes: 32 * 1024 ** 3,
+  diskUsedBytes: 410 * 1024 ** 3,
+  diskTotalBytes: 994 * 1024 ** 3,
   ...over,
 });

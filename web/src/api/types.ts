@@ -293,7 +293,7 @@ export interface AgentUsageSeries {
   readonly byConversation: readonly UsageShare[];
 }
 
-export type AgentRunKind = "task" | "turn";
+export type AgentRunKind = "task" | "turn" | "consult";
 
 export interface AgentRun {
   readonly kind: AgentRunKind;
@@ -547,4 +547,12 @@ export interface ClaudeUsage {
   readonly weekly: UsageWindow | null;
   readonly updatedAt: number;
   readonly error: string | null;
+}
+
+export interface SystemStats {
+  readonly cpuPercent: number;
+  readonly memoryUsedBytes: number;
+  readonly memoryTotalBytes: number;
+  readonly diskUsedBytes: number;
+  readonly diskTotalBytes: number;
 }
