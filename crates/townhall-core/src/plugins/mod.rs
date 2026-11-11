@@ -12,7 +12,9 @@ mod official;
 pub mod prompts;
 pub mod schema;
 mod sha256;
+pub mod storage;
 pub mod theme;
+pub mod tokens;
 pub mod tree;
 
 pub use official::{Official, OFFICIAL};
