@@ -146,9 +146,9 @@ export function UsageMeter() {
         aria-expanded={open}
         onClick={() => setOpen((was) => !was)}
       >
-        <span className="th-usage-icon" aria-hidden="true">
-          *
-        </span>
+        <svg className="th-usage-icon" viewBox="0 0 8 8" aria-hidden="true">
+          <path d="M4 0.5V7.5M0.97 2.25L7.03 5.75M0.97 5.75L7.03 2.25" />
+        </svg>
         {usage.session && <Meter name="5h" window={usage.session} now={now} />}
         {usage.weekly && <Meter name="wk" window={usage.weekly} now={now} />}
       </button>
