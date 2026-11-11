@@ -174,10 +174,7 @@ async fn files_and_fingerprints_recorded_at_the_end_are_found_by_path_suffix_and
     let mut deep = query(Some(NodeKind::Task), "alpha");
     deep.deep = true;
     let deep = env.store.history_graph(deep).await.unwrap().unwrap();
-    assert_eq!(
-        deep.tasks[0].files,
-        ["src/insights/mod.rs", "src/lib.rs"]
-    );
+    assert_eq!(deep.tasks[0].files, ["src/insights/mod.rs", "src/lib.rs"]);
     assert_eq!(deep.tasks[0].fingerprints, ["00aa00aa00aa00aa"]);
     let shallow = env
         .store
@@ -333,6 +330,10 @@ async fn agent_stats_count_outcomes_retries_handbacks_reasons_and_areas() {
     assert_eq!(reviewer.tasks, 1);
     assert!(reviewer.failures.is_empty() && reviewer.areas.is_empty());
 
-    let none = env.store.agent_stats(Some(32_503_680_000_000)).await.unwrap();
+    let none = env
+        .store
+        .agent_stats(Some(32_503_680_000_000))
+        .await
+        .unwrap();
     assert!(none.is_empty());
 }

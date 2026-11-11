@@ -37,7 +37,14 @@ async fn make_task(m: &Mcp, name: &str, agent: &str, state: TaskState, files: &[
 async fn seed(m: &Mcp) {
     m.store().save_agent_type(CODER).await.unwrap();
     m.store().save_agent_type(REVIEWER).await.unwrap();
-    make_task(m, "first", "coder", TaskState::Merged, &["src/insights/mod.rs", "src/a.rs"]).await;
+    make_task(
+        m,
+        "first",
+        "coder",
+        TaskState::Merged,
+        &["src/insights/mod.rs", "src/a.rs"],
+    )
+    .await;
     m.store()
         .update_task("first", |t| {
             Ok(Task {
@@ -51,8 +58,22 @@ async fn seed(m: &Mcp) {
         })
         .await
         .unwrap();
-    make_task(m, "second", "coder", TaskState::Error, &["src/insights/tests.rs"]).await;
-    make_task(m, "third", "reviewer", TaskState::Ended, &["src/insights/mod.rs"]).await;
+    make_task(
+        m,
+        "second",
+        "coder",
+        TaskState::Error,
+        &["src/insights/tests.rs"],
+    )
+    .await;
+    make_task(
+        m,
+        "third",
+        "reviewer",
+        TaskState::Ended,
+        &["src/insights/mod.rs"],
+    )
+    .await;
     let text = "task second failed: API error 529 overloaded token=hunter2hunter2";
     let body = EntryBody::Event { text: text.into() };
     m.store().append_entry(&m.id, body).await.unwrap();
@@ -93,7 +114,10 @@ async fn a_file_leads_to_the_tasks_that_touched_it_with_agent_outcome_and_date()
     let out = m
         .ok("history_graph", json!({"node": "src/insights/mod.rs"}))
         .await;
-    assert_eq!(out["node"], json!({"kind": "file", "id": "src/insights/mod.rs"}));
+    assert_eq!(
+        out["node"],
+        json!({"kind": "file", "id": "src/insights/mod.rs"})
+    );
     assert_eq!(out["matched"], 2);
     let tasks = out["tasks"].as_array().unwrap();
     assert_eq!(tasks.len(), 2, "{out}");
@@ -164,13 +188,21 @@ async fn history_graph_refuses_unknown_nodes_and_bad_arguments() {
     assert!(unknown.contains("no/such/file.rs"), "{unknown}");
     m.refused("history_graph", json!({})).await;
     m.refused("history_graph", json!({"node": "  "})).await;
-    m.refused("history_graph", json!({"node": "a", "depth": 3})).await;
-    m.refused("history_graph", json!({"node": "a", "depth": 0})).await;
-    m.refused("history_graph", json!({"node": "a", "kind": "tag"})).await;
-    m.refused("history_graph", json!({"node": "a", "limit": 0})).await;
-    m.refused("history_graph", json!({"node": "a", "extra": 1})).await;
+    m.refused("history_graph", json!({"node": "a", "depth": 3}))
+        .await;
+    m.refused("history_graph", json!({"node": "a", "depth": 0}))
+        .await;
+    m.refused("history_graph", json!({"node": "a", "kind": "tag"}))
+        .await;
+    m.refused("history_graph", json!({"node": "a", "limit": 0}))
+        .await;
+    m.refused("history_graph", json!({"node": "a", "extra": 1}))
+        .await;
     let since = m
-        .refused("history_graph", json!({"node": "src/a.rs", "since": "yesterday"}))
+        .refused(
+            "history_graph",
+            json!({"node": "src/a.rs", "since": "yesterday"}),
+        )
         .await;
     assert!(since.contains("since"), "{since}");
 }
@@ -191,18 +223,24 @@ async fn agent_stats_summarise_each_type_compactly_and_redacted() {
         .as_str()
         .unwrap()
         .starts_with("API error"));
-    assert_eq!(coder["failsOn"], json!([{"area": "src/insights", "count": 1}]));
+    assert_eq!(
+        coder["failsOn"],
+        json!([{"area": "src/insights", "count": 1}])
+    );
     let reviewer = agents.iter().find(|a| a["agent"] == "reviewer").unwrap();
     assert_eq!(reviewer["tasks"], 1);
     assert_eq!(reviewer["failures"], json!([]));
     assert!(!out.to_string().contains("hunter2"), "{out}");
 
-    let only = m.ok("agent_stats", json!({"agent": "Reviewer", "since": "7d"})).await;
+    let only = m
+        .ok("agent_stats", json!({"agent": "Reviewer", "since": "7d"}))
+        .await;
     assert_eq!(only["agents"].as_array().unwrap().len(), 1, "{only}");
     let none = m
         .ok("agent_stats", json!({"since": "2999-01-01T00:00:00Z"}))
         .await;
     assert_eq!(none["agents"], json!([]));
-    m.refused("agent_stats", json!({"since": "yesterday"})).await;
+    m.refused("agent_stats", json!({"since": "yesterday"}))
+        .await;
     m.refused("agent_stats", json!({"extra": true})).await;
 }

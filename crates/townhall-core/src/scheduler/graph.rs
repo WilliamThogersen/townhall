@@ -1,8 +1,3 @@
-//! Feeds the history graph (`store/unit_graph.rs`): once a task ended, merged or failed, the
-//! files its branch changed and the log fingerprints that named it are recorded as edges. The
-//! same pass backfills older tasks, a few per pass; a task whose branch is gone is recorded
-//! without files. Read only: `git diff --name-only`, never a write to the repo.
-
 use std::collections::HashMap;
 
 use crate::clock::parse_rfc3339;
@@ -28,7 +23,11 @@ async fn branch_exists(repo: &std::path::Path, branch: &str) -> Result<bool> {
     Ok(!out.is_empty())
 }
 
-async fn changed_files(ctx: &Context, task: &Task, launch: Option<&TaskLaunch>) -> Result<Vec<String>> {
+async fn changed_files(
+    ctx: &Context,
+    task: &Task,
+    launch: Option<&TaskLaunch>,
+) -> Result<Vec<String>> {
     let repo = ctx.repo(&task.repo).await?;
     let branch = task.branch();
     if !branch_exists(&repo.path, &branch).await? {

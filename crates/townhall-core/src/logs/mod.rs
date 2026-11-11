@@ -348,7 +348,6 @@ pub fn read_logs(dir: &Path, now_ms: i64, args: &ReadArgs) -> Result<ReadOutput,
     })
 }
 
-/// The distinct fingerprints of the warnings and errors that name `task`, since `since_ms`.
 pub fn task_fingerprints(dir: &Path, since_ms: i64, task: &str) -> Vec<String> {
     let entries = read_entries(dir, since_ms, |e| {
         e.level >= Level::Warn && e.field("task") == Some(task)

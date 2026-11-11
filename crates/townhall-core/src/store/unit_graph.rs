@@ -9,15 +9,22 @@ use super::migrate::Migration;
 use super::tasks::{find, select};
 use super::Store;
 use crate::logs::normalize;
-use crate::redact::redact;
 use crate::model::{Task, TaskState, TASK_BRANCH_PREFIX};
+use crate::redact::redact;
 use crate::{clock, Result};
 
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    id: 1050,
-    name: "1050_history_graph",
-    sql: include_str!("migrations/1050_history_graph.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        id: 1050,
+        name: "1050_history_graph",
+        sql: include_str!("migrations/1050_history_graph.sql"),
+    },
+    Migration {
+        id: 1051,
+        name: "1051_default_graph_tools",
+        sql: include_str!("migrations/1051_default_graph_tools.sql"),
+    },
+];
 
 const API_ERROR: &str = "api-error";
 const MAX_FILES: usize = 10;
