@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isTextField, useGlobalKeys } from "./globalKeys";
 
-function Keys() {
-  useGlobalKeys();
+function Keys({ onHelp }: { readonly onHelp?: () => void }) {
+  useGlobalKeys(onHelp);
   return (
     <div>
       <input aria-label="text" />
@@ -62,6 +62,38 @@ describe("global keys", () => {
     const handled = new KeyboardEvent("keydown", { key: "n", bubbles: true, cancelable: true });
     handled.preventDefault();
     document.body.dispatchEvent(handled);
+    expect(window.location.pathname).toBe("/townhall");
+  });
+
+  it("? asks for the help overlay", () => {
+    const onHelp = vi.fn();
+    render(<Keys onHelp={onHelp} />);
+    expect(fireEvent.keyDown(document.body, { key: "?", shiftKey: true })).toBe(false);
+    expect(onHelp).toHaveBeenCalledOnce();
+    expect(window.location.pathname).toBe("/townhall");
+  });
+
+  it.each(["text", "area", "pick", "editable"])("? does nothing while focus is in %s", (label) => {
+    const onHelp = vi.fn();
+    render(<Keys onHelp={onHelp} />);
+    fireEvent.keyDown(screen.getByLabelText(label), { key: "?", shiftKey: true });
+    expect(onHelp).not.toHaveBeenCalled();
+  });
+
+  it("leaves ? and n alone while a modal dialog has focus", () => {
+    const onHelp = vi.fn();
+    render(
+      <>
+        <Keys onHelp={onHelp} />
+        <div role="dialog" aria-modal="true">
+          <button type="button">inside</button>
+        </div>
+      </>,
+    );
+    const inside = screen.getByRole("button", { name: "inside" });
+    fireEvent.keyDown(inside, { key: "?", shiftKey: true });
+    fireEvent.keyDown(inside, { key: "n" });
+    expect(onHelp).not.toHaveBeenCalled();
     expect(window.location.pathname).toBe("/townhall");
   });
 

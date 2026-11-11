@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 import { toMessage } from "../../api/errors";
 import { usePlugins } from "../../data";
+import { useKeyHints } from "../../shell/keyHints";
+import { PLUGIN_PROMPT_HINTS, PLUGINS_HINTS } from "../../shell/keyMap";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { DRAG_REGION } from "../../ui/dragRegion";
@@ -32,6 +34,7 @@ export function PluginsPage() {
   const plugins = usePlugins();
   const { problem, dismiss, run } = useRun();
   const flow = useInstallFlow(plugins, run);
+  useKeyHints(flow.id === null ? PLUGINS_HINTS : PLUGIN_PROMPT_HINTS);
   const marketName = flow.id?.slice(flow.id.lastIndexOf("@") + 1).toLowerCase();
   const official = plugins.marketplaces.some((m) => m.official && m.name.toLowerCase() === marketName);
   const waiting = plugins.loading && plugins.marketplaces.length === 0 && plugins.error === null;

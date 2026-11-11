@@ -416,6 +416,7 @@ button.th-msg-quote:focus-visible {
 
 .th-ask {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--th-space-2);
   min-width: 0;
 }
@@ -995,7 +996,7 @@ button.th-msg-quote:focus-visible {
   }
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1131px) {
   .th-convo-layout[data-pane="true"] {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);

@@ -61,9 +61,10 @@ describe("Shell", () => {
   it("lays out sidebar, main and key bar", async () => {
     const { container } = renderShell();
     const shell = container.querySelector(".th-shell");
-    expect(shell?.children[0]).toHaveClass("th-sidebar");
-    expect(shell?.children[1]).toHaveClass("th-main");
-    expect(shell?.children[2]).toHaveClass("th-keybar");
+    expect(shell?.children[0]).toHaveClass("th-navbar");
+    expect(shell?.children[1]).toHaveClass("th-sidebar");
+    expect(shell?.children[2]).toHaveClass("th-main");
+    expect(shell?.children[3]).toHaveClass("th-keybar");
     expect(within(screen.getByRole("main")).getByText("screen")).toBeInTheDocument();
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
   });
@@ -166,6 +167,34 @@ describe("Shell", () => {
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
   });
 
+  it("always offers the help key in the key bar", async () => {
+    renderShell();
+    expect(within(screen.getByRole("contentinfo")).getByText("?")).toHaveClass("th-kbd");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("opens the help overlay on ? and gives focus back on esc", async () => {
+    renderShell();
+    const reposLink = link(/repos/);
+    reposLink.focus();
+    fireEvent.keyDown(reposLink, { key: "?", shiftKey: true });
+    const dialog = screen.getByRole("dialog", { name: "keyboard shortcuts" });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(reposLink).toHaveFocus();
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("does not open the overlay from the search field", async () => {
+    renderShell();
+    fireEvent.keyDown(document.body, { key: "/" });
+    const search = screen.getByRole("searchbox", { name: "search conversations" });
+    fireEvent.keyDown(search, { key: "?", shiftKey: true });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
   it("answers the global keys", async () => {
     window.history.replaceState(null, "", "/townhall");
     renderShell();
@@ -174,6 +203,73 @@ describe("Shell", () => {
     expect(window.location.pathname).toBe("/townhall");
     fireEvent.keyDown(document.body, { key: "n" });
     expect(link(/new conversation/)).toHaveAttribute("aria-current", "page");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+});
+
+describe("Shell menu drawer", () => {
+  const shell = (container: HTMLElement) => container.querySelector(".th-shell");
+  const menuButton = () => screen.getByRole("button", { name: "menu" });
+
+  it("shows the main area first and swaps in the sidebar with the menu button", async () => {
+    const { container } = renderShell();
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    expect(menuButton()).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(menuButton());
+    expect(shell(container)).toHaveAttribute("data-view", "side");
+    expect(menuButton()).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(menuButton());
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("hands focus back to the menu button when esc closes the drawer", async () => {
+    renderShell();
+    fireEvent.click(menuButton());
+    const brand = document.querySelector<HTMLElement>(".th-sidebar-brand");
+    brand?.focus();
+    fireEvent.keyDown(brand as HTMLElement, { key: "Escape" });
+    expect(menuButton()).toHaveFocus();
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("puts the menu button before the sidebar and main area in tab order", async () => {
+    const { container } = renderShell();
+    const after = (other: Element | null) =>
+      Boolean(other && menuButton().compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(after(container.querySelector(".th-sidebar"))).toBe(true);
+    expect(after(container.querySelector(".th-main"))).toBe(true);
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("toggles with m, closes with esc, and leaves both alone while typing", async () => {
+    const { container } = renderShell();
+    fireEvent.keyDown(document.body, { key: "m" });
+    expect(shell(container)).toHaveAttribute("data-view", "side");
+    fireEvent.keyDown(document.body, { key: "/" });
+    const search = screen.getByRole("searchbox", { name: "search conversations" });
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(shell(container)).toHaveAttribute("data-view", "side");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    fireEvent.keyDown(search, { key: "m" });
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("goes back to the main area once a link in the sidebar is followed", async () => {
+    const { container } = renderShell();
+    fireEvent.click(menuButton());
+    fireEvent.click(link(/repos/));
+    expect(shell(container)).toHaveAttribute("data-view", "main");
+    expect(window.location.pathname).toBe("/repos");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("lists m in the help overlay", async () => {
+    renderShell();
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+    expect(within(screen.getByRole("dialog")).getByText("open or close the sidebar menu")).toBeInTheDocument();
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
   });
 });

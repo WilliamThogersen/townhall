@@ -4,10 +4,14 @@ import type { ReplyTarget } from "../../../composer/replies";
 const FLASH_MS = 1500;
 const flashing = new Map<Element, number>();
 
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function showEntry(from: Element, id: number): void {
   const original = from.closest(".th-thread")?.querySelector(`[data-entry-id="${id}"]`);
   if (original === null || original === undefined) return;
-  original.scrollIntoView({ block: "center", behavior: "smooth" });
+  original.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
   window.clearTimeout(flashing.get(original));
   original.setAttribute("data-flash", "true");
   flashing.set(
