@@ -195,6 +195,26 @@ describe("ConversationPage terminal and session panel", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
+  it("closes the overlay session panel with esc but leaves esc alone while typing", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((media: string) => ({ media, matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
+    renderPage();
+    await screen.findByRole("button", { name: "session" });
+    await userEvent.keyboard("s");
+    expect(layout()).toHaveAttribute("data-rail", "open");
+    const field = document.createElement("textarea");
+    document.body.append(field);
+    field.focus();
+    await userEvent.keyboard("{Escape}");
+    expect(layout()).toHaveAttribute("data-rail", "open");
+    field.remove();
+    await userEvent.keyboard("{Escape}");
+    expect(layout()).not.toHaveAttribute("data-rail");
+  });
+
   it("ignores s while typing", async () => {
     vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
     renderPage();

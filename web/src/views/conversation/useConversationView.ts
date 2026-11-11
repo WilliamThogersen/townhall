@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { allowTool, sendText } from "../../api/client";
 import { toMessage } from "../../api/errors";
 import type { AgentKey, ConversationDetail, Task } from "../../api/types";
@@ -8,6 +8,7 @@ import { navigate, PATHS, useRoute } from "../../router";
 import { useSettings } from "../../settings/useSettings";
 import type { ThreadContextValue } from "./thread/threadContext";
 import { pressKeys } from "./thread/trustDialog";
+import { isInTerminal, isPlainKey } from "./session/keys";
 import { useNarrow } from "./useNarrow";
 
 export interface PaneRoute {
@@ -63,6 +64,16 @@ function useOverlayRail(pane: PaneRoute): Rail {
     setOpen(true);
   };
   const visible = open && !paneOpen;
+  useEffect(() => {
+    if (!visible) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !isPlainKey(e) || isInTerminal(e.target)) return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [visible]);
   return { visible, attribute: visible ? "open" : undefined, toggle };
 }
 
