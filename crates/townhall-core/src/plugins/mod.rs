@@ -19,5 +19,6 @@ pub mod storage;
 pub mod theme;
 pub mod tokens;
 pub mod tree;
+pub mod ui;
 
 pub use official::{Official, OFFICIAL};

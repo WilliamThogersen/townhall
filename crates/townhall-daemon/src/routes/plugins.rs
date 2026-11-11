@@ -1,9 +1,12 @@
+use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::response::Response;
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use serde_json::Value;
-use townhall_core::plugins::declared;
 use townhall_core::plugins::install::{InstallPlugin, PatchPlugin, PluginRegistry};
+use townhall_core::plugins::{declared, ui};
+use townhall_core::Error;
 
 use crate::envelope::{created, ok};
 use crate::error::ApiError;
@@ -42,6 +45,36 @@ pub struct ThemeBody {
 #[serde(deny_unknown_fields)]
 pub struct SettingBody {
     value: Value,
+}
+
+const UI_CSP: &str = "sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-ancestors 'self'";
+
+pub async fn ui_file(
+    State(state): State<AppState>,
+    Path((id, rel)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let found = ui::file(state.ctx().store()?, &id, &rel).await?;
+    let bytes = tokio::fs::read(&found.path)
+        .await
+        .map_err(|e| Error::io(format!("read {}", found.path.display()), e))?;
+    let headers = [
+        (header::CONTENT_TYPE, HeaderValue::from_static(found.mime)),
+        (header::CONTENT_LENGTH, HeaderValue::from(bytes.len())),
+        (
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ),
+        (
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(UI_CSP),
+        ),
+        (
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        ),
+        (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+    ];
+    Ok((StatusCode::OK, headers, Body::from(bytes)).into_response())
 }
 
 pub async fn contributions(State(state): State<AppState>) -> Result<Response, ApiError> {

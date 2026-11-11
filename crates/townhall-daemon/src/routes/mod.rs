@@ -162,6 +162,7 @@ pub fn router(state: AppState) -> Router {
             patch(plugins::patch).delete(plugins::uninstall),
         )
         .route("/plugins/{id}/update", post(plugins::update))
+        .route("/plugins/{id}/ui/{*path}", get(plugins::ui_file))
         .route("/settings", get(settings::get))
         .route("/settings/{key}", put(settings::put))
         .route(
