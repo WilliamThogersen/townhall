@@ -283,6 +283,8 @@ async fn plan(
         model: persona.model,
         permission_mode: persona.permission_mode,
         tools: persona.tools,
+        effort: None,
+        ephemeral: false,
     };
     args::build(&turn)
 }

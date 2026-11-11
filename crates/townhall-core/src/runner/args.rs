@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use crate::agent::{add_dir, plain, ISOLATED_SETTINGS};
+use crate::definitions::Effort;
 use crate::model::PermissionMode;
 use crate::{mcp, Error, Result};
 
@@ -51,6 +52,8 @@ pub struct TurnArgs {
     /// Every tool the session may use without asking; the built-in ones among them are
     /// also the whole built-in set (`--tools`).
     pub tools: Vec<String>,
+    pub effort: Option<Effort>,
+    pub ephemeral: bool,
 }
 
 const FIXED: [&str; 6] = [
@@ -97,16 +100,20 @@ pub fn build(a: &TurnArgs) -> Result<Vec<String>> {
         plain("tool", tool)?;
     }
     let options = [
-        session(a)?,
-        format!("--model={}", a.model),
-        permission(a)?,
-        format!("--append-system-prompt={}", a.system_prompt),
-        "--strict-mcp-config".into(),
-        format!("--mcp-config={}", a.mcp_config),
-        format!("--tools={}", built_in(&a.tools).join(",")),
-        format!("--allowedTools={}", a.tools.join(",")),
-        format!("--disallowedTools={}", DENIED_TOOLS.join(",")),
-    ];
+        Some(session(a)?),
+        Some(format!("--model={}", a.model)),
+        a.effort.map(|e| format!("--effort={}", e.as_str())),
+        Some(permission(a)?),
+        Some(format!("--append-system-prompt={}", a.system_prompt)),
+        Some("--strict-mcp-config".into()),
+        Some(format!("--mcp-config={}", a.mcp_config)),
+        Some(format!("--tools={}", built_in(&a.tools).join(","))),
+        Some(format!("--allowedTools={}", a.tools.join(","))),
+        Some(format!("--disallowedTools={}", DENIED_TOOLS.join(","))),
+        a.ephemeral.then(|| "--no-session-persistence".to_string()),
+    ]
+    .into_iter()
+    .flatten();
     let isolation = ISOLATION.iter().map(|s| s.to_string());
     let dirs = a
         .add_dirs
@@ -136,7 +143,25 @@ mod tests {
             model: "sonnet".into(),
             permission_mode: PermissionMode::Default,
             tools: allowed_tools(),
+            effort: None,
+            ephemeral: false,
         }
+    }
+
+    #[test]
+    fn effort_and_no_persistence_are_flags_only_when_asked_for() {
+        let argv = build(&TurnArgs {
+            effort: Some(Effort::High),
+            ephemeral: true,
+            ..args(false, vec![])
+        })
+        .unwrap();
+        assert_eq!(argv[7], "--model=sonnet");
+        assert_eq!(argv[8], "--effort=high");
+        assert!(argv.contains(&"--no-session-persistence".to_string()));
+        let plain = build(&args(false, vec![])).unwrap();
+        assert!(!plain.iter().any(|a| a.starts_with("--effort")));
+        assert!(!plain.contains(&"--no-session-persistence".to_string()));
     }
 
     #[test]
@@ -158,7 +183,7 @@ mod tests {
                 "--strict-mcp-config",
                 "--mcp-config={}",
                 "--tools=Read,Grep,Glob,WebFetch,WebSearch",
-                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__read_logs,mcp__townhall__log_summary,mcp__townhall__conversation_insights,Read,Grep,Glob,WebFetch,WebSearch",
+                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__read_logs,mcp__townhall__log_summary,mcp__townhall__conversation_insights,mcp__townhall__ask_adviser,Read,Grep,Glob,WebFetch,WebSearch",
                 "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
                 "--setting-sources=",
                 "--settings={\"disableAllHooks\":true,\"autoMemoryEnabled\":false}",
