@@ -1,7 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const SHOTS = process.env.TOWNHALL_E2E_SHOTS;
-
 async function openPipelines(page: Page): Promise<void> {
   await page.goto("/agents");
   await page.getByRole("radiogroup", { name: "section" }).getByText("pipelines").click();
@@ -9,7 +7,7 @@ async function openPipelines(page: Page): Promise<void> {
 }
 
 async function shot(page: Page, name: string): Promise<void> {
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+  await page.screenshot({ path: test.info().outputPath(`${name}.png`), fullPage: true });
 }
 
 async function createRefusedThenValid(page: Page, name: string): Promise<void> {

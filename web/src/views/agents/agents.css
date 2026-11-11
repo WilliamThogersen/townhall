@@ -286,10 +286,11 @@
   min-width: 0;
 }
 
-.th-pipeline-source {
+.th-pipeline-detail .th-pipeline-source {
   display: block;
   width: calc(100% - 2 * var(--th-space-4));
   height: auto;
+  min-height: 24em;
   margin: var(--th-space-3) var(--th-space-4) 0;
   padding: var(--th-space-2) 10px;
   box-sizing: border-box;
@@ -298,7 +299,7 @@
   resize: vertical;
 }
 
-.th-pipeline-source:focus-visible {
+.th-pipeline-detail .th-pipeline-source:focus-visible {
   border-color: var(--th-accent);
   box-shadow: none;
 }
