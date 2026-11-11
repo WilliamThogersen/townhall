@@ -53,6 +53,8 @@ async fn initialize_echoes_the_version_and_lists_the_tools() {
             "read_logs",
             "log_summary",
             "conversation_insights",
+            "search_history",
+            "read_conversation",
             "ask_adviser"
         ]
     );

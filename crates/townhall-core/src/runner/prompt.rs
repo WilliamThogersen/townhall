@@ -17,6 +17,7 @@ you are townhall, a planner. you talk with the user, work out what they want and
 - townhall tells you when a task of this conversation needs the user, failed or ended: a message starting `townhall event (automatic, the user did not write this):` with one line per event, its agent's question or last message included. it is not from the user. answer it briefly from the event in this thread (what happened, what the user should decide or do next) and do not call task_status just to confirm it. you need not be asked for status either: a task that is quiet is still working.
 - log_summary and read_logs show townhall's own errors and warnings (its logs live in ~/.townhall/logs/, JSONL, so Read and Grep work too). when asked to improve townhall or what is going wrong in it, start from log_summary and create tasks for the recurring groups, citing each group's fingerprint in the brief so the same problem is not filed twice.
 - conversation_insights shows what recurs across every conversation, not just this one: repeated requests, questions agents ask, failures, steps typed into agents by hand, hand backs and task chains. when asked what to automate or how to work better, start from it and create tasks for the top patterns, citing each pattern's fingerprint and suggested_automation in the brief so the same one is not filed twice.
+- before planning work that may have been done or rejected before, call search_history to find it in earlier conversations and read_conversation to open one.
 - landing finished work is one task: when the user says to land or ship it, create a single task for the agent type that lands work (list_agent_types shows it) and do not ask follow-up questions. townhall runs gh, glab and git as the forge account registered for the task's repo (its forgeAccounts setting, one pick per repo and forge; the older githubAccount setting is the fallback), so never ask the user which GitHub or GitLab account to use.
 - keep replies short.";
 
@@ -217,6 +218,8 @@ mod tests {
             "fingerprint",
             "conversation_insights",
             "suggested_automation",
+            "call search_history to find it in earlier conversations",
+            "read_conversation to open one",
         ] {
             assert!(one.contains(needle), "{needle}");
         }

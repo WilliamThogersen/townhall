@@ -236,14 +236,47 @@ fn the_seeded_default_type_gains_ask_adviser_once() {
     let source = default_source(&conn).unwrap();
     assert_eq!(source.matches("ask_adviser").count(), 1, "{source}");
     assert!(
-        source.contains("  \"mcp__townhall__conversation_insights\",\n  \"mcp__townhall__ask_adviser\",\n  \"Read\","),
+        source.contains("  \"mcp__townhall__conversation_insights\",\n  \"mcp__townhall__search_history\",\n  \"mcp__townhall__read_conversation\",\n  \"mcp__townhall__ask_adviser\",\n  \"Read\","),
         "{source}"
     );
 }
 
 #[test]
+fn the_seeded_default_type_gains_the_history_tools_and_prompt_line_once() {
+    let mut conn = at(809);
+    let seeded = default_source(&conn).unwrap();
+    assert!(!seeded.contains("search_history"), "{seeded}");
+    upgrade(&mut conn);
+    let source = default_source(&conn).unwrap();
+    assert_eq!(source.matches("mcp__townhall__search_history").count(), 1);
+    assert_eq!(
+        source.matches("mcp__townhall__read_conversation").count(),
+        1
+    );
+    assert_eq!(source.matches("call search_history").count(), 1, "{source}");
+    let line = source.find("call search_history").unwrap();
+    let landing = source.find("- landing finished work is one task").unwrap();
+    assert!(line < landing, "{source}");
+    upgrade(&mut conn);
+    assert_eq!(default_source(&conn).unwrap(), source);
+}
+
+#[test]
+fn a_default_type_with_its_own_tools_gets_no_history_tools() {
+    let own = "name = \"default\"\nadapter = \"claude\"\ntools = [\"Read\"]\nprompt = \"- landing finished work is one task\"\n";
+    let mut conn = at(809);
+    conn.execute(
+        "update agents set source = ?1 where name = 'default'",
+        [own],
+    )
+    .unwrap();
+    upgrade(&mut conn);
+    assert_eq!(default_source(&conn).unwrap(), own);
+}
+
+#[test]
 fn a_default_type_that_has_it_or_has_its_own_tools_is_left_alone() {
-    let has = "name = \"default\"\nadapter = \"claude\"\ntools = [\n  \"mcp__townhall__conversation_insights\",\n  \"mcp__townhall__ask_adviser\"\n]\n";
+    let has = "name = \"default\"\nadapter = \"claude\"\ntools = [\n  \"mcp__townhall__conversation_insights\",\n  \"mcp__townhall__search_history\",\n  \"mcp__townhall__ask_adviser\"\n]\n";
     let own = "name = \"default\"\nadapter = \"claude\"\ntools = [\"Read\"]\n";
     for source in [has, own] {
         let mut conn = at(809);
