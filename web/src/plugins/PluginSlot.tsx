@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { connectEvents as realConnectEvents, type ConnectEvents } from "../api/events";
 import { listPluginUi } from "../api/plugins";
 import type { PluginUiEntry } from "../api/types";
@@ -44,10 +44,11 @@ export interface PluginSlotProps {
   readonly name: string;
   readonly context?: Readonly<Record<string, unknown>>;
   readonly only?: { readonly plugin: string; readonly entry: string };
+  readonly heading?: boolean;
   readonly services?: Partial<SlotServices>;
 }
 
-export function PluginSlot({ name, context, only, services }: PluginSlotProps) {
+export function PluginSlot({ name, context, only, heading, services }: PluginSlotProps) {
   const all = useMemo<SlotServices>(() => ({ ...REAL, ...services }), [services]);
   const found = useUiEntries(name, all.listUi);
   const entries = only ? found.filter((e) => e.plugin === only.plugin && e.entry === only.entry) : found;
@@ -56,7 +57,10 @@ export function PluginSlot({ name, context, only, services }: PluginSlotProps) {
   return (
     <>
       {entries.map((entry) => (
-        <SlotFrame key={`${entry.plugin}/${entry.entry}`} slot={name} entry={entry} context={context} services={all} />
+        <Fragment key={`${entry.plugin}/${entry.entry}`}>
+          {heading ? <h4 className="th-section">{entry.title}</h4> : null}
+          <SlotFrame slot={name} entry={entry} context={context} services={all} />
+        </Fragment>
       ))}
     </>
   );
