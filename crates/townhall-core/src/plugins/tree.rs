@@ -235,6 +235,9 @@ fn others(contributes: &manifest::Contributes) -> Vec<(&'static str, String)> {
     for path in &contributes.agent_types {
         found.push(("contributes.agentTypes", path.clone()));
     }
+    for path in &contributes.pipelines {
+        found.push(("contributes.pipelines", path.clone()));
+    }
     for (kind, path) in &contributes.prompts {
         let what = match kind.as_str() {
             "starters" => "contributes.prompts.starters",

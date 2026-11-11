@@ -9,7 +9,8 @@ use super::Store;
 use crate::definitions::{
     check_default, check_pipeline, DefinitionError, KnownAgent, Parsed, WorkflowDef,
 };
-use crate::model::Workflow;
+use crate::model::{Origin, Workflow};
+use crate::plugins::pipelines;
 use crate::{clock, Error, Result};
 
 pub const MIGRATIONS: &[Migration] = &[
@@ -55,6 +56,8 @@ fn parse_row((name, source, updated_at): Row) -> Result<Workflow> {
         def: parsed.def,
         source: parsed.source,
         updated_at,
+        origin: Origin::User,
+        plugin: None,
     })
 }
 
@@ -81,6 +84,8 @@ fn upsert(conn: &mut Connection, def: &WorkflowDef, source: &str) -> Result<(Wor
         def: def.clone(),
         source: source.to_string(),
         updated_at,
+        origin: Origin::User,
+        plugin: None,
     };
     Ok((saved, replaced))
 }
@@ -157,10 +162,30 @@ impl Store {
 
     pub async fn workflows(&self) -> Result<Vec<Workflow>> {
         let found = self.call(|conn| rows(conn, "", None)).await?;
-        found.into_iter().map(parse_row).collect()
+        let mut all: Vec<Workflow> = found.into_iter().map(parse_row).collect::<Result<_>>()?;
+        for plugin_pipeline in pipelines::enabled_pipelines(self).await? {
+            let taken = all
+                .iter()
+                .any(|w| w.def.name.eq_ignore_ascii_case(&plugin_pipeline.def.name));
+            if !taken {
+                all.push(plugin_pipeline);
+            }
+        }
+        all.sort_by_key(|w| w.def.name.to_lowercase());
+        Ok(all)
     }
 
     pub async fn workflow(&self, name: &str) -> Result<Option<Workflow>> {
+        if let Some(saved) = self.saved_workflow(name).await? {
+            return Ok(Some(saved));
+        }
+        Ok(pipelines::enabled_pipelines(self)
+            .await?
+            .into_iter()
+            .find(|w| w.def.name.eq_ignore_ascii_case(name)))
+    }
+
+    async fn saved_workflow(&self, name: &str) -> Result<Option<Workflow>> {
         let name = name.to_string();
         let found = self
             .call(move |conn| rows(conn, "where name = ?1", Some(&name)))
@@ -168,16 +193,35 @@ impl Store {
         found.into_iter().next().map(parse_row).transpose()
     }
 
+    async fn refuse_plugin_pipeline(&self, name: &str) -> Result<()> {
+        if self.saved_workflow(name).await?.is_some() {
+            return Ok(());
+        }
+        match self.workflow(name).await? {
+            Some(Workflow {
+                plugin: Some(plugin),
+                def,
+                ..
+            }) => Err(Error::Conflict(format!(
+                "pipeline `{}` is owned by plugin {plugin} and read only: copy it to a pipeline of your own",
+                def.name
+            ))),
+            _ => Ok(()),
+        }
+    }
+
     pub async fn save_workflow(&self, source: &str) -> Result<(Workflow, bool)> {
         let parsed = self
             .check_pipeline(source)
             .await
             .map_err(|errors| Error::InvalidInput(joined(&errors)))?;
+        self.refuse_plugin_pipeline(&parsed.def.name).await?;
         self.call(move |conn| upsert(conn, &parsed.def, &parsed.source))
             .await
     }
 
     pub async fn delete_workflow(&self, name: &str) -> Result<String> {
+        self.refuse_plugin_pipeline(name).await?;
         let name = name.to_string();
         self.call(move |conn| delete(conn, &name)).await
     }

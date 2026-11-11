@@ -262,6 +262,7 @@ fn every_kind_of_path_is_checked() {
     };
     let cases = [
         with_grants("contributes", json!({ "agentTypes": [bad] })),
+        with_grants("contributes", json!({ "pipelines": [bad] })),
         with_grants("contributes", json!({ "prompts": { "brief": bad } })),
         with_grants("contributes", json!({ "settings": bad })),
         with_grants("contributes", json!({ "theme": bad })),
@@ -522,6 +523,16 @@ fn text_that_is_not_json_is_refused() {
         let err = parse_townhall(text).unwrap_err();
         assert!(matches!(err, Error::InvalidInput(_)), "{text}: {err:?}");
     }
+}
+
+#[test]
+fn contributed_pipelines_are_a_list_of_paths() {
+    let manifest = with(
+        "contributes",
+        json!({ "pipelines": ["pipelines/ship.toml"] }),
+    );
+    let parsed = parse_townhall(&manifest.to_string()).unwrap();
+    assert_eq!(parsed.contributes.pipelines, ["pipelines/ship.toml"]);
 }
 
 #[test]
