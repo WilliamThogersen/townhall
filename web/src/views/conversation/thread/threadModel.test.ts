@@ -51,6 +51,10 @@ describe("replyTarget", () => {
       author: "shipper",
       excerpt: "lint fails",
     });
+    expect(target({ kind: "plugin", plugin: "lint@acme", text: "run the audit" })).toMatchObject({
+      author: "plugin lint@acme",
+      excerpt: "run the audit",
+    });
     expect(target({ kind: "error", message: "claude exited with 1" })).toMatchObject({
       author: "townhall",
       excerpt: "claude exited with 1",

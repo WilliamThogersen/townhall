@@ -102,6 +102,7 @@ const BODY_PARSERS: Readonly<Record<EntryBody["kind"], BodyParser>> = {
     to: str(r.to, "entry.to"),
     reason: str(r.reason, "entry.reason"),
   }),
+  plugin: (r) => ({ kind: "plugin", plugin: str(r.plugin, "entry.plugin"), text: str(r.text, "entry.text") }),
   error: (r) => ({ kind: "error", message: str(r.message, "entry.message") }),
 };
 

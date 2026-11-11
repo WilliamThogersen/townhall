@@ -175,6 +175,7 @@ export type EntryBody =
       readonly to: string;
       readonly reason: string;
     }
+  | { readonly kind: "plugin"; readonly plugin: string; readonly text: string }
   | { readonly kind: "error"; readonly message: string };
 
 export type ThreadEntry = { readonly id: number; readonly at: string } & EntryBody;

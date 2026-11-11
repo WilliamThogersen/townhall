@@ -2,7 +2,7 @@ import type { ThreadEntry } from "../../../api/types";
 import { stripAttachmentMarkers, Thumbs } from "../../../attachments";
 import type { ReplyTarget } from "../../../composer/replies";
 import { NeedsYouBlock, RepoAskBlock } from "./AskBlocks";
-import { AgentEventLine, ErrorEvent, HandoffEvent, RepoEvent, TaskEvent } from "./EventEntries";
+import { AgentEventLine, ErrorEvent, HandoffEvent, PluginEvent, RepoEvent, TaskEvent } from "./EventEntries";
 import { Markdown } from "./markdown/Markdown";
 import { QuotedReply } from "./QuotedReply";
 import { TaskBlock } from "./TaskBlock";
@@ -59,6 +59,8 @@ export function ThreadEntryView({ entry, open, answer, quote = null }: ThreadEnt
       return <TaskEvent entry={entry} />;
     case "handoff":
       return <HandoffEvent entry={entry} />;
+    case "plugin":
+      return <PluginEvent entry={entry} />;
     case "error":
       return <ErrorEvent entry={entry} />;
   }

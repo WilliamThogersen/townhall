@@ -74,6 +74,14 @@ export function TaskEvent({ entry }: { readonly entry: Entry<"event"> }) {
   );
 }
 
+export function PluginEvent({ entry }: { readonly entry: Entry<"plugin"> }) {
+  return (
+    <EventLine sign="◇" kind="plugin" at={entry.at} entry={entry}>
+      <b>plugin {entry.plugin}</b>: {entry.text}
+    </EventLine>
+  );
+}
+
 export function HandoffEvent({ entry }: { readonly entry: Entry<"handoff"> }) {
   return (
     <EventLine sign="↩" kind="handoff" at={entry.at} entry={entry}>

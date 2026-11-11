@@ -41,6 +41,8 @@ function said(body: EntryBody): { readonly author: string; readonly text: string
       return { author: "task event", text: body.text };
     case "handoff":
       return { author: body.from, text: body.reason };
+    case "plugin":
+      return { author: `plugin ${body.plugin}`, text: body.text };
     case "error":
       return { author: "townhall", text: body.message };
     case "repo":
