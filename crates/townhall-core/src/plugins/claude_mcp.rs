@@ -17,8 +17,24 @@ const RESERVED_KEY: &str = "townhall";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Contribution {
+    pub plugin: String,
     pub servers: Vec<(String, Value)>,
     pub tools: Vec<String>,
+}
+
+impl Contribution {
+    pub fn with_token(&mut self, api_url: &str, token: &str) {
+        for (_, server) in &mut self.servers {
+            let Some(map) = server.as_object_mut() else {
+                continue;
+            };
+            let env = map.entry("env").or_insert_with(|| json!({}));
+            if let Some(env) = env.as_object_mut() {
+                env.insert("TOWNHALL_API_URL".into(), json!(api_url));
+                env.insert("TOWNHALL_TOKEN".into(), json!(token));
+            }
+        }
+    }
 }
 
 pub(super) fn with_root(value: &mut Value, root: &str) {
@@ -66,6 +82,7 @@ pub fn contribution(
     let approved = manifest.permissions.claude.mcp.as_ref();
     let root = root.display().to_string();
     let mut out = Contribution {
+        plugin: String::new(),
         servers: Vec::new(),
         tools: Vec::new(),
     };
@@ -127,7 +144,9 @@ fn load(home: &Home, plugin: &Plugin) -> Result<Option<Contribution>> {
     }
     let rel = manifest.claude.mcp.as_deref().unwrap_or(DEFAULT_MCP_FILE);
     let text = read_inside(&root, "claude.mcp", rel)?;
-    contribution(&plugin.name, &root, &manifest, &text).map(Some)
+    let mut found = contribution(&plugin.name, &root, &manifest, &text)?;
+    found.plugin = plugin.id.clone();
+    Ok(Some(found))
 }
 
 pub(super) fn selects(selected: &[String], plugin: &Plugin) -> bool {

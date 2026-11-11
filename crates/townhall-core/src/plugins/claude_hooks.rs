@@ -17,7 +17,37 @@ const NOT_OFFERED: &str = "PreToolUse";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Contribution {
+    pub plugin: String,
     pub events: Vec<(String, Vec<Value>)>,
+}
+
+fn quoted(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+impl Contribution {
+    pub fn with_token_file(&mut self, api_url: &str, file: &Path) {
+        let prefix = format!(
+            "export TOWNHALL_API_URL={} TOWNHALL_TOKEN=\"$(cat {})\"; ",
+            quoted(api_url),
+            quoted(&file.display().to_string())
+        );
+        for (_, entries) in &mut self.events {
+            for entry in entries {
+                let Some(hooks) = entry.get_mut("hooks").and_then(Value::as_array_mut) else {
+                    continue;
+                };
+                for hook in hooks {
+                    if hook.get("type").and_then(Value::as_str) != Some("command") {
+                        continue;
+                    }
+                    if let Some(Value::String(command)) = hook.get_mut("command") {
+                        *command = format!("{prefix}{command}");
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn contribution(
@@ -66,7 +96,10 @@ pub fn contribution(
             }
         }
     }
-    Ok(Contribution { events })
+    Ok(Contribution {
+        plugin: String::new(),
+        events,
+    })
 }
 
 pub fn merge(parts: &[Contribution]) -> Option<String> {
@@ -101,7 +134,9 @@ fn load(home: &Home, plugin: &Plugin) -> Result<Option<Contribution>> {
         .as_deref()
         .unwrap_or(DEFAULT_HOOKS_FILE);
     let text = read_inside(&root, "claude.hooks", rel)?;
-    contribution(&root, &manifest, &text).map(Some)
+    let mut found = contribution(&root, &manifest, &text)?;
+    found.plugin = plugin.id.clone();
+    Ok(Some(found))
 }
 
 pub async fn selected(store: &Store, names: &[String]) -> Result<Vec<Contribution>> {

@@ -33,6 +33,25 @@ pub fn settings_file(home: &Home, name: &str) -> PathBuf {
     std::path::absolute(&path).unwrap_or(path)
 }
 
+pub fn token_file(home: &Home, name: &str, plugin: &str) -> PathBuf {
+    let safe: String = plugin
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let file = format!("plugin-{safe}.token");
+    let path = home.root().join(TASKS_DIR).join(name).join(file);
+    std::path::absolute(&path).unwrap_or(path)
+}
+
+pub(super) async fn write_token(
+    home: &Home,
+    name: &str,
+    plugin: &str,
+    token: String,
+) -> Result<PathBuf> {
+    write_private_file(home, token_file(home, name, plugin), token).await
+}
+
 pub(super) async fn write_mcp(home: &Home, name: &str, config: String) -> Result<PathBuf> {
     write_private_file(home, mcp_file(home, name), config).await
 }
