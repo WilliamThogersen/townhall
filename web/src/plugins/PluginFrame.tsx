@@ -11,13 +11,15 @@ export interface PluginFrameProps {
   entry: string;
   title: string;
   height?: number;
+  className?: string;
   ref?: Ref<HTMLIFrameElement>;
 }
 
-export function PluginFrame({ plugin, entry, title, height, ref }: PluginFrameProps) {
+export function PluginFrame({ plugin, entry, title, height, className, ref }: PluginFrameProps) {
   return (
     <iframe
       ref={ref}
+      className={className}
       src={pluginUiUrl(plugin, entry)}
       title={title}
       sandbox="allow-scripts"

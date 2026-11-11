@@ -116,7 +116,7 @@ describe("App routes", () => {
     );
     expect(await screen.findByRole("textbox", { name: "Describe the work" })).toBeInTheDocument();
     await waitFor(() => expect(localStorage.getItem("th-settings")).toBeNull());
-    const calls = fetch.mock.calls.filter(([url]) => !/\/(logs\/client|system)$/.test(String(url)));
+    const calls = fetch.mock.calls.filter(([url]) => !/\/(logs\/client|system|plugins\/ui)$/.test(String(url)));
     expect(calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
       "GET /api/settings",
       "PUT /api/settings/agentsAtOnce",
