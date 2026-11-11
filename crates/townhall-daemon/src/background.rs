@@ -1,7 +1,9 @@
 //! The one hook that starts every long-running unit. The daemon's `main.rs` and the desktop
 //! app's in-process daemon both call `start_background`; each unit fills in its own `start`.
 
+use serde_json::json;
 use tokio::task::JoinHandle;
+use townhall_core::plugins::hooks;
 use townhall_core::{agent, reaper, runner, scheduler};
 
 use crate::logging;
@@ -39,6 +41,11 @@ pub async fn start_background(state: &AppState) -> Background {
     .into_iter()
     .flatten()
     .collect();
+    hooks::fire(
+        ctx,
+        "daemon.started",
+        json!({"home": ctx.home().root(), "version": townhall_core::version::VERSION}),
+    );
     Background { handles }
 }
 

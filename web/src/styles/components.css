@@ -133,6 +133,29 @@ textarea {
   color: var(--th-fg-muted);
 }
 
+.th-keybar-status > .th-keybar-system {
+  display: inline-flex;
+  gap: var(--th-space-3);
+  margin-right: var(--th-space-2);
+  color: var(--th-fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.th-keybar-system > [data-level="warn"] { color: var(--th-accent); }
+.th-keybar-system > [data-level="hot"] { color: var(--th-danger); }
+
+@media (max-width: 1099px) {
+  .th-keybar-system > :not(:first-child) {
+    display: none;
+  }
+}
+
+@media (max-width: 879px) {
+  .th-keybar-system {
+    display: none;
+  }
+}
+
 .th-keybar-status .th-status {
   width: auto;
   margin-right: 4px;

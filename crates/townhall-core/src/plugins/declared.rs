@@ -81,7 +81,7 @@ fn skipped(plugin: &str, what: &str, reason: &str) {
     );
 }
 
-fn read_inside(root: &Path, what: &str, rel: &str) -> Result<String> {
+pub(super) fn read_inside(root: &Path, what: &str, rel: &str) -> Result<String> {
     check::rel_path(what, rel)?;
     let path = root
         .join(rel)

@@ -3,10 +3,13 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use serde_json::json;
+
 use crate::agent::{self, Agent, LaunchOptions};
 use crate::cmd::{probe, run};
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState};
+use crate::plugins::hooks;
 use crate::redact::redact;
 use crate::{clock, disk, ids, reaper, runner, Error, Result, Workspace};
 
@@ -302,7 +305,7 @@ async fn act(
             Ok(()) => match admit(ctx, task, tasks, handed_back).await? {
                 Err(done) => Ok(done),
                 Ok(sha) => match resume(ctx, task, &sha).await {
-                    Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
+                    Ok(launched) => Ok(Done::Started(settle(ctx, task, launched).await)),
                     Err(e) => {
                         fail_start(ctx, task, &e).await?;
                         Ok(Done::Failed)
@@ -313,7 +316,7 @@ async fn act(
         Step::Start => match admit(ctx, task, tasks, handed_back).await? {
             Err(done) => Ok(done),
             Ok(sha) => match launch(ctx, task, &sha).await {
-                Ok(launched) => Ok(Done::Started(settle(ctx, launched).await)),
+                Ok(launched) => Ok(Done::Started(settle(ctx, task, launched).await)),
                 Err(e) => {
                     tracing::warn!(
                         target: "townhall::task", event = "task.launch_failed", task = %task.name,
@@ -476,14 +479,22 @@ async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch>
 
 /// The agent runs: record its launch and set `working`. A failure here leaves the task
 /// queued with its agent, so the next pass adopts it; it is reported, never retried blind.
-async fn settle(ctx: &Context, launched: TaskLaunch) -> Vec<String> {
+async fn settle(ctx: &Context, task: &Task, launched: TaskLaunch) -> Vec<String> {
     let name = launched.name.clone();
     let store = match ctx.store() {
         Ok(store) => store,
         Err(e) => return vec![format!("`{name}` started but not saved: {e}")],
     };
+    let session_id = launched.session_id.clone();
     let recorded = store.record_launch(launched).await;
     let working = transition(store, &name, TaskState::Queued, TaskState::Working).await;
+    if working.is_ok() {
+        hooks::fire(
+            ctx,
+            "task.started",
+            json!({"task": task, "agent": name, "sessionId": session_id}),
+        );
+    }
     [recorded.err(), working.err()]
         .into_iter()
         .flatten()
@@ -538,6 +549,11 @@ async fn fail(ctx: &Context, task: &Task, why: &str) -> Result<bool> {
         Err(e) => return Err(e),
     };
     if moved.is_some() {
+        hooks::fire(
+            ctx,
+            "task.failed",
+            json!({"task": task, "reason": why, "phase": "start"}),
+        );
         let body = EntryBody::Agent {
             agent: task.name.clone(),
             event: AgentEvent::Failed,
@@ -629,6 +645,38 @@ mod tests {
             launcher.options.env.get("TUNE_ME").map(String::as_str),
             Some("5")
         );
+    }
+
+    #[tokio::test]
+    async fn a_start_that_fails_fires_task_failed_with_the_start_phase() {
+        use crate::plugins::hooks::tests::{hooks_file, install_plugin, wait_for};
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let hooks = hooks_file("task.failed", "cat > payload.json", 10);
+        let data =
+            install_plugin(&ctx, &hooks, serde_json::json!(["hook:task.failed"]), true).await;
+        assert!(fail(&ctx, &task, "no room").await.unwrap());
+        let got: serde_json::Value =
+            serde_json::from_str(&wait_for(&data.join("payload.json")).await).unwrap();
+        assert_eq!(got["event"], "task.failed");
+        assert_eq!(got["phase"], "start");
+        assert_eq!(got["reason"], "no room");
+        assert_eq!(got["task"]["name"], "job");
+    }
+
+    #[tokio::test]
+    async fn a_gate_rejection_fires_task_failed_with_the_gate_phase() {
+        use crate::plugins::hooks::tests::{hooks_file, install_plugin, wait_for};
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let hooks = hooks_file("task.failed", "cat > payload.json", 10);
+        let data =
+            install_plugin(&ctx, &hooks, serde_json::json!(["hook:task.failed"]), true).await;
+        assert!(gate::reject(&ctx, &task, "needs a thing").await.unwrap());
+        let got: serde_json::Value =
+            serde_json::from_str(&wait_for(&data.join("payload.json")).await).unwrap();
+        assert_eq!(got["phase"], "gate");
+        assert_eq!(got["reason"], "needs a thing");
     }
 
     fn full() -> Error {

@@ -16,6 +16,7 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 portable-pty = "=0.9.0"
+sysinfo = { version = "0.40.1", default-features = false, features = ["disk", "system"] }
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

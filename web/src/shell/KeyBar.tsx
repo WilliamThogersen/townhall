@@ -4,6 +4,7 @@ import { Kbd } from "../ui/Kbd";
 import { GlyphCounts } from "../ui/StatusGlyph";
 import { HELP_HINT } from "./globalKeys";
 import { useCurrentKeyHints } from "./keyHints";
+import { SystemStats } from "./SystemStats";
 
 export function KeyBar() {
   const hints = useCurrentKeyHints();
@@ -21,6 +22,7 @@ export function KeyBar() {
         {HELP_HINT.label}
       </span>
       <span className="th-keybar-status">
+        <SystemStats />
         <GlyphCounts counts={countByState(agents)} labelled />
       </span>
     </footer>

@@ -3,12 +3,15 @@
 
 use std::time::Duration;
 
+use serde_json::json;
+
 use super::process::{KILL_WAIT, STOP_GRACE};
 use super::{quote, turn};
 use crate::model::{
     Conversation, ConversationDetail, ConversationPatch, ConversationStatus, EntryBody, NewMessage,
     ThreadEntry,
 };
+use crate::plugins::hooks;
 use crate::redact::redact;
 use crate::store::Store;
 use crate::{ids, mcp, reaper, Context, Error, Result};
@@ -81,6 +84,11 @@ pub async fn create(ctx: &Context, message: NewMessage) -> Result<ConversationDe
     }
     let store = ctx.store()?;
     let conversation = store.create_conversation().await?;
+    hooks::fire(
+        ctx,
+        "conversation.created",
+        json!({"conversationId": conversation.id}),
+    );
     send(ctx, &conversation.id, message).await?;
     store.detail(&conversation.id).await
 }
@@ -105,6 +113,11 @@ pub async fn create_with_files(
     check_message(&blank)?;
     let store = ctx.store()?;
     let conversation = store.create_conversation().await?;
+    hooks::fire(
+        ctx,
+        "conversation.created",
+        json!({"conversationId": conversation.id}),
+    );
     let mut ids = Vec::with_capacity(files.len());
     for file in files {
         let saved = store
@@ -288,6 +301,11 @@ pub async fn end(ctx: &Context, id: &str) -> Result<Conversation> {
     let conversation = store.update_conversation(id, ended).await?;
     reaper::cancel_queued(store, &store.tasks(id).await?).await?;
     reaper::soon(ctx);
+    hooks::fire(
+        ctx,
+        "conversation.ended",
+        json!({"conversationId": conversation.id}),
+    );
     Ok(conversation)
 }
 

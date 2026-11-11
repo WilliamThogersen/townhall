@@ -6,9 +6,12 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use serde_json::json;
+
 use crate::cmd::run;
 use crate::context::Context;
 use crate::model::{AgentEvent, EntryBody, Task, TaskState, TASK_BRANCH_PREFIX};
+use crate::plugins::hooks;
 use crate::store::Store;
 use crate::{Error, Result};
 
@@ -83,6 +86,33 @@ async fn mark(store: &Store, task: &Task) -> Result<bool> {
     Ok(true)
 }
 
+async fn commits_of(
+    ctx: &Context,
+    task: &Task,
+    tips: &HashMap<String, String>,
+    launches: &[TaskLaunch],
+) -> Result<u64> {
+    let tip = tips
+        .get(&task.name)
+        .ok_or_else(|| Error::missing("branch", task.branch()))?;
+    let launch = launches
+        .iter()
+        .find(|l| l.name.eq_ignore_ascii_case(&task.name))
+        .ok_or_else(|| Error::missing("launch", task.name.as_str()))?;
+    let repo = ctx.repo(&task.repo).await?;
+    let range = format!("{}..{tip}", launch.start_commit);
+    let count = run(
+        "git",
+        &["rev-list", "--count", range.as_str()],
+        Some(&repo.path),
+    )
+    .await?;
+    count
+        .trim()
+        .parse()
+        .map_err(|_| Error::InvalidInput(format!("git counted `{count}` commits")))
+}
+
 /// Every distinct (repo, base branch) of the ended tasks, in task order.
 fn groups(ended: &[&Task]) -> Vec<(String, String)> {
     ended.iter().fold(vec![], |acc, t| {
@@ -125,6 +155,17 @@ pub(super) async fn detect(ctx: &Context, tasks: &[Task]) -> Result<(Vec<String>
         for task in of_group {
             if mark(store, task).await? {
                 merged.push(task.name.clone());
+                match commits_of(ctx, task, &tips, &launches).await {
+                    Ok(commits) => hooks::fire(
+                        ctx,
+                        "task.merged",
+                        json!({"task": task, "base": task.base_branch, "commits": commits}),
+                    ),
+                    Err(e) => warnings.push(format!(
+                        "`{}` merged, its commits were not counted: {e}",
+                        task.name
+                    )),
+                }
             }
         }
     }
