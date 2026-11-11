@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
-use super::{contribution, merge};
+use super::{contribution, for_planner, merge, Contribution};
 use crate::plugins::manifest::{parse_townhall, TownhallManifest};
 
 const MCP: &str = include_str!("../../../tests/fixtures/plugins/claude/mcp.json");
@@ -102,4 +102,64 @@ fn merging_keeps_townhalls_own_server_and_adds_the_plugins() {
     let alone: Value = serde_json::from_str(&merge(None, &[found])).unwrap();
     assert!(alone["mcpServers"].get("townhall").is_none());
     assert_eq!(merge(None, &[]), json!({"mcpServers": {}}).to_string());
+}
+
+fn planner_manifest(planner: bool) -> TownhallManifest {
+    parse_townhall(
+        &json!({
+            "name": "notes", "version": "1.0.0", "apiVersion": 1,
+            "permissions": {
+                "claude": {
+                    "mcp": {"servers": {
+                        "notes": {"tools": ["search_notes"], "readOnly": true},
+                        "remote": ["add_note"]
+                    }},
+                    "planner": planner
+                },
+                "env": ["ACME_TOKEN"]
+            }
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+fn planner_found(planner: bool) -> Contribution {
+    let manifest = planner_manifest(planner);
+    let mut found = contribution("notes", Path::new(ROOT), &manifest, &without_townhall()).unwrap();
+    found.plugin = "notes@acme".into();
+    found
+}
+
+#[test]
+fn a_plugin_without_claude_planner_gives_the_planner_nothing() {
+    let manifest = planner_manifest(false);
+    assert_eq!(for_planner(&manifest, "notes", planner_found(false)), None);
+}
+
+#[test]
+fn the_planner_keeps_only_read_only_servers_and_their_tools() {
+    let manifest = planner_manifest(true);
+    let part = for_planner(&manifest, "notes", planner_found(true)).unwrap();
+    let keys: Vec<&str> = part.servers.iter().map(|(k, _)| k.as_str()).collect();
+    assert_eq!(keys, ["plugin_notes_notes"]);
+    assert_eq!(part.tools, ["mcp__plugin_notes_notes__search_notes"]);
+    assert_eq!(part.plugin, "notes@acme");
+}
+
+#[test]
+fn a_planner_plugin_with_no_read_only_server_gives_nothing() {
+    let manifest = parse_townhall(
+        &json!({
+            "name": "notes", "version": "1.0.0", "apiVersion": 1,
+            "permissions": {"claude": {
+                "mcp": {"servers": {"notes": ["add_note"], "remote": ["*"]}},
+                "planner": true
+            }}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let found = contribution("notes", Path::new(ROOT), &manifest, &without_townhall()).unwrap();
+    assert_eq!(for_planner(&manifest, "notes", found), None);
 }
