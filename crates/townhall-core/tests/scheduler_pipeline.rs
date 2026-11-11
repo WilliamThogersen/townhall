@@ -36,6 +36,29 @@ after = ["build"]
 prompt = "Land it."
 "#;
 
+const UNFIXED: &str = r#"
+name = "unfixed"
+work = "build"
+max_fix_rounds = 0
+
+[[step]]
+id = "build"
+agent = "builder"
+prompt = "Build it."
+
+[[step]]
+id = "test"
+agent = "tester"
+after = ["build"]
+prompt = "Test it."
+
+[[step]]
+id = "land"
+agent = "lander"
+after = ["test"]
+prompt = "Land it."
+"#;
+
 const CHECKED: &str = r#"
 name = "checked"
 work = "build"
@@ -58,6 +81,29 @@ after = ["test"]
 prompt = "Land it."
 "#;
 
+const GUARDED: &str = r#"
+name = "guarded"
+work = "build"
+
+[[step]]
+id = "build"
+agent = "builder"
+prompt = "Build it."
+
+[[step]]
+id = "review"
+agent = "reviewer"
+after = ["build"]
+prompt = "Review it."
+when = { paths = ["**/migrations/**"] }
+
+[[step]]
+id = "land"
+agent = "lander"
+after = ["review"]
+prompt = "Land it."
+"#;
+
 static PROJECTS: OnceLock<TempDir> = OnceLock::new();
 
 fn projects() -> &'static Path {
@@ -73,11 +119,11 @@ fn projects() -> &'static Path {
 async fn setup() -> Sched {
     projects();
     let s = Sched::new().await;
-    for kind in ["planner", "builder", "tester", "lander"] {
+    for kind in ["planner", "builder", "tester", "reviewer", "lander"] {
         let source = format!("name = \"{kind}\"\nadapter = \"shell\"\n{SLEEPING}\n");
         s.store().save_agent_type(&source).await.unwrap();
     }
-    for source in [STANDARD, CHECKED] {
+    for source in [STANDARD, CHECKED, UNFIXED, GUARDED] {
         s.store().save_workflow(source).await.unwrap();
     }
     s
@@ -265,7 +311,11 @@ async fn tester_reports(s: &Sched, name: &str, text: &str) {
 }
 
 async fn run_to_a_finished_tester(s: &Sched, report: Option<&str>) {
-    start(s, "chk", "checked").await;
+    run_pipeline_to_a_finished_tester(s, "checked", report).await;
+}
+
+async fn run_pipeline_to_a_finished_tester(s: &Sched, pipeline: &str, report: Option<&str>) {
+    start(s, "chk", pipeline).await;
     run_once(s.ctx()).await.unwrap();
     s.end("chk-build").await;
     run_once(s.ctx()).await.unwrap();
@@ -279,7 +329,8 @@ async fn run_to_a_finished_tester(s: &Sched, report: Option<&str>) {
 #[tokio::test]
 async fn a_fail_stops_the_run_with_exactly_one_notify() {
     let s = setup().await;
-    run_to_a_finished_tester(&s, Some("Ran it.\n\nVERDICT: FAIL\n")).await;
+    let fail = Some("Ran it.\n\nVERDICT: FAIL\n");
+    run_pipeline_to_a_finished_tester(&s, "unfixed", fail).await;
     for _ in 0..3 {
         run_once(s.ctx()).await.unwrap();
     }
@@ -366,4 +417,113 @@ async fn an_unknown_pipeline_is_refused_and_starts_nothing() {
     assert!(err.to_string().contains("nope"), "{err}");
     assert!(names(&s).await.is_empty());
     assert!(s.store().run("feat").await.unwrap().is_none());
+}
+
+async fn build_touching(s: &Sched, run: &str, file: &str) {
+    start(s, run, "guarded").await;
+    run_once(s.ctx()).await.unwrap();
+    let build = format!("{run}-build");
+    let path = s.worktree(&build).join(file);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "x\n").unwrap();
+    scheduler_support::git(&s.worktree(&build), &["add", "-A"]).await;
+    scheduler_support::commit(&s.worktree(&build), "change").await;
+    s.end(&build).await;
+    run_once(s.ctx()).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_paths_step_is_skipped_when_no_changed_file_matches() {
+    let s = setup().await;
+    build_touching(&s, "doc", "README.md").await;
+    assert_eq!(names(&s).await, ["doc-build", "doc-land"]);
+    let steps = s.store().run_steps("doc").await.unwrap();
+    let review = steps.iter().find(|r| r.step_id == "review").unwrap();
+    assert_eq!(review.state, "skipped");
+    assert!(review.task.is_none());
+    let why = review.note.clone().unwrap_or_default();
+    assert!(why.contains("**/migrations/**"), "{why}");
+    let said = events(&s).await;
+    let skipped: Vec<&String> = said.iter().filter(|e| e.contains("skipped")).collect();
+    assert_eq!(skipped.len(), 1, "{said:?}");
+    assert!(skipped[0].contains("review"), "{said:?}");
+    assert_eq!(task(&s, "doc-land").await.after, ["doc-build"]);
+    for _ in 0..2 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_eq!(events(&s).await.len(), said.len());
+    assert_eq!(run_state(&s, "doc").await, RUN_RUNNING);
+}
+
+#[tokio::test]
+async fn a_paths_step_runs_when_a_changed_file_matches() {
+    let s = setup().await;
+    build_touching(&s, "db", "db/migrations/1.sql").await;
+    assert_eq!(names(&s).await, ["db-build", "db-review"]);
+    let steps = s.store().run_steps("db").await.unwrap();
+    let review = steps.iter().find(|r| r.step_id == "review").unwrap();
+    assert_eq!(review.state, "started");
+    assert_eq!(task(&s, "db-review").await.base_branch, "townhall/db-build");
+}
+
+async fn first_fail(s: &Sched) {
+    run_to_a_finished_tester(s, Some("Ran it.\n\nVERDICT: FAIL\n")).await;
+    run_once(s.ctx()).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_fail_hands_the_build_back_and_a_pass_after_the_fix_lands() {
+    let s = setup().await;
+    first_fail(&s).await;
+    assert_eq!(run_state(&s, "chk").await, RUN_RUNNING);
+    assert!(waiting(&s).is_empty(), "{:?}", waiting(&s));
+    let handed = s.store().handoffs("chk-build").await.unwrap();
+    assert_eq!(handed.len(), 1);
+    assert_eq!(handed[0].to, "builder");
+    assert!(
+        handed[0].reason.contains("VERDICT: FAIL"),
+        "{:?}",
+        handed[0]
+    );
+    assert_eq!(names(&s).await, ["chk-build", "chk-test"]);
+
+    s.end("chk-build").await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(names(&s).await, ["chk-build", "chk-test", "chk-test-r2"]);
+    let again = task(&s, "chk-test-r2").await;
+    assert_eq!(again.after, ["chk-build"]);
+    assert_eq!(again.base_branch, "townhall/chk-build");
+    for _ in 0..2 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_eq!(names(&s).await, ["chk-build", "chk-test", "chk-test-r2"]);
+
+    tester_reports(&s, "chk-test-r2", "VERDICT: PASS\n").await;
+    s.end("chk-test-r2").await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(task(&s, "chk-land").await.after, ["chk-test-r2"]);
+    s.end("chk-land").await;
+    run_once(s.ctx()).await.unwrap();
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(run_state(&s, "chk").await, RUN_FINISHED);
+    assert_eq!(waiting(&s).len(), 1, "{:?}", waiting(&s));
+}
+
+#[tokio::test]
+async fn a_second_fail_needs_the_user_with_exactly_one_event() {
+    let s = setup().await;
+    first_fail(&s).await;
+    s.end("chk-build").await;
+    run_once(s.ctx()).await.unwrap();
+    tester_reports(&s, "chk-test-r2", "VERDICT: FAIL\n").await;
+    s.end("chk-test-r2").await;
+    for _ in 0..3 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_eq!(run_state(&s, "chk").await, RUN_NEEDS_YOU);
+    assert_eq!(s.store().handoffs("chk-build").await.unwrap().len(), 1);
+    assert_eq!(names(&s).await, ["chk-build", "chk-test", "chk-test-r2"]);
+    let told = waiting(&s);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("chk-test-r2"), "{told:?}");
 }
