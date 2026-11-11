@@ -348,6 +348,26 @@ pub fn read_logs(dir: &Path, now_ms: i64, args: &ReadArgs) -> Result<ReadOutput,
     })
 }
 
+/// The distinct fingerprints of the warnings and errors that name `task`, since `since_ms`.
+pub fn task_fingerprints(dir: &Path, since_ms: i64, task: &str) -> Vec<String> {
+    let entries = read_entries(dir, since_ms, |e| {
+        e.level >= Level::Warn && e.field("task") == Some(task)
+    });
+    let mut prints: Vec<String> = entries
+        .iter()
+        .map(|e| {
+            let ids: Vec<(&str, &str)> = ID_FIELDS
+                .iter()
+                .filter_map(|name| e.field(name).map(|v| (*name, v)))
+                .collect();
+            fingerprint(&e.target, &e.event, &e.message, &ids)
+        })
+        .collect();
+    prints.sort();
+    prints.dedup();
+    prints
+}
+
 /// Counts, panics and the top recurring groups since `args.since`, within the output cap.
 pub fn log_summary(dir: &Path, now_ms: i64, args: &SummaryArgs) -> Result<Summary, String> {
     let min = level_arg(args.level.as_deref())?;

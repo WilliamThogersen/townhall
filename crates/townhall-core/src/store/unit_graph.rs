@@ -176,6 +176,9 @@ pub(super) fn sync_task(conn: &Connection, task: &Task) -> Result<()> {
         let id = format!("{}#{}", task.repo, pr.number);
         edge(conn, ("branch", &branch), "opened", ("pr", &id))?;
     }
+    if matches!(task.state, TaskState::Queued | TaskState::Working) {
+        conn.execute("delete from graph_recorded where task = ?1", [&task.name])?;
+    }
     let kept = current_outcome(conn, &task.name)?.filter(|o| o == API_ERROR);
     let outcome = match (task.state, kept) {
         (TaskState::Error, Some(kept)) => Some(kept),
