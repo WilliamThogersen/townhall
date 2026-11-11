@@ -200,6 +200,7 @@ async fn fail_start(ctx: &Context, task: &Task, e: &Error) -> Result<()> {
 }
 
 /// What happened to one ready task.
+#[derive(Debug)]
 enum Done {
     Nothing,
     Started(Vec<String>),
@@ -245,7 +246,7 @@ async fn admit(
     task: &Task,
     tasks: &[Task],
     handed_back: bool,
-) -> Result<std::result::Result<String, Done>> {
+) -> Result<std::result::Result<(String, hooks::Asked), Done>> {
     let at = match gate::head_of(ctx, task, handed_back).await {
         Ok(at) => at,
         Err(e) if handed_back => {
@@ -259,8 +260,18 @@ async fn admit(
     };
     Ok(match gate::check(ctx, task, tasks, &at).await {
         Ok(Gate::Open(sha)) => {
-            gate::clear(ctx, task).await?;
-            Ok(sha)
+            let asked = before_start(ctx, task, handed_back).await;
+            match asked.blocked {
+                Some(blocked) => {
+                    let why = format!("plugin {}: {}", blocked.plugin, blocked.reason);
+                    gate::hold_for_plugin(ctx, task, &why).await?;
+                    Err(Done::Blocked)
+                }
+                None => {
+                    gate::clear(ctx, task).await?;
+                    Ok((sha, asked))
+                }
+            }
         }
         Ok(Gate::Rejected(why)) => Err(match gate::reject(ctx, task, &why).await? {
             true => Done::Failed,
@@ -278,6 +289,17 @@ async fn admit(
             Err(Done::Warned(why))
         }
     })
+}
+
+async fn before_start(ctx: &Context, task: &Task, resume: bool) -> hooks::Asked {
+    let fields = json!({
+        "task": task,
+        "repo": task.repo,
+        "agentType": task.agent,
+        "resume": resume,
+        "briefPath": brief::brief_file(ctx.home(), &task.name),
+    });
+    hooks::ask(ctx, "task.before_start", fields).await
 }
 
 async fn act(
@@ -304,7 +326,7 @@ async fn act(
             Err(why) => Ok(Done::Warned(why)),
             Ok(()) => match admit(ctx, task, tasks, handed_back).await? {
                 Err(done) => Ok(done),
-                Ok(sha) => match resume(ctx, task, &sha).await {
+                Ok((sha, asked)) => match resume(ctx, task, &sha, &asked).await {
                     Ok(launched) => Ok(Done::Started(settle(ctx, task, launched).await)),
                     Err(e) => {
                         fail_start(ctx, task, &e).await?;
@@ -315,7 +337,7 @@ async fn act(
         },
         Step::Start => match admit(ctx, task, tasks, handed_back).await? {
             Err(done) => Ok(done),
-            Ok(sha) => match launch(ctx, task, &sha).await {
+            Ok((sha, asked)) => match launch(ctx, task, &sha, &asked).await {
                 Ok(launched) => Ok(Done::Started(settle(ctx, task, launched).await)),
                 Err(e) => {
                     tracing::warn!(
@@ -371,6 +393,22 @@ async fn attachment_paths(ctx: &Context, task: &Task) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+fn sections_with(
+    mut sections: Vec<(String, String)>,
+    asked: &hooks::Asked,
+) -> Vec<(String, String)> {
+    sections.extend(asked.prompt.iter().cloned());
+    sections
+}
+
+fn env_with(
+    mut env: std::collections::BTreeMap<String, String>,
+    asked: &hooks::Asked,
+) -> std::collections::BTreeMap<String, String> {
+    env.extend(asked.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    env
+}
+
 /// The folders the agent reads without asking: its brief's, and its conversation's
 /// `files` folder (each attachment is `files/<id>/<name>`) when it has attachments.
 fn read_dirs(brief: &Path, files: &[PathBuf]) -> Vec<PathBuf> {
@@ -391,14 +429,19 @@ fn read_dirs(brief: &Path, files: &[PathBuf]) -> Vec<PathBuf> {
 /// (recorded, so `merged` can be told later) and runs the task's agent type in its tmux
 /// session: `claude` with the type's flags, a new session id and the order to read the
 /// brief, or a `shell` type's command.
-async fn launch(ctx: &Context, task: &Task, start_commit: &str) -> Result<TaskLaunch> {
+async fn launch(
+    ctx: &Context,
+    task: &Task,
+    start_commit: &str,
+    asked: &hooks::Asked,
+) -> Result<TaskLaunch> {
     let started = Instant::now();
     let launcher = agent_type::launcher(ctx, task).await?;
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
     let files = attachment_paths(ctx, task).await?;
     let handoffs = ctx.store()?.handoffs(&task.name).await?;
-    let sections = brief::plugin_sections(ctx, task).await?;
+    let sections = sections_with(brief::plugin_sections(ctx, task).await?, asked);
     let brief = brief::write(ctx.home(), task, &files, &handoffs, &sections).await?;
     let session_id = launcher.claude.then(ids::new_session_id);
     let options = LaunchOptions {
@@ -406,6 +449,7 @@ async fn launch(ctx: &Context, task: &Task, start_commit: &str) -> Result<TaskLa
         session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
         extra_allowed: agent_type::own_rules(&ws.worktrees_dir().join(&task.name)),
+        env: env_with(launcher.options.env.clone(), asked),
         ..launcher.options
     };
     let adapter = launcher.adapter.as_ref();
@@ -426,7 +470,12 @@ async fn launch(ctx: &Context, task: &Task, start_commit: &str) -> Result<TaskLa
 /// A handed-back task: its brief now holds the hand backs, and the agent type it was handed
 /// to runs in the worktree it already has, replacing the session that handed it back. The
 /// commit its merge is told from stays the one it first started from.
-async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch> {
+async fn resume(
+    ctx: &Context,
+    task: &Task,
+    checked: &str,
+    asked: &hooks::Asked,
+) -> Result<TaskLaunch> {
     let launcher = agent_type::launcher(ctx, task).await?;
     let repo = ctx.repo(&task.repo).await?;
     let ws = ctx.workspace(&repo)?;
@@ -458,7 +507,7 @@ async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch>
     };
     let files = attachment_paths(ctx, task).await?;
     let handoffs = store.handoffs(&task.name).await?;
-    let sections = brief::plugin_sections(ctx, task).await?;
+    let sections = sections_with(brief::plugin_sections(ctx, task).await?, asked);
     let brief = brief::write(ctx.home(), task, &files, &handoffs, &sections).await?;
     let session_id = launcher.claude.then(ids::new_session_id);
     let options = LaunchOptions {
@@ -466,6 +515,7 @@ async fn resume(ctx: &Context, task: &Task, checked: &str) -> Result<TaskLaunch>
         session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
         extra_allowed: agent_type::own_rules(&dir),
+        env: env_with(launcher.options.env.clone(), asked),
         ..launcher.options
     };
     agent::restart(&ws, &task.name, launcher.adapter.as_ref(), &options).await?;
@@ -677,6 +727,100 @@ mod tests {
             serde_json::from_str(&wait_for(&data.join("payload.json")).await).unwrap();
         assert_eq!(got["phase"], "gate");
         assert_eq!(got["reason"], "needs a thing");
+    }
+
+    async fn with_hook(ctx: &Context, event: &str, command: &str) -> PathBuf {
+        use crate::plugins::hooks::tests::{hooks_file, install_plugin};
+        let hooks = hooks_file(event, command, 10);
+        let approved = serde_json::json!([format!("hook:{event}")]);
+        install_plugin(ctx, &hooks, approved, true).await
+    }
+
+    async fn fresh(ctx: &Context, task: &Task) -> Task {
+        ctx.store()
+            .unwrap()
+            .find_task(&task.name)
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_blocking_before_start_hook_keeps_the_task_queued_and_tells_the_planner_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        with_hook(
+            &ctx,
+            "task.before_start",
+            "echo 'ticket closed' >&2; exit 2",
+        )
+        .await;
+        for _ in 0..3 {
+            let current = fresh(&ctx, &task).await;
+            let held = admit(&ctx, &current, std::slice::from_ref(&current), false)
+                .await
+                .unwrap();
+            assert!(matches!(held, Err(Done::Blocked)));
+        }
+        let now = fresh(&ctx, &task).await;
+        assert_eq!(now.state, TaskState::Queued);
+        let why = now.blocked.unwrap();
+        assert!(
+            why.contains("lint@acme") && why.contains("ticket closed"),
+            "{why}"
+        );
+        let told = ctx.notes().waiting(&task.conversation_id);
+        assert_eq!(told.len(), 1, "{told:?}");
+        assert!(told[0].contains("ticket closed"), "{told:?}");
+    }
+
+    #[tokio::test]
+    async fn a_task_a_hook_stopped_blocking_starts_and_loses_its_reason() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let data = with_hook(
+            &ctx,
+            "task.before_start",
+            "test -f ok || { echo no >&2; exit 2; }",
+        )
+        .await;
+        let all = std::slice::from_ref(&task);
+        let held = admit(&ctx, &task, all, false).await.unwrap();
+        assert!(matches!(held, Err(Done::Blocked)));
+        std::fs::write(data.join("ok"), "").unwrap();
+        let current = fresh(&ctx, &task).await;
+        let open = admit(&ctx, &current, std::slice::from_ref(&current), false)
+            .await
+            .unwrap();
+        assert!(open.is_ok());
+        assert_eq!(fresh(&ctx, &task).await.blocked, None);
+    }
+
+    #[tokio::test]
+    async fn a_before_start_amend_reaches_the_brief_and_the_launch_env() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let answer =
+            r#"echo '{"amend":{"prompt":"Ticket ABC-1 is open","env":{"TICKET":"ABC-1"}}}'"#;
+        with_hook(&ctx, "task.before_start", answer).await;
+        let all = std::slice::from_ref(&task);
+        let (_, asked) = admit(&ctx, &task, all, false).await.unwrap().unwrap();
+        assert_eq!(asked.env["TICKET"], "ABC-1");
+        let sections = asked.prompt;
+        let path = brief::write(ctx.home(), &task, &[], &[], &sections)
+            .await
+            .unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.contains("Ticket ABC-1 is open"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn with_no_plugin_admit_is_unchanged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        let all = std::slice::from_ref(&task);
+        let (_, asked) = admit(&ctx, &task, all, false).await.unwrap().unwrap();
+        assert_eq!(asked, hooks::Asked::default());
     }
 
     fn full() -> Error {

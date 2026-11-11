@@ -253,14 +253,23 @@ async fn set_blocked(ctx: &Context, name: &str, blocked: Option<String>) -> Resu
 
 /// Stores why `task` stays queued and tells the planner, once per reason.
 pub(super) async fn hold(ctx: &Context, task: &Task, why: &str) -> Result<()> {
+    let text = format!(
+        "task `{}` stays queued, its agent type's requirements are not met: {why}",
+        task.name
+    );
+    hold_with(ctx, task, why, text).await
+}
+
+pub(super) async fn hold_for_plugin(ctx: &Context, task: &Task, why: &str) -> Result<()> {
+    let text = format!("task `{}` stays queued, held by {why}", task.name);
+    hold_with(ctx, task, why, text).await
+}
+
+async fn hold_with(ctx: &Context, task: &Task, why: &str, text: String) -> Result<()> {
     if task.blocked.as_deref() == Some(why) {
         return Ok(());
     }
     if set_blocked(ctx, &task.name, Some(why.to_string())).await? {
-        let text = format!(
-            "task `{}` stays queued, its agent type's requirements are not met: {why}",
-            task.name
-        );
         runner::notify(ctx, &task.conversation_id, text);
     }
     Ok(())
