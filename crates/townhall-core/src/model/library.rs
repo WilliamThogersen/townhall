@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-use crate::definitions::{AdapterKind, AgentDef, AvatarDef, Effort, PermissionMode};
+use crate::definitions::{AdapterKind, AgentDef, AvatarDef, Effort, PermissionMode, WorkflowDef};
 
 /// The type `create_task` picks when it is given none and a type of this name exists.
 pub const DEFAULT_AGENT_TYPE: &str = "builder";
@@ -31,6 +31,15 @@ pub struct AgentType {
     pub updated_at: String,
     pub origin: Origin,
     pub plugin: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Workflow {
+    #[serde(flatten)]
+    pub def: WorkflowDef,
+    pub source: String,
+    pub updated_at: String,
 }
 
 /// One row of the library's agent list.

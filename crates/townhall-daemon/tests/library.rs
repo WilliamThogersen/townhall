@@ -195,9 +195,6 @@ async fn import_takes_one_new_agent_toml() {
     let (s, v) = toml(&app, "POST", uri, "text/plain", "name = \"y\"\n").await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
     assert!(v["data"].is_array(), "{v}");
-    let workflow = "name = \"ship\"\n\n[[step]]\nid = \"a\"\nagent = \"coder\"\n";
-    let (s, _) = toml(&app, "POST", uri, "text/plain", workflow).await;
-    assert_eq!(s, StatusCode::NOT_IMPLEMENTED);
 
     let req = Request::builder()
         .method("POST")
@@ -356,4 +353,98 @@ async fn runs_list_one_agent_types_tasks_with_model_and_tokens() {
     let (s, v) = call(&app, "GET", "/api/library/agents/nobody/runs", None).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v["data"], json!([]));
+}
+
+const SHIP: &str = "name = \"ship\"\ndescription = \"code only\"\nwork = \"a\"\n\n[[step]]\nid = \"a\"\nagent = \"coder\"\n";
+
+async fn put_pipeline(app: &Router, name: &str, body: &str) -> (StatusCode, Value) {
+    let uri = format!("/api/library/workflows/{name}");
+    toml(app, "PUT", &uri, "application/toml", body).await
+}
+
+#[tokio::test]
+async fn pipelines_are_saved_read_listed_and_deleted() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    put(&app, "coder", CODER).await;
+    let (_, v) = call(&app, "GET", "/api/library/workflows", None).await;
+    assert_eq!(v["data"], json!([]));
+
+    let (s, v) = put_pipeline(&app, "ship", SHIP).await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+    assert_eq!(v["data"]["source"], SHIP);
+    assert_eq!(v["data"]["steps"][0]["agent"], "coder");
+    assert_eq!(v["data"]["maxFixRounds"], 1);
+    let edited = SHIP.replace("code only", "edited");
+    let (s, v) = put_pipeline(&app, "ship", &edited).await;
+    assert_eq!(
+        (s, &v["data"]["description"]),
+        (StatusCode::OK, &json!("edited"))
+    );
+
+    let (s, v) = call(&app, "GET", "/api/library/workflows/SHIP", None).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["data"]["source"], edited.as_str());
+    assert!(v["data"]["updatedAt"].is_string());
+    let (s, _) = call(&app, "GET", "/api/library/workflows/nope", None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (_, v) = call(&app, "GET", "/api/library/workflows", None).await;
+    assert_eq!(v["data"].as_array().unwrap().len(), 1);
+
+    let (s, v) = call(&app, "DELETE", "/api/library/workflows/Ship", None).await;
+    assert_eq!((s, &v["data"]), (StatusCode::OK, &json!("ship")));
+    let (s, _) = call(&app, "DELETE", "/api/library/workflows/ship", None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_bad_pipeline_put_answers_field_level_errors() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let (s, v) = call(&app, "PUT", "/api/library/workflows/ship", Some(json!({}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        v["error"],
+        "expected content-type text/plain or application/toml"
+    );
+
+    let ghost = SHIP
+        .replace("coder", "ghost")
+        .replace("work = \"a\"", "work = \"b\"");
+    let (s, v) = put_pipeline(&app, "ship", &ghost).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let errors = v["data"].as_array().unwrap();
+    let fields: Vec<&str> = errors
+        .iter()
+        .map(|e| e["field"].as_str().unwrap())
+        .collect();
+    assert_eq!(fields, ["work", "agent"]);
+    assert_eq!(errors[0]["kind"], "workflow");
+    assert_eq!(errors[1]["step"], "a");
+
+    put(&app, "coder", CODER).await;
+    let (s, v) = put_pipeline(&app, "other", SHIP).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    assert_eq!(v["data"][0]["field"], "name");
+    let (_, v) = call(&app, "GET", "/api/library/workflows", None).await;
+    assert_eq!(v["data"], json!([]));
+}
+
+#[tokio::test]
+async fn import_takes_one_new_pipeline_toml() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    put(&app, "coder", CODER).await;
+    let uri = "/api/library/import";
+    let (s, v) = toml(&app, "POST", uri, "text/plain", SHIP).await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+    assert_eq!(v["data"]["name"], "ship");
+    let (s, v) = toml(&app, "POST", uri, "text/plain", SHIP).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    let ghost = SHIP.replace("coder", "ghost").replace("ship", "other");
+    let (s, v) = toml(&app, "POST", uri, "text/plain", &ghost).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["data"].is_array(), "{v}");
+    let (s, _) = call(&app, "GET", "/api/library/workflows/other", None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
 }

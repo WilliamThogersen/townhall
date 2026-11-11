@@ -4,6 +4,7 @@ mod launch;
 mod limits;
 mod names;
 mod order;
+mod pipeline_rules;
 mod support;
 mod tools;
 mod vars;

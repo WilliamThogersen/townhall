@@ -276,6 +276,7 @@ pub fn test_capture() -> (Capture, tracing::subscriber::DefaultGuard) {
     let capture = Capture::default();
     let subscriber = tracing_subscriber::registry().with(json_layer(capture.clone()));
     let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
     (capture, guard)
 }
 
