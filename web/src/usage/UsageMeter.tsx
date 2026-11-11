@@ -62,17 +62,43 @@ function Meter({ name, window, now }: { readonly name: string; readonly window: 
   );
 }
 
-function Row({ view }: { readonly view: WindowView }) {
+function Row({
+  view,
+  window,
+  now,
+}: {
+  readonly view: WindowView;
+  readonly window: UsageWindow;
+  readonly now: number;
+}) {
+  const shown = displayWindow(window, now);
+  const used = Math.min(100, Math.max(0, shown.usedPercent));
+  const bar = { "--used": `${used}%` } as CSSProperties;
   return (
     <div className="th-usage-row">
-      <span className="th-usage-name">{view.name}</span>
-      <span className="th-usage-used">{view.used}</span>
-      <span className="th-usage-detail">{view.reset}</span>
-      {view.runOut !== null && (
-        <span className="th-usage-detail" data-warn={view.runsOut ? "true" : undefined}>
-          {view.runOut}
-        </span>
-      )}
+      <div className="th-usage-head">
+        <span className="th-usage-name">{view.name}</span>
+        <span className="th-usage-used">{view.used}</span>
+      </div>
+      <div
+        className="th-usage-track th-usage-bar"
+        role="progressbar"
+        aria-label={view.name}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(used)}
+        data-level={usageLevel(shown.usedPercent)}
+      >
+        <span className="th-usage-fill" style={bar} />
+      </div>
+      <div className="th-usage-details">
+        <span className="th-usage-detail">{view.reset}</span>
+        {view.runOut !== null && (
+          <span className="th-usage-detail" data-warn={view.runsOut ? "true" : undefined}>
+            {view.runOut}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -81,8 +107,12 @@ function Popover({ usage, now }: { readonly usage: ClaudeUsage; readonly now: nu
   const why = isStale(usage) ? staleReason(usage.error) : "";
   return (
     <div className="th-usage-pop" role="dialog" aria-label="Claude plan usage">
-      {usage.session && <Row view={windowView("5 hours", usage.session, usage.updatedAt, now)} />}
-      {usage.weekly && <Row view={windowView("Week", usage.weekly, usage.updatedAt, now)} />}
+      {usage.session && (
+        <Row view={windowView("5 hours", usage.session, usage.updatedAt, now)} window={usage.session} now={now} />
+      )}
+      {usage.weekly && (
+        <Row view={windowView("Week", usage.weekly, usage.updatedAt, now)} window={usage.weekly} now={now} />
+      )}
       <p className="th-usage-foot">
         {footLabel(usage)}
         {why && <span className="th-usage-why">{why}</span>}
