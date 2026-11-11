@@ -593,6 +593,22 @@
 }
 
 @media (max-width: 639px) {
+  .th-trace-body {
+    --th-trace-label: 120px;
+  }
+
+  .th-trace-body .th-trace-rows {
+    min-width: 0;
+  }
+
+  .th-trace-body .th-span {
+    grid-template-columns: var(--th-trace-label) minmax(0, 1fr);
+  }
+
+  .th-trace-body .th-span-track {
+    overflow: hidden;
+  }
+
   .th-repo {
     grid-template-columns: minmax(0, 1fr) auto;
   }

@@ -22,6 +22,13 @@ export const TURNS = [
     ],
   },
   {
+    match: "status flag",
+    title: "status flag",
+    context: 14200,
+    say: "One task for the status flag in townhall:",
+    tasks: [task("status-flag", "add a status flag to the cli", "Add a --status flag to the townhall cli that prints whether the daemon runs.\n\nDone when the flag is covered by a test.")],
+  },
+  {
     match: "vite 8",
     title: "upgrade to vite 8",
     hang: true,

@@ -1,9 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { navigate, PATHS } from "../router";
 import type { KeyHint } from "./keyHints";
 
 export const NEW_CONVERSATION_HINT: KeyHint = { keys: "n", label: "new conversation" };
 export const SEARCH_HINT: KeyHint = { keys: "/", label: "search" };
+export const HELP_HINT: KeyHint = { keys: "?", label: "help" };
+export const MENU_HINT: KeyHint = { keys: "m", label: "menu" };
 
 const GLOBAL_KEYS: ReadonlyMap<string, string> = new Map([
   [NEW_CONVERSATION_HINT.keys, PATHS.home],
@@ -37,18 +39,41 @@ export function isInTerminal(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(".th-term") !== null;
 }
 
-function onKeyDown(e: KeyboardEvent): void {
-  if (e.defaultPrevented || e.isComposing || isInTerminal(e.target)) return;
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (isTextField(e.target)) return;
-  const to = GLOBAL_KEYS.get(e.key);
-  if (to === undefined) return;
-  e.preventDefault();
-  navigate(to);
+function inModal(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[aria-modal="true"]') !== null;
 }
 
-export function useGlobalKeys(): void {
+function plainKey(e: KeyboardEvent): boolean {
+  if (e.defaultPrevented || e.isComposing || isInTerminal(e.target)) return false;
+  if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  return !isTextField(e.target) && !inModal(e.target);
+}
+
+export function useGlobalKeys(onHelp?: () => void, onMenu?: () => void): void {
+  const latest = useRef(onHelp);
+  const latestMenu = useRef(onMenu);
   useEffect(() => {
+    latest.current = onHelp;
+    latestMenu.current = onMenu;
+  });
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!plainKey(e)) return;
+      if (e.key === HELP_HINT.keys && latest.current !== undefined) {
+        e.preventDefault();
+        latest.current();
+        return;
+      }
+      if (e.key === MENU_HINT.keys && latestMenu.current !== undefined) {
+        e.preventDefault();
+        latestMenu.current();
+        return;
+      }
+      const to = GLOBAL_KEYS.get(e.key);
+      if (to === undefined) return;
+      e.preventDefault();
+      navigate(to);
+    };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);

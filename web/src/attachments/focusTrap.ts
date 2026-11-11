@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from "react";
+type TabEvent = Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">;
 
 const FOCUSABLE = [
   "a[href]",
@@ -13,7 +13,7 @@ function focusables(root: HTMLElement): readonly HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE));
 }
 
-export function trapTab(event: KeyboardEvent, root: HTMLElement): void {
+export function trapTab(event: TabEvent, root: HTMLElement): void {
   if (event.key !== "Tab") return;
   const items = focusables(root);
   const first = items[0];

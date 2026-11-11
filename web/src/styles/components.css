@@ -959,15 +959,33 @@ textarea {
   }
 }
 
+.th-navbar {
+  display: none;
+}
+
 @media (max-width: 639px) {
   .th-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-areas: "side";
+    grid-template-rows: var(--th-bar) minmax(0, 1fr);
+    grid-template-areas:
+      "bar"
+      "side";
   }
 
   .th-shell[data-view="main"] {
-    grid-template-areas: "main";
+    grid-template-areas:
+      "bar"
+      "main";
+  }
+
+  .th-shell > .th-navbar {
+    grid-area: bar;
+    display: flex;
+    align-items: center;
+    gap: var(--th-space-2);
+    padding: 0 var(--th-space-2);
+    border-bottom: var(--th-border) solid var(--th-line);
+    background: var(--th-bg);
   }
 
   .th-shell[data-view="main"] .th-sidebar,
@@ -977,6 +995,7 @@ textarea {
   }
 
   .th-sidebar {
+    min-width: 0;
     border-right: 0;
   }
 }

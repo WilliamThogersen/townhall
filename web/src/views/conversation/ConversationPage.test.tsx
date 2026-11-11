@@ -15,26 +15,29 @@ import { SettingsStoreContext } from "../../settings/useSettings";
 import { KeyHintsProvider, useCurrentKeyHints } from "../../shell/keyHints";
 import { ConversationPage } from "./ConversationPage";
 
-vi.mock("./session", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./session")>()),
-  SessionPanel: (props: { detail: ConversationDetail; openTask: string | null; onOpenTask: (n: string) => void }) => (
-    <aside className="th-session" aria-label="Session">
-      <span>open: {props.openTask ?? "none"}</span>
-      <span>files {props.detail.attachments.length}</span>
-      <button type="button" onClick={() => props.onOpenTask("fix-login")}>
-        panel open fix-login
-      </button>
-    </aside>
-  ),
-  TaskTerminal: (props: { task: { name: string }; onClose: () => void }) => (
-    <div className="th-panes">
-      <span>terminal {props.task.name}</span>
-      <button type="button" onClick={props.onClose}>
-        close terminal
-      </button>
-    </div>
-  ),
-}));
+vi.mock("./session", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./session")>();
+  return {
+    ...original,
+    SessionPanel: (props: { detail: ConversationDetail; openTask: string | null; onOpenTask: (n: string) => void }) => (
+      <aside className="th-session" id={original.SESSION_PANEL_ID} aria-label="Session" tabIndex={-1}>
+        <span>open: {props.openTask ?? "none"}</span>
+        <span>files {props.detail.attachments.length}</span>
+        <button type="button" onClick={() => props.onOpenTask("fix-login")}>
+          panel open fix-login
+        </button>
+      </aside>
+    ),
+    TaskTerminal: (props: { task: { name: string }; onClose: () => void }) => (
+      <div className="th-panes">
+        <span>terminal {props.task.name}</span>
+        <button type="button" onClick={props.onClose}>
+          close terminal
+        </button>
+      </div>
+    ),
+  };
+});
 
 function Hints() {
   return <output data-testid="hints">{useCurrentKeyHints().map((h) => `${h.keys}=${h.label}`).join(" ")}</output>;
@@ -193,6 +196,43 @@ describe("ConversationPage terminal and session panel", () => {
     await userEvent.click(toggle);
     expect(layout()).not.toHaveAttribute("data-rail");
     expect(put).not.toHaveBeenCalled();
+  });
+
+  it("closes the overlay session panel with esc but leaves esc alone while typing", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((media: string) => ({ media, matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
+    renderPage();
+    await screen.findByRole("button", { name: "session" });
+    await userEvent.keyboard("s");
+    expect(layout()).toHaveAttribute("data-rail", "open");
+    const field = document.createElement("textarea");
+    document.body.append(field);
+    field.focus();
+    await userEvent.keyboard("{Escape}");
+    expect(layout()).toHaveAttribute("data-rail", "open");
+    field.remove();
+    await userEvent.keyboard("{Escape}");
+    expect(layout()).not.toHaveAttribute("data-rail");
+  });
+
+  it("moves focus into the overlay session panel and back to the toggle on esc", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((media: string) => ({ media, matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    vi.spyOn(conversationsApi, "getConversation").mockResolvedValue(detail);
+    renderPage();
+    const toggle = await screen.findByRole("button", { name: "session" });
+    toggle.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(layout()).toHaveAttribute("data-rail", "open");
+    expect(screen.getByRole("complementary", { name: "Session" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    expect(layout()).not.toHaveAttribute("data-rail");
+    expect(toggle).toHaveFocus();
   });
 
   it("ignores s while typing", async () => {
