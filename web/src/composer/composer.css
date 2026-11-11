@@ -84,3 +84,18 @@
 .th-queue-remove:focus-visible {
   color: var(--th-fg);
 }
+
+.th-composer-action {
+  position: relative;
+}
+
+.th-composer-popover {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: var(--th-z-sticky);
+  width: min(320px, calc(100vw - 2 * var(--th-space-3)));
+  border: var(--th-border) solid var(--th-line-control);
+  background: var(--th-surface);
+  box-shadow: var(--th-shadow-overlay);
+}

@@ -7,10 +7,7 @@ use townhall_daemon::state::AppState;
 mod common;
 use common::{call, unique, Env};
 
-const STUBS: &[(&str, &str)] = &[
-    ("POST", "/api/workflows/ship/runs"),
-    ("GET", "/api/runs/r1"),
-];
+const STUBS: &[(&str, &str)] = &[("POST", "/api/workflows/ship/runs")];
 
 #[tokio::test]
 async fn routes_of_later_units_answer_501() {

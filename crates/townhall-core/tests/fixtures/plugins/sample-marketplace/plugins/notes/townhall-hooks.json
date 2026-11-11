@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "task.started": [
+      { "command": "sh ${TOWNHALL_PLUGIN_ROOT}/bin/on-started.sh", "timeout": 10 }
+    ]
+  }
+}

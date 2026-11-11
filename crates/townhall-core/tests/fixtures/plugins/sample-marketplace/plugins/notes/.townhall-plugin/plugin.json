@@ -1,0 +1,26 @@
+{
+  "name": "notes",
+  "version": "1.0.0",
+  "description": "Counts started tasks, lets note-taker agents search notes, shows a notes section",
+  "author": { "name": "Townhall" },
+  "license": "MIT",
+  "apiVersion": 1,
+  "permissions": {
+    "api": ["tasks:read", "storage"],
+    "hooks": ["task.started"],
+    "claude": {
+      "mcp": { "servers": { "notes": ["search_notes"] } }
+    },
+    "ui": ["session.section"]
+  },
+  "contributes": {
+    "agentTypes": ["agent-types/note-taker.toml"],
+    "hooks": "townhall-hooks.json",
+    "ui": [
+      { "slot": "session.section", "title": "notes", "entry": "ui/session.html", "height": 120 }
+    ]
+  },
+  "claude": {
+    "mcp": "mcp/servers.json"
+  }
+}

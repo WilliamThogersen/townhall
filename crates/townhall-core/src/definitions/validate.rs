@@ -54,6 +54,38 @@ pub fn validate_pipeline(
     into_result(workflow_errors(def).into_iter().chain(steps).collect())
 }
 
+pub fn check_default(def: &WorkflowDef, others: &[WorkflowDef]) -> Vec<DefinitionError> {
+    if !def.default {
+        return Vec::new();
+    }
+    let shares = |other: &WorkflowDef| {
+        def.repos.is_empty() && other.repos.is_empty()
+            || def
+                .repos
+                .iter()
+                .any(|r| other.repos.iter().any(|o| o.eq_ignore_ascii_case(r)))
+    };
+    others
+        .iter()
+        .filter(|o| o.default && !o.name.eq_ignore_ascii_case(&def.name) && shares(o))
+        .map(|o| {
+            let scope = match o.repos.is_empty() {
+                true => "every repo".to_string(),
+                false => format!("repo {}", o.repos.join(", ")),
+            };
+            DefinitionError::field(
+                DefKind::Workflow,
+                &def.name,
+                "default",
+                format!(
+                    "cannot be true: \"{}\" is already the default for {scope}; set `default = false` there first",
+                    o.name
+                ),
+            )
+        })
+        .collect()
+}
+
 fn workflow_errors(def: &WorkflowDef) -> Vec<DefinitionError> {
     let error = |field: &str, message: String| {
         DefinitionError::field(DefKind::Workflow, &def.name, field, message)

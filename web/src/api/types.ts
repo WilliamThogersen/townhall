@@ -510,6 +510,31 @@ export interface Artifact {
   readonly createdAt: string;
 }
 
+export type RunState = "running" | "needsYou" | "finished" | "failed";
+
+export type RunStepState = "pending" | "starting" | "started" | "done" | "failed" | "skipped" | "fixing" | "redone";
+
+export interface RunStep {
+  readonly id: string;
+  readonly agent: string;
+  readonly state: RunStepState;
+  readonly round: number;
+  readonly task: string | null;
+  readonly verdict: string | null;
+  readonly note: string | null;
+}
+
+export interface Run {
+  readonly id: string;
+  readonly workflow: string;
+  readonly conversationId: string;
+  readonly repo: string;
+  readonly baseBranch: string;
+  readonly state: RunState;
+  readonly input: string;
+  readonly steps: readonly RunStep[];
+}
+
 export interface ConversationDetail {
   readonly conversation: Conversation;
   readonly entries: readonly ThreadEntry[];

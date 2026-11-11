@@ -25,10 +25,16 @@ pub struct WorkflowDef {
     pub work: Option<String>,
     #[serde(default = "default_fix_rounds")]
     pub max_fix_rounds: u32,
+    #[serde(default = "default_adviser_calls")]
+    pub max_adviser_calls: u32,
 }
 
 fn default_fix_rounds() -> u32 {
     1
+}
+
+fn default_adviser_calls() -> u32 {
+    3
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +42,8 @@ fn default_fix_rounds() -> u32 {
 pub struct When {
     #[serde(default)]
     pub paths: Vec<String>,
+    #[serde(default)]
+    pub ask: Option<String>,
 }
 
 /// One step: a saved agent started with a prompt once its `after` steps finish.

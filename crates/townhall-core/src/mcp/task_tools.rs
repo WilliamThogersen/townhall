@@ -155,9 +155,16 @@ pub(crate) async fn create_step_task(
 }
 
 impl TaskTools<'_> {
-    async fn create_task(&self, raw: CreateTaskInput) -> Checked<Task> {
-        if raw.pipeline.is_some() {
-            return self.start_run(raw).await;
+    async fn create_task(&self, mut raw: CreateTaskInput) -> Checked<Task> {
+        match raw.pipeline.as_deref().map(str::trim) {
+            Some("") => {}
+            Some(_) => return self.start_run(raw).await,
+            None => {
+                if let Some(name) = self.default_pipeline(&raw).await? {
+                    raw.pipeline = Some(name);
+                    return self.start_run(raw).await;
+                }
+            }
         }
         let task = self.make_task(raw).await?;
         let store = self.ctx.store().map_err(|e| e.to_string())?;
@@ -173,6 +180,30 @@ impl TaskTools<'_> {
             );
         }
         Ok(task)
+    }
+
+    async fn default_pipeline(&self, raw: &CreateTaskInput) -> Checked<Option<String>> {
+        let decided = !raw.after.is_empty()
+            || !raw.attachments.is_empty()
+            || raw.agent.is_some()
+            || raw.pr_base.is_some()
+            || raw.check.is_some()
+            || raw.done_when.is_some()
+            || raw.max_retries.is_some();
+        if decided {
+            return Ok(None);
+        }
+        let store = self.ctx.store().map_err(|e| e.to_string())?;
+        let conversation = store
+            .conversation(self.conversation_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let repo = checks::repo(self.ctx, &conversation, raw.repo.as_deref()).await?;
+        let found = store
+            .default_workflow(&repo.name)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(found.map(|w| w.def.name))
     }
 
     async fn start_run(&self, raw: CreateTaskInput) -> Checked<Task> {
