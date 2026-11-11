@@ -14,11 +14,87 @@ use super::plan;
 
 const TASKS_DIR: &str = "tasks";
 const BRIEF_FILE: &str = "brief.md";
+const MCP_FILE: &str = "mcp.json";
+const SETTINGS_FILE: &str = "claude-settings.json";
 
 /// `<home>/tasks/<name>/brief.md`, absolute.
 pub fn brief_file(home: &Home, name: &str) -> PathBuf {
     let path = home.root().join(TASKS_DIR).join(name).join(BRIEF_FILE);
     std::path::absolute(&path).unwrap_or(path)
+}
+
+pub fn mcp_file(home: &Home, name: &str) -> PathBuf {
+    let path = home.root().join(TASKS_DIR).join(name).join(MCP_FILE);
+    std::path::absolute(&path).unwrap_or(path)
+}
+
+pub fn settings_file(home: &Home, name: &str) -> PathBuf {
+    let path = home.root().join(TASKS_DIR).join(name).join(SETTINGS_FILE);
+    std::path::absolute(&path).unwrap_or(path)
+}
+
+pub fn token_file(home: &Home, name: &str, plugin: &str) -> PathBuf {
+    let safe: String = plugin
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let file = format!("plugin-{safe}.token");
+    let path = home.root().join(TASKS_DIR).join(name).join(file);
+    std::path::absolute(&path).unwrap_or(path)
+}
+
+pub(super) async fn write_token(
+    home: &Home,
+    name: &str,
+    plugin: &str,
+    token: String,
+) -> Result<PathBuf> {
+    write_private_file(home, token_file(home, name, plugin), token).await
+}
+
+pub(super) async fn write_mcp(home: &Home, name: &str, config: String) -> Result<PathBuf> {
+    write_private_file(home, mcp_file(home, name), config).await
+}
+
+pub(super) async fn write_settings(home: &Home, name: &str, settings: String) -> Result<PathBuf> {
+    write_private_file(home, settings_file(home, name), settings).await
+}
+
+async fn write_private_file(home: &Home, path: PathBuf, config: String) -> Result<PathBuf> {
+    let (home, target) = (home.clone(), path.clone());
+    tokio::task::spawn_blocking(move || {
+        if let Some(dir) = target.parent() {
+            home.create_dir(dir)?;
+        }
+        write_private(&target, config.as_bytes())
+    })
+    .await
+    .map_err(|e| {
+        Error::io(
+            "write a task mcp config",
+            std::io::Error::other(e.to_string()),
+        )
+    })??;
+    Ok(path)
+}
+
+fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = path.file_name().unwrap_or_default().to_string_lossy();
+    let tmp = path.with_file_name(format!(".{file}.{}.tmp", std::process::id()));
+    let written = (|| {
+        let _ = std::fs::remove_file(&tmp);
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, path)
+    })();
+    written.map_err(|e| Error::io(format!("write {}", path.display()), e))
 }
 
 /// The one-line prompt the agent starts with.

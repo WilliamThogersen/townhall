@@ -159,6 +159,9 @@ mod tests {
                 },
                 from: None,
                 prompt: None,
+                when: None,
+                check: None,
+                max_retries: None,
             })
             .collect()
     }

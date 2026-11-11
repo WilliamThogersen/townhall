@@ -170,10 +170,38 @@ fn a_fresh_database_has_builder_default_and_adviser() {
     assert_eq!(names, ["adviser", "builder", "default"]);
     let adviser = source_of(&conn, "adviser").unwrap();
     assert!(
-        adviser.contains("model = \"claude-fable-5-2\""),
+        adviser.lines().any(|l| l == "model = \"fable\""),
         "{adviser}"
     );
     assert!(adviser.contains("permission_mode = \"plan\""), "{adviser}");
+}
+
+#[test]
+fn a_seeded_adviser_moves_to_the_fable_alias() {
+    let mut conn = at(812);
+    let seeded = source_of(&conn, "adviser").unwrap();
+    assert!(seeded.contains("model = \"claude-fable-5-2\""), "{seeded}");
+    upgrade(&mut conn);
+    let source = source_of(&conn, "adviser").unwrap();
+    assert_eq!(
+        source,
+        seeded.replace("model = \"claude-fable-5-2\"", "model = \"fable\"")
+    );
+}
+
+#[test]
+fn an_edited_adviser_keeps_its_model_line() {
+    for model in ["haiku", "fable", "claude-fable-5-2-custom"] {
+        let mut conn = at(812);
+        let own = format!("name = \"adviser\"\nadapter = \"claude\"\nmodel = \"{model}\"\n");
+        conn.execute(
+            "update agents set source = ?1 where name = 'adviser'",
+            [&own],
+        )
+        .unwrap();
+        upgrade(&mut conn);
+        assert_eq!(source_of(&conn, "adviser").unwrap(), own);
+    }
 }
 
 #[test]

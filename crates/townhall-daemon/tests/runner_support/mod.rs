@@ -25,13 +25,13 @@ use crate::common::{call, Env};
 const SCRIPT: &str = r#"#!/bin/sh
 dir='@DIR@'
 n=$(( $(cat "$dir/count" 2>/dev/null || echo 0) + 1 ))
-echo "$n" > "$dir/count"
-printf '%s\0' "$@" > "$dir/argv-$n"
-pwd -P > "$dir/cwd-$n"
+echo "$n" > "$dir/count.tmp-$$" && mv "$dir/count.tmp-$$" "$dir/count"
+printf '%s\0' "$@" > "$dir/argv.tmp-$n" && mv "$dir/argv.tmp-$n" "$dir/argv-$n"
+pwd -P > "$dir/cwd.tmp-$n" && mv "$dir/cwd.tmp-$n" "$dir/cwd-$n"
 echo "$$" > "$dir/pid-$n"
 env > "$dir/env.tmp-$n" && mv "$dir/env.tmp-$n" "$dir/env-$n"
 IFS= read -r first || exit 4
-printf '%s\n' "$first" > "$dir/stdin-$n"
+printf '%s\n' "$first" > "$dir/stdin.tmp-$n" && mv "$dir/stdin.tmp-$n" "$dir/stdin-$n"
 log() { printf '%s\n' "$1" >> "$dir/stdin-$n"; }
 lost() { echo "No conversation found with session ID: $1" >&2; exit 1; }
 case "$first" in

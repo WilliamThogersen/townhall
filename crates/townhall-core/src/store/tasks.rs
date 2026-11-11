@@ -327,6 +327,18 @@ impl Store {
                     ..change(current)?
                 };
                 write(&tx, &next)?;
+                if from != next.state
+                    && matches!(
+                        next.state,
+                        TaskState::Ended | TaskState::Merged | TaskState::Error
+                    )
+                {
+                    tx.execute(
+                        "update plugin_tokens set revoked_at = ?1
+                         where task = ?2 and revoked_at is null",
+                        rusqlite::params![crate::clock::now_rfc3339(), next.name],
+                    )?;
+                }
                 tx.commit()?;
                 bus.publish(ServerEvent::TaskUpdated { task: next.clone() });
                 Ok((from, next))

@@ -25,6 +25,8 @@ pub use names::{step_agent_name, MAX_STEP_ID_LEN, SHORT_RUN_ID_LEN};
 pub use order::start_order;
 pub use parse::Parsed;
 pub use tools::add_tool;
-pub use validate::validate_workflow;
+pub use validate::{validate_pipeline, validate_workflow, KnownAgent};
 pub use vars::{render, variables, TemplateError, Values, Var};
-pub use workflow::{check_workflow, parse_workflow, Step, WorkflowDef, MAX_STEPS};
+pub use workflow::{
+    check_pipeline, check_workflow, parse_workflow, Step, When, WorkflowDef, MAX_STEPS,
+};

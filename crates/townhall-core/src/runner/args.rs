@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use crate::agent::{add_dir, plain, ISOLATED_SETTINGS};
 use crate::definitions::Effort;
 use crate::model::PermissionMode;
+use crate::plugins::claude_mcp::{self, Contribution};
 use crate::{mcp, Error, Result};
 
 /// Tools townhall's session may use besides its own: reading code to plan, nothing more.
@@ -32,6 +33,18 @@ pub fn allowed_tools() -> Vec<String> {
         .into_iter()
         .chain(READ_ONLY_TOOLS.iter().map(|t| t.to_string()))
         .collect()
+}
+
+pub fn with_plugins(
+    mcp_config: String,
+    mut tools: Vec<String>,
+    parts: &[Contribution],
+) -> (String, Vec<String>) {
+    if parts.is_empty() {
+        return (mcp_config, tools);
+    }
+    tools.extend(parts.iter().flat_map(|p| p.tools.iter().cloned()));
+    (claude_mcp::merge(Some(&mcp_config), parts), tools)
 }
 
 pub fn is_allowed(tool: &str) -> bool {
@@ -183,7 +196,7 @@ mod tests {
                 "--strict-mcp-config",
                 "--mcp-config={}",
                 "--tools=Read,Grep,Glob,WebFetch,WebSearch",
-                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__read_logs,mcp__townhall__log_summary,mcp__townhall__conversation_insights,mcp__townhall__ask_adviser,Read,Grep,Glob,WebFetch,WebSearch",
+                "--allowedTools=mcp__townhall__create_task,mcp__townhall__set_title,mcp__townhall__task_status,mcp__townhall__list_agent_types,mcp__townhall__read_agent_type,mcp__townhall__save_agent_type,mcp__townhall__list_pipelines,mcp__townhall__read_pipeline,mcp__townhall__save_pipeline,mcp__townhall__read_logs,mcp__townhall__log_summary,mcp__townhall__conversation_insights,mcp__townhall__ask_adviser,Read,Grep,Glob,WebFetch,WebSearch",
                 "--disallowedTools=Bash,Edit,MultiEdit,Write,NotebookEdit",
                 "--setting-sources=",
                 "--settings={\"disableAllHooks\":true,\"autoMemoryEnabled\":false}",
@@ -282,6 +295,62 @@ mod tests {
         let argv = build(&a).unwrap();
         assert!(argv.contains(&"--append-system-prompt=--resume\n- read first\n- then plan".into()));
         assert!(argv[1..].iter().all(|a| a.starts_with("--")), "{argv:?}");
+    }
+
+    fn part() -> Contribution {
+        Contribution {
+            plugin: "notes@acme".into(),
+            servers: vec![(
+                "plugin_notes_notes".into(),
+                serde_json::json!({"command": "/c/notes"}),
+            )],
+            tools: vec!["mcp__plugin_notes_notes__search_notes".into()],
+        }
+    }
+
+    #[test]
+    fn no_plugin_gives_the_identical_argv() {
+        let plain = args(false, vec![]);
+        let (mcp_config, tools) = with_plugins(plain.mcp_config.clone(), plain.tools.clone(), &[]);
+        let same = TurnArgs {
+            mcp_config,
+            tools,
+            ..args(false, vec![])
+        };
+        assert_eq!(build(&same).unwrap(), build(&plain).unwrap());
+    }
+
+    #[test]
+    fn a_plugin_adds_its_server_and_tool_and_nothing_else() {
+        let base = args(false, vec![]);
+        let (mcp_config, tools) =
+            with_plugins(base.mcp_config.clone(), base.tools.clone(), &[part()]);
+        let argv = build(&TurnArgs {
+            mcp_config,
+            tools,
+            ..args(false, vec![])
+        })
+        .unwrap();
+        let before = build(&base).unwrap();
+        let allowed = argv
+            .iter()
+            .find(|a| a.starts_with("--allowedTools="))
+            .unwrap();
+        assert!(
+            allowed.ends_with(",mcp__plugin_notes_notes__search_notes"),
+            "{allowed}"
+        );
+        assert!(argv
+            .iter()
+            .any(|a| a.starts_with("--mcp-config=") && a.contains("plugin_notes_notes")));
+        let rest = |v: &[String]| -> Vec<String> {
+            v.iter()
+                .filter(|a| !a.starts_with("--allowedTools=") && !a.starts_with("--mcp-config="))
+                .cloned()
+                .collect()
+        };
+        assert_eq!(rest(&argv), rest(&before));
+        assert!(argv.contains(&format!("--disallowedTools={}", DENIED_TOOLS.join(","))));
     }
 
     #[test]
