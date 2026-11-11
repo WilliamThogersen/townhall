@@ -46,13 +46,9 @@ fn only_the_declared_events_are_kept_with_the_plugin_root_replaced() {
 
 #[test]
 fn an_event_the_manifest_did_not_declare_is_refused() {
-    let error = contribution(
-        Path::new(ROOT),
-        &manifest(json!(["Stop"])),
-        &post_only(),
-    )
-    .unwrap_err()
-    .to_string();
+    let error = contribution(Path::new(ROOT), &manifest(json!(["Stop"])), &post_only())
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("PostToolUse"), "{error}");
 }
 
@@ -76,7 +72,10 @@ fn the_merged_settings_have_no_disable_all_hooks_and_no_memory() {
     assert!(settings.get("disableAllHooks").is_none());
     assert_eq!(settings["autoMemoryEnabled"], json!(false));
     assert_eq!(settings["hooks"].as_object().unwrap().len(), 1);
-    assert_eq!(settings["hooks"]["PostToolUse"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        settings["hooks"]["PostToolUse"].as_array().unwrap().len(),
+        2
+    );
 }
 
 #[test]

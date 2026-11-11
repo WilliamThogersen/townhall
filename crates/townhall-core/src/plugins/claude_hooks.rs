@@ -95,7 +95,11 @@ fn load(home: &Home, plugin: &Plugin) -> Result<Option<Contribution>> {
     if manifest.permissions.claude.hooks.is_none() {
         return Ok(None);
     }
-    let rel = manifest.claude.hooks.as_deref().unwrap_or(DEFAULT_HOOKS_FILE);
+    let rel = manifest
+        .claude
+        .hooks
+        .as_deref()
+        .unwrap_or(DEFAULT_HOOKS_FILE);
     let text = read_inside(&root, "claude.hooks", rel)?;
     contribution(&root, &manifest, &text).map(Some)
 }
