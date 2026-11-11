@@ -1,6 +1,7 @@
 //! The agent type a task runs as (2.12): its adapter and launch options. The type's
 //! permission mode is the task's; a type with none runs in `acceptEdits`.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::agent::{AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter};
@@ -8,7 +9,7 @@ use crate::context::Context;
 use crate::definitions::AdapterKind;
 use crate::mcp;
 use crate::model::{AgentType, Task, ADVISER_AGENT_TYPE};
-use crate::plugins::{agent_types, claude_hooks, claude_mcp};
+use crate::plugins::{agent_types, claude_hooks, claude_mcp, tokens};
 use crate::{Error, Result};
 
 use super::brief;
@@ -70,7 +71,31 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
     if claude {
         let mut chosen = found.def.plugins.clone();
         chosen.extend(found.plugin.clone());
-        let parts = claude_mcp::selected(store, &chosen).await?;
+        let mut parts = claude_mcp::selected(store, &chosen).await?;
+        let mut hooks = claude_hooks::selected(store, &chosen).await?;
+        let mut plugins: Vec<&str> = parts
+            .iter()
+            .map(|p| p.plugin.as_str())
+            .chain(hooks.iter().map(|h| h.plugin.as_str()))
+            .collect();
+        plugins.sort_unstable();
+        plugins.dedup();
+        let mut issued = HashMap::new();
+        if !plugins.is_empty() {
+            tokens::revoke_task(store, &task.name).await?;
+        }
+        for plugin in plugins {
+            let token = tokens::issue(store, plugin, Some(&task.name)).await?;
+            issued.insert(plugin.to_string(), token);
+        }
+        for part in &mut parts {
+            part.with_token(ctx.base_url(), &issued[&part.plugin]);
+        }
+        for hook in &mut hooks {
+            let token = issued[&hook.plugin].clone();
+            let file = brief::write_token(ctx.home(), &task.name, &hook.plugin, token).await?;
+            hook.with_token_file(ctx.base_url(), &file);
+        }
         if !parts.is_empty() {
             let config = claude_mcp::merge(options.mcp_config.as_deref(), &parts);
             let path = brief::write_mcp(ctx.home(), &task.name, config).await?;
@@ -79,7 +104,6 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
                 .mcp_tools
                 .extend(parts.into_iter().flat_map(|p| p.tools));
         }
-        let hooks = claude_hooks::selected(store, &chosen).await?;
         if let Some(settings) = claude_hooks::merge(&hooks) {
             let path = brief::write_settings(ctx.home(), &task.name, settings).await?;
             options.settings = Some(path.display().to_string());

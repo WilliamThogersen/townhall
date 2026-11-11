@@ -808,7 +808,8 @@ mod tests {
             .as_str()
             .unwrap()
             .ends_with("/abc/bin/notes"));
-        assert_eq!(notes["env"], json!({"KEPT": "1"}));
+        assert_eq!(notes["env"]["KEPT"], json!("1"));
+        assert!(notes["env"].get("DROPPED").is_none());
         assert_eq!(servers.len(), 2);
         let mut want = crate::mcp::task_allowed_tools();
         want.push("mcp__plugin_notes_notes__search".into());
@@ -907,6 +908,104 @@ mod tests {
         );
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    fn mcp_env(ctx: &Context) -> serde_json::Value {
+        let text = std::fs::read_to_string(brief::mcp_file(ctx.home(), "job")).unwrap();
+        let written: serde_json::Value = serde_json::from_str(&text).unwrap();
+        written["mcpServers"]["plugin_notes_notes"]["env"].clone()
+    }
+
+    #[tokio::test]
+    async fn a_selected_servers_get_the_api_url_and_a_task_token_in_their_private_env() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        install_notes(&ctx, NOTES_MCP, true).await;
+        let listed = typed(&ctx, &task, "[\"notes\"]").await;
+        let launcher = agent_type::launcher(&ctx, &listed).await.unwrap();
+        let env = mcp_env(&ctx);
+        assert_eq!(env["TOWNHALL_API_URL"], json!(ctx.base_url()));
+        assert_eq!(env["KEPT"], json!("1"));
+        let token = env["TOWNHALL_TOKEN"].as_str().unwrap();
+        assert_eq!(token.len(), 64);
+        let caller = crate::plugins::tokens::authenticate(ctx.store().unwrap(), token)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(caller.plugin, "notes@acme");
+        assert_eq!(caller.task.as_deref(), Some("job"));
+        let argv = crate::agent::ClaudeCodeAdapter::args(&launcher.options).unwrap();
+        assert!(!argv.join(" ").contains(token));
+        assert!(!launcher.options.env.values().any(|v| v.contains(token)));
+    }
+
+    #[tokio::test]
+    async fn a_task_without_a_selected_plugin_gets_no_token() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        install_notes(&ctx, NOTES_MCP, true).await;
+        let unlisted = typed(&ctx, &task, "[]").await;
+        agent_type::launcher(&ctx, &unlisted).await.unwrap();
+        let rows = ctx.store().unwrap().plugin_tokens("notes@acme").await;
+        assert!(rows.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_new_launch_revokes_the_token_of_the_one_before() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        install_notes(&ctx, NOTES_MCP, true).await;
+        let listed = typed(&ctx, &task, "[\"notes\"]").await;
+        agent_type::launcher(&ctx, &listed).await.unwrap();
+        let first = mcp_env(&ctx)["TOWNHALL_TOKEN"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        agent_type::launcher(&ctx, &listed).await.unwrap();
+        let second = mcp_env(&ctx)["TOWNHALL_TOKEN"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let store = ctx.store().unwrap();
+        let live = |t: String| async move {
+            crate::plugins::tokens::authenticate(store, &t)
+                .await
+                .unwrap()
+                .is_some()
+        };
+        assert!(!live(first).await);
+        assert!(live(second).await);
+    }
+
+    #[tokio::test]
+    async fn selected_hooks_read_their_token_from_a_private_file_and_never_carry_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, task) = queued(tmp.path()).await;
+        install_notes(&ctx, NOTES_MCP, true).await;
+        add_hooks(&ctx, FORMAT_HOOKS).await;
+        let listed = typed(&ctx, &task, "[\"notes\"]").await;
+        let launcher = agent_type::launcher(&ctx, &listed).await.unwrap();
+        let file = brief::token_file(ctx.home(), "job", "notes@acme");
+        let mode = std::fs::metadata(&file).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        let token = std::fs::read_to_string(&file).unwrap();
+        let caller = crate::plugins::tokens::authenticate(ctx.store().unwrap(), token.trim())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(caller.task.as_deref(), Some("job"));
+        let settings = std::fs::read_to_string(brief::settings_file(ctx.home(), "job")).unwrap();
+        assert!(!settings.contains(token.trim()), "{settings}");
+        let written: serde_json::Value = serde_json::from_str(&settings).unwrap();
+        let command = written["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+        assert!(command.contains("TOWNHALL_API_URL"), "{command}");
+        assert!(command.contains(file.to_str().unwrap()), "{command}");
+        assert!(command.ends_with("format.sh\" --token=SECRET"), "{command}");
+        let argv = crate::agent::ClaudeCodeAdapter::args(&launcher.options).unwrap();
+        assert!(!argv.join(" ").contains(token.trim()));
     }
 
     #[tokio::test]

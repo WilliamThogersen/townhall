@@ -326,9 +326,7 @@ async fn task_with_token(env: &common::StoreEnv, name: &str) -> String {
 
 async fn move_to(env: &common::StoreEnv, name: &str, state: townhall_core::model::TaskState) {
     env.store
-        .update_task(name, move |t| {
-            Ok(townhall_core::model::Task { state, ..t })
-        })
+        .update_task(name, move |t| Ok(townhall_core::model::Task { state, ..t }))
         .await
         .unwrap();
 }

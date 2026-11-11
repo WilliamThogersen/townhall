@@ -222,6 +222,47 @@ async fn a_revoked_token_is_401() {
 }
 
 #[tokio::test]
+async fn a_task_token_reads_its_own_task_only_and_is_401_once_the_task_has_ended() {
+    use townhall_core::model::{Task, TaskState};
+    let env = Env::new("shop").await;
+    let (state, app) = env.start();
+    let store = state.ctx().store().unwrap();
+    seed(store).await;
+    let id = plugin(store, "lint", &EVERYTHING).await;
+    let token = tokens::issue(store, &id, Some("one")).await.unwrap();
+
+    let (s, v) = get(&app, "/tasks/one", &token).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let (s, v) = get(&app, "/tasks/two", &token).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
+    let (s, v) = api(
+        &app,
+        "PUT",
+        "/storage/k",
+        Some(&token),
+        Some(json!({"value": "v"})),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let (s, v) = get(&app, "/settings", &token).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
+
+    store
+        .update_task("one", |t| {
+            Ok(Task {
+                state: TaskState::Ended,
+                ..t
+            })
+        })
+        .await
+        .unwrap();
+    for path in ["/tasks/one", "/info"] {
+        let (s, v) = get(&app, path, &token).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED, "{path}: {v}");
+    }
+}
+
+#[tokio::test]
 async fn disabling_the_plugin_over_the_ui_api_ends_its_access_at_once() {
     let env = Env::new("shop").await;
     let (state, app) = env.start();
