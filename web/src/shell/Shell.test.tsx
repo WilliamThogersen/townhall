@@ -166,6 +166,34 @@ describe("Shell", () => {
     await waitFor(() => expect(listAgents).toHaveBeenCalled());
   });
 
+  it("always offers the help key in the key bar", async () => {
+    renderShell();
+    expect(within(screen.getByRole("contentinfo")).getByText("?")).toHaveClass("th-kbd");
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("opens the help overlay on ? and gives focus back on esc", async () => {
+    renderShell();
+    const reposLink = link(/repos/);
+    reposLink.focus();
+    fireEvent.keyDown(reposLink, { key: "?", shiftKey: true });
+    const dialog = screen.getByRole("dialog", { name: "keyboard shortcuts" });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(reposLink).toHaveFocus();
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
+  it("does not open the overlay from the search field", async () => {
+    renderShell();
+    fireEvent.keyDown(document.body, { key: "/" });
+    const search = screen.getByRole("searchbox", { name: "search conversations" });
+    fireEvent.keyDown(search, { key: "?", shiftKey: true });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(listAgents).toHaveBeenCalled());
+  });
+
   it("answers the global keys", async () => {
     window.history.replaceState(null, "", "/townhall");
     renderShell();

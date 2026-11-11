@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useAgentTypes, useAgentUsage } from "../../data";
+import { useKeyHints } from "../../shell/keyHints";
+import { AGENT_LIST_HINTS } from "../../shell/keyMap";
 import { Banner } from "../../ui/Banner";
 import { DRAG_REGION } from "../../ui/dragRegion";
 import { EmptyState } from "../../ui/EmptyState";
@@ -14,6 +16,7 @@ import "./agents.css";
 const ROW_STEPS: Readonly<Record<string, number>> = { ArrowDown: 1, ArrowUp: -1 };
 
 export function AgentsPage() {
+  useKeyHints(AGENT_LIST_HINTS);
   const { data, loading, error, reload } = useAgentTypes();
   const usage = useAgentUsage().data;
   useEffect(dropLegacyAvatarPrefs, []);

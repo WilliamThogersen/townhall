@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { DaemonBanner } from "./DaemonBanner";
 import { useGlobalKeys } from "./globalKeys";
+import { HelpOverlay } from "./HelpOverlay";
 import { KeyBar } from "./KeyBar";
 import { KeyHintsProvider } from "./keyHints";
 import { Sidebar } from "./Sidebar";
@@ -11,7 +12,10 @@ export interface ShellProps {
 }
 
 function Frame({ children, sidebarFoot }: ShellProps) {
-  useGlobalKeys();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const openHelp = useCallback(() => setHelpOpen(true), []);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
+  useGlobalKeys(openHelp);
   return (
     <div className="th-shell" data-view="main">
       <Sidebar foot={sidebarFoot} />
@@ -20,6 +24,7 @@ function Frame({ children, sidebarFoot }: ShellProps) {
         {children}
       </main>
       <KeyBar />
+      {helpOpen ? <HelpOverlay onClose={closeHelp} /> : null}
     </div>
   );
 }
