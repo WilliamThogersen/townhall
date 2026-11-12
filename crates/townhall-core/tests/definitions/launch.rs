@@ -2,7 +2,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
 use townhall_core::agent::{
-    AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter, AGENT_ISOLATION,
+    AgentAdapter, ClaudeCodeAdapter, LaunchOptions, ShellAdapter, AGENT_ISOLATION, FOREGROUND_RULE,
 };
 use townhall_core::definitions::{parse_agent, AgentDef, Effort, PermissionMode};
 use townhall_core::model::PermissionMode as SettingsMode;
@@ -44,7 +44,7 @@ fn the_coder_runs_with_its_own_flags() {
         [
             "--model=sonnet".to_string(),
             "--permission-mode=dontAsk".into(),
-            format!("--append-system-prompt={prompt}\n\nthese are the tools you have access to: Read, Edit, Write, Bash. every other tool is denied."),
+            format!("--append-system-prompt={prompt}\n\nthese are the tools you have access to: Read, Edit, Write, Bash. every other tool is denied.\n\n{FOREGROUND_RULE}"),
             "--tools=Read,Edit,Write,Bash".into(),
             "--allowedTools=Read,Edit,Write,Bash".into(),
         ]
@@ -53,10 +53,15 @@ fn the_coder_runs_with_its_own_flags() {
 
 /// The words a permission mode adds to claude's argv.
 fn mode_words(mode: &str) -> Vec<String> {
-    match mode {
-        "skip all" => vec!["--dangerously-skip-permissions".to_string()],
-        value => vec![format!("--permission-mode={value}")],
-    }
+    let flag = match mode {
+        "skip all" => "--dangerously-skip-permissions".to_string(),
+        value => format!("--permission-mode={value}"),
+    };
+    vec![flag, rule_flag()]
+}
+
+fn rule_flag() -> String {
+    format!("--append-system-prompt={FOREGROUND_RULE}")
 }
 
 #[test]
@@ -99,11 +104,15 @@ fn an_effort_reaches_the_claude_launch_only_when_set() {
     assert_eq!(medium.effort, Some(Effort::Medium));
     assert_eq!(
         argv(&medium),
-        ["--effort=medium", "--permission-mode=acceptEdits"]
+        [
+            "--effort=medium".to_string(),
+            "--permission-mode=acceptEdits".into(),
+            rule_flag()
+        ]
     );
     let unset = agent("").launch_options();
     assert_eq!(unset.effort, None);
-    assert_eq!(argv(&unset), ["--permission-mode=acceptEdits"]);
+    assert_eq!(argv(&unset), mode_words("acceptEdits"));
 }
 
 #[test]
@@ -123,12 +132,12 @@ fn the_step_prompt_goes_last_after_the_end_of_options() {
     assert_eq!(
         argv(&options),
         [
-            "--permission-mode=dontAsk",
-            "--append-system-prompt=these are the tools you have access to: Read, Bash(rm -rf:*). every other tool is denied.",
-            "--tools=Read,Bash",
-            "--allowedTools=Read,Bash(rm -rf:*)",
-            "--",
-            "go on",
+            "--permission-mode=dontAsk".to_string(),
+            format!("--append-system-prompt=these are the tools you have access to: Read, Bash(rm -rf:*). every other tool is denied.\n\n{FOREGROUND_RULE}"),
+            "--tools=Read,Bash".into(),
+            "--allowedTools=Read,Bash(rm -rf:*)".into(),
+            "--".into(),
+            "go on".into(),
         ]
     );
 }

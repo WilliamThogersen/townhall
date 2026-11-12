@@ -5,7 +5,8 @@ use crate::definitions::Effort;
 
 const ID: &str = "0b8e7f8a-3c1d-4f7e-9a2b-1c2d3e4f5a6b";
 const UNSET: &str = "env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT \
-                     -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT MCP_TOOL_TIMEOUT=660000";
+                     -u CLAUDE_CODE_SSE_PORT -u CLAUDE_EFFORT MCP_TOOL_TIMEOUT=660000 \
+                     BASH_DEFAULT_TIMEOUT_MS=1200000 BASH_MAX_TIMEOUT_MS=1800000";
 
 /// The launch command of a fake claude running `script`, and the folder that holds it.
 fn fake_command(script: &str, options: &LaunchOptions) -> (tempfile::TempDir, String) {
@@ -48,13 +49,18 @@ fn argv_through_sh(options: &LaunchOptions) -> Vec<String> {
         .collect()
 }
 
-/// `flags`, then the isolation flags every agent gets.
-fn with_isolation(flags: &[&str]) -> Vec<String> {
-    flags
+fn rule_flag() -> String {
+    format!("--append-system-prompt={FOREGROUND_RULE}")
+}
+
+/// `before`, the foreground rule, `after`, then the isolation flags.
+fn with_rule(before: &[&str], after: &[&str]) -> Vec<String> {
+    before
         .iter()
-        .copied()
-        .chain(AGENT_ISOLATION)
-        .map(String::from)
+        .map(|s| s.to_string())
+        .chain([rule_flag()])
+        .chain(after.iter().map(|s| s.to_string()))
+        .chain(AGENT_ISOLATION.map(String::from))
         .collect()
 }
 
@@ -76,7 +82,7 @@ fn hostile_prompts_arrive_as_the_one_positional() {
     for p in hostile {
         let argv = argv_through_sh(&opts(p));
         let (flags, data) = split(&argv);
-        assert_eq!(flags, with_isolation(&["--permission-mode=plan"]), "{p}");
+        assert_eq!(flags, with_rule(&["--permission-mode=plan"], &[]), "{p}");
         assert_eq!(data, [format!("{p}\n")], "{p}");
     }
     let spaced = "-p and --dangerously-skip-permissions please";
@@ -101,7 +107,7 @@ fn every_option_is_one_element_before_the_prompt() {
             "--model=claude-opus's".to_string(),
             "--permission-mode=dontAsk".into(),
             format!(
-                "--append-system-prompt=--dangerously-skip-permissions\nthen $COMMIT\n\n{}",
+                "--append-system-prompt=--dangerously-skip-permissions\nthen $COMMIT\n\n{}\n\n{FOREGROUND_RULE}",
                 tools_notice("Read, Bash(git diff:*)")
             ),
             format!("--session-id={ID}"),
@@ -156,7 +162,7 @@ fn a_tool_list_is_the_whole_set_and_everything_else_is_denied() {
 fn the_prompt_names_the_tools_the_agent_has() {
     let argv = with_tools(&["Read", "Bash(gh pr *)"], PermissionMode::Default);
     assert!(argv.contains(&format!(
-        "--append-system-prompt={}",
+        "--append-system-prompt={}\n\n{FOREGROUND_RULE}",
         tools_notice("Read, Bash(gh pr *)")
     )));
 }
@@ -175,10 +181,7 @@ fn mcp_tools_are_allowed_but_are_not_built_in_tools() {
 fn no_tool_list_leaves_the_mode_and_tools_alone() {
     assert_eq!(
         with_tools(&[], PermissionMode::AcceptEdits),
-        ["--permission-mode=acceptEdits"]
-            .into_iter()
-            .chain(AGENT_ISOLATION)
-            .collect::<Vec<_>>()
+        with_rule(&["--permission-mode=acceptEdits"], &[])
     );
 }
 
@@ -240,7 +243,7 @@ fn permission_modes() {
         ),
     ];
     for (m, flag) in cases {
-        assert_eq!(mode(m), with_isolation(&[flag]), "{flag}");
+        assert_eq!(mode(m), with_rule(&[flag], &[]), "{flag}");
     }
 }
 
@@ -253,11 +256,14 @@ fn effort_is_one_flag_after_the_model_and_only_when_set() {
     };
     assert_eq!(
         ClaudeCodeAdapter::args(&o).unwrap(),
-        with_isolation(&[
-            "--model=opus",
-            "--effort=medium",
-            "--permission-mode=acceptEdits"
-        ])
+        with_rule(
+            &[
+                "--model=opus",
+                "--effort=medium",
+                "--permission-mode=acceptEdits"
+            ],
+            &[]
+        )
     );
     assert!(!ClaudeCodeAdapter::args(&LaunchOptions::default())
         .unwrap()
@@ -275,9 +281,9 @@ fn no_prompt_means_no_positional_and_blank_values_add_nothing() {
     };
     assert_eq!(
         ClaudeCodeAdapter::args(&o).unwrap(),
-        with_isolation(&["--permission-mode=acceptEdits"])
+        with_rule(&["--permission-mode=acceptEdits"], &[])
     );
-    let quoted: Vec<String> = with_isolation(&["--permission-mode=acceptEdits"])
+    let quoted: Vec<String> = with_rule(&["--permission-mode=acceptEdits"], &[])
         .iter()
         .map(|a| shell_quote(a))
         .collect();
@@ -335,11 +341,10 @@ fn add_dirs_are_absolute_folders_before_the_prompt() {
         add_dirs: vec!["/h/tasks/fix-login".into(), "/h/my files".into()],
         ..opts("go on")
     };
-    let mut expected = with_isolation(&[
-        "--permission-mode=plan",
-        "--add-dir=/h/tasks/fix-login",
-        "--add-dir=/h/my files",
-    ]);
+    let mut expected = with_rule(
+        &["--permission-mode=plan"],
+        &["--add-dir=/h/tasks/fix-login", "--add-dir=/h/my files"],
+    );
     expected.extend(["--".to_string(), "go on".to_string()]);
     assert_eq!(argv_through_sh(&o), expected);
     for bad in ["relative/dir", "", "/a\nb", "-/x"] {
@@ -387,6 +392,7 @@ fn an_mcp_server_comes_after_the_isolation_flags_with_its_tool_allowed() {
     let want: Vec<String> = ["--permission-mode=acceptEdits"]
         .into_iter()
         .map(String::from)
+        .chain([rule_flag()])
         .chain(["--allowedTools=mcp__townhall__hand_back".to_string()])
         .chain(AGENT_ISOLATION.map(String::from))
         .chain([format!("--mcp-config={MCP}")])
@@ -403,7 +409,7 @@ fn an_mcp_tool_joins_the_tool_list_without_adding_a_built_in() {
         "{argv:?}"
     );
     let notice = tools_notice(&format!("Read, Grep, {HAND_BACK}"));
-    assert!(argv.iter().any(|a| a.ends_with(&notice)), "{argv:?}");
+    assert!(argv.iter().any(|a| a.contains(&notice)), "{argv:?}");
 }
 
 #[test]
@@ -510,7 +516,7 @@ fn extra_rules_never_add_a_built_in_tool_to_a_listed_type() {
         "{argv:?}"
     );
     let notice = tools_notice(&format!("Grep, {HAND_BACK}"));
-    assert!(argv.iter().any(|a| a.ends_with(&notice)), "{argv:?}");
+    assert!(argv.iter().any(|a| a.contains(&notice)), "{argv:?}");
 }
 
 #[test]
@@ -560,5 +566,62 @@ fn an_extra_rule_is_a_checked_value() {
             ..LaunchOptions::default()
         };
         assert!(ClaudeCodeAdapter::args(&o).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn every_agent_is_told_to_run_long_commands_in_the_foreground() {
+    for rule in [
+        "foreground",
+        "never use run_in_background, Monitor or sleep-and-poll",
+        "never end your turn while a command you started is still running",
+        "commit your work before you end",
+    ] {
+        assert!(FOREGROUND_RULE.contains(rule), "{rule}");
+    }
+    for tools in [&[][..], &["Read"][..]] {
+        let argv = with_tools(tools, PermissionMode::Default);
+        let prompts: Vec<&String> = argv
+            .iter()
+            .filter(|a| a.starts_with("--append-system-prompt="))
+            .collect();
+        assert_eq!(prompts.len(), 1, "{argv:?}");
+        assert!(prompts[0].ends_with(FOREGROUND_RULE), "{argv:?}");
+    }
+    let own = LaunchOptions {
+        system_prompt: Some("be kind".into()),
+        ..LaunchOptions::default()
+    };
+    let argv = ClaudeCodeAdapter::args(&own).unwrap();
+    assert!(argv.contains(&format!(
+        "--append-system-prompt=be kind\n\n{FOREGROUND_RULE}"
+    )));
+}
+
+#[test]
+fn bash_may_run_a_long_command_in_the_foreground() {
+    assert_eq!(mcp_tool_timeout_ms(), "660000");
+    let command = ClaudeCodeAdapter::default()
+        .launch_command(&LaunchOptions::default())
+        .unwrap();
+    assert!(
+        command.contains(" BASH_DEFAULT_TIMEOUT_MS=1200000 "),
+        "{command}"
+    );
+    assert!(
+        command.contains(" BASH_MAX_TIMEOUT_MS=1800000 "),
+        "{command}"
+    );
+    let (_dir, command) = fake_command("env", &LaunchOptions::default());
+    let out = std::process::Command::new("sh")
+        .args(["-c", &command])
+        .output()
+        .unwrap();
+    let env = String::from_utf8(out.stdout).unwrap();
+    for line in [
+        "BASH_DEFAULT_TIMEOUT_MS=1200000",
+        "BASH_MAX_TIMEOUT_MS=1800000",
+    ] {
+        assert!(env.lines().any(|l| l == line), "{line}:\n{env}");
     }
 }
