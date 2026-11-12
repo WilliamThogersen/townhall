@@ -6,6 +6,7 @@ mod drafts;
 mod entries;
 mod fonts;
 mod glyph;
+mod home;
 mod home_model;
 mod markdown;
 #[cfg(target_os = "macos")]
@@ -17,7 +18,9 @@ mod row_summary;
 mod sections;
 mod selectable;
 mod selection;
+mod session;
 mod session_model;
+mod sidebar;
 mod sidebar_rows;
 mod state;
 mod task_rows;
@@ -139,6 +142,7 @@ fn main() {
         }
     };
     let drafts = drafts::Drafts::open(&drafts_home).unwrap_or_else(|e| fail(e));
+    let prefs = prefs::Prefs::open(&drafts_home).unwrap_or_else(|e| fail(e));
     let events = client::subscribe(&base).unwrap_or_else(|e| fail(e));
     let api = Arc::new(client::Client::new(base));
 
@@ -147,6 +151,12 @@ fn main() {
             fail(e);
         }
         gpui_component::init(cx);
+        thread::bind_keys(cx);
+        cx.bind_keys([gpui::KeyBinding::new(
+            "/",
+            view::FocusSearch,
+            Some(thread::CONTEXT),
+        )]);
         let initial = theme::Theme::for_appearance(cx.window_appearance());
         theme::apply_to_components(&initial, cx);
         cx.set_global(initial);
@@ -174,6 +184,7 @@ fn main() {
                         .detach();
                     cx.new(|cx| {
                         view::Root::new(api, Some(events), drafts, window, cx)
+                            .with_prefs(prefs)
                             .with_daemon_note(note)
                     })
                 },

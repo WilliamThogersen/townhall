@@ -6,6 +6,9 @@ pub const TEXT_XS: f32 = 11.0;
 pub const TEXT_SM: f32 = 12.0;
 pub const TEXT_MD: f32 = 13.0;
 pub const TEXT_LG: f32 = 15.0;
+pub const TEXT_XL: f32 = 20.0;
+pub const LEADING_XL: f32 = 28.0;
+pub const HOME: f32 = 720.0;
 pub const LEADING_SM: f32 = 18.0;
 pub const LEADING_MD: f32 = 20.0;
 pub const LEADING_LG: f32 = 22.0;
@@ -31,6 +34,9 @@ const SIZES: &[(&str, f32)] = &[
     ("--th-text-sm", TEXT_SM),
     ("--th-text-md", TEXT_MD),
     ("--th-text-lg", TEXT_LG),
+    ("--th-text-xl", TEXT_XL),
+    ("--th-leading-xl", LEADING_XL),
+    ("--th-home", HOME),
     ("--th-leading-sm", LEADING_SM),
     ("--th-leading-md", LEADING_MD),
     ("--th-leading-lg", LEADING_LG),
@@ -218,6 +224,7 @@ pub fn apply_to_components(theme: &Theme, cx: &mut App) {
     component.radius_lg = gpui::px(0.0);
     component.cursor_blink =
         gpui_component::input::CursorBlink::blinking(CARET_INTERVAL).with_idle_timeout(CARET_IDLE);
+    gpui_component::Theme::sync_base(cx);
 }
 
 pub fn no_ligatures() -> FontFeatures {

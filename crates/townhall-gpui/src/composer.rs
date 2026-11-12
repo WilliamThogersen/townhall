@@ -1,24 +1,39 @@
 use std::sync::Arc;
 
 use gpui::{
-    div, prelude::*, px, App, Context, Entity, Focusable, MouseButton, SharedString, Subscription,
-    Window,
+    div, prelude::*, px, App, Context, Entity, EventEmitter, Focusable, MouseButton, SharedString,
+    Subscription, Window,
 };
 use gpui_component::input::{Enter, InputEvent, Textarea, TextareaState};
+use townhall_core::model::ConversationDetail;
 
 use crate::client::Api;
 use crate::drafts::Drafts;
 use crate::theme::{self, Theme};
 
 const MIN_ROWS: usize = 2;
+const START_ROWS: usize = 3;
 const MAX_ROWS: usize = 8;
 const PLACEHOLDER: &str = "reply, or ask for more work";
+const START_PLACEHOLDER: &str = "what should we work on? name a repo, or describe the code";
 const THINKING_PLACEHOLDER: &str = "townhall is thinking…";
 const HELP: &str = "⏎ send · ⇧⏎ new line";
+const START_HELP: &str = "⏎ start · ⇧⏎ new line";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Reply,
+    Start,
+}
+
+pub struct Started(pub ConversationDetail);
+
+impl EventEmitter<Started> for Composer {}
 
 pub struct Composer {
     api: Arc<dyn Api>,
-    drafts: Drafts,
+    drafts: Option<Drafts>,
+    mode: Mode,
     input: Entity<TextareaState>,
     conversation: Option<String>,
     thinking: bool,
@@ -34,16 +49,35 @@ impl Composer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::build(api, Some(drafts), Mode::Reply, window, cx)
+    }
+
+    pub fn new_start(api: Arc<dyn Api>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::build(api, None, Mode::Start, window, cx)
+    }
+
+    fn build(
+        api: Arc<dyn Api>,
+        drafts: Option<Drafts>,
+        mode: Mode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let (rows, placeholder) = match mode {
+            Mode::Reply => (MIN_ROWS, PLACEHOLDER),
+            Mode::Start => (START_ROWS, START_PLACEHOLDER),
+        };
         let input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .auto_grow(MIN_ROWS, MAX_ROWS)
+                .auto_grow(rows, MAX_ROWS)
                 .submit_on_enter(true)
-                .placeholder(PLACEHOLDER)
+                .placeholder(placeholder)
         });
         let subscription = cx.subscribe_in(&input, window, Self::on_input);
         Self {
             api,
             drafts,
+            mode,
             input,
             conversation: None,
             thinking: false,
@@ -51,6 +85,13 @@ impl Composer {
             error: None,
             _subscription: subscription,
         }
+    }
+
+    pub fn fill(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.input.update(cx, |input, cx| {
+            input.set_value(text.to_string(), window, cx)
+        });
+        self.focus(window, cx);
     }
 
     fn on_input(
@@ -76,7 +117,10 @@ impl Composer {
             return;
         };
         let text = self.text(cx);
-        if let Err(e) = self.drafts.set(&id, &text) {
+        let Some(drafts) = self.drafts.as_mut() else {
+            return;
+        };
+        if let Err(e) = drafts.set(&id, &text) {
             tracing::warn!(
                 target: "townhall::native",
                 event = "drafts.save_failed",
@@ -106,10 +150,13 @@ impl Composer {
     }
 
     pub fn can_send(&self, cx: &App) -> bool {
-        self.conversation.is_some()
-            && !self.thinking
-            && !self.sending
-            && !self.text(cx).trim().is_empty()
+        let has_text = !self.text(cx).trim().is_empty();
+        match self.mode {
+            Mode::Reply => {
+                self.conversation.is_some() && !self.thinking && !self.sending && has_text
+            }
+            Mode::Start => !self.sending && has_text,
+        }
     }
 
     pub fn switch_to(&mut self, id: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
@@ -118,11 +165,10 @@ impl Composer {
         }
         self.conversation = id;
         self.error = None;
-        let draft = self
-            .conversation
-            .as_deref()
-            .map(|id| self.drafts.get(id).to_string())
-            .unwrap_or_default();
+        let draft = match (self.conversation.as_deref(), self.drafts.as_ref()) {
+            (Some(id), Some(drafts)) => drafts.get(id).to_string(),
+            _ => String::new(),
+        };
         self.input
             .update(cx, |input, cx| input.set_value(draft, window, cx));
         self.focus(window, cx);
@@ -149,8 +195,43 @@ impl Composer {
         self.input.update(cx, |input, cx| input.focus(window, cx));
     }
 
+    fn start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.text(cx).trim().to_string();
+        self.sending = true;
+        self.error = None;
+        self.input
+            .update(cx, |input, cx| input.set_readonly(true, cx));
+        cx.notify();
+        let api = self.api.clone();
+        cx.spawn_in(window, async move |this, cx| -> gpui::Result<()> {
+            let result = cx
+                .background_executor()
+                .spawn(async move { api.start_conversation(&text) })
+                .await;
+            this.update_in(cx, |this, window, cx| {
+                this.sending = false;
+                this.input
+                    .update(cx, |input, cx| input.set_readonly(false, cx));
+                match result {
+                    Ok(detail) => {
+                        this.input
+                            .update(cx, |input, cx| input.set_value("", window, cx));
+                        cx.emit(Started(detail));
+                    }
+                    Err(e) => this.error = Some(e),
+                }
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
+    }
+
     pub fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.can_send(cx) {
+            return;
+        }
+        if self.mode == Mode::Start {
+            self.start(window, cx);
             return;
         }
         let Some(id) = self.conversation.clone() else {
@@ -188,7 +269,10 @@ impl Composer {
             self.input
                 .update(cx, |input, cx| input.set_value("", window, cx));
         }
-        if let Err(e) = self.drafts.set(id, "") {
+        let Some(drafts) = self.drafts.as_mut() else {
+            return;
+        };
+        if let Err(e) = drafts.set(id, "") {
             tracing::warn!(
                 target: "townhall::native",
                 event = "drafts.save_failed",
@@ -200,7 +284,12 @@ impl Composer {
 
     fn button(&self, t: Theme, enabled: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let p = t.palette;
-        let label = if self.sending { "sending…" } else { "send" };
+        let label = match (self.mode, self.sending) {
+            (Mode::Reply, false) => "send",
+            (Mode::Reply, true) => "sending…",
+            (Mode::Start, false) => "start",
+            (Mode::Start, true) => "starting…",
+        };
         let mut button = div()
             .id("send")
             .h(px(theme::ROW - theme::SPACE_2))
@@ -234,6 +323,7 @@ impl Render for Composer {
         let enabled = self.can_send(cx);
         let (help, help_color): (SharedString, _) = match &self.error {
             Some(e) => (format!("error: {e}").into(), p.danger),
+            None if self.mode == Mode::Start => (START_HELP.into(), p.fg_faint),
             None => (HELP.into(), p.fg_faint),
         };
         div()
