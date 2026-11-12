@@ -5,9 +5,18 @@ pub const FONT: &str = "JetBrains Mono";
 pub const TEXT_XS: f32 = 11.0;
 pub const TEXT_SM: f32 = 12.0;
 pub const TEXT_MD: f32 = 13.0;
+pub const TEXT_LG: f32 = 15.0;
+pub const LEADING_SM: f32 = 18.0;
+pub const LEADING_MD: f32 = 20.0;
+pub const LEADING_LG: f32 = 22.0;
+pub const SPACE_1: f32 = 4.0;
 pub const SPACE_2: f32 = 8.0;
 pub const SPACE_3: f32 = 12.0;
 pub const SPACE_4: f32 = 16.0;
+pub const SPACE_5: f32 = 24.0;
+pub const SPACE_6: f32 = 32.0;
+pub const CONTROL_SM: f32 = 24.0;
+pub const RAIL: f32 = 320.0;
 pub const ROW: f32 = 28.0;
 pub const BAR: f32 = 36.0;
 pub const KEYBAR: f32 = 24.0;
@@ -21,9 +30,18 @@ const SIZES: &[(&str, f32)] = &[
     ("--th-text-xs", TEXT_XS),
     ("--th-text-sm", TEXT_SM),
     ("--th-text-md", TEXT_MD),
+    ("--th-text-lg", TEXT_LG),
+    ("--th-leading-sm", LEADING_SM),
+    ("--th-leading-md", LEADING_MD),
+    ("--th-leading-lg", LEADING_LG),
+    ("--th-space-1", SPACE_1),
     ("--th-space-2", SPACE_2),
     ("--th-space-3", SPACE_3),
     ("--th-space-4", SPACE_4),
+    ("--th-space-5", SPACE_5),
+    ("--th-space-6", SPACE_6),
+    ("--th-control-sm", CONTROL_SM),
+    ("--th-rail", RAIL),
     ("--th-row", ROW),
     ("--th-bar", BAR),
     ("--th-keybar", KEYBAR),

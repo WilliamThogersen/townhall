@@ -20,6 +20,54 @@ pub struct AskChoices {
 
 pub const EXCERPT_CHARS: usize = 120;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Item {
+    Entry {
+        index: usize,
+        open: bool,
+        answer: Option<String>,
+    },
+    Thinking,
+    Ended,
+}
+
+pub fn display_items(
+    entries: &[ThreadEntry],
+    tasks: &[Task],
+    thinking: bool,
+    ended: bool,
+) -> Vec<Item> {
+    let pairs = ask_answers(entries);
+    let hidden: std::collections::HashSet<usize> = pairs.values().copied().collect();
+    let answer_of = |i: usize| match pairs.get(&i).and_then(|at| entries.get(*at)) {
+        Some(ThreadEntry {
+            body: EntryBody::Agent { text, .. },
+            ..
+        }) => Some(text.clone()),
+        _ => None,
+    };
+    let mut items: Vec<Item> = entries
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !hidden.contains(i))
+        .map(|(index, entry)| Item::Entry {
+            index,
+            open: match entry.body {
+                EntryBody::NeedsYou { .. } => is_needs_you_open(entries, index, tasks),
+                EntryBody::RepoAsk { .. } => is_repo_ask_open(entries, index),
+                _ => false,
+            },
+            answer: answer_of(index),
+        })
+        .collect();
+    if thinking {
+        items.push(Item::Thinking);
+    } else if ended {
+        items.push(Item::Ended);
+    }
+    items
+}
+
 pub fn clock_time(iso: &str) -> String {
     let Some(ms) = parse_rfc3339(iso) else {
         return String::new();
@@ -435,6 +483,57 @@ mod tests {
             end_question("login loop", 2),
             "end login loop? 2 tasks stop and their worktrees are deleted"
         );
+    }
+
+    fn entry_item(index: usize, open: bool, answer: Option<&str>) -> Item {
+        Item::Entry {
+            index,
+            open,
+            answer: answer.map(String::from),
+        }
+    }
+
+    #[test]
+    fn an_answered_question_hides_the_sent_line_and_carries_its_text() {
+        let entries = vec![
+            you(1, "go"),
+            entry_of(2, ask()),
+            entry_of(3, sent("fix-login", "y")),
+        ];
+        let tasks = vec![task("fix-login", TaskState::Working)];
+        assert_eq!(
+            display_items(&entries, &tasks, false, false),
+            [entry_item(0, false, None), entry_item(1, false, Some("y")),]
+        );
+    }
+
+    #[test]
+    fn an_open_question_and_an_open_repo_ask_are_marked_open() {
+        let repo_ask = EntryBody::RepoAsk {
+            question: "which?".into(),
+            candidates: vec!["a".into()],
+            offer_all: false,
+        };
+        let entries = vec![entry_of(1, repo_ask), entry_of(2, ask())];
+        let tasks = vec![task("fix-login", TaskState::NeedsYou)];
+        assert_eq!(
+            display_items(&entries, &tasks, false, false),
+            [entry_item(0, true, None), entry_item(1, true, None)]
+        );
+    }
+
+    #[test]
+    fn thinking_adds_a_tail_row_and_wins_over_ended() {
+        let entries = vec![you(1, "go")];
+        assert_eq!(
+            display_items(&entries, &[], true, true),
+            [entry_item(0, false, None), Item::Thinking]
+        );
+        assert_eq!(
+            display_items(&entries, &[], false, true),
+            [entry_item(0, false, None), Item::Ended]
+        );
+        assert_eq!(display_items(&entries, &[], false, false).len(), 1);
     }
 
     #[test]
