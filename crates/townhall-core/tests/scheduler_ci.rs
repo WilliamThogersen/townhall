@@ -89,7 +89,7 @@ async fn landing(s: &Sched, json: &str, agent: &str) -> String {
     });
     let name = unique("lander");
     reports(&name, json);
-    if agent != "plain" {
+    if agent != "plain" && s.store().agent_type(agent).await.unwrap().is_none() {
         let source = format!("name = \"{agent}\"\nadapter = \"claude\"\n");
         s.store().save_agent_type(&source).await.unwrap();
     }
@@ -97,10 +97,7 @@ async fn landing(s: &Sched, json: &str, agent: &str) -> String {
         agent: agent.into(),
         ..s.new_task(&name, &[])
     };
-    s.store()
-        .create_task(&s.conversation, new)
-        .await
-        .unwrap();
+    s.store().create_task(&s.conversation, new).await.unwrap();
     run_once(s.ctx()).await.unwrap();
     assert_eq!(s.state(&name).await, TaskState::Working);
     let pr = Pr {
@@ -375,10 +372,18 @@ async fn a_lander_whose_checks_are_green_is_merged_by_the_daemon() {
     assert_eq!(pr.checks, Checks::Passed);
     assert_eq!(merges(&name).len(), 1, "{:?}", merges(&name));
     let merge = &merges(&name)[0];
-    for needle in ["pr merge 7", "--merge", "--match-head-commit abc123", "GH_TOKEN="] {
+    for needle in [
+        "pr merge 7",
+        "--merge",
+        "--match-head-commit abc123",
+        "GH_TOKEN=",
+    ] {
         assert!(merge.contains(needle), "{needle}: {merge}");
     }
-    assert!(!merge.contains("--auto") && !merge.contains("--squash"), "{merge}");
+    assert!(
+        !merge.contains("--auto") && !merge.contains("--squash"),
+        "{merge}"
+    );
     assert_eq!(session(&s, &name).await, before, "no new agent run");
     assert!(s.store().handoffs(&name).await.unwrap().is_empty());
     let told = heard(&s).await;
@@ -433,7 +438,10 @@ async fn a_lander_behind_its_base_is_relaunched_and_not_merged() {
     says(&name, "behind", "3\n");
     relaunches(&s, &name).await;
     let brief = std::fs::read_to_string(s.brief(&name)).unwrap();
-    assert!(brief.contains("behind") && brief.contains("main"), "{brief}");
+    assert!(
+        brief.contains("behind") && brief.contains("main"),
+        "{brief}"
+    );
     assert!(merges(&name).is_empty());
     assert_ne!(s.state(&name).await, TaskState::Merged);
 }
@@ -442,7 +450,11 @@ async fn a_lander_behind_its_base_is_relaunched_and_not_merged() {
 async fn a_lander_whose_pr_conflicts_is_relaunched_and_not_merged() {
     let s = Sched::new().await;
     let name = landing(&s, GREEN, "lander").await;
-    says(&name, "view", r#"{"headRefOid":"abc123","mergeable":"CONFLICTING"}"#);
+    says(
+        &name,
+        "view",
+        r#"{"headRefOid":"abc123","mergeable":"CONFLICTING"}"#,
+    );
     relaunches(&s, &name).await;
     assert!(merges(&name).is_empty());
 }
