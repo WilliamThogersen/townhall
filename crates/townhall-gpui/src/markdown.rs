@@ -244,7 +244,7 @@ struct Piece {
     link: Option<String>,
 }
 
-fn plain(text: &str) -> Inline {
+pub fn plain(text: &str) -> Inline {
     finish(vec![Piece {
         text: text.to_string(),
         style: Style::default(),

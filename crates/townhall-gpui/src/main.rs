@@ -3,6 +3,7 @@ mod client;
 mod composer;
 mod daemon;
 mod drafts;
+mod entries;
 mod fonts;
 mod glyph;
 mod home_model;
@@ -13,6 +14,7 @@ mod repo_group;
 mod row_menu;
 mod row_summary;
 mod sections;
+mod selectable;
 mod selection;
 mod session_model;
 mod sidebar_rows;
@@ -21,6 +23,7 @@ mod task_rows;
 #[cfg(test)]
 mod testkit;
 mod theme;
+mod thread;
 mod thread_model;
 mod view;
 
