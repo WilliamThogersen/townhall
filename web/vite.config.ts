@@ -81,6 +81,7 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: "jsdom",
     globals: true,
+    testTimeout: 20_000,
     exclude: [...configDefaults.exclude, "e2e/**"],
     setupFiles: ["./src/test/setup.ts"],
     css: { include: [/\.css\?raw$/] },
