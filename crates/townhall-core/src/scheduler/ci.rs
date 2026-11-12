@@ -127,7 +127,7 @@ async fn on_forge<T: Send + 'static>(
 }
 
 async fn read(ctx: &Context, task: &Task, number: u64) -> Result<Option<Vec<CheckState>>> {
-    let read = on_forge(ctx, task, number, |req, programs| pr_checks(req, programs)).await?;
+    let read = on_forge(ctx, task, number, pr_checks).await?;
     Ok(read.flatten())
 }
 
