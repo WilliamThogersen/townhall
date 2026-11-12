@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use gpui::{
-    div, prelude::*, px, AnyElement, ClickEvent, Context, FontWeight, IntoElement, Rgba,
+    div, prelude::*, px, AnyElement, ClickEvent, Context, Entity, FontWeight, IntoElement, Rgba,
     SharedString, Window,
 };
 use townhall_core::model::{AgentEvent, ConversationStatus, EntryBody, ServerEvent, ThreadEntry};
 
 use crate::client::Api;
+use crate::composer::Composer;
+use crate::drafts::Drafts;
 use crate::state::{Load, Refetch, State};
 use crate::theme::{self, Theme};
 
@@ -23,6 +25,7 @@ pub struct Row {
 pub struct Root {
     api: Arc<dyn Api>,
     state: State,
+    composer: Entity<Composer>,
     daemon_note: SharedString,
 }
 
@@ -30,18 +33,24 @@ impl Root {
     pub fn new(
         api: Arc<dyn Api>,
         events: Option<async_channel::Receiver<ServerEvent>>,
+        drafts: Drafts,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let composer = cx.new(|cx| Composer::new(api.clone(), drafts, window, cx));
         let root = Self {
             api,
             state: State::new(),
+            composer,
             daemon_note: SharedString::default(),
         };
-        root.load_list(true, cx);
+        root.composer
+            .update(cx, |composer, cx| composer.focus(window, cx));
+        root.load_list(true, window, cx);
         if let Some(events) = events {
-            cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            cx.spawn_in(window, async move |this, cx| -> gpui::Result<()> {
                 while let Ok(event) = events.recv().await {
-                    this.update(cx, |this, cx| this.on_event(event, cx))?;
+                    this.update_in(cx, |this, window, cx| this.on_event(event, window, cx))?;
                 }
                 Ok(())
             })
@@ -86,41 +95,59 @@ impl Root {
         }
     }
 
-    pub fn on_event(&mut self, event: ServerEvent, cx: &mut Context<Self>) {
+    pub fn on_event(&mut self, event: ServerEvent, window: &mut Window, cx: &mut Context<Self>) {
         match self.state.apply(event) {
             Refetch::Nothing => {}
             Refetch::Everything => {
-                self.load_list(false, cx);
+                self.load_list(false, window, cx);
                 if let Some(id) = self.state.selected.clone() {
                     self.load_detail(id, cx);
                 }
             }
         }
+        self.sync_thinking(window, cx);
         cx.notify();
     }
 
-    fn load_list(&self, select_newest: bool, cx: &mut Context<Self>) {
+    fn sync_thinking(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let thinking = match (&self.state.conversations, self.state.selected.as_deref()) {
+            (Load::Ready(list), Some(id)) => list
+                .iter()
+                .any(|c| c.id == id && c.status == ConversationStatus::Thinking),
+            _ => false,
+        };
+        self.composer.update(cx, |composer, cx| {
+            composer.set_thinking(thinking, window, cx)
+        });
+    }
+
+    fn load_list(&self, select_newest: bool, window: &mut Window, cx: &mut Context<Self>) {
         let api = self.api.clone();
-        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+        cx.spawn_in(window, async move |this, cx| -> gpui::Result<()> {
             let result = cx
                 .background_executor()
                 .spawn(async move { api.conversations() })
                 .await;
-            this.update(cx, |this, cx| {
+            this.update_in(cx, |this, window, cx| {
                 this.state.set_list(result);
                 if select_newest && this.state.selected.is_none() {
                     if let Some(id) = this.state.newest() {
-                        this.select(id, cx);
+                        this.select(id, window, cx);
                     }
                 }
+                this.sync_thinking(window, cx);
                 cx.notify();
             })
         })
         .detach_and_log_err(cx);
     }
 
-    pub fn select(&mut self, id: String, cx: &mut Context<Self>) {
+    pub fn select(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
         self.state.select(id.clone());
+        self.composer.update(cx, |composer, cx| {
+            composer.switch_to(Some(id.clone()), window, cx)
+        });
+        self.sync_thinking(window, cx);
         self.load_detail(id, cx);
         cx.notify();
     }
@@ -225,8 +252,8 @@ impl Root {
             .px(px(theme::SPACE_3))
             .cursor_pointer()
             .hover(move |s| s.bg(p.surface_2))
-            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                this.select(id.clone(), cx);
+            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                this.select(id.clone(), window, cx);
             }))
             .child(div().w(px(theme::SPACE_4)).text_color(color).child(glyph))
             .child(title)
@@ -300,6 +327,14 @@ impl Root {
                     .px(px(theme::SPACE_4))
                     .child(body),
             )
+            .child(
+                div().w_full().flex_none().flex().justify_center().child(
+                    div()
+                        .w_full()
+                        .max_w(px(theme::measure(pane_width) + 2.0 * theme::SPACE_4))
+                        .child(self.composer.clone()),
+                ),
+            )
     }
 }
 
@@ -338,7 +373,7 @@ impl Render for Root {
                     .bg(p.surface)
                     .text_size(px(theme::TEXT_XS))
                     .text_color(p.fg_faint)
-                    .child(format!("read-only · {}", self.daemon_note)),
+                    .child(self.daemon_note.clone()),
             )
     }
 }
@@ -461,12 +496,15 @@ mod tests {
     use super::*;
     use crate::state::tests::{conversation, detail, entry};
     use gpui::TestAppContext;
+    use gpui::{EntityInputHandler, VisualTestContext};
     use std::sync::Mutex;
     use townhall_core::model::{Conversation, ConversationDetail};
 
     struct Fake {
         list: Mutex<Vec<Conversation>>,
         details: Mutex<Vec<ConversationDetail>>,
+        sent: Mutex<Vec<(String, String)>>,
+        send_error: Mutex<Option<String>>,
     }
 
     impl Api for Fake {
@@ -483,6 +521,17 @@ mod tests {
                 .cloned()
                 .ok_or_else(|| format!("no conversation {id}"))
         }
+
+        fn send_message(&self, id: &str, text: &str) -> Result<ThreadEntry, String> {
+            if let Some(e) = self.send_error.lock().unwrap().clone() {
+                return Err(e);
+            }
+            self.sent
+                .lock()
+                .unwrap()
+                .push((id.to_string(), text.to_string()));
+            Ok(entry(99, text))
+        }
     }
 
     fn fake() -> Arc<Fake> {
@@ -497,7 +546,13 @@ mod tests {
                 detail("a", vec![entry(1, "on it")]),
                 detail("b", vec![entry(1, "done")]),
             ]),
+            sent: Mutex::new(Vec::new()),
+            send_error: Mutex::new(None),
         })
+    }
+
+    fn drafts() -> Drafts {
+        Drafts::open(tempfile::tempdir().unwrap().keep().as_path()).unwrap()
     }
 
     fn titles(rows: Vec<Row>) -> Vec<String> {
@@ -512,7 +567,35 @@ mod tests {
     }
 
     fn init(cx: &mut TestAppContext) {
-        cx.update(|cx| cx.set_global(Theme::new(theme::Mode::Dark)));
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            cx.set_global(Theme::new(theme::Mode::Dark));
+        });
+    }
+
+    fn open<'a>(
+        cx: &'a mut TestAppContext,
+        api: Arc<Fake>,
+        home: &std::path::Path,
+    ) -> (Entity<Root>, &'a mut VisualTestContext) {
+        let drafts = Drafts::open(home).unwrap();
+        let (root, vcx) =
+            cx.add_window_view(move |window, cx| Root::new(api, None, drafts, window, cx));
+        vcx.run_until_parked();
+        (root, vcx)
+    }
+
+    fn composer(root: &Entity<Root>, vcx: &mut VisualTestContext) -> Entity<Composer> {
+        root.read_with(vcx, |root, _| root.composer.clone())
+    }
+
+    fn text(composer: &Entity<Composer>, vcx: &mut VisualTestContext) -> String {
+        composer.read_with(vcx, |c, cx| c.text(cx))
+    }
+
+    fn select(root: &Entity<Root>, id: &str, vcx: &mut VisualTestContext) {
+        root.update_in(vcx, |root, window, cx| root.select(id.into(), window, cx));
+        vcx.run_until_parked();
     }
 
     #[gpui::test]
@@ -520,7 +603,8 @@ mod tests {
         init(cx);
         let (tx, rx) = async_channel::unbounded();
         let _keep = tx;
-        let (root, vcx) = cx.add_window_view(|_, cx| Root::new(fake(), Some(rx), cx));
+        let (root, vcx) =
+            cx.add_window_view(|window, cx| Root::new(fake(), Some(rx), drafts(), window, cx));
         vcx.run_until_parked();
         root.read_with(vcx, |root, _| {
             assert_eq!(titles(root.active_rows()), ["fix the build"]);
@@ -533,10 +617,10 @@ mod tests {
     #[gpui::test]
     fn selecting_a_row_loads_its_thread(cx: &mut TestAppContext) {
         init(cx);
-        let (root, vcx) = cx.add_window_view(|_, cx| Root::new(fake(), None, cx));
+        let (root, vcx) =
+            cx.add_window_view(|window, cx| Root::new(fake(), None, drafts(), window, cx));
         vcx.run_until_parked();
-        root.update(vcx, |root, cx| root.select("b".into(), cx));
-        vcx.run_until_parked();
+        select(&root, "b", vcx);
         root.read_with(vcx, |root, _| {
             assert!(root.older_rows()[0].selected);
             match &root.state().detail {
@@ -551,7 +635,8 @@ mod tests {
         init(cx);
         let api = fake();
         let (tx, rx) = async_channel::unbounded();
-        let (root, vcx) = cx.add_window_view(|_, cx| Root::new(api.clone(), Some(rx), cx));
+        let (root, vcx) =
+            cx.add_window_view(|window, cx| Root::new(api.clone(), Some(rx), drafts(), window, cx));
         vcx.run_until_parked();
 
         api.list.lock().unwrap().clear();
@@ -577,7 +662,8 @@ mod tests {
         init(cx);
         let api = fake();
         let (tx, rx) = async_channel::unbounded();
-        let (root, vcx) = cx.add_window_view(|_, cx| Root::new(api.clone(), Some(rx), cx));
+        let (root, vcx) =
+            cx.add_window_view(|window, cx| Root::new(api.clone(), Some(rx), drafts(), window, cx));
         vcx.run_until_parked();
 
         api.list.lock().unwrap().push(conversation(
@@ -611,8 +697,12 @@ mod tests {
             fn conversation(&self, _: &str) -> Result<ConversationDetail, String> {
                 Err("connection refused".into())
             }
+            fn send_message(&self, _: &str, _: &str) -> Result<ThreadEntry, String> {
+                Err("connection refused".into())
+            }
         }
-        let (root, vcx) = cx.add_window_view(|_, cx| Root::new(Arc::new(Down), None, cx));
+        let (root, vcx) =
+            cx.add_window_view(|window, cx| Root::new(Arc::new(Down), None, drafts(), window, cx));
         vcx.run_until_parked();
         root.read_with(vcx, |root, _| {
             assert_eq!(
@@ -621,5 +711,250 @@ mod tests {
             );
             assert!(root.active_rows().is_empty());
         });
+    }
+
+    fn fresh_home() -> tempfile::TempDir {
+        tempfile::tempdir().unwrap()
+    }
+
+    #[gpui::test]
+    fn enter_sends_the_trimmed_text_and_clears_the_composer(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        let composer = composer(&root, vcx);
+        vcx.simulate_input("  fix the build  ");
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert_eq!(
+            *api.sent.lock().unwrap(),
+            [("a".to_string(), "fix the build".to_string())]
+        );
+        assert_eq!(text(&composer, vcx), "");
+        assert_eq!(
+            composer.read_with(vcx, |c, _| c.error().map(String::from)),
+            None
+        );
+        assert_eq!(Drafts::open(home.path()).unwrap().get("a"), "");
+    }
+
+    #[gpui::test]
+    fn shift_enter_adds_a_line_and_does_not_send(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        let composer = composer(&root, vcx);
+        vcx.simulate_input("one");
+        vcx.simulate_keystrokes("shift-enter");
+        vcx.simulate_input("two");
+        vcx.run_until_parked();
+        assert_eq!(text(&composer, vcx), "one\ntwo");
+        assert!(api.sent.lock().unwrap().is_empty());
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert_eq!(api.sent.lock().unwrap()[0].1, "one\ntwo");
+    }
+
+    #[gpui::test]
+    fn an_empty_or_blank_message_is_not_sent(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        let composer = composer(&root, vcx);
+        assert!(!composer.read_with(vcx, |c, cx| c.can_send(cx)));
+        vcx.simulate_keystrokes("enter");
+        vcx.simulate_input("   ");
+        assert!(!composer.read_with(vcx, |c, cx| c.can_send(cx)));
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert!(api.sent.lock().unwrap().is_empty());
+        assert_eq!(text(&composer, vcx), "   ");
+    }
+
+    #[gpui::test]
+    fn the_composer_is_in_the_sending_state_until_the_daemon_answers(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        let composer = composer(&root, vcx);
+        vcx.simulate_input("go");
+        composer.update_in(vcx, |c, window, cx| c.submit(window, cx));
+        assert!(composer.read_with(vcx, |c, _| c.is_sending()));
+        assert!(!composer.read_with(vcx, |c, cx| c.can_send(cx)));
+        composer.update_in(vcx, |c, window, cx| c.submit(window, cx));
+        vcx.run_until_parked();
+        assert!(!composer.read_with(vcx, |c, _| c.is_sending()));
+        assert_eq!(api.sent.lock().unwrap().len(), 1);
+    }
+
+    #[gpui::test]
+    fn a_failed_send_shows_the_error_keeps_the_text_and_clears_on_edit(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        *api.send_error.lock().unwrap() = Some("daemon is down".into());
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        let composer = composer(&root, vcx);
+        vcx.simulate_input("hello");
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert_eq!(
+            composer.read_with(vcx, |c, _| c.error().map(String::from)),
+            Some("daemon is down".to_string())
+        );
+        assert_eq!(text(&composer, vcx), "hello");
+        assert!(!composer.read_with(vcx, |c, _| c.is_sending()));
+        assert!(composer.read_with(vcx, |c, cx| c.can_send(cx)));
+        vcx.simulate_input("!");
+        vcx.run_until_parked();
+        assert_eq!(
+            composer.read_with(vcx, |c, _| c.error().map(String::from)),
+            None
+        );
+    }
+
+    #[gpui::test]
+    fn nothing_is_sent_while_townhall_is_thinking(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        api.list.lock().unwrap()[0].status = ConversationStatus::Thinking;
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        let composer = composer(&root, vcx);
+        vcx.simulate_input("wait");
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert!(api.sent.lock().unwrap().is_empty());
+        assert!(!composer.read_with(vcx, |c, cx| c.can_send(cx)));
+        assert_eq!(text(&composer, vcx), "wait");
+    }
+
+    #[gpui::test]
+    fn a_draft_is_restored_when_switching_back_and_after_a_restart(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        {
+            let (root, vcx) = open(cx, api.clone(), home.path());
+            let composer = composer(&root, vcx);
+            vcx.simulate_input("half a thought");
+            select(&root, "b", vcx);
+            assert_eq!(text(&composer, vcx), "");
+            vcx.simulate_input("other");
+            select(&root, "a", vcx);
+            assert_eq!(text(&composer, vcx), "half a thought");
+            select(&root, "b", vcx);
+            assert_eq!(text(&composer, vcx), "other");
+        }
+        let (root, vcx) = open(cx, api, home.path());
+        let composer = composer(&root, vcx);
+        assert_eq!(text(&composer, vcx), "half a thought");
+        select(&root, "b", vcx);
+        assert_eq!(text(&composer, vcx), "other");
+    }
+
+    #[gpui::test]
+    fn a_sent_draft_is_not_restored(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api, home.path());
+        let composer = composer(&root, vcx);
+        vcx.simulate_input("sent");
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        select(&root, "b", vcx);
+        select(&root, "a", vcx);
+        assert_eq!(text(&composer, vcx), "");
+    }
+
+    #[gpui::test]
+    fn the_composer_grows_with_its_text_up_to_eight_lines(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, fake(), home.path());
+        let composer = composer(&root, vcx);
+        let input = composer.read_with(vcx, |c, _| c.input().clone());
+        let height = |vcx: &mut VisualTestContext| {
+            vcx.run_until_parked();
+            vcx.update(|window, _| window.refresh());
+            vcx.run_until_parked();
+            input.read_with(vcx, |i, _| f32::from(i.input_bounds().size.height))
+        };
+        let two = height(vcx);
+        let lines = |n: usize| {
+            (0..n)
+                .map(|i| format!("line {i}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        input.update_in(vcx, |i, window, cx| i.set_value(lines(5), window, cx));
+        let five = height(vcx);
+        input.update_in(vcx, |i, window, cx| i.set_value(lines(8), window, cx));
+        let eight = height(vcx);
+        input.update_in(vcx, |i, window, cx| i.set_value(lines(30), window, cx));
+        let thirty = height(vcx);
+        assert!(two > 0.0, "{two}");
+        assert!(five > two, "{five} {two}");
+        assert!(eight > five, "{eight} {five}");
+        assert_eq!(thirty, eight);
+    }
+
+    #[gpui::test]
+    fn ime_composition_marks_text_and_commits_it(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        let composer = composer(&root, vcx);
+        let input = composer.read_with(vcx, |c, _| c.input().clone());
+        input.update_in(vcx, |i, window, cx| {
+            i.replace_and_mark_text_in_range(None, "n", None, window, cx);
+            i.replace_and_mark_text_in_range(None, "ni", None, window, cx);
+        });
+        assert_eq!(text(&composer, vcx), "ni");
+        let marked = input.update_in(vcx, |i, window, cx| i.marked_text_range(window, cx));
+        assert_eq!(marked, Some(0..2));
+        input.update_in(vcx, |i, window, cx| {
+            i.replace_text_in_range(None, "你", window, cx);
+        });
+        assert_eq!(text(&composer, vcx), "你");
+        let marked = input.update_in(vcx, |i, window, cx| i.marked_text_range(window, cx));
+        assert_eq!(marked, None);
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert_eq!(api.sent.lock().unwrap()[0].1, "你");
+    }
+
+    #[gpui::test]
+    fn a_committed_composition_is_saved_as_the_draft(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, fake(), home.path());
+        let composer = composer(&root, vcx);
+        let input = composer.read_with(vcx, |c, _| c.input().clone());
+        input.update_in(vcx, |i, window, cx| {
+            i.replace_and_mark_text_in_range(None, "あ", None, window, cx);
+            i.replace_text_in_range(None, "愛", window, cx);
+        });
+        vcx.run_until_parked();
+        assert_eq!(Drafts::open(home.path()).unwrap().get("a"), "愛");
+    }
+
+    #[gpui::test]
+    fn pasted_text_lands_in_the_composer(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, fake(), home.path());
+        let composer = composer(&root, vcx);
+        vcx.write_to_clipboard(gpui::ClipboardItem::new_string("pasted\ntext".into()));
+        vcx.simulate_keystrokes("cmd-v");
+        vcx.run_until_parked();
+        assert_eq!(text(&composer, vcx), "pasted\ntext");
+        assert_eq!(Drafts::open(home.path()).unwrap().get("a"), "pasted\ntext");
     }
 }

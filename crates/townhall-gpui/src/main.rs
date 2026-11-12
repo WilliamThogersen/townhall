@@ -1,5 +1,7 @@
 mod client;
+mod composer;
 mod daemon;
+mod drafts;
 mod fonts;
 #[cfg(target_os = "macos")]
 mod measure;
@@ -98,6 +100,7 @@ fn main() {
         Some(dir) => Home::at(dir),
         None => Home::from_env().unwrap_or_else(|e| fail(format!("townhall home: {e}"))),
     };
+    let drafts_home = home.root().to_path_buf();
     let _log_guard = init_logging(&home);
     extend_path();
 
@@ -116,6 +119,7 @@ fn main() {
             (daemon.base_url(), Some(daemon), note)
         }
     };
+    let drafts = drafts::Drafts::open(&drafts_home).unwrap_or_else(|e| fail(e));
     let events = client::subscribe(&base).unwrap_or_else(|e| fail(e));
     let api = Arc::new(client::Client::new(base));
 
@@ -123,7 +127,10 @@ fn main() {
         if let Err(e) = fonts::register(cx) {
             fail(e);
         }
-        cx.set_global(theme::Theme::for_appearance(cx.window_appearance()));
+        gpui_component::init(cx);
+        let initial = theme::Theme::for_appearance(cx.window_appearance());
+        theme::apply_to_components(&initial, cx);
+        cx.set_global(initial);
         cx.on_window_closed(|cx, _| {
             if cx.windows().is_empty() {
                 cx.quit();
@@ -140,11 +147,16 @@ fn main() {
                 move |window, cx| {
                     window
                         .observe_window_appearance(|window, cx| {
-                            cx.set_global(theme::Theme::for_appearance(window.appearance()));
+                            let next = theme::Theme::for_appearance(window.appearance());
+                            theme::apply_to_components(&next, cx);
+                            cx.set_global(next);
                             window.refresh();
                         })
                         .detach();
-                    cx.new(|cx| view::Root::new(api, Some(events), cx).with_daemon_note(note))
+                    cx.new(|cx| {
+                        view::Root::new(api, Some(events), drafts, window, cx)
+                            .with_daemon_note(note)
+                    })
                 },
             )
             .unwrap_or_else(|e| fail(format!("cannot open the window: {e}")));

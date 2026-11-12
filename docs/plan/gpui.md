@@ -249,11 +249,54 @@ An earlier run before the `font-kit` fix drew no text and is not a valid number 
 ### Left for phase 0
 
 - Look at the window against the preview and fix the styling; light theme by eye.
-- Add `gpui-component =0.9.1` and prove the multiline composer with IME on macOS (Japanese, Chinese, dead keys) before phase 1 starts.
+- Prove the multiline composer with IME on macOS (Japanese, Chinese, dead keys) by hand: the checks are in the phase 1 section below.
 - Saved-repo validation as in `validate_repo`; persisting window state.
 - Component kit (button, kbd, status glyph, menu, banner, toast), key contexts.
 - Tray and notification proofs, signed bundled `.app`.
 - Idle budget script and the CI job on macOS with the Metal toolchain (not in this task).
+
+### Phase 1: composer
+
+`land-gpui-p0-shell` had not reached `main`, so `origin/townhall/land-gpui-p0-shell` was merged into this branch first.
+
+What runs (`composer.rs`, `drafts.rs`, `Client::send_message`):
+
+- `gpui-component =0.9.1` (pinned) builds against `gpui-pre =0.3.12` with the p0 feature set. It brings `gpui-base` and about 100 more crates (`Cargo.lock` grows by about 1,500 lines).
+- The composer is a `Textarea` (`TextareaState::new(..).auto_grow(2, 8).submit_on_enter(true)`) in a square box with the `›` sign, amber border and sign on focus, the key hint line `⏎ send · ⇧⏎ new line` and a `send` button. Palette, font and square corners are pushed into the gpui-component theme by `theme::apply_to_components`, so the component draws with the tokens.
+- Enter sends the trimmed text, Shift+Enter inserts a new line, Cmd+Enter also sends, as the web `onKeyDown` does (it only checks `shiftKey`). Blank text cannot be sent. While sending the input is read-only and the button says `sending…`. A failed send keeps the text and shows `error: <message>` in the hint line, in red; the next edit clears it.
+- The send is `POST /api/conversations/{id}/messages` with `{"text": ...}`, the endpoint `sendMessage` in `web/src/api/conversations.ts` uses. The reply and the sent message arrive through the events socket like every other entry; the composer does not insert anything itself.
+- Drafts live in `<townhall home>/drafts.json` (conversation id to text), written on every change through a temp file and a rename, removed when the text is empty or sent. They are restored when a conversation is selected and when the app starts. A corrupt file stops the app with a message naming the file.
+- Paste of text works through the component's default paste. Image paste and attachments are phase 2.
+
+Not matched yet from `web/src/composer/`: the message queue (while townhall is thinking the web composer queues Enter; here Enter does nothing and the placeholder says `townhall is thinking…`), `stop`, reply-to, Escape to blur, ArrowUp to pull the last queued message, plugin actions and the context bar. Enter with Ctrl or Alt on macOS sends on the web; here only Enter and Cmd+Enter are bound by the component.
+
+What gpui-component could not do, or did differently:
+
+- `submit_on_enter` leaves the `Enter` action to propagate and `PressEnter` is only an event. If the app reacts to `PressEnter`, a blocked Enter (blank text, thinking, send failed) still falls through to text input and adds a `\n`. The composer handles the `Enter` action on its own wrapper instead, which stops it. A test caught this.
+- The default caret blinks every 500 ms forever. See the numbers below.
+- No `Textarea` option for a maximum height other than `auto_grow(min, max)` rows, which is what is used; it scrolls inside after 8 rows (checked in a test through the input's measured height).
+- Its own tests are the only IME tests; there is no way to drive the macOS input method from `TestAppContext`.
+
+Idle numbers (same machine, release build, `--measure 60`, in-process daemon on `127.0.0.1:7791` or `7792`, empty scratch `--home`, composer focused at start-up):
+
+| Run | CPU (share of one core) | RSS |
+|-----|-------------------------|-----|
+| p0 shell, no composer (above) | 0.08% | 60.8 MB |
+| Composer focused, gpui-component default caret (500 ms blink, no timeout) | 0.74% | 68.5 MB |
+| Composer focused, caret blinks 500 ms and stops after 3 s without activity (`theme::apply_to_components`) | 0.11% | 67.7 MB |
+
+The default blink keeps the app redrawing twice a second and costs about 0.65% of a core, nine times the idle floor, so the caret now goes steady (visible) after 3 s without typing, focus or movement and the next keystroke restarts it. A test pins the policy. RSS grew about 7 MB with the component kit and the composer. Nobody looked at the window during the runs, so the look is unchecked by eye.
+
+IME status: what is automated is the `EntityInputHandler` path macOS drives, in `view.rs` tests: `replace_and_mark_text_in_range` sets marked text (`n`, `ni`, marked range `0..2`), `replace_text_in_range` commits it (`你`), the marked range clears, the committed text is saved as the draft and Enter then sends it. What is not checked: real input methods, the candidate window position and that Enter inside a composition commits instead of sending (macOS hands the key to the input method before any gpui action, so it should; the web code checks `isComposing` for the same reason). Manual checks to run on macOS before relying on it:
+
+1. Japanese (Hiragana): type `nihongo`. The text is underlined while composing. Space converts and shows candidates, Enter commits and does not send, a second Enter sends. Escape during composition cancels it and leaves the text before it.
+2. Chinese (Pinyin Simplified): type `nihao`, pick a candidate with a number key or Space, Enter on raw pinyin commits the letters and does not send. Shift toggles Chinese and English mid-line.
+3. Korean (2-Set): type `hangul`. Syllables recompose while typing and Backspace removes jamo first.
+4. Dead keys: with U.S. International (or Option-E on the U.S. layout) type `` ` `` then `e` for `è`, `´` then Space for a lone `´`, Option-E then `e` for `é`, Option-E then `x` for `´x`. No stray or doubled character, Backspace removes the whole accent.
+5. The candidate window sits at the caret, also on the third line of a multi-line message and when the composer has scrolled after 8 lines.
+6. Compose half a word, click another conversation, come back: no marked text is left behind and the draft holds only committed text.
+7. Shift+Enter in the middle of a composition does not insert a line before the composition is committed.
+8. Paste multi-line text with Cmd+V: it lands as is, the box grows up to 8 lines, the draft file has it.
 
 ## 11. Follow-ups
 
