@@ -53,7 +53,6 @@ fn rule_flag() -> String {
     format!("--append-system-prompt={FOREGROUND_RULE}")
 }
 
-/// `before`, the foreground rule, `after`, then the isolation flags.
 fn with_rule(before: &[&str], after: &[&str]) -> Vec<String> {
     before
         .iter()
