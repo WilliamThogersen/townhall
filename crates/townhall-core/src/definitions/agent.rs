@@ -142,8 +142,6 @@ pub struct AgentDef {
     pub env: BTreeMap<String, String>,
     #[serde(default)]
     pub plugins: Vec<String>,
-    /// Whether townhall merges the pull request of this type's task once every check is green.
-    /// Unset: only the type called `lander` does.
     #[serde(default)]
     pub merges_on_green: Option<bool>,
 }
