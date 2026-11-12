@@ -6,6 +6,9 @@ use gpui::{
 };
 use townhall_core::model::{AgentEvent, EntryBody, ThreadEntry};
 
+use crate::attachments::lightbox::Open;
+use crate::attachments::markers::strip_attachment_markers;
+use crate::attachments::thumbs;
 use crate::glyph::Glyph;
 use crate::markdown::{self, Align, Block, Inline, ListItem};
 use crate::selectable::SelectableText;
@@ -219,7 +222,15 @@ impl Thread {
         };
         let at = entry.at.as_str();
         match &entry.body {
-            EntryBody::You { text, reply_to, .. } => {
+            EntryBody::You {
+                text,
+                reply_to,
+                attachments,
+            } => {
+                let shared = thumbs::shared_in(attachments, &self.attachments);
+                let names: Vec<String> = shared.iter().map(|a| a.name.clone()).collect();
+                let stripped = strip_attachment_markers(text, &names);
+                let text = &stripped;
                 let mut col = div().flex().flex_col().gap(px(theme::SPACE_2));
                 if let Some(quote) = reply_to
                     .and_then(|id| self.entries.iter().find(|e| e.id == id))
@@ -235,6 +246,27 @@ impl Thread {
                 for inline in paragraphs(text) {
                     let key = keys.next();
                     col = col.child(self.text_block(key, &inline, t, cx));
+                }
+                if let Some(conversation) = self.conversation_id.clone() {
+                    let block = thumbs::Thumbs {
+                        conversation: &conversation,
+                        shared: &shared,
+                        collapse: true,
+                        border: p.line_control,
+                    };
+                    let images = block.images();
+                    let all = thumbs::lightbox_images(&conversation, &images, "you");
+                    let opens = cx.entity();
+                    for row in block.render(t, cx, |index| {
+                        let all = all.clone();
+                        let opens = opens.clone();
+                        Box::new(move |_, _, cx| {
+                            let images = all.clone();
+                            opens.update(cx, |_, cx| cx.emit(Open { images, index }))
+                        })
+                    }) {
+                        col = col.child(row);
+                    }
                 }
                 bubble(t, p.surface_2, p.accent, true, col.into_any_element(), at)
             }

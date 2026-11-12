@@ -21,6 +21,7 @@ pub const CONTEXT: &str = "Thread";
 pub struct Reply(pub String);
 
 impl gpui::EventEmitter<Reply> for Thread {}
+impl gpui::EventEmitter<crate::attachments::lightbox::Open> for Thread {}
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
@@ -35,6 +36,7 @@ pub struct Thread {
     pub(crate) conversation_id: Option<String>,
     pub(crate) entries: Vec<ThreadEntry>,
     pub(crate) tasks: Vec<Task>,
+    pub(crate) attachments: Vec<townhall_core::model::Attachment>,
     pub(crate) shown: Vec<(Item, Option<ThreadEntry>)>,
     pub(crate) list: ListState,
     pub(crate) selection: Option<Selection>,
@@ -55,6 +57,7 @@ impl Thread {
             conversation_id: None,
             entries: Vec::new(),
             tasks: Vec::new(),
+            attachments: Vec::new(),
             shown: Vec::new(),
             list,
             selection: None,
@@ -88,6 +91,7 @@ impl Thread {
         self.thinking = thinking;
         self.entries = entries;
         self.tasks = tasks;
+        self.attachments = detail.map(|d| d.attachments.clone()).unwrap_or_default();
         let shown: Vec<(Item, Option<ThreadEntry>)> =
             display_items(&self.entries, &self.tasks, thinking, ended)
                 .into_iter()

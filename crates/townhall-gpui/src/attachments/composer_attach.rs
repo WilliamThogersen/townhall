@@ -9,10 +9,10 @@ use gpui::{
 
 use super::{Composer, Mode};
 use crate::attachments::api::{AttachApi, Cancel};
-use crate::attachments::format::{extension_tag, format_size};
+use crate::attachments::format::format_size;
 use crate::attachments::images;
-use crate::attachments::lightbox::{LightboxImage, Source};
-use crate::attachments::ui::ghost_button;
+use crate::attachments::lightbox::{LightboxImage, Open, Source};
+use crate::attachments::ui::{file_card, ghost_button};
 use crate::attachments::uploads::{
     can_retry, done_attachment_ids, is_uploading, latest_error, new_upload, reduce, Action,
     PendingUpload, Status,
@@ -25,13 +25,7 @@ pub const ATTACH_HELP: &str = "⏎ send · ⇧⏎ new line · paste or drop imag
 
 const THUMB_W: f32 = 64.0;
 const THUMB_H: f32 = 48.0;
-const FILE_W: f32 = 220.0;
 const REMOVE: f32 = 16.0;
-
-pub struct Open {
-    pub images: Vec<LightboxImage>,
-    pub index: usize,
-}
 
 impl EventEmitter<Open> for Composer {}
 
@@ -61,10 +55,6 @@ impl Staging {
         self.api.clone()
     }
 
-    pub fn items(&self) -> &[PendingUpload] {
-        &self.items
-    }
-
     pub fn ids(&self) -> Vec<String> {
         done_attachment_ids(&self.items)
     }
@@ -90,16 +80,6 @@ impl Staging {
         self.cancels.clear();
         self.previews.clear();
         reduce(&mut self.items, Action::Cleared);
-    }
-}
-
-fn format_for(mime: &str) -> Option<ImageFormat> {
-    match mime {
-        "image/png" => Some(ImageFormat::Png),
-        "image/jpeg" => Some(ImageFormat::Jpeg),
-        "image/gif" => Some(ImageFormat::Gif),
-        "image/webp" => Some(ImageFormat::Webp),
-        _ => None,
     }
 }
 
@@ -173,7 +153,7 @@ impl Composer {
 
     #[cfg(test)]
     pub fn uploads(&self) -> &[PendingUpload] {
-        self.staging.items()
+        &self.staging.items
     }
 
     pub fn add_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
@@ -547,7 +527,6 @@ impl Composer {
     }
 
     fn file_chip(&self, t: &Theme, upload: &PendingUpload, cx: &mut Context<Self>) -> AnyElement {
-        let p = t.palette;
         let key = upload.key.clone();
         let failed = upload.status == Status::Failed;
         let detail = if upload.status == Status::Uploading {
@@ -555,46 +534,13 @@ impl Composer {
         } else {
             format_size(upload.meta.size)
         };
-        div()
+        file_card(t, &upload.meta.name, &detail, failed)
             .id(SharedString::from(format!("chip-{key}")))
             .group("chip")
             .debug_selector({
                 let key = key.clone();
                 move || format!("chip-{key}")
             })
-            .relative()
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap(px(theme::SPACE_2))
-            .w(px(FILE_W))
-            .max_w_full()
-            .h(px(THUMB_H))
-            .px(px(theme::SPACE_2))
-            .border(px(theme::BORDER))
-            .border_color(if failed { p.danger } else { p.line_strong })
-            .bg(p.surface_2)
-            .text_color(p.fg)
-            .text_size(px(theme::TEXT_SM))
-            .child(file_icon(p.fg_muted))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(div().truncate().child(upload.meta.name.clone()))
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(theme::TEXT_XS))
-                            .text_color(if failed { p.danger } else { p.fg_faint })
-                            .child(format!(
-                                "{} · {detail}",
-                                extension_tag(&upload.meta.name).to_uppercase()
-                            )),
-                    ),
-            )
             .child(self.remove_button(t, &key, cx))
             .into_any_element()
     }
@@ -619,36 +565,6 @@ impl Composer {
         }
         Some(row.into_any_element())
     }
-}
-
-pub fn file_icon(color: Rgba) -> impl IntoElement {
-    canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _| {
-            let origin = bounds.origin;
-            let at = |x: f32, y: f32| origin + gpui::point(px(x), px(y));
-            let mut outline = PathBuilder::stroke(px(1.0));
-            outline.move_to(at(1.5, 1.5));
-            outline.line_to(at(9.5, 1.5));
-            outline.line_to(at(14.5, 6.5));
-            outline.line_to(at(14.5, 18.5));
-            outline.line_to(at(1.5, 18.5));
-            outline.close();
-            if let Ok(path) = outline.build() {
-                window.paint_path(path, color);
-            }
-            let mut fold = PathBuilder::stroke(px(1.0));
-            fold.move_to(at(9.5, 1.5));
-            fold.line_to(at(9.5, 6.5));
-            fold.line_to(at(14.5, 6.5));
-            if let Ok(path) = fold.build() {
-                window.paint_path(path, color);
-            }
-        },
-    )
-    .flex_none()
-    .w(px(16.0))
-    .h(px(20.0))
 }
 
 #[cfg(test)]

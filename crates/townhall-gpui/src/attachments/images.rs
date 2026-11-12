@@ -62,6 +62,51 @@ pub fn size_of(cx: &App, image: &Image) -> Option<(u32, u32)> {
     Some((size.width.0 as u32, size.height.0 as u32))
 }
 
+pub fn download_path(name: &str) -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    let dir = std::path::PathBuf::from(home).join("Downloads");
+    let (stem, ext) = match name.rfind('.') {
+        Some(dot) if dot > 0 => (&name[..dot], &name[dot..]),
+        _ => (name, ""),
+    };
+    let mut path = dir.join(name);
+    let mut n = 1;
+    while path.exists() {
+        path = dir.join(format!("{stem} ({n}){ext}"));
+        n += 1;
+    }
+    Some(path)
+}
+
+pub fn save_attachment(cx: &mut App, conversation: &str, id: &str, name: &str) {
+    let Some(store) = cx.try_global::<Store>() else {
+        return;
+    };
+    let api = store.api.clone();
+    let (conversation, id, name) = (conversation.to_string(), id.to_string(), name.to_string());
+    cx.spawn(async move |cx| {
+        let saved = cx
+            .background_executor()
+            .spawn(async move {
+                let bytes = api.fetch(&conversation, &id)?;
+                let path = download_path(&name).ok_or_else(|| "no downloads folder".to_string())?;
+                std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+                Ok::<_, String>(path)
+            })
+            .await;
+        cx.update(|cx| match saved {
+            Ok(path) => cx.reveal_path(&path),
+            Err(e) => tracing::warn!(
+                target: "townhall::native",
+                event = "attachments.save_failed",
+                error = %e,
+                "cannot save the attachment"
+            ),
+        });
+    })
+    .detach();
+}
+
 pub fn slot(cx: &mut App, conversation: &str, id: &str, mime: &str) -> Slot {
     let key = (conversation.to_string(), id.to_string());
     let Some(store) = cx.try_global::<Store>() else {

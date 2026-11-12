@@ -13,7 +13,6 @@ use crate::theme::{self, Theme};
 
 #[path = "attachments/composer_attach.rs"]
 mod attach;
-pub use attach::{Open, Picked};
 
 const MIN_ROWS: usize = 2;
 const START_ROWS: usize = 3;

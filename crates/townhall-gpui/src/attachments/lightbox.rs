@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use gpui::{
@@ -51,6 +50,11 @@ pub struct LightboxImage {
     pub meta: String,
 }
 
+pub struct Open {
+    pub images: Vec<LightboxImage>,
+    pub index: usize,
+}
+
 pub struct Closed;
 
 impl EventEmitter<Closed> for Lightbox {}
@@ -87,22 +91,6 @@ pub fn meta_line(pixels: Option<(u32, u32)>, meta: &str) -> String {
         .copied()
         .collect::<Vec<_>>()
         .join(" · ")
-}
-
-fn download_path(name: &str) -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    let dir = PathBuf::from(home).join("Downloads");
-    let (stem, ext) = match name.rfind('.') {
-        Some(dot) if dot > 0 => (&name[..dot], &name[dot..]),
-        _ => (name, ""),
-    };
-    let mut path = dir.join(name);
-    let mut n = 1;
-    while path.exists() {
-        path = dir.join(format!("{stem} ({n}){ext}"));
-        n += 1;
-    }
-    Some(path)
 }
 
 impl Lightbox {
@@ -189,7 +177,7 @@ impl Lightbox {
         let name = self.current().map(|i| i.name.clone()).unwrap_or_default();
         let result = match self.resolved(cx) {
             None => Err("the image has not loaded".to_string()),
-            Some((image, _)) => download_path(&name)
+            Some((image, _)) => images::download_path(&name)
                 .ok_or_else(|| "no downloads folder".to_string())
                 .and_then(|path| {
                     std::fs::write(&path, &image.bytes)

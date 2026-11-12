@@ -3,9 +3,12 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use gpui::{
-    actions, div, prelude::*, px, AnyElement, Context, Entity, FontWeight, IntoElement,
-    MouseDownEvent, PathPromptOptions, Rgba, SharedString, Subscription, Window,
+    actions, div, prelude::*, px, AnyElement, Context, Entity, ExternalPaths, FontWeight,
+    IntoElement, MouseDownEvent, PathPromptOptions, Rgba, SharedString, Subscription, Window,
 };
+
+use crate::attachments::api::AttachApi;
+use crate::attachments::lightbox::{Closed, Lightbox, Open};
 use gpui_component::input::{InputEvent, InputState};
 use townhall_core::clock::unix_millis;
 use townhall_core::model::{ConversationStatus, ServerEvent};
@@ -96,6 +99,9 @@ pub struct Root {
     daemon_note: SharedString,
     _subscriptions: Vec<Subscription>,
     route: Option<String>,
+    lightbox: Option<Entity<Lightbox>>,
+    lightbox_closed: Option<Subscription>,
+    dropping: bool,
 }
 
 impl Root {
@@ -114,6 +120,8 @@ impl Root {
             cx.subscribe_in(&search, window, Self::on_search),
             cx.subscribe_in(&start, window, Self::on_started),
             cx.subscribe_in(&thread, window, Self::on_reply),
+            cx.subscribe_in(&thread, window, Self::on_open),
+            cx.subscribe_in(&composer, window, Self::on_open),
         ];
         let root = Self {
             api,
@@ -138,6 +146,9 @@ impl Root {
             daemon_note: SharedString::default(),
             _subscriptions: subscriptions,
             route: None,
+            lightbox: None,
+            lightbox_closed: None,
+            dropping: false,
         };
         root.composer
             .update(cx, |composer, cx| composer.focus(window, cx));
@@ -172,6 +183,59 @@ impl Root {
     pub fn with_route(mut self, id: Option<String>) -> Self {
         self.route = id;
         self
+    }
+
+    pub fn with_attachments(
+        self,
+        api: Arc<dyn AttachApi>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        crate::attachments::images::install(cx, api.clone());
+        self.composer
+            .update(cx, |composer, cx| composer.set_attach(api, window, cx));
+        self
+    }
+
+    fn on_open<T: 'static>(
+        &mut self,
+        _: &Entity<T>,
+        event: &Open,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let lightbox = cx.new(|cx| Lightbox::new(event.images.clone(), event.index, cx));
+        self.lightbox_closed = Some(cx.subscribe_in(
+            &lightbox,
+            window,
+            |this, _, _: &Closed, window, cx| this.close_lightbox(window, cx),
+        ));
+        lightbox.update(cx, |lightbox, cx| lightbox.focus(window, cx));
+        self.lightbox = Some(lightbox);
+        cx.notify();
+    }
+
+    pub fn close_lightbox(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.lightbox.take().is_none() {
+            return;
+        }
+        self.lightbox_closed = None;
+        self.composer
+            .update(cx, |composer, cx| composer.focus(window, cx));
+        cx.notify();
+    }
+
+    #[cfg(test)]
+    pub fn lightbox(&self) -> Option<&Entity<Lightbox>> {
+        self.lightbox.as_ref()
+    }
+
+    fn dropped(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
+        self.dropping = false;
+        let paths = paths.paths().to_vec();
+        self.composer
+            .update(cx, |composer, cx| composer.add_paths(paths, cx));
+        cx.notify();
     }
 
     pub fn with_prefs(mut self, prefs: Prefs) -> Self {
@@ -863,12 +927,24 @@ impl Root {
             Load::Failed(e) => note(t.status_error(), format!("error: {e}")).into_any_element(),
         };
         let measure = theme::measure(pane_width) + 2.0 * theme::SPACE_4;
+        let dragging = self.dropping && cx.has_active_drag();
         let center = div()
+            .relative()
             .flex_1()
             .min_w_0()
             .h_full()
             .flex()
             .flex_col()
+            .on_drag_move::<ExternalPaths>(cx.listener(|this, _, _, cx| {
+                if !this.dropping {
+                    this.dropping = true;
+                    cx.notify();
+                }
+            }))
+            .on_drop::<ExternalPaths>(
+                cx.listener(|this, paths: &ExternalPaths, _, cx| this.dropped(paths, cx)),
+            )
+            .when(dragging, |d| d.child(crate::attachments::ui::drop_zone(&t)))
             .child(header)
             .child(body)
             .child(
@@ -999,7 +1075,9 @@ impl Render for Root {
         });
         let main = self.main_screen(t, window, cx);
         let sidebar = self.sidebar(t, cx);
+        let lightbox = self.lightbox.clone();
         div()
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -1043,6 +1121,7 @@ impl Render for Root {
                     .text_color(p.fg_faint)
                     .child(self.daemon_note.clone()),
             )
+            .when_some(lightbox, |d, lightbox| d.child(lightbox))
     }
 }
 

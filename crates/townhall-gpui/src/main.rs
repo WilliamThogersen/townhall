@@ -1,5 +1,4 @@
 mod age;
-#[allow(dead_code)]
 mod attachments;
 mod client;
 mod composer;
@@ -176,6 +175,7 @@ fn main() {
     let drafts = drafts::Drafts::open(&drafts_home).unwrap_or_else(|e| fail(e));
     let prefs = prefs::Prefs::open(&drafts_home).unwrap_or_else(|e| fail(e));
     let events = client::subscribe(&base).unwrap_or_else(|e| fail(e));
+    let attach = Arc::new(attachments::api::Http::new(base.clone()));
     let api = Arc::new(client::Client::new(base));
 
     gpui_platform::application().run(move |cx: &mut App| {
@@ -185,6 +185,7 @@ fn main() {
         gpui_component::init(cx);
         thread::bind_keys(cx);
         view::bind_keys(cx);
+        attachments::lightbox::bind_keys(cx);
         let forced = scene.mode;
         let initial = match forced {
             Some(mode) => theme::Theme::new(mode),
@@ -218,6 +219,7 @@ fn main() {
                     }
                     cx.new(|cx| {
                         view::Root::new(api, Some(events), drafts, window, cx)
+                            .with_attachments(attach, window, cx)
                             .with_prefs(prefs)
                             .with_daemon_note(note)
                             .with_route(start)
