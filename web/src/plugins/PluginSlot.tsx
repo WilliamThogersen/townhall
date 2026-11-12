@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { connectEvents as realConnectEvents, type ConnectEvents } from "../api/events";
 import { listPluginUi } from "../api/plugins";
 import type { PluginUiEntry } from "../api/types";
@@ -104,7 +104,7 @@ function SlotFrame({ slot, entry, context, onInsert, services }: SlotFrameProps)
     [push, entry.plugin],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const timer = window.setTimeout(
       () => setPhase({ kind: "failed", why: "no hello within 5 s" }),
       HELLO_TIMEOUT_MS,
