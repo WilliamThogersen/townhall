@@ -91,7 +91,7 @@ fn build(row: Row) -> Result<Task> {
     })
 }
 
-fn select(conn: &Connection, filter: &str, args: &[&dyn ToSql]) -> Result<Vec<Task>> {
+pub(super) fn select(conn: &Connection, filter: &str, args: &[&dyn ToSql]) -> Result<Vec<Task>> {
     let sql = format!("select {COLUMNS} from tasks {filter} order by created_at, rowid");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt
@@ -223,7 +223,7 @@ pub(super) fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
          where name = ?1",
         params![t.name, clock::now_rfc3339()],
     )?;
-    Ok(())
+    super::unit_graph::sync_task(tx, t)
 }
 
 fn queued(conversation_id: &str, new: NewTask) -> Task {
@@ -261,6 +261,7 @@ impl Store {
             let after = check_new(&tx, &cid, &new)?;
             let task = queued(&cid, NewTask { after, ..new });
             insert(&tx, &task)?;
+            super::unit_graph::sync_task(&tx, &task)?;
             tx.execute(
                 "update conversations set updated_at = ?2 where id = ?1",
                 params![cid, task.created_at],

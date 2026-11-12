@@ -236,9 +236,27 @@ fn the_seeded_default_type_gains_ask_adviser_once() {
     let source = default_source(&conn).unwrap();
     assert_eq!(source.matches("ask_adviser").count(), 1, "{source}");
     assert!(
-        source.contains("  \"mcp__townhall__conversation_insights\",\n  \"mcp__townhall__search_history\",\n  \"mcp__townhall__read_conversation\",\n  \"mcp__townhall__ask_adviser\",\n  \"Read\","),
+        source.contains("  \"mcp__townhall__conversation_insights\",\n  \"mcp__townhall__search_history\",\n  \"mcp__townhall__read_conversation\",\n  \"mcp__townhall__history_graph\",\n  \"mcp__townhall__agent_stats\",\n  \"mcp__townhall__ask_adviser\",\n  \"Read\","),
         "{source}"
     );
+}
+
+#[test]
+fn the_seeded_default_type_gains_the_graph_tools_and_prompt_line_once() {
+    let mut conn = at(809);
+    let seeded = default_source(&conn).unwrap();
+    assert!(!seeded.contains("history_graph"), "{seeded}");
+    upgrade(&mut conn);
+    let source = default_source(&conn).unwrap();
+    assert_eq!(source.matches("mcp__townhall__history_graph").count(), 1);
+    assert_eq!(source.matches("mcp__townhall__agent_stats").count(), 1);
+    assert_eq!(source.matches("call history_graph").count(), 1, "{source}");
+    assert_eq!(source.matches("call agent_stats").count(), 1, "{source}");
+    let line = source.find("call history_graph").unwrap();
+    let landing = source.find("- landing finished work is one task").unwrap();
+    assert!(line < landing, "{source}");
+    upgrade(&mut conn);
+    assert_eq!(default_source(&conn).unwrap(), source);
 }
 
 #[test]

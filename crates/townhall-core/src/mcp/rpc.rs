@@ -255,6 +255,8 @@ mod tests {
                 "list_artifacts",
                 "search_history",
                 "read_conversation",
+                "history_graph",
+                "agent_stats",
                 "ask_adviser"
             ]
         );
@@ -271,6 +273,8 @@ mod tests {
                 "conversation_insights",
                 "search_history",
                 "read_conversation",
+                "history_graph",
+                "agent_stats",
                 "ask_adviser"
             ]
         );
@@ -335,6 +339,8 @@ mod tests {
                 "conversation_insights",
                 "search_history",
                 "read_conversation",
+                "history_graph",
+                "agent_stats",
                 "ask_adviser"
             ]
         );
