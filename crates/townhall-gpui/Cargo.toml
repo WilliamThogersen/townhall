@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "townhall-gpui"
+version = "0.2.0-alpha.1"
+edition = "2021"
+license = "MIT"
+description = "Spike: a native GPUI window that reads conversations from the townhall daemon"
+
+[dependencies]
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
+townhall-core = { path = "../townhall-core" }
+serde = { version = "1", features = ["derive"] }
+ureq = { version = "3", default-features = false, features = ["json"] }
+libc = "0.2"
