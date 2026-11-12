@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/townhall-core", "crates/townhall-daemon", "src-tauri"]
+exclude = ["crates/townhall-gpui"]
 
 [workspace.package]
 version = "0.2.0-alpha.1"
