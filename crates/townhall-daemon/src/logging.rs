@@ -7,7 +7,7 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex, Once, OnceLock};
 use std::time::SystemTime;
 
 use serde_json::Value;
@@ -273,6 +273,8 @@ impl<'a> MakeWriter<'a> for Capture {
 /// what it captures. Events from other threads are not seen, so use a current-thread
 /// runtime when the code under test spawns tasks. Keep the guard alive for the test.
 pub fn test_capture() -> (Capture, tracing::subscriber::DefaultGuard) {
+    static ANCHOR: OnceLock<tracing::Dispatch> = OnceLock::new();
+    ANCHOR.get_or_init(|| tracing::Dispatch::new(tracing_subscriber::registry()));
     let capture = Capture::default();
     let subscriber = tracing_subscriber::registry().with(json_layer(capture.clone()));
     let guard = tracing::subscriber::set_default(subscriber);
