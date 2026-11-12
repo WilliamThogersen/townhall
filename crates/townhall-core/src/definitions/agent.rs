@@ -142,6 +142,10 @@ pub struct AgentDef {
     pub env: BTreeMap<String, String>,
     #[serde(default)]
     pub plugins: Vec<String>,
+    /// Whether townhall merges the pull request of this type's task once every check is green.
+    /// Unset: only the type called `lander` does.
+    #[serde(default)]
+    pub merges_on_green: Option<bool>,
 }
 
 /// Parse an agent definition, keeping `source` as written.
@@ -258,5 +262,29 @@ impl AgentDef {
             })
             .cloned()
             .collect()
+    }
+
+    pub fn merges_on_green(&self) -> bool {
+        self.merges_on_green
+            .unwrap_or_else(|| self.name.eq_ignore_ascii_case("lander"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn def(source: &str) -> AgentDef {
+        parse_agent(source).unwrap().def
+    }
+
+    #[test]
+    fn only_the_lander_merges_on_green_unless_the_type_says_so() {
+        assert!(def("name = \"lander\"\nadapter = \"claude\"\n").merges_on_green());
+        assert!(!def("name = \"builder\"\nadapter = \"claude\"\n").merges_on_green());
+        let on = "name = \"shipper\"\nadapter = \"claude\"\nmerges_on_green = true\n";
+        assert!(def(on).merges_on_green());
+        let off = "name = \"lander\"\nadapter = \"claude\"\nmerges_on_green = false\n";
+        assert!(!def(off).merges_on_green());
     }
 }

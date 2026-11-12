@@ -54,6 +54,7 @@ async fn seed(m: &Mcp) {
                     number: 7,
                     url: Some("https://git.example/shop/pull/7".into()),
                     checks: Checks::Pending,
+                    merge_sha: None,
                 }),
                 ..t
             })

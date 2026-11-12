@@ -167,6 +167,7 @@ async fn update_task_keeps_identity_and_stores_the_pr() {
         number: 41,
         url: Some("https://x/41".into()),
         checks: Checks::Failed,
+        merge_sha: None,
     };
     let pr_copy = pr.clone();
     let next = env

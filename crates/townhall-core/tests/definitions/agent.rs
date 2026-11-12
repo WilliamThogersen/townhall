@@ -244,6 +244,7 @@ fn launch_fields_drop_empty_text() {
         avatar: None,
         env: Default::default(),
         plugins: Vec::new(),
+        merges_on_green: None,
     };
     let fields = def.launch_fields();
     assert_eq!(fields.model, None);

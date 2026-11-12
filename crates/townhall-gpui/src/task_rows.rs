@@ -245,6 +245,7 @@ mod tests {
             number: 41,
             url: Some("https://git.test/pr/41".into()),
             checks,
+            merge_sha: None,
         }
     }
 

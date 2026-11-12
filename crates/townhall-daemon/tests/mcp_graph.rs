@@ -52,6 +52,7 @@ async fn seed(m: &Mcp) {
                     number: 4,
                     url: None,
                     checks: Checks::Passed,
+                    merge_sha: None,
                 }),
                 ..t
             })

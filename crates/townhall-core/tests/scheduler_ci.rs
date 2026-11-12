@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use townhall_core::model::{Checks, Pr, SettingKey, Task, TaskState};
+use townhall_core::model::{Checks, NewTask, Pr, SettingKey, Task, TaskState};
 use townhall_core::scheduler::run_once;
 use townhall_core::Pacing;
 
@@ -26,6 +26,12 @@ here="$(dirname "$0")/tasks"
 echo "$@ GH_TOKEN=$GH_TOKEN" >> "$here/$task.log"
 if [ "$1 $2" = "auth token" ]; then echo "tok-$4"; exit 0; fi
 if [ "$1 $2" = "pr checks" ]; then cat "$here/$task.json"; exit 0; fi
+case "$*" in
+  *mergeCommit*) echo "feedface"; exit 0;;
+  "pr view"*) if [ -f "$here/$task.view" ]; then cat "$here/$task.view"; else echo '{"headRefOid":"abc123","mergeable":"MERGEABLE"}'; fi; exit 0;;
+  "api "*) if [ -f "$here/$task.behind" ]; then cat "$here/$task.behind"; else echo 0; fi; exit 0;;
+  "pr merge"*) exit 0;;
+esac
 exit 1
 "#;
         std::fs::write(&gh, script).unwrap();
@@ -48,7 +54,24 @@ fn asked(task: &str) -> Vec<String> {
         .collect()
 }
 
+fn merges(task: &str) -> Vec<String> {
+    let log = gh_dir().join("tasks").join(format!("{task}.log"));
+    let text = std::fs::read_to_string(log).unwrap_or_default();
+    text.lines()
+        .filter(|l| l.starts_with("pr merge"))
+        .map(str::to_string)
+        .collect()
+}
+
+fn says(task: &str, file: &str, text: &str) {
+    std::fs::write(gh_dir().join("tasks").join(format!("{task}.{file}")), text).unwrap();
+}
+
 async fn lander(s: &Sched, json: &str) -> String {
+    landing(s, json, "plain").await
+}
+
+async fn landing(s: &Sched, json: &str, agent: &str) -> String {
     gh_dir();
     git(
         &s.repo,
@@ -66,13 +89,25 @@ async fn lander(s: &Sched, json: &str) -> String {
     });
     let name = unique("lander");
     reports(&name, json);
-    s.create(&name, &[]).await;
+    if agent != "plain" {
+        let source = format!("name = \"{agent}\"\nadapter = \"claude\"\n");
+        s.store().save_agent_type(&source).await.unwrap();
+    }
+    let new = NewTask {
+        agent: agent.into(),
+        ..s.new_task(&name, &[])
+    };
+    s.store()
+        .create_task(&s.conversation, new)
+        .await
+        .unwrap();
     run_once(s.ctx()).await.unwrap();
     assert_eq!(s.state(&name).await, TaskState::Working);
     let pr = Pr {
         number: 7,
         url: Some("https://github.com/acme/shop/pull/7".into()),
         checks: Checks::Pending,
+        merge_sha: None,
     };
     let change = move |t: Task| Ok(Task { pr: Some(pr), ..t });
     s.store().update_task(&name, change).await.unwrap();
@@ -327,4 +362,109 @@ async fn checks_that_stay_pending_past_the_timeout_need_you_with_their_states() 
     );
     assert!(why.contains("#7"), "{why}");
     assert!(s.store().handoffs(&name).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_lander_whose_checks_are_green_is_merged_by_the_daemon() {
+    let s = Sched::new().await;
+    let name = landing(&s, GREEN, "lander").await;
+    let before = session(&s, &name).await;
+    let task = until(&s, &name, |t| t.state == TaskState::Merged).await;
+    let pr = task.pr.unwrap();
+    assert_eq!(pr.merge_sha.as_deref(), Some("feedface"));
+    assert_eq!(pr.checks, Checks::Passed);
+    assert_eq!(merges(&name).len(), 1, "{:?}", merges(&name));
+    let merge = &merges(&name)[0];
+    for needle in ["pr merge 7", "--merge", "--match-head-commit abc123", "GH_TOKEN="] {
+        assert!(merge.contains(needle), "{needle}: {merge}");
+    }
+    assert!(!merge.contains("--auto") && !merge.contains("--squash"), "{merge}");
+    assert_eq!(session(&s, &name).await, before, "no new agent run");
+    assert!(s.store().handoffs(&name).await.unwrap().is_empty());
+    let told = heard(&s).await;
+    assert!(
+        told.iter()
+            .any(|t| t.contains(&name) && t.contains("merged") && t.contains("feedface")),
+        "{told:?}"
+    );
+    passes(&s, 3).await;
+    assert_eq!(merges(&name).len(), 1);
+}
+
+#[tokio::test]
+async fn a_lander_with_pending_checks_is_never_merged() {
+    let s = Sched::new().await;
+    let name = landing(&s, PENDING, "lander").await;
+    until(&s, &name, |t| t.state == TaskState::InCi).await;
+    passes(&s, 4).await;
+    assert_eq!(s.state(&name).await, TaskState::InCi);
+    assert!(merges(&name).is_empty());
+}
+
+#[tokio::test]
+async fn a_lander_waits_in_ci_and_is_merged_once_the_checks_turn_green() {
+    let s = Sched::new().await;
+    let name = landing(&s, PENDING, "lander").await;
+    until(&s, &name, |t| t.state == TaskState::InCi).await;
+    reports(&name, GREEN);
+    let task = until(&s, &name, |t| t.state == TaskState::Merged).await;
+    assert_eq!(task.pr.unwrap().merge_sha.as_deref(), Some("feedface"));
+    assert!(s.store().handoffs(&name).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_lander_with_a_failed_check_is_relaunched_with_its_name_and_not_merged() {
+    let s = Sched::new().await;
+    let name = landing(&s, RED, "lander").await;
+    let before = session(&s, &name).await;
+    let started = relaunches(&s, &name).await;
+    assert_eq!(started, std::slice::from_ref(&name));
+    assert_ne!(session(&s, &name).await, before);
+    let brief = std::fs::read_to_string(s.brief(&name)).unwrap();
+    assert!(brief.contains("build: FAILURE"), "{brief}");
+    assert!(merges(&name).is_empty());
+    assert_eq!(s.store().handoffs(&name).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_lander_behind_its_base_is_relaunched_and_not_merged() {
+    let s = Sched::new().await;
+    let name = landing(&s, GREEN, "lander").await;
+    says(&name, "behind", "3\n");
+    relaunches(&s, &name).await;
+    let brief = std::fs::read_to_string(s.brief(&name)).unwrap();
+    assert!(brief.contains("behind") && brief.contains("main"), "{brief}");
+    assert!(merges(&name).is_empty());
+    assert_ne!(s.state(&name).await, TaskState::Merged);
+}
+
+#[tokio::test]
+async fn a_lander_whose_pr_conflicts_is_relaunched_and_not_merged() {
+    let s = Sched::new().await;
+    let name = landing(&s, GREEN, "lander").await;
+    says(&name, "view", r#"{"headRefOid":"abc123","mergeable":"CONFLICTING"}"#);
+    relaunches(&s, &name).await;
+    assert!(merges(&name).is_empty());
+}
+
+#[tokio::test]
+async fn a_task_of_another_type_with_green_checks_is_not_merged_by_the_daemon() {
+    let s = Sched::new().await;
+    let name = lander(&s, GREEN).await;
+    until(&s, &name, |t| {
+        t.pr.as_ref().is_some_and(|p| p.checks == Checks::Passed)
+    })
+    .await;
+    passes(&s, 3).await;
+    assert_eq!(s.state(&name).await, TaskState::Ended);
+    assert!(merges(&name).is_empty());
+}
+
+#[tokio::test]
+async fn a_type_can_opt_in_to_merging_on_green_by_its_flag() {
+    let s = Sched::new().await;
+    let source = "name = \"shipper\"\nadapter = \"claude\"\nmerges_on_green = true\n";
+    s.store().save_agent_type(source).await.unwrap();
+    let name = landing(&s, GREEN, "shipper").await;
+    until(&s, &name, |t| t.state == TaskState::Merged).await;
 }

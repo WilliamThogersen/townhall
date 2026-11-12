@@ -129,6 +129,7 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
                     number,
                     url: Some(url.clone()),
                     checks: Checks::Pending,
+                    merge_sha: None,
                 };
                 let change = move |t: Task| Ok(Task { pr: Some(pr), ..t });
                 store.update_task(&task.name, change).await.map_err(text)?;

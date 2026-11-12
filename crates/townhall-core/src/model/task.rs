@@ -33,6 +33,9 @@ pub struct Pr {
     pub number: u64,
     pub url: Option<String>,
     pub checks: Checks,
+    /// The commit the pull request was merged as, set when townhall merged it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_sha: Option<String>,
 }
 
 /// Retries a task with a check gets when it names no `maxRetries`.
@@ -220,6 +223,7 @@ mod tests {
                 number: 41,
                 url: None,
                 checks: Checks::Failed,
+                merge_sha: None,
             }),
             agent: "builder".into(),
             blocked: None,
