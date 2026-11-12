@@ -1,20 +1,33 @@
 # Where idle CPU and RAM go in the desktop app
 
-Status: partly measured. Read "What was and was not measured" first.
+Status: idle start view measured for all four processes; the other scenarios need clicking and are not measured. Read "What was and was not measured" first.
 
 The report that started this: about 25% CPU and about 500 MB RAM while the app is "idle" (macOS, user's own measurement, not reproduced here).
+
+Headline: on the idle start view the whole app is about 1.3% of one core and about 116 MB across the four processes. That does not reproduce 25% and 500 MB. Whatever produces the user's numbers is not present on the start view, so it is in the scenarios that need agents, conversations or terminals.
 
 ## What was and was not measured
 
 | Item | State |
 | --- | --- |
 | townhall-daemon alone, empty home, release build | Measured (below) |
-| Main process (src-tauri shell), WebContent, GPU, Networking in the four GUI scenarios | Not measured |
+| Main process, WebContent, GPU, Networking, idle start view, 60 s, release build | Measured (below) |
+| `sample` of main and WebContent, 10 s each, idle start view | Measured (below) |
+| One conversation open, agent terminal visible | Not measured: needs clicking |
+| Window hidden to tray | Not measured: no flag or deep link hides the window; it only hides on close (`lib.rs:85`), which needs clicking |
 | Timer, poll and request counts | Counted from the source, not from a running app |
-| Re-renders per second | Not measured, derived from timers and poll rates |
+| Re-renders per second | Not measured; the WebContent sample shows about 1.4 rendering updates per second on the start view |
 | Every CPU and RAM saving in the cause list | Estimate, not measurement |
 
-Why the GUI rows are empty: the agent that wrote this had no `ps`, `top`, `sample` or `xctrace`, and could not drive a GUI (open conversations, show a terminal, minimise the window). A release Tauri build would have produced nothing usable without those, so it was not built. The script under "How to measure the GUI scenarios" fills the table in about ten minutes. Until then the ranking below is a ranking by evidence from the code, not by measured cost.
+## How the GUI numbers were taken
+
+- Build: `npm --prefix web ci`, then `npm run tauri -- build --bundles app` (release). `cargo tauri` is not installed; the repo's `@tauri-apps/cli` is used through `npm run tauri`.
+- Launch: `open -n --env TOWNHALL_HOME=<empty scratch dir> .../Townhall.app`.
+- Isolation was not possible for the port. `127.0.0.1:7777` is hardcoded (`src-tauri/src/daemon.rs:15`) and a dev townhall-app already held it, so the measured app ran in external mode: it adopted that daemon and did not run one in-process. The isolated `TOWNHALL_HOME` kept the app's own store and settings away from the real ones. The webview talked to the existing daemon on 7777 read-only (first-run view, nothing clicked). The main-process number therefore excludes the in-process daemon; add the daemon floor below (about 0.02% and 23 MB) for the embedded case.
+- Processes: main pid from `pgrep -fl` on the bundle path. The WebKit GPU, Networking and WebContent helpers were the three new `com.apple.WebKit.*` pids that appeared at launch (other apps' WebKit helpers were already running and were left alone). Only those four pids were sampled and only the app's main pid was terminated at the end.
+- CPU and RSS: `top -l 13 -s 5 -stats pid,command,cpu,rsize,threads,idlew -o cpu -n 100`, filtered to the four pids, about 60 s after a 20 s settle. CPU is percent of one core per 5 s interval.
+- Stacks: `sample <pid> 10` on main and on WebContent, 1 ms interval.
+- The window was not looked at; the view was the first-run view (`no_repo_folder` in `commands.rs`), assumed from the empty isolated settings.
 
 ## Measured: the daemon alone
 
@@ -28,17 +41,35 @@ Method: `cargo build --release -p townhall-daemon`, then a python3 harness spawn
 
 Idle floor of the daemon with nothing to do: about 0.02% of one core and about 23 MB. This is a floor: no agents, no tmux server, no open sockets, no tasks. Everything below that the daemon does with agents is not covered by this number. Peak RSS of the daemon is also part of the src-tauri process in the app, because the daemon runs in-process there.
 
-## Table to fill: per process and scenario
+## Per process and scenario
 
-CPU is percent of one core averaged over 60 s, RSS in MB. Fill from the script below.
+CPU is percent of one core, RSS in MB. Idle start view: 11 five-second intervals, mean CPU and typical RSS. The twelfth interval is excluded and shown below.
 
 | Scenario | Main (townhall-app) | WebContent | GPU | Networking |
 | --- | --- | --- | --- | --- |
-| No conversation open | not measured | not measured | not measured | not measured |
-| One conversation open | not measured | not measured | not measured | not measured |
-| Agent terminal visible | not measured | not measured | not measured | not measured |
-| Window hidden to tray | not measured | not measured | not measured | not measured |
+| No conversation open (idle start view, measured) | 0.12% / 36 MB | 0.42% / 51 to 53 MB | 0.23% / 17 to 20 MB | 0.53% / 8.4 MB |
+| One conversation open | needs clicking | needs clicking | needs clicking | needs clicking |
+| Agent terminal visible | needs clicking | needs clicking | needs clicking | needs clicking |
+| Window hidden to tray | needs clicking | needs clicking | needs clicking | needs clicking |
 | Daemon alone, empty home | 0.02% / 23 MB (measured) | n/a | n/a | n/a |
+
+Per-interval ranges: main 0.1 to 0.3%, WebContent 0.3 to 0.6%, GPU 0.2 to 0.3%, Networking 0.3 to 0.7%. Sum of the four: about 1.3% of one core and about 116 MB.
+
+The last interval was different: WebContent 2.2% and 69 MB, GPU 0.7% and 121 MB, main 0.4%. It coincided with the end of the run and nothing was done to the app; cause unknown, not reproduced, not included in the means. It shows the GPU process can briefly reach 100+ MB.
+
+### Hot stacks from `sample` (10 s, idle start view)
+
+WebContent main thread, 8855 samples:
+- 8820 (99.6%) idle in the run loop (`mach_msg`). 35 samples (0.4%, matching `top`) did any work.
+- 21 samples in WebCore timers: 14 in `RemoteLayerTreeDrawingArea::updateRendering` (layout then paint: `RenderBlock::paint`, `RenderFlexibleBox::paintChildren`, `RenderLayer::paintLayer`), 4 in `WindowEventLoop` running a JS event listener, 2 in a `DOMTimer` whose callback calls `fetch` (a poll), 1 in backing-store volatility marking. 12 further samples in a mutex unlock.
+- No sample in a JS spinner tick or in xterm: no terminal and no spinner is mounted on this view.
+- All other threads (JSC heap helpers, JIT worklist, scavenger) idle.
+
+Main process, 8010 samples per thread:
+- Main thread: 8008 idle in the AppKit run loop; about 25 samples in `CA::Layer::commit_if_needed` (Core Animation commits).
+- 12 `tokio-rt-worker` threads, all parked in `kevent` or `park_condvar`; about 12 samples of work in total across them.
+- `CVDisplayLink` threads (3) waiting; one display-refresh callback woke the run loop once. `tracing-appender`, `Log work queue`, `WebCore: Scrolling` idle.
+- Nothing in the app's own code shows as hot.
 
 ## Counted from the source: timers, polls and request rates
 
@@ -77,44 +108,44 @@ The Tauri shell itself (src-tauri/src) has no timers; only the in-process daemon
 
 ## Ranked causes
 
-Ranking is by how much steady, avoidable work the code does while nothing happens, weighted by how often that work is on. Each saving is an estimate to be checked against the measured table.
+Ranking is by evidence. The idle start view was measured and samples taken; the scenarios that carry the user's 25% and 500 MB (conversation open, agent terminal visible) were not reachable without clicking, so causes that only exist there stay ranked by code evidence and are marked unconfirmed. Each saving is an estimate unless stated.
 
-### Fixable in the current Tauri app
+### Confirmed by the samples (idle start view)
 
-1. **The spinner clock ticks at 12.5 Hz and runs whenever any working spinner exists.** `ui/Spinner.tsx` runs one `setInterval(tick, 80)` and each tick notifies every Spinner through `useSyncExternalStore`. Spinners appear in the sidebar status glyph, the conversation header, thread lines, span rows, buttons and the pane head, so any agent that is "working" keeps it on, and so does an agent that sits at a prompt while a task is running. It does not pause on `visibilitychange`. Evidence: source (Spinner.tsx:5, 27). Fix: draw the spinner with a CSS `steps()` animation on a pseudo-element (no JS, no React), or at minimum tick at 8 to 10 Hz and stop when the document is hidden. Expected saving: the largest single idle item in the WebContent process while a spinner shows, estimated 3 to 8 points of one core; all of it when nothing is spinning.
-2. **Mounted terminals do continuous work.** `agents/Terminal.tsx` uses xterm's DOM renderer (no WebGL or canvas addon), `cursorBlink: true` and `scrollback: 5000`. Each terminal is a PTY running `tmux attach-session` over a websocket (`routes/attach.rs`), so a live Claude TUI that animates its own spinner or status line writes into the DOM several times a second even when the user is doing nothing. Hidden panes keep their terminal and connection unless the component unmounts (not confirmed per view; check). Evidence: source (Terminal.tsx:46 to 55). Fix: turn cursor blink off when the terminal is not focused, disconnect and dispose terminals that are not visible (reattach on show), lower scrollback to 1000 to 2000, use the WebGL addon for the visible one. Expected saving: 3 to 10 points of WebContent CPU and tens of MB per retained terminal in the "agent terminal visible" scenario.
-3. **Polling that ignores visibility and always re-renders.** The pollers in the table above run on fixed intervals and only `SystemStats` stops when the window is hidden. `data/useLoad.ts` calls `setSnapshot` with a fresh object and fresh `data` on every success, so every poll re-renders its consumers and rebuilds downstream arrays even if the response is identical. An event websocket already exists (`api/events.ts`, `eventsLink.ts`). Evidence: source (useLoad.ts:34, useAgents.ts:38, useSteps.ts:23). Fix: skip `setState` when the new JSON equals the old, pause pollers on `visibilitychange`, merge the duplicate agent polls (3 s `useAgents` plus 10 s `eventsLink`), drive steps, runs and artifacts from events with a slow safety poll. Expected saving: 1 to 3 points of WebContent CPU, up to about 1.75 requests per second removed from the daemon and Networking process, fewer allocations.
-4. **Daemon passes that run every 1.5 s and 2 s regardless of activity.** The watcher spawns a tmux subprocess and diffs all agents; the scheduler runs a full pass (SQLite read of all tasks, pipeline, merge detection that may call git). The measured floor (0.02%) shows this is negligible with no agents; with agents it is not measured. Fix: back off to 5 to 10 s when no agent is working and no task is active, wake on events, cache `merged::detect`. Expected saving: under 1 point of CPU in the main process, plus fewer subprocess spawns and wakeups (battery).
-5. **`GET /api/system` rebuilds the disk list on every call** (`system.rs`: `Disks::new_with_refreshed_list`) and the key bar shows it every 5 s. Fix: refresh only the used disk, or poll every 10 to 30 s. Expected saving: well under 1 point; listed because it is the only polled endpoint that touches the OS each time.
-6. **Plugin iframes.** `plugins/PluginFrame.tsx` mounts an iframe per plugin slot; each iframe is its own JS context. Not measured; count iframes in the running app before acting. Fix: mount on demand. Expected saving: tens of MB each if they are always mounted.
+1. **Polling and the render updates it triggers.** The WebContent main thread was busy 0.4% of the time; of 21 timer samples, 14 were `updateRendering` (layout and paint of block and flex boxes), 4 a JS event listener and 2 a `DOMTimer` callback calling `fetch`. About 1.4 rendering updates per second, in line with the poll periods in the table below, not a 12.5 Hz clock. Networking is the busiest helper relative to its size (0.53%), which is the request traffic. Evidence: sample. Fix as before: skip `setState` on identical JSON (`data/useLoad.ts:34`, `useAgents.ts:38`, `useSteps.ts:23`), pause pollers on `visibilitychange`, merge the duplicate agent polls, drive from events. Corrected estimate: the whole WebContent process costs 0.42% here, so the saving on the start view is at most about 0.4 points of WebContent plus part of the 0.5 in Networking, not the earlier 1 to 3 points. It matters more with more views mounted (more pollers, a bigger DOM to lay out per update; up to about 1.75 requests per second when every poller is mounted).
+
+### Not reached by the measurement: ranked by code, unconfirmed
+
+2. **Mounted terminals do continuous work.** `agents/Terminal.tsx` uses xterm's DOM renderer (no WebGL or canvas addon), `cursorBlink: true` and `scrollback: 5000`. Each terminal is a PTY running `tmux attach-session` over a websocket (`routes/attach.rs`), so a live Claude TUI that animates writes into the DOM several times a second even when the user is doing nothing. Hidden panes keep their terminal and connection unless the component unmounts (not confirmed per view). Evidence: source (Terminal.tsx:46 to 55). Not on the start view, so not in any sample. It is now the first suspect for the gap between 1.3% measured and 25% reported, because it is the only listed item that scales with live agent output. Fix: cursor blink off when not focused, dispose terminals that are not visible, scrollback 1000 to 2000, WebGL addon for the visible one. Estimate 3 to 10 points of WebContent and tens of MB per retained terminal (unmeasured).
+3. **The spinner clock at 12.5 Hz.** `ui/Spinner.tsx` runs one `setInterval(tick, 80)` that notifies every Spinner through `useSyncExternalStore` while any Spinner is mounted; it does not pause on `visibilitychange` (Spinner.tsx:5, 27). No spinner is mounted on the start view and the sample shows no 80 ms timer, so this was not exercised; the 3 to 8 points estimate is unconfirmed and was ranked first before the measurement. With the whole WebContent at 0.4% for about 1.4 updates per second, 12.5 notifies plus layout per second would plausibly cost several times that, but that is arithmetic, not a measurement. Fix: CSS `steps()` animation, or 8 to 10 Hz and stop when hidden.
+4. **Daemon passes every 1.5 s and 2 s.** The main process was idle in this run (12 tokio workers parked, about 12 work samples in 10 s, 0.12%), but the daemon ran in another process (external mode), so this says nothing about those passes. The daemon floor (0.02%, 23 MB) holds with no agents; with agents it is not measured. Fix: back off to 5 to 10 s when nothing is active, wake on events, cache `merged::detect`. Estimate under 1 point.
+5. **`GET /api/system` rebuilds the disk list on every call** (`system.rs`: `Disks::new_with_refreshed_list`), every 5 s. Well under 1 point; the only polled endpoint that touches the OS each time. Unmeasured.
+6. **Plugin iframes.** `plugins/PluginFrame.tsx` mounts an iframe per plugin slot; each is its own JS context. Not measured; count iframes in a running view before acting. Estimate tens of MB each if always mounted.
 
 ### Inherent to the webview
 
-7. **The WebKit process set.** A WebKit app always carries WebContent, GPU and Networking processes. A React 19 app with xterm and react-markdown typically holds a JS heap and DOM in WebContent worth well over 100 MB, with the GPU and Networking processes adding tens of MB each; this is the bulk of the "about 500 MB" and none of it is reduced by fixing polling. These ranges are general experience, not measured here. Quick fixes can trim the heap (fewer retained terminals and scrollback, no duplicate data copies) but not the floor.
-8. **Compositing and timer wakeups.** Any visible animation or timer wakes WebContent and GPU processes; the GPU process cost of a mostly static UI is small but not zero. Reduced by fixes 1 to 3, not removed.
-9. **Process hops.** Every poll crosses WebContent, Networking and the in-process daemon (loopback HTTP). Fix 3 reduces the count; the hop itself stays.
+7. **The WebKit process set.** Measured on the start view: WebContent 51 to 53 MB, GPU 17 to 20 MB (121 MB in one interval), Networking 8.4 MB, plus the main process at 36 MB, about 116 MB in total. The earlier claim that WebContent alone is "well over 100 MB" and the bulk of the 500 MB is contradicted for the start view. The rest of the reported 500 MB must come from views with content (DOM and JS heap growth, xterm buffers), the in-process daemon, or other processes counted with it. Not measured.
+8. **Compositing and timer wakeups.** Seen in the sample as `CA::Layer::commit_if_needed` in the main process (about 25 samples) and the GPU process at 0.23%. Small at idle. Reduced by fixes 1 and 3, not removed.
+9. **Process hops.** Every poll crosses WebContent, Networking and the daemon over loopback HTTP. Networking at 0.53% is the cost of this on the start view. Fix 1 reduces the count; the hop stays.
 
 ## Estimate after the quick fixes
 
-These are estimates from the code, to be replaced once the table above is filled in.
+Replaces the earlier estimate, which assumed the 25% was visible on the start view. It is not.
 
-- Fixes 1 to 3 (spinner to CSS, terminals paused when not visible, visibility-aware and change-aware polling): idle CPU from about 25% to about 3 to 8% of one core in the visible-window scenarios, and to near 0% when the window is hidden to the tray. If the measured WebContent number is much lower than the user's 25%, the cause is outside this list and the first thing to check is a hidden terminal's PTY output.
-- RAM from about 500 MB to about 350 to 420 MB: the reachable part is terminal buffers and duplicated data in WebContent. The WebKit process floor is what remains.
-- What only a native UI such as GPUI would remove: the WebContent, GPU and Networking processes as such, i.e. the roughly 250 to 350 MB floor and the per-poll process hops. A native app would still pay for the daemon (about 23 MB, 0.02% idle, measured) and for text rendering of terminals. The estimate is that the quick fixes capture most of the CPU gain and a native UI is justified mainly by RAM and by the process floor, not by idle CPU. Verify with the measured numbers before deciding on the rewrite.
+- Idle start view: already about 1.3% and 116 MB. Fix 1 can only take a fraction of a point off it. A native UI would not materially improve idle CPU here.
+- The user's 25% and 500 MB sit in the unmeasured scenarios. The next measurement is one conversation open with a live agent, then a visible terminal, taking the same `top` series and a `sample` of WebContent. If WebContent shows xterm rendering or the websocket message handler, fix 2 is the priority; if it shows a Spinner tick, fix 3.
+- A decision on a native UI (GPUI) should wait for those numbers: on the start view the three WebKit helpers cost about 80 MB and 1.2% together, much less than the 250 to 350 MB floor estimated earlier.
 
-## How to measure the GUI scenarios
+## How to measure the other scenarios
 
-Close Safari and other WebKit apps first: WebKit helper processes are not children of the app, so they are found by name and would be mixed up. Build with `npm --prefix web ci && cargo tauri build` (or the repo's release command), start the app, put it in the scenario, then run the script for each scenario. `top` is used because `ps %cpu` on macOS is a lifetime average, not the last minute.
+Ignore other WebKit apps: helper processes are not children of the app, so identify the new `com.apple.WebKit.*` pids that appear at launch. Build and launch as under "How the GUI numbers were taken", put the app in the scenario by clicking, then take the `top` series and a `sample` for each process. `top` is used because `ps %cpu` on macOS is a lifetime average.
 
 ```sh
-#!/bin/sh
-scenario="$1"
-top -l 2 -s 60 -stats pid,command,cpu,rsize -o cpu -n 60 > "/tmp/perf-idle-$scenario.txt"
-awk '/^PID/ { n++ } n == 2' "/tmp/perf-idle-$scenario.txt" \
-  | grep -E 'PID|townhall|WebKit.WebContent|WebKit.GPU|WebKit.Networking'
+top -l 13 -s 5 -stats pid,command,cpu,rsize,threads,idlew -o cpu -n 100 | grep -E "^(<main>|<gpu>|<net>|<wc>) "
+sample <pid> 10 -file /tmp/sample.txt
 ```
 
-For a deeper look at the busy process: `sample <pid> 10 -file /tmp/webcontent.txt`, or `xcrun xctrace record --template 'Time Profiler' --attach <pid> --time-limit 30s --output /tmp/wc.trace`. In Safari's Web Inspector (enable Develop menu, Develop, the app, the webview) the Timelines tab shows timers, layout and JS per second, which gives the real re-render and timer counts to replace the derived ones above.
+Also available: `xcrun xctrace record --template 'Time Profiler' --attach <pid> --time-limit 30s --output /tmp/wc.trace`. In Safari's Web Inspector (Develop menu, the app, the webview) the Timelines tab shows timers, layout and JS per second.
 
 ## Notes
 
