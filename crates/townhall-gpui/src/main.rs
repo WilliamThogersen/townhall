@@ -10,6 +10,7 @@ mod home_model;
 mod markdown;
 #[cfg(target_os = "macos")]
 mod measure;
+mod prefs;
 mod repo_group;
 mod row_menu;
 mod row_summary;
