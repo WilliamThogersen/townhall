@@ -24,9 +24,15 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "1051_default_graph_tools",
         sql: include_str!("migrations/1051_default_graph_tools.sql"),
     },
+    Migration {
+        id: 1052,
+        name: "1052_graph_landing",
+        sql: include_str!("migrations/1052_graph_landing.sql"),
+    },
 ];
 
 const API_ERROR: &str = "api-error";
+const MERGED: &str = "merged";
 const MAX_FILES: usize = 10;
 const MAX_FINGERPRINTS: usize = 5;
 const MAX_REASONS: usize = 3;
@@ -124,6 +130,14 @@ pub struct GraphAnswer {
     pub tasks: Vec<GraphTask>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Landed {
+    pub head: String,
+    pub tasks: Vec<String>,
+    pub prs: Vec<u64>,
+    pub files: BTreeMap<String, Vec<String>>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgentStat {
     pub agent: String,
@@ -137,7 +151,7 @@ pub struct AgentStat {
 
 fn outcome_of(state: TaskState) -> Option<&'static str> {
     match state {
-        TaskState::Merged => Some("merged"),
+        TaskState::Merged => Some(MERGED),
         TaskState::Error => Some("failed"),
         TaskState::NeedsYou => Some("needs-user"),
         TaskState::Ended => Some("ended"),
@@ -187,9 +201,10 @@ pub(super) fn sync_task(conn: &Connection, task: &Task) -> Result<()> {
     if matches!(task.state, TaskState::Queued | TaskState::Working) {
         conn.execute("delete from graph_recorded where task = ?1", [&task.name])?;
     }
-    let kept = current_outcome(conn, &task.name)?.filter(|o| o == API_ERROR);
+    let kept = current_outcome(conn, &task.name)?;
     let outcome = match (task.state, kept) {
-        (TaskState::Error, Some(kept)) => Some(kept),
+        (TaskState::Error, Some(kept)) if kept == API_ERROR || kept == MERGED => Some(kept),
+        (TaskState::Ended, Some(kept)) if kept == MERGED => Some(kept),
         (state, _) => outcome_of(state).map(String::from),
     };
     conn.execute(
@@ -223,6 +238,94 @@ fn failure_text(conn: &Connection, task: &str) -> Result<Option<String>> {
 
 fn is_api_error(text: &str) -> bool {
     text.to_lowercase().contains("api error")
+}
+
+fn needs_text(conn: &Connection, task: &str) -> Result<Option<String>> {
+    let marker = " needs you, its agent asks: ";
+    Ok(conn
+        .query_row(
+            "select substr(json_extract(data, '$.text'), length('task ' || ?1 || ?2) + 1)
+             from events
+             where kind = 'event'
+               and lower(json_extract(data, '$.text')) like lower('task ' || ?1 || ?2 || '%')
+             order by id desc limit 1",
+            params![task, marker],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+fn failed_check(conn: &Connection, task: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "select coalesce(json_extract(verify, '$.output'), '') from tasks
+             where name = ?1 and json_extract(verify, '$.phase') = 'failed'",
+            [task],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+fn has_any(text: &str, words: &[&str]) -> bool {
+    words.iter().any(|w| text.contains(w))
+}
+
+fn classify(conn: &Connection, task: &str, outcome: &str, needs: bool) -> Result<String> {
+    let api = outcome == API_ERROR;
+    let checked = match api {
+        true => None,
+        false => failed_check(conn, task)?,
+    };
+    if let Some(output) = checked {
+        let line = output.lines().map(str::trim).find(|l| !l.is_empty());
+        return Ok(match line {
+            Some(line) => format!("check failed: {}", reason(line, task)),
+            None => "check failed".into(),
+        });
+    }
+    let text = match needs {
+        true => needs_text(conn, task)?,
+        false => failure_text(conn, task)?,
+    };
+    let Some(text) = text else {
+        return Ok(if needs { "needs user" } else { "unknown" }.into());
+    };
+    let lower = text.to_lowercase();
+    if outcome == API_ERROR || is_api_error(&text) {
+        return Ok(reason(&text, task));
+    }
+    let label = if has_any(
+        &lower,
+        &[
+            "connection lost",
+            "went to sleep",
+            "connection reset",
+            "econnreset",
+        ],
+    ) {
+        "connection lost / went to sleep"
+    } else if has_any(&lower, &["permission denied", "was denied", "not allowed"]) {
+        "permission denied"
+    } else if has_any(
+        &lower,
+        &[
+            "command not found",
+            "not installed",
+            "tool missing",
+            "no such file or directory",
+        ],
+    ) {
+        "tool missing"
+    } else if has_any(&lower, &["ci failed", "checks failed", "ci check"]) {
+        "ci failed"
+    } else if has_any(&lower, &["max retries", "retries"]) {
+        "max retries"
+    } else if needs {
+        return Ok(format!("needs user: {}", reason(&text, task)));
+    } else {
+        return Ok(reason(&text, task));
+    };
+    Ok(label.into())
 }
 
 fn record(conn: &mut Connection, name: &str, files: &[String], prints: &[String]) -> Result<()> {
@@ -262,10 +365,153 @@ fn record(conn: &mut Connection, name: &str, files: &[String], prints: &[String]
 fn unrecorded(conn: &Connection) -> Result<Vec<Task>> {
     select(
         conn,
-        "where state in ('ended', 'merged', 'error')
+        "where state in ('ended', 'merged', 'error', 'needsYou')
          and name not in (select task from graph_recorded)",
         &[],
     )
+}
+
+fn has_files(conn: &Connection, task: &str) -> Result<bool> {
+    Ok(conn.query_row(
+        "select exists (select 1 from graph_edges
+         where src_kind = 'task' and src = ?1 and dst_kind = 'file')",
+        [task],
+        |r| r.get(0),
+    )?)
+}
+
+fn last_said(conn: &Connection, task: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "select json_extract(data, '$.text') from events
+             where kind = 'event'
+               and lower(json_extract(data, '$.text')) like lower('task ' || ?1 || ' ended (%')
+             order by id desc limit 1",
+            [task],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+fn pr_refs(text: &str) -> Vec<u64> {
+    let mut found = vec![];
+    for marker in ["#", "/pull/"] {
+        for part in text.split(marker).skip(1) {
+            let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+            found.extend(digits.parse::<u64>());
+        }
+    }
+    found
+}
+
+fn said_merged(text: &str, prs: &[u64]) -> bool {
+    text.to_lowercase().contains("merged") && pr_refs(text).iter().any(|n| prs.contains(n))
+}
+
+fn settled(state: TaskState) -> bool {
+    matches!(
+        state,
+        TaskState::Ended | TaskState::Error | TaskState::NeedsYou | TaskState::Merged
+    )
+}
+
+fn apply(conn: &mut Connection, repo: &str, landed: &Landed) -> Result<()> {
+    let tx = conn.transaction()?;
+    let tasks: Vec<Task> = select(&tx, "where repo = ?1", &[&repo])?
+        .into_iter()
+        .filter(|t| settled(t.state))
+        .collect();
+    let named: Vec<String> = landed.tasks.iter().map(|t| t.to_lowercase()).collect();
+    let mut merged: Vec<&Task> = vec![];
+    for task in &tasks {
+        let by_name = named.contains(&task.name.to_lowercase());
+        let by_pr = task
+            .pr
+            .as_ref()
+            .is_some_and(|p| landed.prs.contains(&p.number));
+        let by_said = !by_name
+            && !by_pr
+            && last_said(&tx, &task.name)?.is_some_and(|t| said_merged(&t, &landed.prs));
+        if by_name || by_pr || by_said {
+            merged.push(task);
+        }
+    }
+    let mut names: Vec<&str> = merged.iter().map(|t| t.name.as_str()).collect();
+    for task in &merged {
+        for before in &task.after {
+            let found = tasks
+                .iter()
+                .find(|t| t.name.eq_ignore_ascii_case(before) && t.state == TaskState::Ended);
+            if let Some(found) = found {
+                let filed = has_files(&tx, &found.name)? || landed.files.contains_key(&found.name);
+                if filed && !names.contains(&found.name.as_str()) {
+                    names.push(&found.name);
+                }
+            }
+        }
+    }
+    for name in names {
+        if current_outcome(&tx, name)?.as_deref() == Some(MERGED) {
+            continue;
+        }
+        tx.execute(
+            "delete from graph_edges where src_kind = 'task' and src = ?1 and dst_kind = 'outcome'",
+            [name],
+        )?;
+        edge(&tx, ("task", name), "ended_as", ("outcome", MERGED))?;
+    }
+    for task in &tasks {
+        let Some(files) = landed.files.get(&task.name) else {
+            continue;
+        };
+        if has_files(&tx, &task.name)? {
+            continue;
+        }
+        for file in files {
+            edge(&tx, ("task", &task.name), "touched", ("file", file))?;
+        }
+    }
+    tx.execute(
+        "update graph_recorded set landed = 1
+         where task in (select name from tasks where repo = ?1)",
+        [repo],
+    )?;
+    tx.execute(
+        "insert or replace into graph_scan (repo, head) values (?1, ?2)",
+        params![repo, landed.head],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn scan_due(conn: &Connection, repo: &str, head: &str) -> Result<bool> {
+    let seen: Option<String> = conn
+        .query_row("select head from graph_scan where repo = ?1", [repo], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    if seen.as_deref() != Some(head) {
+        return Ok(true);
+    }
+    Ok(conn.query_row(
+        "select exists (select 1 from graph_recorded g join tasks t on t.name = g.task
+         where t.repo = ?1 and g.landed = 0)",
+        [repo],
+        |r| r.get(0),
+    )?)
+}
+
+fn missing_files(conn: &Connection, names: &[String]) -> Result<Vec<String>> {
+    let mut missing = vec![];
+    for name in names {
+        let Some(task) = find(conn, name)? else {
+            continue;
+        };
+        if !has_files(conn, &task.name)? {
+            missing.push(task.name);
+        }
+    }
+    Ok(missing)
 }
 
 fn names_of(conn: &Connection, kind: NodeKind, node: &str) -> Result<Vec<String>> {
@@ -447,14 +693,12 @@ fn stats(conn: &Connection, since_ms: Option<i64>) -> Result<Vec<AgentStat>> {
         if !matches!(outcome.as_str(), "failed" | API_ERROR | "needs-user") {
             continue;
         }
-        if outcome != "needs-user" {
-            let text = failure_text(conn, &name)?.unwrap_or_else(|| "unknown".into());
-            *reasons
-                .entry(agent.clone())
-                .or_default()
-                .entry(reason(&text, &name))
-                .or_default() += 1;
-        }
+        let why = classify(conn, &name, &outcome, outcome == "needs-user")?;
+        *reasons
+            .entry(agent.clone())
+            .or_default()
+            .entry(why)
+            .or_default() += 1;
         for file in strings(
             conn,
             "select dst from graph_edges where src_kind = 'task' and src = ?1
@@ -508,6 +752,20 @@ impl Store {
         let task = task.to_string();
         self.call(move |conn| record(conn, &task, &files, &fingerprints))
             .await
+    }
+
+    pub async fn apply_landed(&self, repo: &str, landed: Landed) -> Result<()> {
+        let repo = repo.to_string();
+        self.call(move |conn| apply(conn, &repo, &landed)).await
+    }
+
+    pub async fn landing_scan_due(&self, repo: &str, head: &str) -> Result<bool> {
+        let (repo, head) = (repo.to_string(), head.to_string());
+        self.call(move |conn| scan_due(conn, &repo, &head)).await
+    }
+
+    pub async fn tasks_missing_files(&self, names: Vec<String>) -> Result<Vec<String>> {
+        self.call(move |conn| missing_files(conn, &names)).await
     }
 
     pub async fn unrecorded_graph_tasks(&self) -> Result<Vec<Task>> {
