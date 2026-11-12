@@ -81,18 +81,17 @@ fn pr_number(subject: &str) -> Option<u64> {
     digits.parse().ok()
 }
 
-async fn base_ref(repo: &std::path::Path, base: &str) -> Result<String> {
-    let remote = format!("origin/{base}");
-    let found = probe(
-        "git",
-        &["rev-parse", "--verify", "-q", remote.as_str()],
-        Some(repo),
-    )
-    .await;
-    Ok(match found {
-        Ok(_) => remote,
-        Err(_) => base.to_string(),
-    })
+async fn base_ref(repo: &std::path::Path, base: &str) -> Option<String> {
+    for candidate in [
+        format!("refs/remotes/origin/{base}"),
+        format!("{REFS}{base}"),
+    ] {
+        let args = ["rev-parse", "--verify", "-q", candidate.as_str()];
+        if probe("git", &args, Some(repo)).await.is_ok() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 async fn land_repo(ctx: &Context, name: &str, tasks: &[Task]) -> Result<()> {
@@ -107,7 +106,10 @@ async fn land_repo(ctx: &Context, name: &str, tasks: &[Task]) -> Result<()> {
     bases.dedup();
     let mut refs = vec![];
     for base in bases {
-        refs.push(base_ref(&repo.path, base).await?);
+        refs.extend(base_ref(&repo.path, base).await);
+    }
+    if refs.is_empty() {
+        return Ok(());
     }
     let mut args = vec!["rev-parse"];
     args.extend(refs.iter().map(String::as_str));
