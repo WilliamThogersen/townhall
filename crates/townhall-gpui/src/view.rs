@@ -95,6 +95,7 @@ pub struct Root {
     renders: usize,
     daemon_note: SharedString,
     _subscriptions: Vec<Subscription>,
+    route: Option<String>,
 }
 
 impl Root {
@@ -136,6 +137,7 @@ impl Root {
             renders: 0,
             daemon_note: SharedString::default(),
             _subscriptions: subscriptions,
+            route: None,
         };
         root.composer
             .update(cx, |composer, cx| composer.focus(window, cx));
@@ -164,6 +166,11 @@ impl Root {
 
     pub fn with_daemon_note(mut self, note: impl Into<SharedString>) -> Self {
         self.daemon_note = note.into();
+        self
+    }
+
+    pub fn with_route(mut self, id: Option<String>) -> Self {
+        self.route = id;
         self
     }
 
@@ -615,7 +622,7 @@ impl Root {
                 this.retrying = false;
                 this.state.set_list(result);
                 if select_newest && this.state.selected.is_none() {
-                    if let Some(id) = this.state.newest() {
+                    if let Some(id) = this.route.take().or_else(|| this.state.newest()) {
                         this.select(id, window, cx);
                     }
                 }
