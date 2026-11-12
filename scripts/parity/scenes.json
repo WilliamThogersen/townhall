@@ -1,0 +1,20 @@
+[
+  { "name": "home", "size": "1200x800", "native": null },
+  { "name": "sidebar", "size": "1200x800", "native": "/c/@flaky" },
+  { "name": "conversation", "size": "1200x800", "native": "/c/@login" },
+  { "name": "session-panel", "size": "1200x800", "native": null },
+  { "name": "row-menu", "size": "1200x800", "native": null },
+  { "name": "menu-drawer", "size": "400x800", "native": null },
+  { "name": "usage-meter", "size": "1200x800", "native": null },
+  { "name": "usage-open", "size": "1200x800", "native": null },
+  { "name": "system-stats", "size": "1200x800", "native": null },
+  { "name": "settings", "size": "1200x800", "native": null },
+  { "name": "repos", "size": "1200x800", "native": null },
+  { "name": "agents", "size": "1200x800", "native": null },
+  { "name": "control", "size": "1200x800", "native": null },
+  { "name": "heatmap", "size": "1200x800", "native": null },
+  { "name": "terminal", "size": "1200x800", "native": null },
+  { "name": "toasts", "size": "1200x800", "native": null, "web": false },
+  { "name": "daemon-down", "size": "1200x800", "native": null },
+  { "name": "narrow", "size": "400x800", "native": "/c/@login" }
+]
