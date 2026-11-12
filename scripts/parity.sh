@@ -54,13 +54,14 @@ python3 -c "import PIL" 2>/dev/null || fail "python3 needs Pillow: python3 -m pi
 [ -x "$ROOT/web/node_modules/.bin/playwright" ] || fail "web dependencies are missing: npm --prefix web ci"
 
 mkdir -p "$OUT"
-DIR=$(mktemp -d "${TMPDIR:-/tmp}/townhall-parity.XXXXXX")
+PARENT=$(mktemp -d "${TMPDIR:-/tmp}/townhall-parity.XXXXXX")
+DIR="$PARENT/demo"
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap cleanup EXIT
 
 say "starting the seeded demo in $DIR"
-"$ROOT/scripts/demo.sh" --daemon-port "$DAEMON_PORT" --web-port "$WEB_PORT" --dir "$DIR" >"$DIR/demo.out" 2>&1 &
+"$ROOT/scripts/demo.sh" --daemon-port "$DAEMON_PORT" --web-port "$WEB_PORT" --dir "$DIR" >"$PARENT/demo.out" 2>&1 &
 DEMO_PID=$!
 wait_ready
 
