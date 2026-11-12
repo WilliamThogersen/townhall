@@ -532,6 +532,38 @@ mod tests {
                 .push((id.to_string(), text.to_string()));
             Ok(entry(99, text))
         }
+
+        fn tasks(&self) -> Result<Vec<townhall_core::model::Task>, String> {
+            Ok(vec![])
+        }
+
+        fn repos(&self) -> Result<Vec<townhall_core::model::Repo>, String> {
+            Ok(vec![])
+        }
+
+        fn info(&self) -> Result<crate::client::Info, String> {
+            Ok(crate::client::Info { user_name: None })
+        }
+
+        fn search(&self, _: &str) -> Result<Vec<townhall_core::search::SearchHit>, String> {
+            Ok(vec![])
+        }
+
+        fn end_conversation(&self, _: &str) -> Result<Conversation, String> {
+            Err("not used".into())
+        }
+
+        fn link_repo(&self, _: &str, _: Option<&str>) -> Result<Conversation, String> {
+            Err("not used".into())
+        }
+
+        fn start_conversation(&self, _: &str) -> Result<ConversationDetail, String> {
+            Err("not used".into())
+        }
+
+        fn add_repo(&self, _: &str) -> Result<townhall_core::model::Repo, String> {
+            Err("not used".into())
+        }
     }
 
     fn fake() -> Arc<Fake> {
@@ -698,6 +730,30 @@ mod tests {
                 Err("connection refused".into())
             }
             fn send_message(&self, _: &str, _: &str) -> Result<ThreadEntry, String> {
+                Err("connection refused".into())
+            }
+            fn tasks(&self) -> Result<Vec<townhall_core::model::Task>, String> {
+                Err("connection refused".into())
+            }
+            fn repos(&self) -> Result<Vec<townhall_core::model::Repo>, String> {
+                Err("connection refused".into())
+            }
+            fn info(&self) -> Result<crate::client::Info, String> {
+                Err("connection refused".into())
+            }
+            fn search(&self, _: &str) -> Result<Vec<townhall_core::search::SearchHit>, String> {
+                Err("connection refused".into())
+            }
+            fn end_conversation(&self, _: &str) -> Result<Conversation, String> {
+                Err("connection refused".into())
+            }
+            fn link_repo(&self, _: &str, _: Option<&str>) -> Result<Conversation, String> {
+                Err("connection refused".into())
+            }
+            fn start_conversation(&self, _: &str) -> Result<ConversationDetail, String> {
+                Err("connection refused".into())
+            }
+            fn add_repo(&self, _: &str) -> Result<townhall_core::model::Repo, String> {
                 Err("connection refused".into())
             }
         }
