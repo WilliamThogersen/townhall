@@ -142,7 +142,7 @@ pub struct AgentDef {
     pub env: BTreeMap<String, String>,
     #[serde(default)]
     pub plugins: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub merges_on_green: Option<bool>,
 }
 
