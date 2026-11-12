@@ -22,6 +22,18 @@ use crate::{Error, Result};
 pub const DEFAULT_CLAUDE_BIN: &str = "claude";
 const END_OF_OPTIONS: &str = "--";
 
+pub const FOREGROUND_RULE: &str = "run tests and builds in the foreground and wait for them. never use run_in_background, Monitor or sleep-and-poll, and never end your turn while a command you started is still running. commit your work before you end.";
+const BASH_TIMEOUT_ENVS: [(&str, std::time::Duration); 2] = [
+    (
+        "BASH_DEFAULT_TIMEOUT_MS",
+        std::time::Duration::from_secs(20 * 60),
+    ),
+    (
+        "BASH_MAX_TIMEOUT_MS",
+        std::time::Duration::from_secs(30 * 60),
+    ),
+];
+
 /// Settings for every claude townhall starts: no hooks, and no auto-memory (`MEMORY.md`),
 /// which loads even when no settings source does.
 pub const ISOLATED_SETTINGS: &str =
@@ -67,6 +79,11 @@ fn without_outer_session() -> Vec<String> {
         .chain(unset)
         .map(String::from)
         .chain([format!("{MCP_TOOL_TIMEOUT_ENV}={}", mcp_tool_timeout_ms())])
+        .chain(
+            BASH_TIMEOUT_ENVS
+                .iter()
+                .map(|(name, timeout)| format!("{name}={}", timeout.as_millis())),
+        )
         .collect()
 }
 
@@ -137,12 +154,16 @@ fn system_prompt(options: &LaunchOptions, tools: &[&str]) -> Vec<String> {
             tools.join(", ")
         )
     });
-    match (own, notice) {
-        (Some(p), Some(n)) => vec![format!("--append-system-prompt={p}\n\n{n}")],
-        (Some(p), None) => vec![format!("--append-system-prompt={p}")],
-        (None, Some(n)) => vec![format!("--append-system-prompt={n}")],
-        (None, None) => vec![],
-    }
+    let text = [
+        own.map(str::to_string),
+        notice,
+        Some(FOREGROUND_RULE.to_string()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("\n\n");
+    vec![format!("--append-system-prompt={text}")]
 }
 
 fn session(options: &LaunchOptions) -> Result<Vec<String>> {
