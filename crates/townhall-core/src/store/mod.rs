@@ -47,7 +47,7 @@ pub use settings::MAX_PROFILE_CHARS;
 pub use unit_2_8c::{
     NewRun, Run, RunStep, StepUpdate, RUN_FAILED, RUN_FINISHED, RUN_NEEDS_YOU, RUN_RUNNING,
 };
-pub use unit_graph::{AgentStat, GraphAnswer, GraphQuery, GraphTask, NodeKind};
+pub use unit_graph::{AgentStat, GraphAnswer, GraphQuery, GraphTask, Landed, NodeKind};
 pub use unit_history::{HistoryHit, HistoryKind, HistoryQuery};
 pub use unit_plugins::{Marketplace, Plugin};
 
