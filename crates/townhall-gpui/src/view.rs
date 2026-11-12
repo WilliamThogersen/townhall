@@ -27,6 +27,7 @@ pub struct Root {
     state: State,
     composer: Entity<Composer>,
     daemon_note: SharedString,
+    start: Option<String>,
 }
 
 impl Root {
@@ -43,6 +44,7 @@ impl Root {
             state: State::new(),
             composer,
             daemon_note: SharedString::default(),
+            start: None,
         };
         root.composer
             .update(cx, |composer, cx| composer.focus(window, cx));
@@ -61,6 +63,11 @@ impl Root {
 
     pub fn with_daemon_note(mut self, note: impl Into<SharedString>) -> Self {
         self.daemon_note = note.into();
+        self
+    }
+
+    pub fn with_start(mut self, id: Option<String>) -> Self {
+        self.start = id;
         self
     }
 
@@ -131,7 +138,7 @@ impl Root {
             this.update_in(cx, |this, window, cx| {
                 this.state.set_list(result);
                 if select_newest && this.state.selected.is_none() {
-                    if let Some(id) = this.state.newest() {
+                    if let Some(id) = this.start.take().or_else(|| this.state.newest()) {
                         this.select(id, window, cx);
                     }
                 }

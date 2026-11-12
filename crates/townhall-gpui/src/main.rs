@@ -5,6 +5,7 @@ mod drafts;
 mod fonts;
 #[cfg(target_os = "macos")]
 mod measure;
+mod scene;
 mod state;
 mod theme;
 mod view;
@@ -65,6 +66,7 @@ fn main() {
     let mut url: Option<String> = None;
     let mut home_dir: Option<PathBuf> = None;
     let mut bind = daemon::BIND.to_string();
+    let mut scene = scene::Scene::default();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -84,6 +86,26 @@ fn main() {
                         .unwrap_or_else(|| fail("--url needs a daemon url")),
                 )
             }
+            "--size" => {
+                scene.size =
+                    scene::parse_size(&args.next().unwrap_or_else(|| fail("--size needs WxH")))
+                        .unwrap_or_else(|e| fail(e))
+            }
+            "--theme" => {
+                scene.mode = Some(
+                    scene::parse_mode(
+                        &args
+                            .next()
+                            .unwrap_or_else(|| fail("--theme needs dark or light")),
+                    )
+                    .unwrap_or_else(|e| fail(e)),
+                )
+            }
+            "--route" => {
+                scene.route = Some(scene::parse_route(
+                    &args.next().unwrap_or_else(|| fail("--route needs a path")),
+                ))
+            }
             #[cfg(target_os = "macos")]
             "--measure" => {
                 let seconds = args
@@ -96,6 +118,14 @@ fn main() {
         }
     }
 
+    let start = match &scene.route {
+        Some(scene::Route::NotBuilt(path)) => {
+            eprintln!("townhall-native: route {path} is not built natively yet");
+            std::process::exit(scene::NOT_BUILT_EXIT)
+        }
+        Some(scene::Route::Conversation(id)) => Some(id.clone()),
+        None => None,
+    };
     let home = match home_dir {
         Some(dir) => Home::at(dir),
         None => Home::from_env().unwrap_or_else(|e| fail(format!("townhall home: {e}"))),
@@ -128,7 +158,11 @@ fn main() {
             fail(e);
         }
         gpui_component::init(cx);
-        let initial = theme::Theme::for_appearance(cx.window_appearance());
+        let forced = scene.mode;
+        let initial = match forced {
+            Some(mode) => theme::Theme::new(mode),
+            None => theme::Theme::for_appearance(cx.window_appearance()),
+        };
         theme::apply_to_components(&initial, cx);
         cx.set_global(initial);
         cx.on_window_closed(|cx, _| {
@@ -137,7 +171,7 @@ fn main() {
             }
         })
         .detach();
-        let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
+        let bounds = Bounds::centered(None, size(px(scene.size.0), px(scene.size.1)), cx);
         let window = cx
             .open_window(
                 WindowOptions {
@@ -145,17 +179,20 @@ fn main() {
                     ..Default::default()
                 },
                 move |window, cx| {
-                    window
-                        .observe_window_appearance(|window, cx| {
-                            let next = theme::Theme::for_appearance(window.appearance());
-                            theme::apply_to_components(&next, cx);
-                            cx.set_global(next);
-                            window.refresh();
-                        })
-                        .detach();
+                    if forced.is_none() {
+                        window
+                            .observe_window_appearance(|window, cx| {
+                                let next = theme::Theme::for_appearance(window.appearance());
+                                theme::apply_to_components(&next, cx);
+                                cx.set_global(next);
+                                window.refresh();
+                            })
+                            .detach();
+                    }
                     cx.new(|cx| {
                         view::Root::new(api, Some(events), drafts, window, cx)
                             .with_daemon_note(note)
+                            .with_start(start)
                     })
                 },
             )
