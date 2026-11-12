@@ -446,3 +446,98 @@ fn a_valid_brief_planner_and_schema_are_accepted() {
     );
     assert!(validate(dir.path(), &entry()).is_ok());
 }
+
+const SKILL: &str = "---\nname: x\ndescription: d\n---\nbody";
+
+#[test]
+fn a_skills_only_plain_plugin_installs_and_lists_its_skills_and_commands() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        ".claude-plugin/plugin.json",
+        r#"{"name":"p","version":"1.0.0","description":"d","keywords":["web"]}"#,
+    );
+    write(dir.path(), "skills/guide/SKILL.md", SKILL);
+    write(dir.path(), "skills/guide/references/a.md", "ref");
+    write(dir.path(), "skills/other/SKILL.md", SKILL);
+    write(dir.path(), "skills/notes/readme.md", "not a skill");
+    write(dir.path(), "commands/deploy.md", "run it");
+    let checked = validate(dir.path(), &entry()).unwrap();
+    assert_eq!(
+        checked.permissions,
+        [
+            "claude.command:deploy",
+            "claude.skill:guide",
+            "claude.skill:other"
+        ]
+    );
+    assert!(checked.declared.skills.is_empty());
+}
+
+#[test]
+fn a_strict_false_entry_names_its_skill_folders() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "local-ai/SKILL.md", SKILL);
+    write(dir.path(), "pack/one/SKILL.md", SKILL);
+    write(dir.path(), "pack/two/SKILL.md", SKILL);
+    write(dir.path(), "cmds/go.md", "go");
+    let extra = r#","strict":false,"skills":["./local-ai","./pack"],"commands":["./cmds"]"#;
+    let checked = validate(dir.path(), &entry_with(extra)).unwrap();
+    assert_eq!(
+        checked.permissions,
+        [
+            "claude.command:go",
+            "claude.skill:local-ai",
+            "claude.skill:one",
+            "claude.skill:two"
+        ]
+    );
+    assert_eq!(checked.declared.skills, ["./local-ai", "./pack"]);
+    assert_eq!(checked.declared.commands, ["./cmds"]);
+}
+
+#[test]
+fn a_skill_path_that_is_not_in_the_plugin_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "README.md", "hi");
+    let extra = r#","strict":false,"skills":["./missing"]"#;
+    let err = validate(dir.path(), &entry_with(extra))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("skills") && err.contains("missing"), "{err}");
+}
+
+#[test]
+fn plugin_json_may_name_skill_and_command_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        ".claude-plugin/plugin.json",
+        r#"{"name":"p","skills":"./s","commands":["./c"]}"#,
+    );
+    write(dir.path(), "s/a/SKILL.md", SKILL);
+    write(dir.path(), "c/k.md", "k");
+    let checked = validate(dir.path(), &entry()).unwrap();
+    assert_eq!(checked.permissions, ["claude.command:k", "claude.skill:a"]);
+    assert_eq!(checked.declared.skills, ["./s"]);
+    assert_eq!(checked.declared.commands, ["./c"]);
+}
+
+#[test]
+fn a_new_skill_changes_the_hash_so_an_update_needs_approval() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "skills/a/SKILL.md", SKILL);
+    let before = validate(dir.path(), &entry()).unwrap();
+    write(dir.path(), "skills/b/SKILL.md", SKILL);
+    let after = validate(dir.path(), &entry()).unwrap();
+    assert_ne!(before.hash, after.hash);
+    assert_eq!(added(&before.permissions, &after.permissions), ["claude.skill:b"]);
+}
+
+#[test]
+fn a_plugin_without_skills_keeps_an_empty_list() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "README.md", "hi");
+    let checked = validate(dir.path(), &entry()).unwrap();
+    assert!(checked.permissions.is_empty());
+}

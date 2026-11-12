@@ -421,6 +421,14 @@ fn fetch(job: &Job, tmp: &Path) -> Result<Staged> {
     let mut source = spec.source;
     if let Some(map) = source.as_object_mut() {
         map.insert("sha".into(), json!(sha));
+        for (key, paths) in [
+            ("skills", &checked.declared.skills),
+            ("commands", &checked.declared.commands),
+        ] {
+            if !paths.is_empty() {
+                map.insert(key.into(), json!(paths));
+            }
+        }
     }
     Ok(Staged {
         tmp: tmp.to_path_buf(),

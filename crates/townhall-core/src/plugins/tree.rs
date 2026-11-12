@@ -10,6 +10,7 @@ use super::marketplace::Entry;
 use super::prompts;
 use super::schema;
 use super::sha256;
+use super::skills::{self, Declared};
 use super::theme;
 use crate::{Error, Result};
 
@@ -25,6 +26,7 @@ pub struct Checked {
     pub version: Option<String>,
     pub permissions: Vec<String>,
     pub hash: String,
+    pub declared: Declared,
 }
 
 pub struct Limits {
@@ -70,6 +72,10 @@ pub fn validate_with(root: &Path, entry: &Entry, limits: &Limits) -> Result<Chec
         root: canon,
         limits,
     };
+    let mut declared = Declared {
+        skills: entry.skills.clone(),
+        commands: entry.commands.clone(),
+    };
     let (version, mut permissions, files, derive) = match tree.optional(TOWNHALL_MANIFEST)? {
         Some(text) => {
             let found = manifest::parse_townhall(&text)?;
@@ -84,7 +90,12 @@ pub fn validate_with(root: &Path, entry: &Entry, limits: &Limits) -> Result<Chec
         }
         None => {
             let version = match tree.optional(CLAUDE_MANIFEST)? {
-                Some(text) => manifest::parse_claude(&text)?.version,
+                Some(text) => {
+                    let claude = manifest::parse_claude(&text)?;
+                    declared.skills.extend(claude.skills);
+                    declared.commands.extend(claude.commands);
+                    claude.version
+                }
                 None => None,
             };
             let permissions = match &entry.townhall {
@@ -208,8 +219,13 @@ pub fn validate_with(root: &Path, entry: &Entry, limits: &Limits) -> Result<Chec
         }
     }
 
+    declared.skills.dedup();
+    declared.commands.dedup();
+    let shipped = skills::discover(&tree.root, &declared)?;
     let mut list = items(&permissions);
     list.extend(runs);
+    list.extend(shipped.skills.iter().map(|s| format!("claude.skill:{s}")));
+    list.extend(shipped.commands.iter().map(|c| format!("claude.command:{c}")));
     list.sort();
     list.dedup();
     let hash = hash_of(&list);
@@ -217,6 +233,7 @@ pub fn validate_with(root: &Path, entry: &Entry, limits: &Limits) -> Result<Chec
         version,
         permissions: list,
         hash,
+        declared,
     })
 }
 
