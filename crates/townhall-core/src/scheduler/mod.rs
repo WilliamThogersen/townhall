@@ -31,6 +31,7 @@ pub mod reflect;
 pub mod report;
 pub mod requires;
 mod verify;
+mod zombie;
 
 use std::time::Duration;
 
@@ -74,6 +75,7 @@ pub struct Pass {
     /// Tasks whose check this pass started (`verify.rs`).
     pub verifying: Vec<String>,
     pub reading_ci: Vec<String>,
+    pub reconciled: Vec<String>,
     pub piped: Vec<String>,
     pub warnings: Vec<String>,
 }
@@ -132,6 +134,10 @@ fn report(result: Result<Pass>, last: String) -> String {
 pub async fn run_once(ctx: &Context) -> Result<Pass> {
     let (piped, pipeline_warnings) = pipeline::drive(ctx).await?;
     let mut tasks = ctx.store()?.all_tasks().await?;
+    let (reconciled, zombie_warnings) = zombie::reconcile(ctx, &tasks).await?;
+    if !reconciled.is_empty() {
+        tasks = ctx.store()?.all_tasks().await?;
+    }
     let (reflected, reflect_warnings) = reflect::queue(ctx, &tasks).await?;
     if !reflected.is_empty() {
         tasks = ctx.store()?.all_tasks().await?;
@@ -145,11 +151,13 @@ pub async fn run_once(ctx: &Context) -> Result<Pass> {
         verifying,
         reading_ci,
         merged,
+        reconciled,
         reflected,
         piped,
         warnings: [
             pass.warnings.clone(),
             pipeline_warnings,
+            zombie_warnings,
             reflect_warnings,
             warnings,
             graph_warnings,

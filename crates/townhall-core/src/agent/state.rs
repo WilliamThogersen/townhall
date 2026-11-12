@@ -38,6 +38,8 @@ use transcript::Turn;
 /// How long a turn must have ended, without a question, before the agent counts as ended.
 pub const IDLE_SETTLE_MS: i64 = 10_000;
 
+pub const QUIET_SECS: u64 = 300;
+
 /// Overrides where Claude's transcripts are read from (tests point it at a temp folder);
 /// the same variable 2.7's steps read.
 pub const PROJECTS_ENV: &str = steps::CLAUDE_PROJECTS_ENV;
@@ -130,17 +132,26 @@ async fn live(projects: Option<&Path>, ws: &Workspace, agent: &Agent, pane: &Pan
         Some(dir) => current_turn(dir, &agent.worktree, &agent.name, pane.created).await,
         None => None,
     };
+    let busy = busy_state(unix_secs(SystemTime::now()), pane.activity);
     let asked = |q: Option<String>| q.map_or(AgentState::Working, waiting);
+    let stalled = |q: Option<String>| q.map_or(busy.clone(), waiting);
     match turn {
         Some(Turn::Asking { question }) => waiting(question),
-        Some(Turn::Busy) => asked(on_screen(ws, agent, pane, false).await),
-        Some(Turn::Pending { call }) => asked(
+        Some(Turn::Busy) => stalled(on_screen(ws, agent, pane, false).await),
+        Some(Turn::Pending { call }) => stalled(
             on_screen(ws, agent, pane, false)
                 .await
                 .map(|q| question::shorten(&format!("{call}\n{q}"))),
         ),
         Some(Turn::Idle { text, at }) => idle(ws, agent, pane, &text, at).await,
         None => asked(on_screen(ws, agent, pane, true).await),
+    }
+}
+
+fn busy_state(now: u64, activity: u64) -> AgentState {
+    match now.saturating_sub(activity) >= QUIET_SECS {
+        true => AgentState::Ended,
+        false => AgentState::Working,
     }
 }
 
@@ -332,6 +343,14 @@ fn warn_once(message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_busy_transcript_in_a_quiet_pane_is_ended() {
+        let now = 1_000;
+        assert_eq!(busy_state(now, now - QUIET_SECS + 1), AgentState::Working);
+        assert_eq!(busy_state(now, now - QUIET_SECS), AgentState::Ended);
+        assert_eq!(busy_state(now, now + 5), AgentState::Working);
+    }
 
     #[test]
     fn exits_map_to_ended_or_error() {
