@@ -225,7 +225,12 @@ pub fn validate_with(root: &Path, entry: &Entry, limits: &Limits) -> Result<Chec
     let mut list = items(&permissions);
     list.extend(runs);
     list.extend(shipped.skills.iter().map(|s| format!("claude.skill:{s}")));
-    list.extend(shipped.commands.iter().map(|c| format!("claude.command:{c}")));
+    list.extend(
+        shipped
+            .commands
+            .iter()
+            .map(|c| format!("claude.command:{c}")),
+    );
     list.sort();
     list.dedup();
     let hash = hash_of(&list);

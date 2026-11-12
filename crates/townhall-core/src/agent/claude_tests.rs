@@ -569,7 +569,10 @@ fn no_plugin_dir_adds_no_plugin_flag_and_keeps_isolation() {
 fn a_plugin_dir_is_one_flag_after_isolation_and_nothing_else_changes() {
     let plain = ClaudeCodeAdapter::args(&opts("go")).unwrap();
     let o = LaunchOptions {
-        plugin_dirs: vec!["/h/tasks/job/plugins/web".into(), "/h/tasks/job/plugins/b".into()],
+        plugin_dirs: vec![
+            "/h/tasks/job/plugins/web".into(),
+            "/h/tasks/job/plugins/b".into(),
+        ],
         ..opts("go")
     };
     let argv = ClaudeCodeAdapter::args(&o).unwrap();

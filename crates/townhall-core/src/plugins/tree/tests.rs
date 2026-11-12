@@ -531,7 +531,10 @@ fn a_new_skill_changes_the_hash_so_an_update_needs_approval() {
     write(dir.path(), "skills/b/SKILL.md", SKILL);
     let after = validate(dir.path(), &entry()).unwrap();
     assert_ne!(before.hash, after.hash);
-    assert_eq!(added(&before.permissions, &after.permissions), ["claude.skill:b"]);
+    assert_eq!(
+        added(&before.permissions, &after.permissions),
+        ["claude.skill:b"]
+    );
 }
 
 #[test]
