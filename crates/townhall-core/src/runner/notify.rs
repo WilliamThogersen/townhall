@@ -4,9 +4,9 @@
 //! runs, then become `event` entries and one planner turn that answers them in the thread.
 //!
 //! Nothing here reacts to a planner reply, so a reply never wakes the planner again: only
-//! a new task change does. Events are also saved in the store until their turn started,
-//! and `redeliver` queues the saved ones again at start. An ended conversation is not
-//! woken.
+//! a new task change does. Events are kept in memory: a restart drops the ones not yet
+//! delivered (their `agent` and `needsYou` entries are in the thread all the same). An
+//! ended conversation is not woken.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -53,7 +53,6 @@ impl Notes {
         *last
     }
 
-    /// Queues `pending`; true when no flusher was waiting yet, so the caller starts one.
     fn push(&self, id: &str, pending: Pending) -> bool {
         let mut waiting = lock(&self.waiting);
         let first = !waiting.contains_key(id);
@@ -84,7 +83,6 @@ impl Notes {
     }
 }
 
-/// Queues a task event for the conversation's planner and saves it.
 pub fn notify(ctx: &Context, id: &str, text: String) {
     let seq = ctx.notes().next_seq();
     let saved = save(ctx.clone(), id.to_string(), seq, text.clone());
@@ -114,7 +112,6 @@ fn save(ctx: Context, id: String, seq: i64, text: String) -> JoinHandle<()> {
     })
 }
 
-/// Queues the events a restart left saved. Returns how many it queued.
 pub async fn redeliver(ctx: &Context) -> Result<usize> {
     let mut queued = 0;
     for saved in ctx.store()?.pending_events().await? {

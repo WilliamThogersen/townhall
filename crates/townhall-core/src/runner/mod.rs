@@ -75,9 +75,6 @@ pub fn start(ctx: &Context) -> Option<JoinHandle<()>> {
     }))
 }
 
-/// Handles each conversation left `thinking` with no turn running: a started session
-/// resumes its interrupted turn once, any other gets `yourTurn` and an `error` entry that
-/// says so. Returns how many it handled.
 pub async fn recover(ctx: &Context) -> Result<usize> {
     let store = ctx.store()?;
     let mut fixed = 0;
