@@ -67,6 +67,8 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
         options.mcp_config = Some(mcp::task_config_json(ctx.base_url(), &task.name));
         options.mcp_tools = mcp::task_allowed_tools();
         options.system_prompt = Some(with_rules(options.system_prompt, &targets, !advises));
+    } else if claude {
+        options.mcp_tools = vec![mcp::hand_back_tool()];
     }
     if claude {
         let mut chosen = found.def.plugins.clone();

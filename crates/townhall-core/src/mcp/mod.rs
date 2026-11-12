@@ -139,6 +139,10 @@ pub fn task_allowed_tools() -> Vec<String> {
         .collect()
 }
 
+pub fn hand_back_tool() -> String {
+    format!("mcp__{SERVER_NAME}__{HAND_BACK}")
+}
+
 /// `--allowedTools` for townhall's session: only its own tools.
 pub fn allowed_tools() -> Vec<String> {
     tools()

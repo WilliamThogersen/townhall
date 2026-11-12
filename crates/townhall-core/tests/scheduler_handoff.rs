@@ -59,6 +59,21 @@ async fn a_type_that_cannot_hand_back_gets_no_mcp_server() {
 }
 
 #[tokio::test]
+async fn every_claude_type_allows_hand_back_without_a_prompt() {
+    let s = Sched::new().await;
+    s.store().save_agent_type(LONE).await.unwrap();
+    s.store().save_agent_type(PICKY).await.unwrap();
+    for agent in ["lone", "picky"] {
+        let name = unique(agent);
+        create_as(&s, &name, agent).await;
+        run_once(s.ctx()).await.unwrap();
+        let args = s.args(&name).await;
+        assert!(args.contains("--allowedTools"), "{agent}: {args}");
+        assert!(args.contains("mcp__townhall__hand_back"), "{agent}: {args}");
+    }
+}
+
+#[tokio::test]
 async fn a_shell_type_gets_no_mcp_server() {
     let s = Sched::new().await;
     s.store().save_agent_type(SHELL).await.unwrap();
