@@ -58,7 +58,8 @@ async fn the_agent_reads_its_brief_in_accept_edits_when_its_type_sets_no_mode() 
         lines[1].contains(" before you stop to ask the user, ask the adviser"),
         "{args}"
     );
-    let id = lines[2].strip_prefix("--session-id=").unwrap();
+    assert_eq!(lines[2..4], ["", townhall_core::agent::FOREGROUND_RULE]);
+    let id = lines[4].strip_prefix("--session-id=").unwrap();
     assert!(is_session_id(id), "{args}");
     let dir = format!("--add-dir={}", brief.parent().unwrap().display());
     let order = brief_order(&brief);
@@ -74,7 +75,7 @@ async fn the_agent_reads_its_brief_in_accept_edits_when_its_type_sets_no_mode() 
     let tree = s.worktree(&name);
     let tree = tree.display();
     assert_eq!(
-        lines[3],
+        lines[5],
         format!(
             "--allowedTools=mcp__townhall__hand_back,mcp__townhall__open_pr,mcp__townhall__add_artifact,mcp__townhall__list_artifacts,mcp__townhall__search_history,mcp__townhall__read_conversation,mcp__townhall__history_graph,mcp__townhall__agent_stats,mcp__townhall__ask_adviser,Bash(cd {tree}),Bash(cd {tree}/*),Bash(pwd),Read(~/.claude/plans/*)"
         )
@@ -83,7 +84,7 @@ async fn the_agent_reads_its_brief_in_accept_edits_when_its_type_sets_no_mode() 
         !args.contains("--tools="),
         "a type with no tool list stays unrestricted: {args}"
     );
-    assert_eq!(lines[4..], rest);
+    assert_eq!(lines[6..], rest);
     let text = std::fs::read_to_string(&brief).unwrap();
     assert_eq!(text, format!("# do {name}\n\nthe brief for {name}\n"));
     let launch = s.store().task_launch(&name).await.unwrap().unwrap();
@@ -118,7 +119,7 @@ async fn attachments_are_listed_in_the_brief_and_readable() {
         format!("--add-dir={}", brief.parent().unwrap().display()),
         format!("--add-dir={}", files_dir.display()),
     ];
-    assert_eq!(lines[4..6], dirs);
+    assert_eq!(lines[6..8], dirs);
     let text = std::fs::read_to_string(&brief).unwrap();
     let listed = format!("\n\nFiles attached to this task:\n- {}\n", path.display());
     assert!(text.ends_with(&listed), "{text}");
