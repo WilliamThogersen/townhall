@@ -298,6 +298,59 @@ IME status: what is automated is the `EntityInputHandler` path macOS drives, in 
 7. Shift+Enter in the middle of a composition does not insert a line before the composition is committed.
 8. Paste multi-line text with Cmd+V: it lands as is, the box grows up to 8 lines, the draft file has it.
 
+### Phase 1: thread, sidebar, session panel and home
+
+`land-gpui-p1-composer` had reached `main` (#138) while this was built, so `origin/townhall/land-gpui-p1-composer` and then `origin/main` (at `faadffe`) were merged into the branch.
+
+What runs, all in `crates/townhall-gpui/src/`:
+
+- `thread.rs`, `entries.rs`: the thread is a gpui `list` (variable height, measured, 600 px overdraw) with `FollowMode::Tail`. It opens at the bottom, stays at the bottom while you are there and keeps its position once you scrolled up. A new or changed entry splices only the rows that differ (first and last differing row), so rows above and below keep their measured heights. Entries as in `web/src/views/conversation/thread`: your and townhall's bubbles with the time, `repo`, agent, event, handoff, plugin and error lines, the tasks block, and needs-you and repo-ask blocks. A repo ask has one button per candidate and `both` / `all`; a click sends that name as your message, the buttons wait while townhall is thinking.
+- `markdown.rs`: `pulldown-cmark` (tables, strikethrough, task lists) into blocks: headings, lists (nested, numbered from their start), task lists (`☑` `☐`), fenced and indented code in JetBrains Mono, tables that scroll sideways with their alignment, quotes, rules. Links keep only `http:`, `https:` and `mailto:`; a bare web address becomes a link, any other target is plain text. Raw HTML is shown as text, an image is its alt text (or nothing). A single line break is a line break, as with `remark-breaks`.
+- `selectable.rs`, `selection.rs`: selection is per block, one text block at a time (a paragraph, a heading, a code block, a table cell, an event line). Drag selects (also backwards and past the end of the block), double click a word, triple click the block, `⌘C` / `Ctrl-C` copies, a click on a link calls `cx.open_url`, a drag across a link selects and does not open it, a click elsewhere clears. Selecting inside another block moves the selection there.
+- `sidebar.rs`, `sidebar_rows.rs`, `row_menu.rs`: active and older sections, `by repo` groups that fold down to the current row (the choice is kept in `prefs.json` next to `drafts.json`), the row glyph, title, age (`age.rs`, redrawn once a minute), status line and repo as `web/src/sidebar`. Search filters titles at once and adds message matches from `GET /api/search` 200 ms after the last keystroke (`/` focuses it from the thread, `esc` clears it). `⌥↑` and `⌥↓` walk the visible conversations. The row menu is `gpui-component`'s `ContextMenuExt` / `PopupMenu` (the popover layer), opened with a right click, with the web menu's items: `end conversation` (not on ended ones) and `repo: auto` / `repo: <name>` as checked items, which call `POST .../end` and `PATCH` with `linkedRepo`.
+- `session.rs`, `session_model.rs`, `task_rows.rs`: the rail: task rows sorted by attention (glyph, name, state words that follow the check, title, agent tag, `pr to`, `pr open`, why a queued task is blocked, the `#n` pull request link), the task summary, the repo line with its reason, the files by name and the context meter. It shows from 1200 px window width and toggles from the header.
+- `home.rs`, `home_model.rs`: home with the greeting by first name, a hero composer (`start`, `POST /api/conversations`) and starters that fill it, the first-run view (`add your first repository`, a folder picker and `POST /api/repos`) and the daemon banner (`error: cannot reach the daemon: ...` and `retry`). The app still opens on the newest conversation as the composer phase did; the sidebar brand and `new conversation` go home.
+- The pure logic with their vitest tables as `#[test]`: `age`, `sections`, `rowSummary`, `conversationRepo`, `sidebarRows`, `rowMenuItems`, `taskRows` (with `verify`), `repoLine` and `contextUsage`, `threadModel`, `taskView`, `greetingText`, `starterPrompts`, `useConversationKeys`'s `nextConversation`.
+- Tests with `TestAppContext`: selection and copy (drag, backwards, double and triple click, link click, clearing), sticky scroll (opens at the bottom, new entry, scrolled up keeps position, scrolling back sticks again, another conversation), search (immediate title filter, delayed message matches, only the settled text is sent, failure keeps title matches), by-repo, the menu actions, home, first run, the banner, `⌥↑/⌥↓`, the repo-ask buttons, and a redraw counter that must stay put between ticks.
+
+Differences from the web app:
+
+- Selection is per block, not across blocks (the plan's accepted first cut). There is no selection by keyboard.
+- The status spinner is the static `⠋`: an animated one would redraw 10 times a second. The age is the only clock, once a minute.
+- The row menu opens where you right click (as the web does); the keyboard way (`Shift-F10`, the context menu key) is not bound.
+- Needs-you blocks are read only (the question, no option buttons, no answer field, no `always allow`): answering needs keys to the terminal, which phase 3 brings. `stop` is not in the header yet. `end` asks first when tasks would stop, as the web does.
+- No message queue, thumbnails or attachments, loop strip, proof section or plugin slots in the session rail (phases 2, 3 and 5), no files list with thumbnails (names only), no usage meter or control center link.
+- Search: `enter` does nothing (the web goes to the all results page, phase 4); the field is always shown.
+- Home has no shipped stats, heatmap or plugin starters. The web opens on home; here the newest conversation opens first.
+- Text is monospace everywhere, so `*italic*` falls back to whatever the system gives for JetBrains Mono (only Regular and Bold are embedded).
+
+Idle numbers: Apple Silicon, macOS 26.6.2, release build, `--measure 60` (5 s settle, then 60 s of the process's own CPU time and RSS), window open and untouched, against a local fixture server (`python3`, not the real daemon: 12 conversations in every state, repos, tasks, the newest conversation with 400 entries of every kind and markdown with tables, code and links) and an empty scratch `--home`, so nothing was read from or written to `~/.townhall`. The events socket is held open by the fixture.
+
+| Run | CPU (share of one core) | RSS |
+|-----|-------------------------|-----|
+| `--measure 60`, stderr to a file | 0.27% | 72.5 MB |
+| `--measure 60`, stderr discarded | 0.08% | 54.7 MB |
+| `--measure 60`, stdout and stderr to files | 0.22% | 62.0 MB |
+| `--measure 40` | 0.11% | 60.7 MB |
+| `--measure 10` | 0.07% | 62.8 MB |
+| `--measure 60`, stdout and stderr captured through pipes by the harness (3 runs) | 1.63%, 7.36%, 4.42% | 65.0, 48.2, 61.2 MB |
+
+The last row is not explained. The same binary, window and data measured 0.07 to 0.27% in the other five runs, and a run that polled `ps` every 5 s for 100 s with both streams piped showed 0.33 s of CPU in the first 5 s, then 0.00 to 0.02 s per 5 s (the minute tick costs about 0.02 s). A `sample` of 5 s (10 s after start) showed the main thread blocked in `mach_msg` for every sample, and one of 12 s over the tick showed it running in 44 of about 10,000 samples. What I cannot rule out is mouse input over the window in those three runs (hover redraws every row under the pointer); I did not look at the machine while they ran. Repeat on a quiet machine before relying on the 0.1% figure.
+
+Two things the work turned up:
+
+- The caret idle policy of the composer never reached the input: `gpui-component` keeps a second copy of the theme in its base layer and only refreshes it through `Theme::sync_base` after direct edits, which `theme::apply_to_components` did not call, so in a test with a fake clock the caret kept blinking twice a second. A test that counts redraws between ticks caught it (124 redraws in a minute instead of 0) and `apply_to_components` now syncs. I did not measure the old build in the real app, so I cannot say how much of the composer section's caret numbers above this changes; the idle runs below include the fix.
+- In this `gpui` / `taffy`, `min_w_0` on a child inside a shrink-to-fit column makes its intrinsic width 0 (every character wrapped). The thread's bubbles only size to their text once that is left off children of shrink-wrapped containers.
+
+Left of phase 1:
+
+- Look at the window against the preview, light theme included. No screen was available to me: what is checked is the element tree through `TestAppContext` (bounds, hit tests, text), not the pixels.
+- Run it against the real daemon with real, long conversations and repeat the idle numbers on a quiet machine.
+- Needs-you answers, `stop`, the message queue, `Escape` to leave the input, `ArrowUp` for the last message, reply-to (`QuotedReply` is only a text line), the context bar and plugin actions of the composer.
+- Keyboard: `Shift-F10` for the row menu, arrows inside the thread, selection across blocks.
+- No test drives the row menu popup itself (the actions behind it are tested), the header's `end` with its confirm question, the session toggle or the folder picker of first run (what it calls, `add_repo`, is tested).
+- The window is not tested below 1200 px (no rail) or 639 px (the web hides the sidebar there; here it stays).
+
 ## 11. Follow-ups
 
 - Read `idle-cpu-profile` before anything else here.
