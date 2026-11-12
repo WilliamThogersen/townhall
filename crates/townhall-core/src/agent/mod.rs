@@ -16,7 +16,7 @@ pub use claude::{
     ISOLATED_SETTINGS, MCP_TOOL_TIMEOUT_ENV, OUTER_SESSION_ENV,
 };
 
-use crate::cmd::{run, validate_name};
+use crate::cmd::{probe, validate_name};
 use crate::model::AgentKey;
 use crate::{tmux, worktree, Error, Result, Workspace};
 
@@ -30,8 +30,9 @@ pub struct Agent {
     pub alive: bool,
 }
 
-const TMUX_ABSENT: [&str; 6] = [
+const TMUX_ABSENT: [&str; 7] = [
     "can't find session",
+    "no such session",
     "can't find pane",
     "no server running",
     "no current target",
@@ -155,7 +156,7 @@ pub async fn retire(ws: &Workspace, name: &str) -> Result<bool> {
 /// Worktree already gone: the branch may still linger. True if it was deleted.
 async fn delete_orphan_branch(ws: &Workspace, name: &str) -> Result<bool> {
     let branch = format!("townhall/{name}");
-    match run("git", &["branch", "-D", &branch], Some(ws.repo())).await {
+    match probe("git", &["branch", "-D", &branch], Some(ws.repo())).await {
         Ok(_) => Ok(true),
         Err(e) if git_absent(&e) => Ok(false),
         Err(e) => Err(e),
@@ -214,4 +215,28 @@ pub async fn attach_args(ws: &Workspace, name: &str) -> Result<Vec<String>> {
     tmux::prepare_attach(ws.key(), name)
         .await
         .map_err(|e| missing_session(name, e))
+}
+
+#[cfg(test)]
+mod absent_tests {
+    use super::*;
+
+    fn failed(stderr: &str) -> Error {
+        Error::Command {
+            command: "tmux set-option".into(),
+            code: Some(1),
+            stderr: stderr.into(),
+        }
+    }
+
+    #[test]
+    fn a_session_that_died_before_set_option_is_absent() {
+        assert!(tmux_absent(&failed("no such session: =townhall-k-a:")));
+    }
+
+    #[test]
+    fn a_missing_session_reads_as_not_found() {
+        let e = missing_session("a", failed("no such session: =townhall-k-a:"));
+        assert!(matches!(e, Error::NotFound(_)), "{e:?}");
+    }
 }

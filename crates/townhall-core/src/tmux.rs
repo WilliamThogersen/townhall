@@ -11,7 +11,7 @@ use std::path::Path;
 
 pub use panes::{Exit, Pane};
 
-use crate::cmd::{run, validate_name};
+use crate::cmd::{probe, run, validate_name};
 use crate::model::AgentKey;
 use crate::{Error, Result};
 
@@ -51,6 +51,17 @@ async fn run_tmux(args: &[&str]) -> Result<String> {
         .chain(args.iter().copied())
         .collect();
     run("tmux", &all, None).await
+}
+
+/// `run_tmux` for a call whose failure the caller handles (a session that is already gone).
+async fn probe_tmux(args: &[&str]) -> Result<String> {
+    let server = server_args()?;
+    let all: Vec<&str> = server
+        .iter()
+        .map(String::as_str)
+        .chain(args.iter().copied())
+        .collect();
+    probe("tmux", &all, None).await
 }
 
 /// Prefix shared by every session of one repo: `townhall-<repo-key>-`.
@@ -363,7 +374,7 @@ pub async fn screen(key: &str, name: &str) -> Result<String> {
 
 pub async fn kill(key: &str, name: &str) -> Result<()> {
     validate_name(name)?;
-    let killed = run_tmux(&["kill-session", "-t", &session_target(key, name)]).await;
+    let killed = probe_tmux(&["kill-session", "-t", &session_target(key, name)]).await;
     panes::invalidate();
     killed.map(|_| ())
 }
