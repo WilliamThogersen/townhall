@@ -103,8 +103,8 @@ Run the comparison: `scripts/parity.sh [scene...]` writes `docs/plan/gpui-parity
 | thread: you message with time and quoted reply | built | bubble with tint and rule; no time, no quote |
 | thread: townhall message rendered as markdown | built | plain text today; the markdown thread is being built in the parallel task `gpui-p1-thread` |
 | markdown: headings, lists, code blocks, inline code, links, tables | missing | owned by `gpui-p1-thread` |
-| thread: attachments thumbnails (`Thumbs`), file cards | missing | |
-| attachment lightbox, image actions, focus trap | missing | |
+| thread: attachments thumbnails (`Thumbs`), file cards | built | scene `attach-thumbs`: 17.8% dark, 15.9% light of the whole window. Thumbs are 104 px tall, at most 240 wide, more than 3 collapse to 2 and `+N`, file cards are link styled, `[Image #1]` markers are stripped. The mismatch is the thread layout (text does not wrap at the pane width, the rail is squeezed), not the thumbnails. Not confirmed |
+| attachment lightbox, image actions, focus trap | built | scene `attach-lightbox`: 1.2% dark and light. Arrows, esc, `c` and `copy` (image on the clipboard), `download` (saves to `~/Downloads` and reveals it), thumbnail strip, pixel size. Still differs: text anti-aliasing and a 1 to 2 px offset of the footer strip. No focus trap: the lightbox has no tab stops. Not confirmed |
 | thread: `repo` event line | built | event line with glyph |
 | thread: `repoAsk` block with choices | missing | |
 | thread: `tasksCreated` task block | built | event line only |
@@ -117,16 +117,16 @@ Run the comparison: `scripts/parity.sh [scene...]` writes `docs/plan/gpui-parity
 | composer: textarea, `›` sign, placeholder, help line | built | seen: placeholder `reply, or ask for more work`, help `⏎ send · ⇧⏎ new line`, `send` button |
 | composer: Enter sends, Shift+Enter newline, grows to 8 lines | built | |
 | composer: drafts per conversation, kept across restarts | built | |
-| composer: IME composition, paste | built | |
+| composer: IME composition, paste | built | paste of text, and of an image or copied files from the clipboard (they attach and the text is not inserted) |
 | composer: thinking placeholder and `stop` button | built | sending is blocked while thinking; no stop button |
-| composer: attach button, file input, upload chips, drop zone | missing | |
+| composer: attach button, file input, upload chips, drop zone | built | `+ attach` opens the system file dialog; chips with progress, cancel and error as the web; drop anywhere on the conversation area shows the dashed zone. Scenes `attach-composer` 13.0% dark, 14.0% light and `attach-drop` 19.6% dark, 26.6% light of the whole window; chips and the drop zone look the same, the rest is the thread, rail and keybar. The `uploading` state is covered by unit tests, not by a scene. The home (hero) composer does not stage files yet. Not confirmed |
 | composer: message queue list, up-arrow pulls last, esc restores | missing | |
 | composer: reply bar (quote a message) | missing | |
 | composer: plugin actions | missing | |
-| composer: error line and `retry` for failed uploads | missing | |
+| composer: error line and `retry` for failed uploads | built | error line seen in `attach-composer`; `retry` shows for a dropped connection or a 5xx and is unit-tested, not seen in a scene |
 | keys: `r` reply, `s` session panel, esc leaves input | missing | |
 | session panel (rail): tasks list with state glyph, name, words, title, agent tag, pr tags, blocked | missing | scene `session-panel` |
-| session panel: repo, files, context sections | missing | |
+| session panel: repo, files, context sections | built | files: 3 column thumbnail grid (56 px tall) and file cards, a click opens the lightbox on every image; scene `attach-files` 17.6% dark, 15.1% light, dominated by the squeezed rail. Not confirmed |
 | session panel: loop strip, proof section | missing | |
 | session panel: link to control center | missing | |
 | session panel: keyboard (arrows, enter, close) | missing | |
@@ -149,7 +149,7 @@ Run the comparison: `scripts/parity.sh [scene...]` writes `docs/plan/gpui-parity
 | heatmap grid with month labels, hover tip | missing | scene `heatmap` |
 | year comparison | missing | |
 | first-run slot (no repos) | missing | |
-| drop zone for files | missing | |
+| drop zone for files (home) | missing | the conversation page has it (see composer); home has no file staging yet |
 
 ## Control center (`views/control/`)
 
