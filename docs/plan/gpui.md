@@ -8,7 +8,7 @@ How to read the claims: "verified" means I read the source or ran it in this ses
 
 ## 1. Recommendation
 
-1. Conditional go. Do not start the migration before `idle-cpu-profile` reports. If the idle cost is the WebKit and React baseline and cannot be removed in days, go: about 24 engineer-weeks (range 18 to 32) for one person who already knows Rust, and phases 0 and 1 give a usable read and reply app in about 8 weeks. If the cost is a fixable poll, timer or leak in `web/`, fix that first: it is days, not months.
+1. Decision: go (user, 2026-11-12). Start phase 0 now. Earlier analysis: about 24 engineer-weeks (range 18 to 32) for one person who already knows Rust, and phases 0 and 1 give a usable read and reply app in about 8 weeks.
 2. Plugin iframes: drop them in the native app and replace them with declarative slots, plus one plugin page that opens in its own webview window (section 4).
 3. Keep the daemon and its HTTP and websocket API exactly as they are. The GPUI app hosts the daemon in-process, as `src-tauri` does today, and talks to it over loopback with `townhall-core` types (section 5).
 
@@ -76,7 +76,7 @@ Options:
 
 Recommendation: A for `sidebar.nav`, `sidebar.foot`, `session.section`, `task.section`, `settings.group` and `composer.action`; C for `page`, opened in a separate window. No B. The postMessage protocol stays as the contract for C; for A the daemon needs one new manifest shape (`contributes.ui[].view` with the declarative JSON), which is a plugin API addition and needs a `docs/plugins.md` decision.
 
-Before committing to this, count how many of the shipping plugins (the four in the `townhall-official` snapshot) declare `contributes.ui` at all. I did not check. If none do, the cost of dropping iframes is zero today.
+Checked against the official plugins in the `townhall-plugins` repo (manifests at `plugins/*/.townhall-plugin/plugin.json`): only one of the four declares `contributes.ui`, namely `sample-full`, with one `session.section` entry (`ui/session.html`). `agent-types`, `starter-prompts` and `theme-slate` declare no UI. So option A costs nothing for the shipping plugins, but it does break `sample-full`, which is a sample meant to show every capability and should be ported to a declarative `session.section` view or kept as a documented example of the iframe path.
 
 ## 5. Architecture
 
