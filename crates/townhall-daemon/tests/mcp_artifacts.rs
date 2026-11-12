@@ -81,6 +81,8 @@ async fn a_task_agent_gets_the_task_tools_with_the_artifact_tools() {
             "list_artifacts",
             "search_history",
             "read_conversation",
+            "history_graph",
+            "agent_stats",
             "ask_adviser"
         ]
     );
