@@ -57,6 +57,36 @@
       }
     },
     {
+      "name": "atomic-agents",
+      "description": "Comprehensive development workflow for building AI agents with the Atomic Agents framework.",
+      "category": "development",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/BrainBlend-AI/atomic-agents.git",
+        "path": "claude-plugin/atomic-agents",
+        "sha": "33d2ec94f42d4a65393a336e35edf21ee5700303"
+      },
+      "homepage": "https://github.com/BrainBlend-AI/atomic-agents",
+      "tags": [
+        "community-managed"
+      ]
+    },
+    {
+      "name": "xcode",
+      "displayName": "Xcode",
+      "description": "Work with Xcode projects from Claude Code: build, run, and test schemes.",
+      "author": {
+        "name": "Apple Inc."
+      },
+      "category": "development",
+      "source": {
+        "source": "command",
+        "command": "xcrun agent plugin path --plugin-format claude",
+        "mode": "link"
+      },
+      "homepage": "https://developer.apple.com/xcode/"
+    },
+    {
       "name": "modern-web-guidance",
       "description": "Keep your coding agent up to date with the latest web best practices",
       "author": {

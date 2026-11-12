@@ -231,6 +231,12 @@ fn source_json(kind: &str, fields: &[(&str, Option<&str>)]) -> Map<String, Value
 
 fn spec_of(home: &Home, market: &Marketplace, entry: &Entry) -> Result<Spec> {
     let (url, git_ref, sha, subdir, map) = match &entry.source {
+        Source::Unsupported(kind) => {
+            return Err(Error::InvalidInput(format!(
+                "`{}` uses the `{kind}` source kind, which townhall does not install",
+                entry.name
+            )));
+        }
         Source::Path(path) => {
             let dir = match place_of(&market.source)? {
                 Place::Directory(dir) => dir,
@@ -497,7 +503,11 @@ impl PluginRegistry {
                 let Ok(index) = listed(&home, market) else {
                     continue;
                 };
-                for entry in index.plugins {
+                for entry in index
+                    .plugins
+                    .into_iter()
+                    .filter(|e| !matches!(e.source, Source::Unsupported(_)))
+                {
                     let id = format!("{}@{}", entry.name, market.name);
                     found.push(AvailablePlugin {
                         installed: installed_ids.iter().any(|i| i.eq_ignore_ascii_case(&id)),

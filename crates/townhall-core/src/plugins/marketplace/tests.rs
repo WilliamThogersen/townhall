@@ -489,6 +489,40 @@ fn the_official_claude_marketplace_decodes_with_skills_renames_and_lsp_servers()
 }
 
 #[test]
+fn a_command_source_is_read_but_never_installable_and_other_unknown_kinds_stay_refused() {
+    let market = parse(include_str!(
+        "../../../tests/fixtures/plugins/marketplaces/claude-plugins-official.json"
+    ))
+    .unwrap();
+    let xcode = market.plugins.iter().find(|p| p.name == "xcode").unwrap();
+    assert_eq!(xcode.source, Source::Unsupported("command".into()));
+    assert_eq!(xcode.display_name.as_deref(), Some("Xcode"));
+    let why = refused(&with_source(json!({ "source": "npm", "package": "x" })));
+    assert!(why.contains("npm"), "{why}");
+}
+
+#[test]
+fn a_url_source_with_a_path_is_a_folder_of_that_repo() {
+    let market = parse(include_str!(
+        "../../../tests/fixtures/plugins/marketplaces/claude-plugins-official.json"
+    ))
+    .unwrap();
+    let atomic = market
+        .plugins
+        .iter()
+        .find(|p| p.name == "atomic-agents")
+        .unwrap();
+    assert!(matches!(
+        &atomic.source,
+        Source::GitSubdir { path, git_ref: None, sha: Some(_), .. } if path == "claude-plugin/atomic-agents"
+    ));
+    let why = refused(&with_source(
+        json!({ "source": "url", "url": "https://x/y.git", "path": "../x" }),
+    ));
+    assert!(why.contains("path"), "{why}");
+}
+
+#[test]
 fn a_skill_path_must_stay_inside_the_plugin() {
     for bad in ["../x", "/abs", "./a/../../b"] {
         let text = refused(&with_entry("skills", json!([bad])));

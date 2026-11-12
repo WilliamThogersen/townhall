@@ -78,9 +78,8 @@ async fn the_list_starts_with_builder() {
 async fn the_plugins_a_type_uses_round_trip_through_put_get_and_the_list() {
     let env = Env::new("alpha").await;
     let (_state, app) = env.start();
-    let with = format!(
-        "{CODER}plugins = [\"modern-web-guidance@claude-plugins-official\", \"notes\"]\n"
-    );
+    let with =
+        format!("{CODER}plugins = [\"modern-web-guidance@claude-plugins-official\", \"notes\"]\n");
     let (s, v) = put(&app, "coder", &with).await;
     assert_eq!(s, StatusCode::CREATED, "{v}");
     let want = json!(["modern-web-guidance@claude-plugins-official", "notes"]);

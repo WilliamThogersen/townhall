@@ -72,7 +72,10 @@ pub enum Source {
         git_ref: Option<String>,
         sha: Option<String>,
     },
+    Unsupported(String),
 }
+
+const UNSUPPORTED_KINDS: [&str; 1] = ["command"];
 
 #[derive(Deserialize)]
 #[serde(tag = "source", rename_all = "kebab-case", deny_unknown_fields)]
@@ -86,6 +89,8 @@ enum Tagged {
     },
     Url {
         url: String,
+        #[serde(default)]
+        path: Option<String>,
         #[serde(rename = "ref", default)]
         git_ref: Option<String>,
         #[serde(default)]
@@ -105,11 +110,36 @@ impl<'de> Deserialize<'de> for Source {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         match Value::deserialize(deserializer)? {
             Value::String(path) => Ok(Source::Path(path)),
+            Value::Object(map)
+                if map
+                    .get("source")
+                    .and_then(Value::as_str)
+                    .is_some_and(|kind| UNSUPPORTED_KINDS.contains(&kind)) =>
+            {
+                let kind = map["source"].as_str().unwrap_or_default();
+                Ok(Source::Unsupported(kind.to_string()))
+            }
             object @ Value::Object(_) => {
                 let tagged = serde_json::from_value::<Tagged>(object).map_err(D::Error::custom)?;
                 Ok(match tagged {
                     Tagged::Github { repo, git_ref, sha } => Source::Github { repo, git_ref, sha },
-                    Tagged::Url { url, git_ref, sha } => Source::Url { url, git_ref, sha },
+                    Tagged::Url {
+                        url,
+                        path: Some(path),
+                        git_ref,
+                        sha,
+                    } => Source::GitSubdir {
+                        url,
+                        path,
+                        git_ref,
+                        sha,
+                    },
+                    Tagged::Url {
+                        url,
+                        path: None,
+                        git_ref,
+                        sha,
+                    } => Source::Url { url, git_ref, sha },
                     Tagged::GitSubdir {
                         url,
                         path,
@@ -165,6 +195,7 @@ impl Source {
                 check::rel_path("path", path)?;
                 pin(git_ref, sha)
             }
+            Source::Unsupported(_) => Ok(()),
         }
     }
 }
@@ -191,6 +222,8 @@ pub struct TownhallEntry {
 #[serde(deny_unknown_fields)]
 pub struct Entry {
     pub name: String,
+    #[serde(default, rename = "displayName")]
+    pub display_name: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
