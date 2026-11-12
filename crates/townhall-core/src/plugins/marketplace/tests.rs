@@ -162,9 +162,9 @@ fn an_unknown_key_on_an_entry_is_refused() {
 #[test]
 fn an_unknown_key_in_the_owner_is_refused() {
     let mut market = base();
-    market["owner"]["email"] = json!("a@b.c");
+    market["owner"]["phone"] = json!("123");
     let why = refused(&market);
-    assert!(why.contains("email"), "{why}");
+    assert!(why.contains("phone"), "{why}");
 }
 
 #[test]
@@ -463,4 +463,37 @@ fn text_that_is_not_json_is_refused() {
         let err = parse(text).unwrap_err();
         assert!(matches!(err, Error::InvalidInput(_)), "{text}: {err:?}");
     }
+}
+
+#[test]
+fn the_official_claude_marketplace_decodes_with_skills_renames_and_lsp_servers() {
+    let market = parse(include_str!(
+        "../../../tests/fixtures/plugins/marketplaces/claude-plugins-official.json"
+    ))
+    .unwrap();
+    assert_eq!(market.name, "claude-plugins-official");
+    assert_eq!(market.owner.email.as_deref(), Some("support@anthropic.com"));
+    let amd = &market.plugins[0];
+    assert_eq!(amd.strict, Some(false));
+    assert_eq!(amd.skills, ["./local-ai-use", "./serving-llms-on-instinct"]);
+    assert!(amd.commands.is_empty());
+    let web = market
+        .plugins
+        .iter()
+        .find(|p| p.name == "modern-web-guidance")
+        .unwrap();
+    assert!(
+        matches!(&web.source, Source::Url { url, .. } if url.ends_with("modern-web-guidance.git"))
+    );
+    assert!(web.skills.is_empty());
+}
+
+#[test]
+fn a_skill_path_must_stay_inside_the_plugin() {
+    for bad in ["../x", "/abs", "./a/../../b"] {
+        let text = refused(&with_entry("skills", json!([bad])));
+        assert!(text.contains("skills"), "{text}");
+    }
+    assert!(parse(&with_entry("skills", json!(["./a", "b/c"])).to_string()).is_ok());
+    assert!(parse(&with_entry("commands", json!("./cmds")).to_string()).is_ok());
 }

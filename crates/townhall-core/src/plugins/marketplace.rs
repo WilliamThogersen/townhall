@@ -15,7 +15,33 @@ pub const MAX_MARKETPLACE_BYTES: usize = 1024 * 1024;
 pub struct Owner {
     pub name: String,
     #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
     pub url: Option<String>,
+}
+
+pub(super) fn path_list<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Vec<String>, D::Error> {
+    match Value::deserialize(deserializer)? {
+        Value::String(path) => Ok(vec![path]),
+        Value::Array(items) => items
+            .into_iter()
+            .map(|item| match item {
+                Value::String(path) => Ok(path),
+                _ => Err(D::Error::custom("must be a path or a list of paths")),
+            })
+            .collect(),
+        _ => Err(D::Error::custom("must be a path or a list of paths")),
+    }
+}
+
+pub(super) fn check_paths(what: &str, paths: &[String]) -> Result<()> {
+    for path in paths {
+        let inside = path.strip_prefix("./").unwrap_or(path);
+        check::rel_path(what, inside)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -185,6 +211,12 @@ pub struct Entry {
     pub keywords: Vec<String>,
     #[serde(default)]
     pub strict: Option<bool>,
+    #[serde(default, deserialize_with = "path_list")]
+    pub skills: Vec<String>,
+    #[serde(default, deserialize_with = "path_list")]
+    pub commands: Vec<String>,
+    #[serde(default, rename = "lspServers")]
+    pub lsp_servers: Option<Value>,
     pub source: Source,
     #[serde(default)]
     pub townhall: Option<TownhallEntry>,
@@ -207,6 +239,8 @@ impl Entry {
             }
             townhall.permissions.validate()?;
         }
+        check_paths("skills", &self.skills)?;
+        check_paths("commands", &self.commands)?;
         self.source.validate()
     }
 }
@@ -224,6 +258,8 @@ pub struct Marketplace {
     pub owner: Owner,
     #[serde(default)]
     pub metadata: Option<Metadata>,
+    #[serde(default)]
+    pub renames: Option<Value>,
     pub plugins: Vec<Entry>,
 }
 

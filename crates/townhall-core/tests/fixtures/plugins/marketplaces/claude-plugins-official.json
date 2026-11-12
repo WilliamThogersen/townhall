@@ -1,0 +1,74 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-plugins-official",
+  "description": "Directory of popular Claude Code extensions including development tools, productivity plugins, and MCP integrations",
+  "owner": {
+    "name": "Anthropic",
+    "email": "support@anthropic.com"
+  },
+  "renames": {
+    "adlc": "agentforce-adlc",
+    "vals": "valtown"
+  },
+  "plugins": [
+    {
+      "name": "amd-skills",
+      "description": "AMD's verified Agent Skills in one plugin.",
+      "author": {
+        "name": "AMD"
+      },
+      "category": "development",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/amd/skills.git",
+        "path": "skills",
+        "ref": "main",
+        "sha": "6916fb371d1cba40757b223cf16b4cd4912b202f"
+      },
+      "strict": false,
+      "skills": [
+        "./local-ai-use",
+        "./serving-llms-on-instinct"
+      ],
+      "homepage": "https://developer.amd.com/"
+    },
+    {
+      "name": "clangd-lsp",
+      "description": "C/C++ language server (clangd) for code intelligence",
+      "version": "1.0.0",
+      "author": {
+        "name": "Anthropic",
+        "email": "support@anthropic.com"
+      },
+      "source": "./plugins/clangd-lsp",
+      "category": "development",
+      "strict": false,
+      "lspServers": {
+        "clangd": {
+          "command": "clangd",
+          "args": [
+            "--background-index"
+          ],
+          "extensionToLanguage": {
+            ".c": "c",
+            ".h": "c"
+          }
+        }
+      }
+    },
+    {
+      "name": "modern-web-guidance",
+      "description": "Keep your coding agent up to date with the latest web best practices",
+      "author": {
+        "name": "Google Chrome"
+      },
+      "category": "development",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/GoogleChrome/modern-web-guidance.git",
+        "sha": "b31dc0a43ff5d19bcf386a3476a216f3b39a6f55"
+      },
+      "homepage": "https://goo.gle/modern-web-guidance"
+    }
+  ]
+}
