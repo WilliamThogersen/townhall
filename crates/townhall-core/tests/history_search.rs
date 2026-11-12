@@ -127,6 +127,7 @@ async fn tasks_and_agent_reports_carry_their_task_agent_state_branch_and_pr() {
                     number: 42,
                     url: Some("https://git.example/shop/pull/42".into()),
                     checks: Checks::Pending,
+                    merge_sha: None,
                 }),
                 ..t
             })

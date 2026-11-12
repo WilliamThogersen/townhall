@@ -79,6 +79,7 @@ async fn with_pr(env: &StoreEnv, name: &str, number: u64) {
                     number,
                     url: None,
                     checks: Checks::Passed,
+                    merge_sha: None,
                 }),
                 ..t
             })

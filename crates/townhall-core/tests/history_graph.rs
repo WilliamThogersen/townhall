@@ -44,6 +44,7 @@ async fn creating_and_ending_a_task_records_its_structural_edges_and_outcome() {
                     number: 9,
                     url: None,
                     checks: Checks::Passed,
+                    merge_sha: None,
                 }),
                 ..t
             })

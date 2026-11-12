@@ -27,6 +27,14 @@ impl CheckState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrFacts {
+    pub head: String,
+    pub conflicting: bool,
+    pub unknown: bool,
+    pub behind: u64,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChecksRequest<'a> {
     pub worktree: &'a Path,
@@ -140,6 +148,123 @@ pub fn pr_checks(req: &ChecksRequest, programs: &Programs) -> Result<Option<Vec<
         req.number,
         stderr.trim()
     )))
+}
+
+struct Gh {
+    program: String,
+    envs: Vec<(String, String)>,
+}
+
+fn github_of(req: &ChecksRequest, programs: &Programs) -> Result<Option<Gh>> {
+    let Some(origin) = origin_of(req.worktree)? else {
+        return Ok(None);
+    };
+    if origin.forge != Forge::GitHub {
+        return Ok(None);
+    }
+    let session = match req.accounts.pick(origin.forge.kind(), &origin.host)? {
+        Some(picked) => github_session(&programs.gh, &picked, req.worktree)?,
+        None => Session::new(),
+    };
+    let mut envs: Vec<(String, String)> = with_session(&session)
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    envs.push(("GH_PROMPT_DISABLED".to_string(), "1".to_string()));
+    Ok(Some(Gh {
+        program: programs.gh.clone(),
+        envs,
+    }))
+}
+
+fn gh_run(gh: &Gh, worktree: &Path, args: &[&str]) -> Result<String> {
+    let shown = format!(
+        "gh {}",
+        args.iter().take(2).copied().collect::<Vec<_>>().join(" ")
+    );
+    let output = Command::new(&gh.program)
+        .args(args)
+        .current_dir(worktree)
+        .envs(gh.envs.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .output()
+        .map_err(|e| Error::io(format!("run `{shown}`"), e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(invalid(format!("`{shown}` failed: {}", stderr.trim())));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhView {
+    head_ref_oid: String,
+    mergeable: String,
+}
+
+pub fn pr_facts(req: &ChecksRequest, base: &str, programs: &Programs) -> Result<Option<PrFacts>> {
+    let Some(gh) = github_of(req, programs)? else {
+        return Ok(None);
+    };
+    let number = req.number.to_string();
+    let shown = gh_run(
+        &gh,
+        req.worktree,
+        &["pr", "view", &number, "--json", "headRefOid,mergeable"],
+    )?;
+    let view: GhView = serde_json::from_str(&shown).map_err(|e| {
+        invalid(format!(
+            "`gh pr view` for #{} gave no facts: {e}",
+            req.number
+        ))
+    })?;
+    let range = format!(
+        "repos/{{owner}}/{{repo}}/compare/{base}...{}",
+        view.head_ref_oid
+    );
+    let behind = gh_run(&gh, req.worktree, &["api", &range, "--jq", ".behind_by"])?;
+    let behind = behind
+        .parse()
+        .map_err(|_| invalid(format!("`gh api` gave `{behind}` as commits behind {base}")))?;
+    Ok(Some(PrFacts {
+        conflicting: view.mergeable == "CONFLICTING",
+        unknown: view.mergeable == "UNKNOWN",
+        head: view.head_ref_oid,
+        behind,
+    }))
+}
+
+pub fn merge_pr(req: &ChecksRequest, head: &str, programs: &Programs) -> Result<Option<String>> {
+    let Some(gh) = github_of(req, programs)? else {
+        return Ok(None);
+    };
+    let number = req.number.to_string();
+    gh_run(
+        &gh,
+        req.worktree,
+        &[
+            "pr",
+            "merge",
+            &number,
+            "--merge",
+            "--match-head-commit",
+            head,
+        ],
+    )?;
+    let sha = gh_run(
+        &gh,
+        req.worktree,
+        &[
+            "pr",
+            "view",
+            &number,
+            "--json",
+            "mergeCommit",
+            "--jq",
+            ".mergeCommit.oid",
+        ],
+    )?;
+    Ok(Some(sha))
 }
 
 #[cfg(test)]

@@ -7,10 +7,11 @@ use crate::context::Context;
 use crate::mcp;
 use crate::model::{AgentEvent, Checks, EntryBody, Pr, Task, TaskState};
 use crate::repos::accounts::Accounts;
-use crate::repos::pr_checks::{pr_checks, CheckState, ChecksRequest};
+use crate::repos::pr_checks::{merge_pr, pr_checks, pr_facts, CheckState, ChecksRequest, PrFacts};
 use crate::repos::publish::Programs;
 use crate::{runner, Error, Result};
 
+use super::land::{all_green, decide, Verdict};
 use super::reflect::REFLECTOR;
 use super::{plan, transition, MOVED};
 
@@ -94,7 +95,12 @@ pub(super) fn start(ctx: &Context, tasks: &[Task]) -> Vec<String> {
     started
 }
 
-async fn read(ctx: &Context, task: &Task, number: u64) -> Result<Option<Vec<CheckState>>> {
+async fn on_forge<T: Send + 'static>(
+    ctx: &Context,
+    task: &Task,
+    number: u64,
+    call: impl FnOnce(&ChecksRequest, &Programs) -> Result<T> + Send + 'static,
+) -> Result<Option<T>> {
     let Some(worktree) = mcp::worktree_of(ctx, task).await else {
         return Ok(None);
     };
@@ -109,7 +115,7 @@ async fn read(ctx: &Context, task: &Task, number: u64) -> Result<Option<Vec<Chec
             branch: &branch,
             accounts: &accounts,
         };
-        pr_checks(&req, &Programs::from_env())
+        call(&req, &Programs::from_env()).map(Some)
     })
     .await
     .map_err(|e| {
@@ -118,6 +124,28 @@ async fn read(ctx: &Context, task: &Task, number: u64) -> Result<Option<Vec<Chec
             std::io::Error::other(e.to_string()),
         )
     })?
+}
+
+async fn read(ctx: &Context, task: &Task, number: u64) -> Result<Option<Vec<CheckState>>> {
+    let read = on_forge(ctx, task, number, pr_checks).await?;
+    Ok(read.flatten())
+}
+
+async fn facts(ctx: &Context, task: &Task, number: u64) -> Result<Option<PrFacts>> {
+    let base = task.pr_target().to_string();
+    let read = on_forge(ctx, task, number, move |req, programs| {
+        pr_facts(req, &base, programs)
+    })
+    .await?;
+    Ok(read.flatten())
+}
+
+async fn merges_on_green(ctx: &Context, task: &Task) -> Result<bool> {
+    let def = ctx.store()?.agent_type(&task.agent).await?;
+    Ok(match def {
+        Some(t) => t.def.merges_on_green(),
+        None => task.agent.eq_ignore_ascii_case("lander"),
+    })
 }
 
 fn describe(states: &[CheckState]) -> String {
@@ -138,14 +166,124 @@ async fn judge(ctx: &Context, task: &Task, key: &(PathBuf, String)) -> Result<()
     let Some(states) = read(ctx, task, pr.number).await? else {
         return Ok(());
     };
+    if matches!(task.state, TaskState::Ended | TaskState::InCi)
+        && merges_on_green(ctx, task).await?
+    {
+        return judge_for_merge(ctx, task, &pr, &states, key).await;
+    }
     let pending = states.iter().any(CheckState::pending);
     match (task.state, pending) {
         (TaskState::Ended, true) => wait(ctx, task, &pr, &states, key).await,
         (TaskState::Ended, false) => record(ctx, task, &states).await,
         (TaskState::InCi, true) => bound(ctx, task, &pr, &states, key).await,
-        (TaskState::InCi, false) => relaunch(ctx, task, &pr, &states, key).await,
+        (TaskState::InCi, false) => relaunch(ctx, task, &pr, &states, key, None).await,
         _ => Ok(()),
     }
+}
+
+async fn judge_for_merge(
+    ctx: &Context,
+    task: &Task,
+    pr: &Pr,
+    states: &[CheckState],
+    key: &(PathBuf, String),
+) -> Result<()> {
+    let seen = match all_green(states) {
+        true => facts(ctx, task, pr.number).await?,
+        false => None,
+    };
+    match decide(states, seen.as_ref()) {
+        Verdict::Merge => match seen {
+            Some(f) => merge(ctx, task, pr, states, &f.head, key).await,
+            None => Ok(()),
+        },
+        Verdict::Wait => match task.state {
+            TaskState::Ended => wait(ctx, task, pr, states, key).await,
+            _ => bound(ctx, task, pr, states, key).await,
+        },
+        Verdict::Relaunch => {
+            if task.state == TaskState::Ended {
+                let store = ctx.store()?;
+                if transition(store, &task.name, TaskState::Ended, TaskState::InCi)
+                    .await?
+                    .is_none()
+                {
+                    return Ok(());
+                }
+                begin_wait(key);
+            }
+            let advice = seen.map(|f| fix_advice(task.pr_target(), &f));
+            relaunch(ctx, task, pr, states, key, advice).await
+        }
+    }
+}
+
+fn fix_advice(base: &str, facts: &PrFacts) -> String {
+    match facts.conflicting {
+        true => format!("it conflicts with {base}: resolve the conflicts and push"),
+        false => format!(
+            "it is {} commits behind {base}: merge {base} into the branch and push",
+            facts.behind
+        ),
+    }
+}
+
+async fn merge(
+    ctx: &Context,
+    task: &Task,
+    pr: &Pr,
+    states: &[CheckState],
+    head: &str,
+    key: &(PathBuf, String),
+) -> Result<()> {
+    let head = head.to_string();
+    let merged = on_forge(ctx, task, pr.number, move |req, programs| {
+        merge_pr(req, &head, programs)
+    })
+    .await?
+    .flatten();
+    let Some(sha) = merged else {
+        return Ok(());
+    };
+    let checks = judged(states);
+    let kept = sha.clone();
+    let change = move |t: Task| match t.state {
+        TaskState::Ended | TaskState::InCi => Ok(Task {
+            state: TaskState::Merged,
+            pr: t.pr.map(|p| Pr {
+                checks,
+                merge_sha: Some(kept),
+                ..p
+            }),
+            ..t
+        }),
+        _ => Err(Error::Conflict(MOVED.into())),
+    };
+    let store = ctx.store()?;
+    match store.update_task(&task.name, change).await {
+        Ok(_) => {}
+        Err(Error::Conflict(m)) if m == MOVED => return Ok(()),
+        Err(e) => return Err(e),
+    }
+    end_wait(key);
+    let said = format!(
+        "task {} merged PR #{} into {}: merged, sha {sha}",
+        task.name,
+        pr.number,
+        task.pr_target()
+    );
+    let body = EntryBody::Agent {
+        agent: task.name.clone(),
+        event: AgentEvent::Passed,
+        text: plan::capped(&said, 400),
+    };
+    store.append_entry(&task.conversation_id, body).await?;
+    runner::notify(ctx, &task.conversation_id, said);
+    tracing::info!(
+        target: "townhall::task", event = "task.merged", task = %task.name,
+        sha = %sha, "the daemon merged a green pull request"
+    );
+    Ok(())
 }
 
 async fn waits_done(ctx: &Context, task: &Task) -> Result<usize> {
@@ -242,10 +380,12 @@ async fn relaunch(
     pr: &Pr,
     states: &[CheckState],
     key: &(PathBuf, String),
+    advice: Option<String>,
 ) -> Result<()> {
     record(ctx, task, states).await?;
+    let advice = advice.unwrap_or_else(|| "CI finished: merge if green, fix if red".to_string());
     let reason = format!(
-        "{REASON_PREFIX}{} finished: {}. CI finished: merge if green, fix if red",
+        "{REASON_PREFIX}{} finished: {}. {advice}",
         pr.number,
         describe(states)
     );

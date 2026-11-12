@@ -11,7 +11,7 @@ use crate::{clock, Error, Result};
 
 const COLUMNS: &str = "name, conversation_id, title, prompt, repo, base_branch, after, state, \
                        attachments, pr_number, pr_url, pr_checks, created_at, agent, blocked, pr_base, \
-                       done_when, check_cmd, max_retries, verify";
+                       done_when, check_cmd, max_retries, verify, pr_merge_sha";
 
 type Row = (
     [String; 8],
@@ -22,6 +22,7 @@ type Row = (
     [String; 2],
     [Option<String>; 2],
     (Option<String>, Option<String>, u32, Option<String>),
+    Option<String>,
 );
 
 fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
@@ -44,6 +45,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
         [text(12)?, text(13)?],
         [r.get(14)?, r.get(15)?],
         (r.get(16)?, r.get(17)?, r.get(18)?, r.get(19)?),
+        r.get(20)?,
     ))
 }
 
@@ -57,6 +59,7 @@ fn build(row: Row) -> Result<Task> {
         [created_at, agent],
         [blocked, pr_base],
         (done_when, check, max_retries, verify),
+        merge_sha,
     ) = row;
     let verify = verify.map(|v| from_json("tasks.verify", &v)).transpose()?;
     let pr = match (number, checks) {
@@ -64,6 +67,7 @@ fn build(row: Row) -> Result<Task> {
             number,
             url,
             checks: parse_name("tasks.pr_checks", &checks)?,
+            merge_sha,
         }),
         _ => None,
     };
@@ -188,15 +192,20 @@ fn insert(tx: &Transaction<'_>, t: &Task) -> Result<()> {
 }
 
 pub(super) fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
-    let (number, url, checks) = match &t.pr {
-        Some(pr) => (Some(pr.number), pr.url.clone(), Some(name_of(&pr.checks))),
-        None => (None, None, None),
+    let (number, url, checks, merge_sha) = match &t.pr {
+        Some(pr) => (
+            Some(pr.number),
+            pr.url.clone(),
+            Some(name_of(&pr.checks)),
+            pr.merge_sha.clone(),
+        ),
+        None => (None, None, None, None),
     };
     tx.execute(
         "update tasks set title = ?2, prompt = ?3, repo = ?4, base_branch = ?5, after = ?6,
          state = ?7, attachments = ?8, pr_number = ?9, pr_url = ?10, pr_checks = ?11,
          agent = ?12, blocked = ?13, pr_base = ?14, done_when = ?15, check_cmd = ?16,
-         max_retries = ?17, verify = ?18 where name = ?1",
+         max_retries = ?17, verify = ?18, pr_merge_sha = ?19 where name = ?1",
         params![
             t.name,
             t.title,
@@ -215,7 +224,8 @@ pub(super) fn write(tx: &Transaction<'_>, t: &Task) -> Result<()> {
             t.done.done_when,
             t.done.check,
             t.done.max_retries,
-            t.done.verify.as_ref().map(to_json).transpose()?
+            t.done.verify.as_ref().map(to_json).transpose()?,
+            merge_sha
         ],
     )?;
     tx.execute(

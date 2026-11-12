@@ -48,6 +48,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "0206_task_done",
         sql: include_str!("migrations/0206_task_done.sql"),
     },
+    Migration {
+        id: 207,
+        name: "0207_task_merge_sha",
+        sql: include_str!("migrations/0207_task_merge_sha.sql"),
+    },
 ];
 
 const TASKS_CREATED: &str = "tasksCreated";

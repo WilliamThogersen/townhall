@@ -169,6 +169,7 @@ async fn a_merge_commit_gives_a_task_with_a_deleted_branch_its_files_and_a_merge
                     number: 9,
                     url: None,
                     checks: townhall_core::model::Checks::Passed,
+                    merge_sha: None,
                 }),
                 ..t
             })
