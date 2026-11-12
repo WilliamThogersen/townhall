@@ -4,7 +4,7 @@ mod fresh;
 
 pub use fresh::fresh_base;
 
-use crate::cmd::{run, validate_name};
+use crate::cmd::{probe, run, validate_name};
 use crate::{Error, Result, Workspace};
 
 const BRANCH_PREFIX: &str = "townhall/";
@@ -46,7 +46,7 @@ pub async fn create(ws: &Workspace, name: &str, base: &str) -> Result<Worktree> 
 
 async fn remove_folder(ws: &Workspace, wt: &Worktree) -> Result<()> {
     let path = wt.path.to_string_lossy().into_owned();
-    run(
+    probe(
         "git",
         &["worktree", "remove", "--force", &path],
         Some(ws.repo()),
@@ -75,7 +75,7 @@ pub async fn retire(ws: &Workspace, name: &str) -> Result<bool> {
     validate_name(name)?;
     let wt = describe(ws, name);
     remove_folder(ws, &wt).await?;
-    let deleted = run("git", &["branch", "-d", &wt.branch], Some(ws.repo()))
+    let deleted = probe("git", &["branch", "-d", &wt.branch], Some(ws.repo()))
         .await
         .is_ok();
     tracing::info!(
