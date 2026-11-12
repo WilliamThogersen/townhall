@@ -224,6 +224,16 @@ pub(super) async fn open_turn(
     Ok(entry)
 }
 
+pub(super) fn resume_turn(ctx: &Context, id: &str, guard: super::TurnGuard) {
+    let message = NewMessage {
+        text: super::RESUME_NOTE.into(),
+        ..NewMessage::default()
+    };
+    let generation = guard.generation();
+    let task = tokio::spawn(turn::run(ctx.clone(), id.to_string(), message, true, guard));
+    ctx.turns().attach(id, generation, task.abort_handle());
+}
+
 async fn append_all(store: &Store, id: &str, entries: Vec<EntryBody>) -> Result<ThreadEntry> {
     let mut last = None;
     for body in entries {
