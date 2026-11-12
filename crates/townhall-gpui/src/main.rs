@@ -1,4 +1,6 @@
 mod age;
+#[allow(dead_code)]
+mod attachments;
 mod client;
 mod composer;
 mod daemon;
