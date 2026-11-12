@@ -182,6 +182,9 @@ impl Theme {
     }
 }
 
+const CARET_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+const CARET_IDLE: std::time::Duration = std::time::Duration::from_secs(3);
+
 pub fn apply_to_components(theme: &Theme, cx: &mut App) {
     let p = theme.palette;
     let component = gpui_component::Theme::global_mut(cx);
@@ -195,6 +198,8 @@ pub fn apply_to_components(theme: &Theme, cx: &mut App) {
     component.font_size = gpui::px(TEXT_MD);
     component.radius = gpui::px(0.0);
     component.radius_lg = gpui::px(0.0);
+    component.cursor_blink =
+        gpui_component::input::CursorBlink::blinking(CARET_INTERVAL).with_idle_timeout(CARET_IDLE);
 }
 
 pub fn no_ligatures() -> FontFeatures {
@@ -360,5 +365,30 @@ mod tests {
     #[test]
     fn ligatures_are_off() {
         assert_eq!(no_ligatures().is_calt_enabled(), Some(false));
+    }
+
+    #[gpui::test]
+    fn the_caret_stops_blinking_when_idle_so_the_app_can_sleep(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            apply_to_components(&Theme::new(Mode::Dark), cx);
+            let blink = gpui_component::Theme::global(cx).cursor_blink;
+            assert_eq!(blink.interval(), Some(CARET_INTERVAL));
+            assert_eq!(blink.idle_timeout(), Some(CARET_IDLE));
+        });
+    }
+
+    #[gpui::test]
+    fn components_use_the_palette_and_square_corners(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            let theme = Theme::new(Mode::Dark);
+            apply_to_components(&theme, cx);
+            let component = gpui_component::Theme::global(cx);
+            assert_eq!(component.colors.caret, theme.palette.accent.into());
+            assert_eq!(component.colors.foreground, theme.palette.fg.into());
+            assert_eq!(component.font_family.as_ref(), FONT);
+            assert_eq!(component.radius, gpui::px(0.0));
+        });
     }
 }

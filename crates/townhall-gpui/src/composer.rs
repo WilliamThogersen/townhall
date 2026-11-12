@@ -95,10 +95,12 @@ impl Composer {
         self.input.read(cx).value().to_string()
     }
 
+    #[cfg(test)]
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
 
+    #[cfg(test)]
     pub fn is_sending(&self) -> bool {
         self.sending
     }

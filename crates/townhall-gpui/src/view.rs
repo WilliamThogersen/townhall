@@ -44,6 +44,8 @@ impl Root {
             composer,
             daemon_note: SharedString::default(),
         };
+        root.composer
+            .update(cx, |composer, cx| composer.focus(window, cx));
         root.load_list(true, window, cx);
         if let Some(events) = events {
             cx.spawn_in(window, async move |this, cx| -> gpui::Result<()> {
