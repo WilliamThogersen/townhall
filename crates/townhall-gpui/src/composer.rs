@@ -11,6 +11,10 @@ use crate::client::Api;
 use crate::drafts::Drafts;
 use crate::theme::{self, Theme};
 
+#[path = "attachments/composer_attach.rs"]
+mod attach;
+pub use attach::{Open, Picked};
+
 const MIN_ROWS: usize = 2;
 const START_ROWS: usize = 3;
 const MAX_ROWS: usize = 8;
@@ -39,6 +43,7 @@ pub struct Composer {
     thinking: bool,
     sending: bool,
     error: Option<String>,
+    staging: attach::Staging,
     _subscription: Subscription,
 }
 
@@ -83,6 +88,7 @@ impl Composer {
             thinking: false,
             sending: false,
             error: None,
+            staging: attach::Staging::default(),
             _subscription: subscription,
         }
     }
@@ -153,7 +159,12 @@ impl Composer {
         let has_text = !self.text(cx).trim().is_empty();
         match self.mode {
             Mode::Reply => {
-                self.conversation.is_some() && !self.thinking && !self.sending && has_text
+                let has_content = has_text || !self.staging.ids().is_empty();
+                self.conversation.is_some()
+                    && !self.thinking
+                    && !self.sending
+                    && !self.staging.uploading()
+                    && has_content
             }
             Mode::Start => !self.sending && has_text,
         }
@@ -165,6 +176,7 @@ impl Composer {
         }
         self.conversation = id;
         self.error = None;
+        self.staging.clear();
         let draft = match (self.conversation.as_deref(), self.drafts.as_ref()) {
             (Some(id), Some(drafts)) => drafts.get(id).to_string(),
             _ => String::new(),
@@ -180,14 +192,7 @@ impl Composer {
             return;
         }
         self.thinking = thinking;
-        let placeholder = if thinking {
-            THINKING_PLACEHOLDER
-        } else {
-            PLACEHOLDER
-        };
-        self.input.update(cx, |input, cx| {
-            input.set_placeholder(placeholder, window, cx)
-        });
+        self.refresh_placeholder(window, cx);
         cx.notify();
     }
 
@@ -244,11 +249,22 @@ impl Composer {
             .update(cx, |input, cx| input.set_readonly(true, cx));
         cx.notify();
         let api = self.api.clone();
+        let ids = self.staging.ids();
+        let attach = if ids.is_empty() {
+            None
+        } else {
+            self.staging.api()
+        };
         cx.spawn_in(window, async move |this, cx| -> gpui::Result<()> {
             let sent_to = id.clone();
             let result = cx
                 .background_executor()
-                .spawn(async move { api.send_message(&sent_to, &text) })
+                .spawn(async move {
+                    match attach {
+                        Some(attach) => attach.send(&sent_to, &text, &ids),
+                        None => api.send_message(&sent_to, &text),
+                    }
+                })
                 .await;
             this.update_in(cx, |this, window, cx| {
                 this.sending = false;
@@ -268,6 +284,7 @@ impl Composer {
         if self.conversation.as_deref() == Some(id) {
             self.input
                 .update(cx, |input, cx| input.set_value("", window, cx));
+            self.staging.finish_sent();
         }
         let Some(drafts) = self.drafts.as_mut() else {
             return;
@@ -321,11 +338,17 @@ impl Render for Composer {
         let p = t.palette;
         let focused = self.input.focus_handle(cx).contains_focused(window, cx);
         let enabled = self.can_send(cx);
-        let (help, help_color): (SharedString, _) = match &self.error {
+        let shown_error = self.error.clone().or_else(|| self.staging.error());
+        let (help, help_color): (SharedString, _) = match &shown_error {
             Some(e) => (format!("error: {e}").into(), p.danger),
             None if self.mode == Mode::Start => (START_HELP.into(), p.fg_faint),
+            None if self.staging.enabled() => (attach::ATTACH_HELP.into(), p.fg_faint),
             None => (HELP.into(), p.fg_faint),
         };
+        let paste_target = cx.entity();
+        let chips = self.upload_chips(&t, cx);
+        let attach_button = self.attach_button(&t, cx);
+        let retry_button = self.retry_button(&t, cx);
         div()
             .w_full()
             .flex_none()
@@ -340,6 +363,7 @@ impl Render for Composer {
                     .bg(p.surface)
                     .border(px(theme::BORDER))
                     .border_color(if focused { p.accent } else { p.line_control })
+                    .when_some(chips, |d, chips| d.child(chips))
                     .child(
                         div()
                             .flex()
@@ -356,7 +380,11 @@ impl Render for Composer {
                                     Textarea::new(&self.input)
                                         .appearance(false)
                                         .bordered(false)
-                                        .text_color(p.fg),
+                                        .text_color(p.fg)
+                                        .on_paste(move |item, _, cx| {
+                                            paste_target
+                                                .update(cx, |this, cx| this.paste(item, cx))
+                                        }),
                                 ),
                             ),
                     )
@@ -367,6 +395,7 @@ impl Render for Composer {
                             .gap(px(theme::SPACE_3))
                             .px(px(theme::SPACE_3))
                             .pb(px(theme::SPACE_2))
+                            .when_some(attach_button, |d, button| d.child(button))
                             .child(
                                 div()
                                     .flex_1()
@@ -376,6 +405,7 @@ impl Render for Composer {
                                     .text_color(help_color)
                                     .child(help),
                             )
+                            .when_some(retry_button, |d, button| d.child(button))
                             .child(self.button(t, enabled, cx)),
                     ),
             )

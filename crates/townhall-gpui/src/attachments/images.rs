@@ -119,18 +119,38 @@ pub mod tests {
     pub struct FakeAttach {
         pub fetched: Mutex<Vec<(String, String)>>,
         pub fail: Mutex<Option<String>>,
+        pub uploaded: Mutex<Vec<(String, String)>>,
+        pub upload_error: Mutex<Option<UploadError>>,
+        pub sent: Mutex<Vec<(String, String, Vec<String>)>>,
     }
 
     impl AttachApi for FakeAttach {
         fn upload(
             &self,
-            _: &str,
-            _: &FileMeta,
+            conversation: &str,
+            meta: &FileMeta,
             _: &[u8],
-            _: &dyn Fn(u8),
+            progress: &dyn Fn(u8),
             _: &Cancel,
         ) -> Result<Attachment, UploadError> {
-            unreachable!("not used here")
+            self.uploaded
+                .lock()
+                .unwrap()
+                .push((conversation.into(), meta.name.clone()));
+            progress(50);
+            if let Some(e) = self.upload_error.lock().unwrap().clone() {
+                return Err(e);
+            }
+            Ok(serde_json::from_value(serde_json::json!({
+                "id": format!("id-{}", meta.name),
+                "conversationId": conversation,
+                "name": meta.name,
+                "mime": meta.mime,
+                "size": meta.size,
+                "kind": if meta.mime.starts_with("image/") { "image" } else { "file" },
+                "createdAt": "2026-11-12T10:00:00.000Z"
+            }))
+            .unwrap())
         }
 
         fn fetch(&self, conversation: &str, id: &str) -> Result<Vec<u8>, String> {
@@ -144,8 +164,16 @@ pub mod tests {
             }
         }
 
-        fn send(&self, _: &str, _: &str, _: &[String]) -> Result<ThreadEntry, String> {
-            unreachable!("not used here")
+        fn send(&self, conversation: &str, text: &str, ids: &[String]) -> Result<ThreadEntry, String> {
+            self.sent
+                .lock()
+                .unwrap()
+                .push((conversation.into(), text.into(), ids.to_vec()));
+            Ok(serde_json::from_value(serde_json::json!({
+                "id": 1, "at": "2026-11-12T10:00:00.000Z", "kind": "you",
+                "text": text, "attachments": ids
+            }))
+            .unwrap())
         }
     }
 
