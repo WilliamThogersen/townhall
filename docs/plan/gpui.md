@@ -78,6 +78,8 @@ Recommendation: A for `sidebar.nav`, `sidebar.foot`, `session.section`, `task.se
 
 Checked against the official plugins in the `townhall-plugins` repo (manifests at `plugins/*/.townhall-plugin/plugin.json`): only one of the four declares `contributes.ui`, namely `sample-full`, with one `session.section` entry (`ui/session.html`). `agent-types`, `starter-prompts` and `theme-slate` declare no UI. So option A costs nothing for the shipping plugins, but it does break `sample-full`, which is a sample meant to show every capability and should be ported to a declarative `session.section` view or kept as a documented example of the iframe path.
 
+Note (checked 2026-11-12): none of the official plugins in the `townhall-plugins` repo other than `sample-full` declare `contributes.ui`. `sample-full` does declare one (`session.section`, `ui/session.html`). Option A therefore costs nothing for the other three official plugins, and costs one sample plugin.
+
 ## 5. Architecture
 
 ### 5.1 In-process calls or HTTP
