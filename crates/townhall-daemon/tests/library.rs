@@ -53,9 +53,11 @@ async fn the_list_starts_with_builder() {
             "model",
             "name",
             "permissionMode",
+            "plugins",
             "updatedAt"
         ]
     );
+    assert_eq!(rows[0]["plugins"], json!([]));
     assert_eq!(
         (
             &rows[1]["name"],
