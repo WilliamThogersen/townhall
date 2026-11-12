@@ -6,6 +6,7 @@ mod drafts;
 mod fonts;
 mod glyph;
 mod home_model;
+mod markdown;
 #[cfg(target_os = "macos")]
 mod measure;
 mod repo_group;
