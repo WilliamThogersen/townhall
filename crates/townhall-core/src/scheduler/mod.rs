@@ -21,6 +21,7 @@ mod agent_type;
 mod brief;
 mod ci;
 mod gate;
+mod graph;
 mod launch;
 mod merged;
 mod paths;
@@ -139,6 +140,7 @@ pub async fn run_once(ctx: &Context) -> Result<Pass> {
     let reading_ci = ci::start(ctx, &tasks);
     let pass = launch::start_ready(ctx, &tasks).await?;
     let (merged, warnings) = merged::detect(ctx, &tasks).await?;
+    let graph_warnings = graph::record(ctx).await?;
     Ok(Pass {
         verifying,
         reading_ci,
@@ -150,6 +152,7 @@ pub async fn run_once(ctx: &Context) -> Result<Pass> {
             pipeline_warnings,
             reflect_warnings,
             warnings,
+            graph_warnings,
         ]
         .concat(),
         ..pass

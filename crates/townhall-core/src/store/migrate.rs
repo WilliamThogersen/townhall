@@ -9,8 +9,8 @@ use std::ops::RangeInclusive;
 use rusqlite::{params, Connection};
 
 use super::{
-    unit_2_2, unit_2_3, unit_2_5, unit_2_6, unit_2_7, unit_2_8b, unit_2_8c, unit_2_9, unit_history,
-    unit_plugins,
+    unit_2_2, unit_2_3, unit_2_5, unit_2_6, unit_2_7, unit_2_8b, unit_2_8c, unit_2_9, unit_graph,
+    unit_history, unit_plugins,
 };
 use crate::{clock, Error, Result};
 
@@ -46,7 +46,7 @@ const BASE: &[Migration] = &[
 ];
 
 /// Who owns which numbers. Ask the orchestrator for a range before adding a unit.
-pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 11] = [
+pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 12] = [
     ("2.0 storage, 2.1 contract", 1..=99, BASE),
     ("2.2 conversations", 100..=199, unit_2_2::MIGRATIONS),
     ("2.3 tasks", 200..=299, unit_2_3::MIGRATIONS),
@@ -58,6 +58,7 @@ pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 11] = [
     ("2.9 artifacts", 900..=949, unit_2_9::MIGRATIONS),
     ("plugins", 950..=999, unit_plugins::MIGRATIONS),
     ("history search", 1000..=1049, unit_history::MIGRATIONS),
+    ("history graph", 1050..=1099, unit_graph::MIGRATIONS),
 ];
 
 pub const NEWER: &str = "townhall.db is from a newer townhall";
@@ -289,7 +290,7 @@ mod tests {
         apply(&mut conn, &before).unwrap();
         assert!(user_version(&conn).unwrap() < 950);
         assert!(conn.prepare("select name from marketplaces").is_err());
-        assert_eq!(apply(&mut conn, &all()).unwrap(), 5);
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 7);
         assert!(conn
             .prepare("select name, source from marketplaces")
             .is_ok());
@@ -305,7 +306,7 @@ mod tests {
                 "select token_hash, plugin_id, task, created_at, revoked_at from plugin_tokens"
             )
             .is_ok());
-        assert_eq!(user_version(&conn).unwrap(), 1001);
+        assert_eq!(user_version(&conn).unwrap(), 1051);
         assert_eq!(apply(&mut conn, &all()).unwrap(), 0);
     }
 

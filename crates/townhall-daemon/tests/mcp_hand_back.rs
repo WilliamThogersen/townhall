@@ -76,6 +76,8 @@ async fn a_task_agent_sees_hand_back_open_pr_and_the_proof_tools() {
             "list_artifacts",
             "search_history",
             "read_conversation",
+            "history_graph",
+            "agent_stats",
             "ask_adviser"
         ]
     );
