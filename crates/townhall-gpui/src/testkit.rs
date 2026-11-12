@@ -1,5 +1,7 @@
 use serde_json::json;
-use townhall_core::model::{Conversation, Repo, Task, TaskState};
+use townhall_core::model::{
+    Conversation, ConversationDetail, EntryBody, Repo, Task, TaskState, ThreadEntry,
+};
 
 pub fn conversation(id: &str, title: &str, updated: &str) -> Conversation {
     crate::state::tests::conversation(id, title, updated)
@@ -24,6 +26,38 @@ pub fn task(name: &str, state: TaskState) -> Task {
         "prBase": null
     }))
     .unwrap()
+}
+
+pub fn entry_of(id: u64, body: EntryBody) -> ThreadEntry {
+    ThreadEntry {
+        id,
+        at: "2026-11-12T10:00:00.000Z".into(),
+        body,
+    }
+}
+
+pub fn you(id: u64, text: &str) -> ThreadEntry {
+    entry_of(
+        id,
+        EntryBody::You {
+            text: text.into(),
+            attachments: vec![],
+            reply_to: None,
+        },
+    )
+}
+
+pub fn detail_of(
+    conversation: Conversation,
+    entries: Vec<ThreadEntry>,
+    tasks: Vec<Task>,
+) -> ConversationDetail {
+    ConversationDetail {
+        conversation,
+        entries,
+        tasks,
+        attachments: vec![],
+    }
 }
 
 pub fn repo(name: &str, base_branch: &str) -> Repo {

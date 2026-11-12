@@ -5,15 +5,21 @@ mod daemon;
 mod drafts;
 mod fonts;
 mod glyph;
+mod home_model;
 #[cfg(target_os = "macos")]
 mod measure;
 mod repo_group;
+mod row_menu;
 mod row_summary;
 mod sections;
+mod session_model;
+mod sidebar_rows;
 mod state;
+mod task_rows;
 #[cfg(test)]
 mod testkit;
 mod theme;
+mod thread_model;
 mod view;
 
 use std::path::PathBuf;
