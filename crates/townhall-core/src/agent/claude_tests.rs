@@ -558,6 +558,48 @@ fn a_settings_value_is_a_checked_value() {
 }
 
 #[test]
+fn no_plugin_dir_adds_no_plugin_flag_and_keeps_isolation() {
+    let argv = ClaudeCodeAdapter::args(&opts("go")).unwrap();
+    assert!(!argv.iter().any(|a| a.contains("plugin")), "{argv:?}");
+    assert!(argv.contains(&"--setting-sources=".to_string()));
+    assert!(argv.contains(&"--strict-mcp-config".to_string()));
+}
+
+#[test]
+fn a_plugin_dir_is_one_flag_after_isolation_and_nothing_else_changes() {
+    let plain = ClaudeCodeAdapter::args(&opts("go")).unwrap();
+    let o = LaunchOptions {
+        plugin_dirs: vec!["/h/tasks/job/plugins/web".into(), "/h/tasks/job/plugins/b".into()],
+        ..opts("go")
+    };
+    let argv = ClaudeCodeAdapter::args(&o).unwrap();
+    let at = plain.iter().position(|a| a == "--").unwrap();
+    let mut want = plain.clone();
+    want.splice(
+        at..at,
+        [
+            "--plugin-dir=/h/tasks/job/plugins/web".to_string(),
+            "--plugin-dir=/h/tasks/job/plugins/b".to_string(),
+        ],
+    );
+    assert_eq!(argv, want);
+    assert!(argv.contains(&ISOLATED_SETTINGS.to_string()));
+    assert!(argv.contains(&"--setting-sources=".to_string()));
+    assert!(!argv.contains(&"--disable-slash-commands".to_string()));
+}
+
+#[test]
+fn a_plugin_dir_is_an_absolute_checked_value() {
+    for bad in ["--x", "a\nb", "relative/dir"] {
+        let o = LaunchOptions {
+            plugin_dirs: vec![bad.into()],
+            ..LaunchOptions::default()
+        };
+        assert!(ClaudeCodeAdapter::args(&o).is_err(), "{bad}");
+    }
+}
+
+#[test]
 fn an_extra_rule_is_a_checked_value() {
     for bad in ["--x", "Bash(a,b)", "Read\nx"] {
         let o = LaunchOptions {
