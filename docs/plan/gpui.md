@@ -199,7 +199,61 @@ Note that a WKWebView app spreads its memory over the app process and `com.apple
 - The idle numbers are for a view with no timers, no animation and no terminal. They show GPUI does not redraw when nothing changes; they do not predict the full app.
 - Menlo stands in for JetBrains Mono.
 
-## 10. Follow-ups
+## 10. Phase 0, first slice: base decision and status
+
+### Decision: gpui-pre =0.3.12 with gpui-component =0.9.1
+
+Pinned: `gpui-pre =0.3.12` (renamed to `gpui` in `Cargo.toml`), `gpui-pre-platform =0.3.12` with features `font-kit`, `x11`, `wayland`, `runtime_shaders`. `gpui-component =0.9.1` is the component library to add in phase 1; it depends on exactly `gpui-pre =0.3.12`, so it is not added yet (nothing uses it in this slice).
+
+Why not Zed's `gpui` 0.2.2: it has no multiline input, no popover and no menu, and the composer is the biggest risk in this plan (section 3, section 8). `gpui-component` 0.9.1 has `Textarea` and `TextareaState::auto_grow(min, max)`, `Popover`, `PopupMenu` and `ContextMenu` (read in the registry source). Writing those on 0.2.2 costs weeks; staying on 0.2.2 means the component library cannot be used at all, because two copies of GPUI do not compose.
+
+What was checked: a throwaway crate (outside the repo) with `gpui-component =0.9.1`, `gpui-pre =0.3.12` and `gpui-pre-platform =0.3.12` + `runtime_shaders` compiled a window holding a `Textarea` with `auto_grow(1, 8)` and a `Popover` with a `Button` trigger, and started and quit without a panic. I did not type into it or see it: the multiline IME behaviour is still unverified and is the first job of phase 1.
+
+Costs of this choice:
+
+- `gpui-pre` is a snapshot of Zed at `d2a4fb6` published by a third party. If it stops being updated we carry the fork or port to a newer snapshot by hand. Mitigation: exact pins, GPUI use behind the local `view`/`theme` modules, upgrade on purpose.
+- The macOS platform is a separate crate (`gpui-pre-platform`). Without its `font-kit` feature the window opens and draws no text (it logs `gpui_macos was compiled without the font-kit feature`), so that feature is required.
+- Differences met when porting the spike from 0.2.2: `gpui_platform::application()` instead of `Application::new()`, `on_window_closed` takes `(cx, window_id)`, `gpui-component` `Popover` triggers must be `Selectable` (a `Button`, not a `div`).
+- The gpui `TestAppContext` text system does not load fonts, so font registration is only proven at runtime (`fonts::register` fails the start-up when a font cannot load).
+
+### What runs
+
+`crates/townhall-gpui` is now the app, still outside the cargo workspace (own `[workspace]` and `Cargo.lock`, `exclude` in the root `Cargo.toml`), so Linux CI does not build gpui. Binary `townhall-native`:
+
+```
+cargo run --manifest-path crates/townhall-gpui/Cargo.toml --release
+```
+
+- `daemon.rs`: starts the daemon in-process on `127.0.0.1:7777` on its own tokio runtime, as `src-tauri/src/daemon.rs` does: opens the store first (held by another townhall: no serving), then binds; `AddrInUse` adopts the daemon already there; the startup folder is the saved desktop repo when it is a directory, else the townhall home. One difference: the Tauri app checks the saved repo is the top of a git work tree (`validate_repo`); this slice only checks it is a directory, and the daemon logs `repo.startup_not_registered` for a folder that is not a repo.
+- `client.rs`: `Api` trait and `Client` (blocking `ureq` calls run on gpui's background executor) using `townhall_core::model` for every response, and the `/api/events` websocket on its own thread (blocking read, no polling) that reconnects with backoff and sends `Resync` after a lost connection.
+- `state.rs`: the pure reducer from `ServerEvent` to list and thread state (`entryAppended` replaces by id, `conversationUpdated` upserts and re-sorts, `resync` refetches).
+- `view.rs`: sidebar and read-only thread on a `Root` entity fed by the events channel; the sidebar test uses a fake `Api` in `TestAppContext`.
+- `theme.rs`: `Palette` dark and light with every colour token of `tokens.css`, `Theme` as a gpui `Global` following the window appearance, and tests that fail when `tokens.css` and the Rust values differ in either direction (a token missing on either side fails too); sizes are tested the same way.
+- `fonts.rs`: JetBrains Mono 2.304 Regular and Bold as TTF in `assets/fonts/` with `OFL.txt`, registered at start-up; ligatures off through `calt` on every run of text.
+- Flags: `--url` (use a daemon, start none), `--home <dir>` (isolated townhall home), `--bind host:port`, `--measure N`.
+- Dev builds use `runtime_shaders` (no Metal Toolchain needed).
+
+### Idle numbers
+
+Apple Silicon, macOS 26.6.2, release build, `--measure 60` (5 s settle, then 60 s of the process's own CPU time and RSS), window open and untouched, TOWNHALL_HOME-equivalent `--home` pointing at an empty scratch folder so nothing was written to `~/.townhall`:
+
+| Run | CPU (share of one core) | RSS |
+|-----|-------------------------|-----|
+| Adopted the user's running daemon on 7777 (read-only use, its real conversations, events live) | 1.24% | 69.2 MB |
+| In-process daemon on 127.0.0.1:17777 with the empty scratch home | 0.08% | 60.8 MB |
+
+An earlier run before the `font-kit` fix drew no text and is not a valid number (0.37%, 59.6 MB). The two runs differ in more than the daemon: the first renders a real, long thread and receives real events. I did not look at the window, so what it shows is unchecked by eye.
+
+### Left for phase 0
+
+- Look at the window against the preview and fix the styling; light theme by eye.
+- Add `gpui-component =0.9.1` and prove the multiline composer with IME on macOS (Japanese, Chinese, dead keys) before phase 1 starts.
+- Saved-repo validation as in `validate_repo`; persisting window state.
+- Component kit (button, kbd, status glyph, menu, banner, toast), key contexts.
+- Tray and notification proofs, signed bundled `.app`.
+- Idle budget script and the CI job on macOS with the Metal toolchain (not in this task).
+
+## 11. Follow-ups
 
 - Read `idle-cpu-profile` before anything else here.
 - Install the Metal Toolchain on build machines.
