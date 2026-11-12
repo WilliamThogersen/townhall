@@ -187,7 +187,7 @@ async fn stopping_the_background_ends_running_turns() {
     let restarted = AppState::with_store(env.workspace(&env.startup), options, store);
     let again = start_background(&restarted).await;
     let d: Value = idle(&router(restarted.clone()), &id).await;
-    let errors = entries_of(&d, "error");
-    assert_eq!(errors.len(), 1, "{d}");
+    assert!(entries_of(&d, "error").is_empty(), "{d}");
+    assert_eq!(fake.turns(), 2, "the interrupted reply was resumed");
     again.stop();
 }
