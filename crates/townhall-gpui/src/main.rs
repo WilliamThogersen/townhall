@@ -13,6 +13,7 @@ mod repo_group;
 mod row_menu;
 mod row_summary;
 mod sections;
+mod selection;
 mod session_model;
 mod sidebar_rows;
 mod state;
