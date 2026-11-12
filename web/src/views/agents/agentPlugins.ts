@@ -80,6 +80,21 @@ export function typesUsing(
   return types.filter((type) => (type.plugins ?? []).some((chosen) => chooses(chosen, id))).map((type) => type.name);
 }
 
+export interface Shipped {
+  readonly skills: number;
+  readonly commands: number;
+}
+
+export function shipped(plugin: { readonly permissions: readonly string[] }): Shipped {
+  const count = (prefix: string) => plugin.permissions.filter((p) => p.startsWith(prefix)).length;
+  return { skills: count("claude.skill:"), commands: count("claude.command:") };
+}
+
+export function shippedText({ skills, commands }: Shipped): string {
+  const part = (n: number, one: string) => (n === 0 ? [] : [`${n} ${one}${n === 1 ? "" : "s"}`]);
+  return [...part(skills, "skill"), ...part(commands, "command")].join(", ");
+}
+
 export function pluginsOf(type: { readonly plugins?: readonly string[] }): readonly string[] {
   return type.plugins ?? [];
 }

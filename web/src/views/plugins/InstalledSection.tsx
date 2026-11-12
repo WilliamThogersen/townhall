@@ -3,7 +3,9 @@ import type { Plugin, PluginUpdate } from "../../api/types";
 import type { PluginsState } from "../../data";
 import { pendingUpdateSha, pluginStates, type PluginStateName } from "../../plugins/pluginState";
 import { Button } from "../../ui/Button";
+import { shipped, shippedText } from "../agents/agentPlugins";
 import { PermissionList } from "./PermissionPrompt";
+import { UsedBy } from "./UsedBy";
 import type { Run } from "./useInstallFlow";
 import "./plugins.css";
 
@@ -90,6 +92,7 @@ function InstalledRow({ plugin, plugins, run }: RowProps) {
   const [review, setReview] = useState<Review | null>(null);
   const [confirming, setConfirming] = useState(false);
   const waiting = pendingUpdateSha(plugin) !== null;
+  const adds = shippedText(shipped(plugin));
 
   const go = async <T,>(action: () => Promise<T>): Promise<T | undefined> => {
     setBusy(true);
@@ -127,6 +130,7 @@ function InstalledRow({ plugin, plugins, run }: RowProps) {
         <span>{plugin.id}</span>
         <span title={plugin.sha}>{plugin.sha.slice(0, 7)}</span>
       </p>
+      {adds === "" ? null : <p className="th-plugin-meta">{`adds ${adds}`}</p>}
       {plugin.error === null ? null : <p className="th-plugin-meta th-plugin-error">{plugin.error}</p>}
       {note === null ? null : <p className="th-plugin-meta">{note}</p>}
       {confirming ? (
@@ -178,6 +182,7 @@ function InstalledRow({ plugin, plugins, run }: RowProps) {
           onDismiss={() => setReview(null)}
         />
       )}
+      <UsedBy plugin={plugin} />
       <details className="th-plugin-extra">
         <summary>permissions</summary>
         <PermissionList permissions={plugin.permissions} />
