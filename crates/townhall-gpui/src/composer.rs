@@ -381,8 +381,7 @@ impl Render for Composer {
                                         .bordered(false)
                                         .text_color(p.fg)
                                         .on_paste(move |item, _, cx| {
-                                            paste_target
-                                                .update(cx, |this, cx| this.paste(item, cx))
+                                            paste_target.update(cx, |this, cx| this.paste(item, cx))
                                         }),
                                 ),
                             ),

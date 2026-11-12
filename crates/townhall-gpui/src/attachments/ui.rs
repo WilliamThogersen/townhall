@@ -86,6 +86,10 @@ pub const THUMB_H: f32 = 48.0;
 pub const FILE_W: f32 = 220.0;
 
 pub fn file_card(t: &Theme, name: &str, detail: &str, failed: bool) -> Div {
+    file_card_styled(t, name, detail, failed, false)
+}
+
+pub fn file_card_styled(t: &Theme, name: &str, detail: &str, failed: bool, link: bool) -> Div {
     let p = t.palette;
     div()
         .relative()
@@ -109,12 +113,18 @@ pub fn file_card(t: &Theme, name: &str, detail: &str, failed: bool) -> Div {
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .child(div().truncate().child(name.to_string()))
+                .child(
+                    div()
+                        .truncate()
+                        .when(link, |d| d.text_color(p.info).underline())
+                        .child(name.to_string()),
+                )
                 .child(
                     div()
                         .truncate()
                         .text_size(px(theme::TEXT_XS))
                         .text_color(if failed { p.danger } else { p.fg_faint })
+                        .when(link, |d| d.underline())
                         .child(format!(
                             "{} · {detail}",
                             super::format::extension_tag(name).to_uppercase()

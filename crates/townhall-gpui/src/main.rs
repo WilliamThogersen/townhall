@@ -90,6 +90,7 @@ fn main() {
     let mut home_dir: Option<PathBuf> = None;
     let mut bind = daemon::BIND.to_string();
     let mut scene = scene::Scene::default();
+    let mut attach_scene = attachments::scene::Attach::default();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -129,6 +130,20 @@ fn main() {
                     &args.next().unwrap_or_else(|| fail("--route needs a path")),
                 ))
             }
+            "--scene-state" => {
+                attach_scene.state = Some(
+                    attachments::scene::parse_state(
+                        &args
+                            .next()
+                            .unwrap_or_else(|| fail("--scene-state needs a name")),
+                    )
+                    .unwrap_or_else(|e| fail(e)),
+                )
+            }
+            "--attach-file" => attach_scene.files.push(PathBuf::from(
+                args.next()
+                    .unwrap_or_else(|| fail("--attach-file needs a path")),
+            )),
             #[cfg(target_os = "macos")]
             "--measure" => {
                 let seconds = args
@@ -220,6 +235,7 @@ fn main() {
                     cx.new(|cx| {
                         view::Root::new(api, Some(events), drafts, window, cx)
                             .with_attachments(attach, window, cx)
+                            .with_attach_scene(attach_scene)
                             .with_prefs(prefs)
                             .with_daemon_note(note)
                             .with_route(start)

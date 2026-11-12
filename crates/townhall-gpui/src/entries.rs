@@ -252,6 +252,7 @@ impl Thread {
                         conversation: &conversation,
                         shared: &shared,
                         collapse: true,
+                        panel: false,
                         border: p.line_control,
                     };
                     let images = block.images();

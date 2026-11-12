@@ -15,7 +15,7 @@ pub struct Loaded {
 pub enum Slot {
     Loading,
     Ready(Loaded),
-    Failed(String),
+    Failed,
 }
 
 struct Store {
@@ -110,7 +110,7 @@ pub fn save_attachment(cx: &mut App, conversation: &str, id: &str, name: &str) {
 pub fn slot(cx: &mut App, conversation: &str, id: &str, mime: &str) -> Slot {
     let key = (conversation.to_string(), id.to_string());
     let Some(store) = cx.try_global::<Store>() else {
-        return Slot::Failed("no daemon".into());
+        return Slot::Failed;
     };
     if let Some(found) = store.slots.get(&key) {
         return found.clone();
@@ -133,7 +133,15 @@ pub fn slot(cx: &mut App, conversation: &str, id: &str, mime: &str) -> Slot {
                     let size = size_of(cx, &image);
                     Slot::Ready(Loaded { image, size })
                 }
-                Err(e) => Slot::Failed(e),
+                Err(e) => {
+                    tracing::warn!(
+                        target: "townhall::native",
+                        event = "attachments.fetch_failed",
+                        error = %e,
+                        "cannot load an attachment image"
+                    );
+                    Slot::Failed
+                }
             };
             cx.global_mut::<Store>().slots.insert(key, next);
             cx.refresh_windows();
@@ -209,7 +217,12 @@ pub mod tests {
             }
         }
 
-        fn send(&self, conversation: &str, text: &str, ids: &[String]) -> Result<ThreadEntry, String> {
+        fn send(
+            &self,
+            conversation: &str,
+            text: &str,
+            ids: &[String],
+        ) -> Result<ThreadEntry, String> {
             self.sent
                 .lock()
                 .unwrap()
@@ -239,15 +252,16 @@ pub mod tests {
     }
 
     #[gpui::test]
-    fn a_failed_fetch_is_remembered_with_its_reason(cx: &mut TestAppContext) {
+    fn a_failed_fetch_is_remembered_and_not_retried_on_every_frame(cx: &mut TestAppContext) {
         let api = Arc::new(FakeAttach::default());
         *api.fail.lock().unwrap() = Some("gone".into());
         cx.update(|cx| install(cx, api.clone()));
         cx.update(|cx| slot(cx, "c1", "a1", "image/png"));
         cx.run_until_parked();
-        match cx.update(|cx| slot(cx, "c1", "a1", "image/png")) {
-            Slot::Failed(e) => assert_eq!(e, "gone"),
-            other => panic!("{other:?}"),
-        }
+        assert!(matches!(
+            cx.update(|cx| slot(cx, "c1", "a1", "image/png")),
+            Slot::Failed
+        ));
+        assert_eq!(api.fetched.lock().unwrap().len(), 1);
     }
 }

@@ -49,6 +49,8 @@ def capture_native(args, name, theme, scene, out):
         "--size", scene["size"], "--theme", theme,
         "--route", resolve_route(scene["native"], args.demo_dir), "--out", shot,
     ]
+    root = os.path.abspath(os.path.join(HERE, "..", ".."))
+    cmd += [f"--extra={arg.replace('{root}', root)}" for arg in scene.get("nativeArgs", [])]
     code = subprocess.run(cmd).returncode
     if code == NOT_BUILT_EXIT:
         return "not built"

@@ -1,0 +1,3 @@
+2026-11-12T09:41:03Z GET /login 302 -> /session
+2026-11-12T09:41:03Z GET /session 302 -> /login
+2026-11-12T09:41:04Z redirect loop detected after 10 hops

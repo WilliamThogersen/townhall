@@ -27,11 +27,25 @@ pub struct PendingUpload {
 #[derive(Debug, Clone)]
 pub enum Action {
     Added(Vec<PendingUpload>),
-    Progressed { key: String, percent: u8 },
-    Finished { key: String, attachment: Attachment },
-    Failed { key: String, error: String, retryable: bool },
-    Restarted { key: String },
-    Removed { key: String },
+    Progressed {
+        key: String,
+        percent: u8,
+    },
+    Finished {
+        key: String,
+        attachment: Attachment,
+    },
+    Failed {
+        key: String,
+        error: String,
+        retryable: bool,
+    },
+    Restarted {
+        key: String,
+    },
+    Removed {
+        key: String,
+    },
     Cleared,
 }
 

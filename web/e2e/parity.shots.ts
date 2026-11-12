@@ -116,6 +116,43 @@ const CAPTURES: Record<string, Capture> = {
     await expect(page.getByText("cannot reach the daemon")).toBeVisible();
   },
   narrow: (page, theme) => conversation(page, "login", theme),
+  "attach-thumbs": async (page, theme) => {
+    await conversation(page, "login", theme);
+    await page.locator(".th-msg-images").first().scrollIntoViewIfNeeded();
+    await page.locator(".th-msg").first().scrollIntoViewIfNeeded();
+  },
+  "attach-files": async (page, theme) => {
+    await conversation(page, "login", theme);
+    const files = page.locator(".th-session-files");
+    await expect(async () => {
+      if (!(await files.isVisible())) await page.getByRole("button", { name: /session$/ }).click();
+      await expect(files).toBeVisible({ timeout: 1000 });
+    }).toPass();
+    await files.scrollIntoViewIfNeeded();
+  },
+  "attach-lightbox": async (page, theme) => {
+    await conversation(page, "login", theme);
+    await page.locator(".th-msg-images .th-thumb").first().click();
+    await expect(page.getByRole("dialog", { name: "Image viewer" })).toBeVisible();
+    await page.waitForFunction(() => document.querySelector(".th-lightbox-meta")?.textContent?.includes("×"));
+  },
+  "attach-drop": async (page, theme) => {
+    await conversation(page, "login", theme);
+    await page.evaluate(() => {
+      const data = new DataTransfer();
+      data.items.add(new File(["x"], "a.txt", { type: "text/plain" }));
+      const area = document.querySelector(".th-convo-view") as HTMLElement;
+      area.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer: data }));
+    });
+    await expect(page.getByText("drop to attach")).toBeVisible();
+  },
+  "attach-composer": async (page, theme) => {
+    await conversation(page, "flaky", theme);
+    const files = ["scripts/demo/img/redirect-loop.png", "scripts/parity/files/notes.log", "scripts/parity/files/movie.mp4"];
+    await page.locator('input[type="file"]').setInputFiles(files.map((f) => join(import.meta.dirname, "../..", f)));
+    await expect(page.locator(".th-composer-attachments .th-file")).toHaveCount(2);
+    await expect(page.locator(".th-composer-attachments .th-thumb[data-state='uploading']")).toHaveCount(0);
+  },
 };
 
 for (const scene of SCENES) {

@@ -84,11 +84,11 @@ fn detail_with_images() -> ConversationDetail {
     detail
 }
 
-fn open<'a>(
-    cx: &'a mut TestAppContext,
+fn open(
+    cx: &mut TestAppContext,
     detail: ConversationDetail,
     fake: Arc<FakeAttach>,
-) -> (Entity<Root>, &'a mut VisualTestContext) {
+) -> (Entity<Root>, &mut VisualTestContext) {
     cx.update(|cx| {
         gpui_component::init(cx);
         cx.set_global(Theme::new(theme::Mode::Dark));
@@ -137,6 +137,19 @@ fn the_arrow_keys_step_and_escape_closes_the_lightbox_from_the_thread(cx: &mut T
     assert_eq!(lightbox.read_with(vcx, |l, _| l.index()), 0);
     vcx.simulate_keystrokes("escape");
     assert!(root.read_with(vcx, |r, _| r.lightbox().is_none()));
+}
+
+#[gpui::test]
+fn the_session_panels_files_open_the_lightbox_on_every_image(cx: &mut TestAppContext) {
+    let (root, vcx) = open(cx, detail_with_images(), Arc::new(FakeAttach::default()));
+    vcx.simulate_resize(gpui::size(px(1300.0), px(800.0)));
+    vcx.run_until_parked();
+    click(vcx, "panel-thumb-a2");
+    let lightbox = root
+        .read_with(vcx, |r, _| r.lightbox().cloned())
+        .expect("the lightbox is open");
+    assert_eq!(lightbox.read_with(vcx, |l, _| l.index()), 1);
+    assert!(vcx.debug_bounds("strip-0").is_some() && vcx.debug_bounds("strip-1").is_some());
 }
 
 #[gpui::test]

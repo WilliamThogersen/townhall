@@ -16,5 +16,19 @@
   { "name": "terminal", "size": "1200x800", "native": null },
   { "name": "toasts", "size": "1200x800", "native": null, "web": false },
   { "name": "daemon-down", "size": "1200x800", "native": null },
-  { "name": "narrow", "size": "400x800", "native": "/c/@login" }
+  { "name": "narrow", "size": "400x800", "native": "/c/@login" },
+  { "name": "attach-thumbs", "size": "1200x800", "native": "/c/@login", "nativeArgs": ["--scene-state", "thread-top"] },
+  { "name": "attach-files", "size": "1200x800", "native": "/c/@login" },
+  { "name": "attach-lightbox", "size": "1200x800", "native": "/c/@login", "nativeArgs": ["--scene-state", "lightbox"] },
+  { "name": "attach-drop", "size": "1200x800", "native": "/c/@login", "nativeArgs": ["--scene-state", "drop"] },
+  {
+    "name": "attach-composer",
+    "size": "1100x800",
+    "native": "/c/@flaky",
+    "nativeArgs": [
+      "--attach-file", "{root}/scripts/demo/img/redirect-loop.png",
+      "--attach-file", "{root}/scripts/parity/files/notes.log",
+      "--attach-file", "{root}/scripts/parity/files/movie.mp4"
+    ]
+  }
 ]

@@ -4,7 +4,7 @@ use townhall_core::model::{Attachment, AttachmentKind};
 use super::format::format_size;
 use super::images::{self, Slot};
 use super::lightbox::{LightboxImage, Source};
-use super::ui::{file_card, Handler};
+use super::ui::{file_card_styled, Handler};
 use crate::theme::{self, Theme};
 use crate::thread_model::clock_time;
 
@@ -63,11 +63,39 @@ pub fn lightbox_images(
         .collect()
 }
 
+pub const PANEL_THUMB_HEIGHT: f32 = 56.0;
+
 pub struct Thumbs<'a> {
     pub conversation: &'a str,
     pub shared: &'a [Attachment],
     pub collapse: bool,
+    pub panel: bool,
     pub border: Rgba,
+}
+
+pub fn session_files(
+    conversation: &str,
+    attachments: &[Attachment],
+    t: &Theme,
+    cx: &mut App,
+    open: impl Fn(usize) -> Handler,
+) -> AnyElement {
+    let block = Thumbs {
+        conversation,
+        shared: attachments,
+        collapse: false,
+        panel: true,
+        border: t.palette.line_strong,
+    };
+    div()
+        .id("session-files")
+        .flex()
+        .flex_col()
+        .gap(px(theme::SPACE_2))
+        .px(px(theme::SPACE_4))
+        .py(px(theme::SPACE_1))
+        .children(block.render(t, cx, open))
+        .into_any_element()
 }
 
 impl Thumbs<'_> {
@@ -95,27 +123,31 @@ impl Thumbs<'_> {
         let mut rows = Vec::new();
         if !images.is_empty() {
             let (shown, hidden) = collapsed(images.len(), self.collapse);
-            let mut row = div()
-                .flex()
-                .flex_wrap()
-                .gap(px(theme::SPACE_2))
-                .id("msg-images");
+            let mut row = if self.panel {
+                div().grid().grid_cols(3)
+            } else {
+                div().flex().flex_wrap()
+            }
+            .gap(px(theme::SPACE_2))
+            .id("msg-images");
             for (n, image) in images.iter().take(shown).enumerate() {
                 let slot = images::slot(cx, self.conversation, &image.id, &image.mime);
                 let (width, picture) = match slot {
                     Slot::Ready(loaded) => (thumb_width(loaded.size), Some(loaded.image)),
-                    Slot::Loading | Slot::Failed(_) => (THUMB_HEIGHT, None),
+                    Slot::Loading | Slot::Failed => (THUMB_HEIGHT, None),
                 };
                 let border = self.border;
+                let prefix = if self.panel { "panel-thumb" } else { "thumb" };
                 let mut cell = div()
-                    .id(SharedString::from(format!("thumb-{}", image.id)))
+                    .id(SharedString::from(format!("{prefix}-{}", image.id)))
                     .debug_selector({
                         let id = image.id.clone();
-                        move || format!("thumb-{id}")
+                        move || format!("{prefix}-{id}")
                     })
-                    .flex_none()
-                    .w(px(width))
-                    .h(px(THUMB_HEIGHT))
+                    .when(self.panel, |d| d.w_full().h(px(PANEL_THUMB_HEIGHT)))
+                    .when(!self.panel, |d| {
+                        d.flex_none().w(px(width)).h(px(THUMB_HEIGHT))
+                    })
                     .overflow_hidden()
                     .border(px(theme::BORDER))
                     .border_color(border)
@@ -167,7 +199,7 @@ impl Thumbs<'_> {
                 .id("msg-files");
             for file in files {
                 row = row.child(
-                    file_card(t, &file.name, &format_size(file.size), false)
+                    file_card_styled(t, &file.name, &format_size(file.size), false, !self.panel)
                         .id(SharedString::from(format!("file-{}", file.id)))
                         .cursor_pointer()
                         .hover(move |s| s.border_color(p.fg_muted))
@@ -227,7 +259,11 @@ mod tests {
     fn the_lightbox_meta_names_the_size_the_sender_and_the_time() {
         let one = [attachment("a", "image", 4096)];
         let images = lightbox_images("c1", &one, "you");
-        assert!(images[0].meta.starts_with("4 KB · from you"), "{}", images[0].meta);
+        assert!(
+            images[0].meta.starts_with("4 KB · from you"),
+            "{}",
+            images[0].meta
+        );
         assert_eq!(images[0].name, "a.png");
     }
 }

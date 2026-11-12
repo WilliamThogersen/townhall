@@ -22,7 +22,7 @@ const STAGE_PAD_X: f32 = 48.0;
 const STAGE_PAD_Y: f32 = 24.0;
 const STRIP_W: f32 = 48.0;
 const STRIP_H: f32 = 36.0;
-const FOOT_H: f32 = STRIP_H + 2.0 * theme::SPACE_2 + theme::BORDER;
+const FOOT_H: f32 = 55.0;
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
@@ -49,6 +49,8 @@ pub struct LightboxImage {
     pub name: String,
     pub meta: String,
 }
+
+type Resolved = (Arc<Image>, Option<(u32, u32)>);
 
 pub struct Open {
     pub images: Vec<LightboxImage>,
@@ -104,10 +106,12 @@ impl Lightbox {
         }
     }
 
+    #[cfg(test)]
     pub fn index(&self) -> usize {
         self.index
     }
 
+    #[cfg(test)]
     pub fn notice(&self) -> Option<&Notice> {
         self.notice.as_ref()
     }
@@ -120,7 +124,7 @@ impl Lightbox {
         self.images.get(self.index)
     }
 
-    fn resolved(&self, cx: &mut App) -> Option<(Arc<Image>, Option<(u32, u32)>)> {
+    fn resolved(&self, cx: &mut App) -> Option<Resolved> {
         match &self.current()?.source {
             Source::Local(image) => Some((image.clone(), images::size_of(cx, image))),
             Source::Remote {
@@ -129,7 +133,7 @@ impl Lightbox {
                 mime,
             } => match images::slot(cx, conversation, id, mime) {
                 Slot::Ready(loaded) => Some((loaded.image, loaded.size)),
-                Slot::Loading | Slot::Failed(_) => None,
+                Slot::Loading | Slot::Failed => None,
             },
         }
     }
@@ -167,7 +171,9 @@ impl Lightbox {
             None => Notice {
                 index: self.index,
                 copied: false,
-                error: Some(format!("error: cannot copy {name}: the image has not loaded")),
+                error: Some(format!(
+                    "error: cannot copy {name}: the image has not loaded"
+                )),
             },
         });
         cx.notify();
@@ -215,7 +221,7 @@ impl Lightbox {
                 mime,
             } => match images::slot(cx, conversation, id, mime) {
                 Slot::Ready(loaded) => Some(loaded.image),
-                Slot::Loading | Slot::Failed(_) => None,
+                Slot::Loading | Slot::Failed => None,
             },
         };
         let mut cell = div()
@@ -244,11 +250,7 @@ impl Lightbox {
             }]);
         }
         if let Some(image) = source {
-            cell = cell.child(
-                img(image)
-                    .size_full()
-                    .object_fit(ObjectFit::Cover),
-            );
+            cell = cell.child(img(image).size_full().object_fit(ObjectFit::Cover));
         }
         cell.into_any_element()
     }
@@ -295,7 +297,9 @@ impl Lightbox {
         } else {
             button = button.opacity(0.4);
         }
-        button.child(if prev { "‹" } else { "›" }).into_any_element()
+        button
+            .child(if prev { "‹" } else { "›" })
+            .into_any_element()
     }
 }
 
@@ -517,7 +521,10 @@ mod tests {
 
     #[test]
     fn the_meta_line_joins_pixels_and_the_rest_with_dots() {
-        assert_eq!(meta_line(Some((640, 480)), "4 KB · from you"), "640 × 480 · 4 KB · from you");
+        assert_eq!(
+            meta_line(Some((640, 480)), "4 KB · from you"),
+            "640 × 480 · 4 KB · from you"
+        );
         assert_eq!(meta_line(None, "4 KB"), "4 KB");
         assert_eq!(meta_line(None, ""), "");
     }

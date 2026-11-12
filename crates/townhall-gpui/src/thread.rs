@@ -143,6 +143,11 @@ impl Thread {
         cx.notify();
     }
 
+    pub fn scroll_to_top(&self) {
+        self.list.set_follow_mode(FollowMode::Normal);
+        self.list.scroll_to(gpui::ListOffset::default());
+    }
+
     #[cfg(test)]
     pub fn list(&self) -> &ListState {
         &self.list

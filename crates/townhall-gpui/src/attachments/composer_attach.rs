@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use gpui::{
-    canvas, div, img, prelude::*, px, relative, AnyElement, ClipboardEntry, Context, EventEmitter,
-    FontWeight, Image, ImageFormat, ObjectFit, PathBuilder, PathPromptOptions, Rgba, SharedString,
+    div, img, prelude::*, px, relative, AnyElement, ClipboardEntry, Context, EventEmitter,
+    FontWeight, Image, ImageFormat, ObjectFit, PathPromptOptions, SharedString,
 };
 
 use super::{Composer, Mode};
@@ -17,7 +17,9 @@ use crate::attachments::uploads::{
     can_retry, done_attachment_ids, is_uploading, latest_error, new_upload, reduce, Action,
     PendingUpload, Status,
 };
-use crate::attachments::validate::{is_image, mime_for, reject_reason, FileMeta, MAX_ATTACHMENT_BYTES};
+use crate::attachments::validate::{
+    is_image, mime_for, reject_reason, FileMeta, MAX_ATTACHMENT_BYTES,
+};
 use crate::theme::{self, Theme};
 
 pub const ATTACH_PLACEHOLDER: &str = "reply, ask for more work, or drop files here";
@@ -139,7 +141,11 @@ impl Composer {
         cx.notify();
     }
 
-    pub(super) fn refresh_placeholder(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
+    pub(super) fn refresh_placeholder(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
         let text = if self.thinking {
             super::THINKING_PLACEHOLDER
         } else if self.staging.enabled() {
@@ -300,7 +306,10 @@ impl Composer {
             .map(|u| u.key.clone())
             .collect();
         for key in keys {
-            reduce(&mut self.staging.items, Action::Restarted { key: key.clone() });
+            reduce(
+                &mut self.staging.items,
+                Action::Restarted { key: key.clone() },
+            );
             self.start_upload(key, cx);
         }
         cx.notify();
@@ -625,10 +634,10 @@ mod tests {
         }
     }
 
-    fn open<'a>(
-        cx: &'a mut TestAppContext,
+    fn open(
+        cx: &mut TestAppContext,
         attach: Arc<FakeAttach>,
-    ) -> (Entity<Composer>, &'a mut VisualTestContext) {
+    ) -> (Entity<Composer>, &mut VisualTestContext) {
         cx.update(|cx| {
             gpui_component::init(cx);
             cx.set_global(Theme::new(Mode::Dark));

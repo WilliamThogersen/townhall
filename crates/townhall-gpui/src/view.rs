@@ -102,6 +102,8 @@ pub struct Root {
     lightbox: Option<Entity<Lightbox>>,
     lightbox_closed: Option<Subscription>,
     dropping: bool,
+    force_drop: bool,
+    attach_scene: crate::attachments::scene::Attach,
 }
 
 impl Root {
@@ -149,6 +151,8 @@ impl Root {
             lightbox: None,
             lightbox_closed: None,
             dropping: false,
+            force_drop: false,
+            attach_scene: Default::default(),
         };
         root.composer
             .update(cx, |composer, cx| composer.focus(window, cx));
@@ -197,6 +201,52 @@ impl Root {
         self
     }
 
+    pub fn with_attach_scene(mut self, scene: crate::attachments::scene::Attach) -> Self {
+        self.attach_scene = scene;
+        self
+    }
+
+    fn run_attach_scene(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::attachments::{scene::State, thumbs};
+        use townhall_core::model::EntryBody;
+        let scene = std::mem::take(&mut self.attach_scene);
+        let Load::Ready(detail) = &self.state.detail else {
+            return;
+        };
+        let conversation = detail.conversation.id.clone();
+        let first_images = detail
+            .entries
+            .iter()
+            .find_map(|entry| match &entry.body {
+                EntryBody::You { attachments, .. } if !attachments.is_empty() => Some(
+                    thumbs::Thumbs {
+                        conversation: &conversation,
+                        shared: &thumbs::shared_in(attachments, &detail.attachments),
+                        collapse: false,
+                        panel: false,
+                        border: Default::default(),
+                    }
+                    .images(),
+                ),
+                _ => None,
+            })
+            .unwrap_or_default();
+        match scene.state {
+            Some(State::ThreadTop) => self.thread.update(cx, |thread, _| thread.scroll_to_top()),
+            Some(State::Lightbox) => {
+                let images = thumbs::lightbox_images(&conversation, &first_images, "you");
+                self.show_lightbox(images, 0, window, cx)
+            }
+            Some(State::Drop) => self.force_drop = true,
+            None => {}
+        }
+        if !scene.files.is_empty() {
+            self.composer
+                .update(cx, |composer, cx| composer.add_paths(scene.files, cx));
+        }
+        cx.notify();
+    }
+
     fn on_open<T: 'static>(
         &mut self,
         _: &Entity<T>,
@@ -204,7 +254,17 @@ impl Root {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let lightbox = cx.new(|cx| Lightbox::new(event.images.clone(), event.index, cx));
+        self.show_lightbox(event.images.clone(), event.index, window, cx);
+    }
+
+    pub fn show_lightbox(
+        &mut self,
+        images: Vec<crate::attachments::lightbox::LightboxImage>,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let lightbox = cx.new(|cx| Lightbox::new(images, index, cx));
         self.lightbox_closed = Some(cx.subscribe_in(
             &lightbox,
             window,
@@ -927,7 +987,7 @@ impl Root {
             Load::Failed(e) => note(t.status_error(), format!("error: {e}")).into_any_element(),
         };
         let measure = theme::measure(pane_width) + 2.0 * theme::SPACE_4;
-        let dragging = self.dropping && cx.has_active_drag();
+        let dragging = (self.dropping && cx.has_active_drag()) || self.force_drop;
         let center = div()
             .relative()
             .flex_1()
@@ -958,7 +1018,35 @@ impl Root {
         let mut row = div().flex_1().min_h_0().flex().child(center);
         if rail {
             if let Load::Ready(detail) = &self.state.detail {
-                row = row.child(crate::session::session_panel(detail, &t));
+                let images = crate::attachments::thumbs::lightbox_images(
+                    &detail.conversation.id,
+                    &crate::attachments::thumbs::Thumbs {
+                        conversation: &detail.conversation.id,
+                        shared: &detail.attachments,
+                        collapse: false,
+                        panel: true,
+                        border: p.line_strong,
+                    }
+                    .images(),
+                    "you",
+                );
+                let root = cx.entity();
+                let files = crate::attachments::thumbs::session_files(
+                    &detail.conversation.id,
+                    &detail.attachments,
+                    &t,
+                    cx,
+                    |index| {
+                        let (images, root) = (images.clone(), root.clone());
+                        Box::new(move |_, window, cx| {
+                            let images = images.clone();
+                            root.update(cx, |root, cx| {
+                                root.show_lightbox(images, index, window, cx)
+                            })
+                        })
+                    },
+                );
+                row = row.child(crate::session::session_panel(detail, &t, files));
             }
         }
         row.into_any_element()
@@ -1061,6 +1149,11 @@ pub(crate) fn note(color: Rgba, text: impl Into<SharedString>) -> impl IntoEleme
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.renders += 1;
+        let detail_ready = matches!(&self.state.detail, Load::Ready(d)
+            if self.state.selected.as_deref() == Some(d.conversation.id.as_str()));
+        if !self.attach_scene.is_empty() && detail_ready {
+            self.run_attach_scene(window, cx);
+        }
         let t = Theme::of(cx);
         let p = t.palette;
         let banner = self.banner().map(|text| {

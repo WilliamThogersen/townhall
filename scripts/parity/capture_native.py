@@ -88,10 +88,11 @@ def main():
     p.add_argument("--route", required=True)
     p.add_argument("--settle", type=float, default=3.0)
     p.add_argument("--out", required=True)
+    p.add_argument("--extra", action="append", default=[])
     a = p.parse_args()
     size = tuple(int(n) for n in a.size.split("x"))
     daemon = ["--url", a.url] if a.url else ["--bind", a.bind]
-    cmd = [a.bin, *daemon, "--home", a.home, "--size", a.size, "--theme", a.theme, "--route", a.route]
+    cmd = [a.bin, *daemon, "--home", a.home, "--size", a.size, "--theme", a.theme, "--route", a.route, *a.extra]
     child = subprocess.Popen(cmd)
     try:
         window = wait_for_window(child)

@@ -220,7 +220,7 @@ fn context_line(t: &Theme, view: &ContextView) -> AnyElement {
         .into_any_element()
 }
 
-pub fn session_panel(detail: &ConversationDetail, t: &Theme) -> AnyElement {
+pub fn session_panel(detail: &ConversationDetail, t: &Theme, files: AnyElement) -> AnyElement {
     let p = t.palette;
     let m = session_model(detail);
     let mut body = div()
@@ -256,12 +256,11 @@ pub fn session_panel(detail: &ConversationDetail, t: &Theme) -> AnyElement {
             .into_any_element(),
     });
     body = body.child(section(t, format!("files {}", m.files.len())));
-    if m.files.is_empty() {
-        body = body.child(faint_line(t, "no files yet"));
-    }
-    for name in &m.files {
-        body = body.child(faint_line(t, name));
-    }
+    body = body.child(if m.files.is_empty() {
+        faint_line(t, "no files yet")
+    } else {
+        files
+    });
     body = body.child(section(t, "context".to_string()));
     body = body.child(match &m.context {
         None => faint_line(t, "no context yet"),

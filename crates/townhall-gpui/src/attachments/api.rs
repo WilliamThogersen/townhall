@@ -196,7 +196,11 @@ impl AttachApi for Http {
     }
 
     fn fetch(&self, conversation: &str, id: &str) -> Result<Vec<u8>, String> {
-        let url = format!("{}/{}", self.attachments_url(conversation), encode_segment(id));
+        let url = format!(
+            "{}/{}",
+            self.attachments_url(conversation),
+            encode_segment(id)
+        );
         let mut response = ureq::get(&url)
             .call()
             .map_err(|e| format!("GET {url}: {e}"))?;
@@ -384,7 +388,11 @@ mod tests {
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\nconnection: close\r\n\r\nabc")
                 .unwrap();
-            String::from_utf8_lossy(&buf[..n]).lines().next().unwrap().to_string()
+            String::from_utf8_lossy(&buf[..n])
+                .lines()
+                .next()
+                .unwrap()
+                .to_string()
         });
         let bytes = Http::new(base).fetch("c 1", "a/1").unwrap();
         assert_eq!(bytes, b"abc");
@@ -400,8 +408,10 @@ mod tests {
             "id": 7, "at": "2026-11-12T10:00:00.000Z", "kind": "you",
             "text": "see", "attachments": ["a1"]
         });
-        let (base, request) =
-            serve_once("200 OK", json!({"success": true, "data": entry}).to_string());
+        let (base, request) = serve_once(
+            "200 OK",
+            json!({"success": true, "data": entry}).to_string(),
+        );
         let sent = Http::new(base).send("c1", "see", &["a1".into()]).unwrap();
         assert_eq!(sent.id, 7);
         let request = String::from_utf8(request.join().unwrap()).unwrap();
