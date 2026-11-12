@@ -22,6 +22,7 @@ mod process;
 mod prompt;
 mod quote;
 mod repo;
+mod resume;
 mod session;
 mod stream;
 mod turn;
@@ -36,8 +37,9 @@ pub use actions::{
 pub use advice::{consult, Advice};
 pub use args::{allowed_tools, DENIED_TOOLS, ISOLATION, READ_ONLY_TOOLS};
 pub use content::user_content;
-pub use notify::{notify, Notes};
+pub use notify::{notify, redeliver, Notes};
 pub use process::{EXIT_GRACE, KILL_WAIT, STOP_GRACE};
+pub use resume::RESUME_NOTE;
 pub use session::DEFAULT_CONTEXT_LIMIT;
 pub use turn::LOST_SESSION;
 pub use turns::{TurnGuard, Turns, BUSY};
@@ -45,6 +47,7 @@ pub use turns::{TurnGuard, Turns, BUSY};
 use crate::model::{ConversationStatus, EntryBody};
 use crate::redact::redact;
 use crate::{Context, Result};
+use resume::Plan;
 
 pub const RESTARTED: &str = "townhall restarted before this reply finished. send it again";
 
@@ -61,17 +64,38 @@ pub fn start(ctx: &Context) -> Option<JoinHandle<()>> {
                 "conversations left thinking were not fixed"
             );
         }
+        if let Err(e) = redeliver(&ctx).await {
+            tracing::warn!(
+                target: "townhall::runner", event = "redeliver.failed",
+                error_kind = e.kind(), error = %redact(&e.to_string()),
+                "saved task events were not queued"
+            );
+        }
         std::future::pending::<()>().await
     }))
 }
 
-/// Sets `yourTurn` on each conversation left `thinking` with no turn running, with an
-/// `error` entry that says so. Returns how many it fixed.
+/// Handles each conversation left `thinking` with no turn running: a started session
+/// resumes its interrupted turn once, any other gets `yourTurn` and an `error` entry that
+/// says so. Returns how many it handled.
 pub async fn recover(ctx: &Context) -> Result<usize> {
     let store = ctx.store()?;
     let mut fixed = 0;
     for c in store.conversations().await? {
-        if c.status != ConversationStatus::Thinking || !actions::unstick(ctx, &c.id).await? {
+        if c.status != ConversationStatus::Thinking || ctx.turns().is_running(&c.id) {
+            continue;
+        }
+        let entries = store.entries(&c.id).await?;
+        if let Plan::Resume(entry) = resume::plan(&c, &entries) {
+            if store.claim_resume(&c.id, entry).await? {
+                if let Ok(guard) = ctx.turns().begin(&c.id) {
+                    actions::resume_turn(ctx, &c.id, guard);
+                    fixed += 1;
+                }
+                continue;
+            }
+        }
+        if !actions::unstick(ctx, &c.id).await? {
             continue;
         }
         let note = EntryBody::Error {
