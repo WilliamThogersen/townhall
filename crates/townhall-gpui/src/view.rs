@@ -1,17 +1,50 @@
+use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use gpui::{
-    div, prelude::*, px, AnyElement, ClickEvent, Context, Entity, FontWeight, IntoElement, Rgba,
-    SharedString, Window,
+    actions, div, prelude::*, px, AnyElement, Context, Entity, FontWeight, IntoElement,
+    MouseDownEvent, PathPromptOptions, Rgba, SharedString, Subscription, Window,
 };
-use townhall_core::model::{AgentEvent, ConversationStatus, EntryBody, ServerEvent, ThreadEntry};
+use gpui_component::input::{InputEvent, InputState};
+use townhall_core::clock::unix_millis;
+use townhall_core::model::{ConversationStatus, ServerEvent};
 
 use crate::client::Api;
-use crate::composer::Composer;
+use crate::composer::{Composer, Started};
 use crate::drafts::Drafts;
+use crate::home::daemon_error_text;
+use crate::home_model::{greeting_text, repos_known_label, starter_prompts};
+use crate::prefs::Prefs;
+use crate::row_menu::{row_menu_items, MenuAction, MenuItem};
+use crate::sections::{normalize_query, Filter};
+use crate::sidebar_rows::{
+    build_sections, next_conversation, repo_blocks, visible_ids, FoldState, GroupBlock, RowSections,
+};
 use crate::state::{Load, Refetch, State};
+use crate::task_rows::{needs_you_count, unfinished_count};
 use crate::theme::{self, Theme};
+use crate::thread::{Reply, Thread};
+use crate::thread_model::{conversation_status, end_question};
 
+actions!(
+    townhall_root,
+    [FocusSearch, PreviousConversation, NextConversation]
+);
+
+pub fn bind_keys(cx: &mut gpui::App) {
+    cx.bind_keys([
+        gpui::KeyBinding::new("alt-up", PreviousConversation, None),
+        gpui::KeyBinding::new("alt-down", NextConversation, None),
+        gpui::KeyBinding::new("/", FocusSearch, Some(crate::thread::CONTEXT)),
+    ]);
+}
+
+pub const SEARCH_DELAY: Duration = Duration::from_millis(200);
+pub const AGE_TICK: Duration = Duration::from_secs(60);
+const RAIL_MIN_WIDTH: f32 = 1200.0;
+
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
     pub id: String,
@@ -22,11 +55,46 @@ pub struct Row {
     pub thinking: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Screen {
+    Conversation,
+    Home,
+    FirstRun,
+}
+
+#[derive(Debug, Default)]
+struct Matches {
+    query: String,
+    ids: HashSet<String>,
+    error: Option<String>,
+}
+
+fn now_ms() -> i64 {
+    unix_millis(SystemTime::now())
+}
+
 pub struct Root {
-    api: Arc<dyn Api>,
-    state: State,
-    composer: Entity<Composer>,
+    pub(crate) api: Arc<dyn Api>,
+    pub(crate) state: State,
+    pub(crate) composer: Entity<Composer>,
+    start: Entity<Composer>,
+    thread: Entity<Thread>,
+    pub(crate) search: Entity<InputState>,
+    prefs: Option<Prefs>,
+    pub(crate) by_repo: bool,
+    pub(crate) folded: HashSet<String>,
+    pub(crate) query: String,
+    matches: Matches,
+    search_generation: u64,
+    pub(crate) action_error: Option<String>,
+    home: bool,
+    pub(crate) now_ms: i64,
+    retrying: bool,
+    rail_open: bool,
+    asking_end: bool,
+    renders: usize,
     daemon_note: SharedString,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Root {
@@ -38,15 +106,40 @@ impl Root {
         cx: &mut Context<Self>,
     ) -> Self {
         let composer = cx.new(|cx| Composer::new(api.clone(), drafts, window, cx));
+        let start = cx.new(|cx| Composer::new_start(api.clone(), window, cx));
+        let thread = cx.new(Thread::new);
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("search"));
+        let subscriptions = vec![
+            cx.subscribe_in(&search, window, Self::on_search),
+            cx.subscribe_in(&start, window, Self::on_started),
+            cx.subscribe_in(&thread, window, Self::on_reply),
+        ];
         let root = Self {
             api,
             state: State::new(),
             composer,
+            start,
+            thread,
+            search,
+            prefs: None,
+            by_repo: false,
+            folded: HashSet::new(),
+            query: String::new(),
+            matches: Matches::default(),
+            search_generation: 0,
+            action_error: None,
+            home: false,
+            now_ms: now_ms(),
+            retrying: false,
+            rail_open: true,
+            asking_end: false,
+            renders: 0,
             daemon_note: SharedString::default(),
+            _subscriptions: subscriptions,
         };
         root.composer
             .update(cx, |composer, cx| composer.focus(window, cx));
-        root.load_list(true, window, cx);
+        root.reload(true, window, cx);
         if let Some(events) = events {
             cx.spawn_in(window, async move |this, cx| -> gpui::Result<()> {
                 while let Ok(event) = events.recv().await {
@@ -56,6 +149,16 @@ impl Root {
             })
             .detach_and_log_err(cx);
         }
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            loop {
+                cx.background_executor().timer(AGE_TICK).await;
+                this.update(cx, |this, cx| {
+                    this.now_ms = now_ms();
+                    cx.notify();
+                })?;
+            }
+        })
+        .detach_and_log_err(cx);
         root
     }
 
@@ -64,61 +167,441 @@ impl Root {
         self
     }
 
+    pub fn with_prefs(mut self, prefs: Prefs) -> Self {
+        self.by_repo = prefs.by_repo();
+        self.prefs = Some(prefs);
+        self
+    }
+
     #[cfg(test)]
     pub fn state(&self) -> &State {
         &self.state
     }
 
+    #[cfg(test)]
+    pub fn renders(&self) -> usize {
+        self.renders
+    }
+
+    pub fn screen(&self) -> Screen {
+        if !self.home && self.state.selected.is_some() {
+            return Screen::Conversation;
+        }
+        match &self.state.repos {
+            Load::Ready(repos) if repos.is_empty() => Screen::FirstRun,
+            _ => Screen::Home,
+        }
+    }
+
+    pub(crate) fn is_current(&self, id: &str) -> bool {
+        !self.home && self.state.selected.as_deref() == Some(id)
+    }
+
+    fn searching(&self) -> bool {
+        !normalize_query(&self.query).is_empty()
+    }
+
+    pub fn sections(&self) -> RowSections {
+        let Load::Ready(list) = &self.state.conversations else {
+            return RowSections {
+                active: Vec::new(),
+                older: Vec::new(),
+            };
+        };
+        let none = HashSet::new();
+        let settled = self.matches.query == self.query.trim();
+        let filter = self.searching().then(|| Filter {
+            query: &self.query,
+            text_matches: if settled { &self.matches.ids } else { &none },
+        });
+        build_sections(list, self.state.task_list(), filter.as_ref())
+    }
+
+    pub fn blocks(&self) -> Option<Vec<GroupBlock>> {
+        if !self.by_repo {
+            return None;
+        }
+        let current = self.state.selected.as_deref().filter(|_| !self.home);
+        Some(repo_blocks(
+            &self.sections().active,
+            &FoldState {
+                folded: &self.folded,
+                current_id: current,
+                searching: self.searching(),
+            },
+        ))
+    }
+
+    #[cfg(test)]
     pub fn active_rows(&self) -> Vec<Row> {
         self.rows(false)
     }
 
+    #[cfg(test)]
     pub fn older_rows(&self) -> Vec<Row> {
         self.rows(true)
     }
 
+    #[cfg(test)]
     fn rows(&self, ended: bool) -> Vec<Row> {
-        match &self.state.conversations {
-            Load::Ready(list) => list
-                .iter()
-                .filter(|c| c.ended == ended)
-                .map(|c| Row {
-                    id: c.id.clone(),
-                    title: c.title.clone(),
-                    ended: c.ended,
-                    selected: self.state.selected.as_deref() == Some(c.id.as_str()),
-                    tasks: c.tasks.len(),
-                    thinking: c.status == ConversationStatus::Thinking,
-                })
-                .collect(),
-            _ => Vec::new(),
+        let sections = self.sections();
+        let rows = if ended {
+            sections.older
+        } else {
+            sections.active
+        };
+        rows.into_iter()
+            .map(|r| Row {
+                selected: self.is_current(&r.conversation.id),
+                tasks: r.conversation.tasks.len(),
+                thinking: r.conversation.status == ConversationStatus::Thinking,
+                ended: r.conversation.ended,
+                title: r.conversation.title,
+                id: r.conversation.id,
+            })
+            .collect()
+    }
+
+    pub fn toggle_by_repo(&mut self, cx: &mut Context<Self>) {
+        self.by_repo = !self.by_repo;
+        if let Some(prefs) = self.prefs.as_mut() {
+            if let Err(e) = prefs.set_by_repo(self.by_repo) {
+                tracing::warn!(
+                    target: "townhall::native",
+                    event = "prefs.save_failed",
+                    error = %e,
+                    "cannot save the sidebar choice"
+                );
+            }
         }
+        cx.notify();
+    }
+
+    pub fn step_conversation(&mut self, step: i32, window: &mut Window, cx: &mut Context<Self>) {
+        let ids = visible_ids(&self.sections(), self.blocks().as_deref());
+        let current = self.state.selected.as_deref().filter(|_| !self.home);
+        if let Some(next) = next_conversation(&ids, current, step) {
+            self.select(next, window, cx);
+        }
+    }
+
+    pub fn toggle_group(&mut self, key: &str, cx: &mut Context<Self>) {
+        if !self.folded.remove(key) {
+            self.folded.insert(key.to_string());
+        }
+        cx.notify();
+    }
+
+    pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search.update(cx, |input, cx| input.focus(window, cx));
+    }
+
+    pub fn clear_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search
+            .update(cx, |input, cx| input.set_value("", window, cx));
+        self.set_query(String::new(), cx);
+        self.composer
+            .update(cx, |composer, cx| composer.focus(window, cx));
+    }
+
+    #[cfg(test)]
+    pub fn query(&self, cx: &gpui::App) -> String {
+        self.search.read(cx).value().to_string()
+    }
+
+    pub fn match_error(&self) -> Option<&str> {
+        self.matches.error.as_deref().filter(|_| self.searching())
+    }
+
+    fn on_search(
+        &mut self,
+        _: &Entity<InputState>,
+        event: &InputEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let InputEvent::Change = event {
+            let text = self.search.read(cx).value().to_string();
+            self.set_query(text, cx);
+        }
+    }
+
+    fn set_query(&mut self, text: String, cx: &mut Context<Self>) {
+        if self.query == text {
+            return;
+        }
+        self.query = text;
+        self.search_generation += 1;
+        cx.notify();
+        let wanted = self.query.trim().to_string();
+        if wanted.is_empty() {
+            self.matches = Matches::default();
+            return;
+        }
+        let generation = self.search_generation;
+        let api = self.api.clone();
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            cx.background_executor().timer(SEARCH_DELAY).await;
+            if !this.update(cx, |this, _| this.search_generation == generation)? {
+                return Ok(());
+            }
+            let asked = wanted.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move { api.search(&asked) })
+                .await;
+            this.update(cx, |this, cx| {
+                if this.search_generation != generation {
+                    return;
+                }
+                this.matches = match result {
+                    Ok(hits) => Matches {
+                        query: wanted,
+                        ids: hits.into_iter().map(|h| h.conversation_id).collect(),
+                        error: None,
+                    },
+                    Err(e) => Matches {
+                        query: wanted,
+                        ids: HashSet::new(),
+                        error: Some(e),
+                    },
+                };
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
+    }
+
+    pub fn menu_items(&self, id: &str) -> Vec<MenuItem> {
+        let Load::Ready(list) = &self.state.conversations else {
+            return Vec::new();
+        };
+        let sections = build_sections(list, self.state.task_list(), None);
+        sections
+            .active
+            .iter()
+            .chain(sections.older.iter())
+            .find(|row| row.conversation.id == id)
+            .map(|row| row_menu_items(row, self.state.repo_list()))
+            .unwrap_or_default()
+    }
+
+    pub fn run_menu(&mut self, action: MenuAction, cx: &mut Context<Self>) {
+        self.action_error = None;
+        let api = self.api.clone();
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    match action {
+                        MenuAction::End(id) => api.end_conversation(&id),
+                        MenuAction::Link(id, repo) => api.link_repo(&id, repo.as_deref()),
+                    }
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(conversation) => {
+                        this.state
+                            .apply(ServerEvent::ConversationUpdated { conversation });
+                        this.sync_thread(cx);
+                    }
+                    Err(e) => this.action_error = Some(e),
+                }
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
+        cx.notify();
+    }
+
+    pub fn action_error(&self) -> Option<&str> {
+        self.action_error.as_deref()
+    }
+
+    pub fn go_home(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.home = true;
+        self.asking_end = false;
+        self.start
+            .update(cx, |composer, cx| composer.focus(window, cx));
+        cx.notify();
+    }
+
+    pub fn starters(&self) -> Vec<String> {
+        let repos = match &self.state.repos {
+            Load::Ready(repos) => Some(repos.as_slice()),
+            _ => None,
+        };
+        starter_prompts(repos)
+    }
+
+    pub fn greeting_at(&self, hour: u32) -> String {
+        greeting_text(hour, self.state.user_name())
+    }
+
+    pub fn pick_starter(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.start
+            .update(cx, |composer, cx| composer.fill(text, window, cx));
+    }
+
+    #[cfg(test)]
+    pub fn start_composer(&self) -> &Entity<Composer> {
+        &self.start
+    }
+
+    fn on_started(
+        &mut self,
+        _: &Entity<Composer>,
+        event: &Started,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let detail = event.0.clone();
+        let id = detail.conversation.id.clone();
+        self.state.apply(ServerEvent::ConversationUpdated {
+            conversation: detail.conversation.clone(),
+        });
+        self.home = false;
+        self.asking_end = false;
+        self.state.select(id.clone());
+        self.state.set_detail(&id, Ok(detail));
+        self.composer.update(cx, |composer, cx| {
+            composer.switch_to(Some(id.clone()), window, cx)
+        });
+        self.sync_thinking(window, cx);
+        self.sync_thread(cx);
+        cx.notify();
+    }
+
+    fn on_reply(
+        &mut self,
+        _: &Entity<Thread>,
+        event: &Reply,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(id) = self.state.selected.clone() else {
+            return;
+        };
+        self.action_error = None;
+        let text = event.0.clone();
+        let api = self.api.clone();
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            let result = cx
+                .background_executor()
+                .spawn(async move { api.send_message(&id, &text) })
+                .await;
+            this.update(cx, |this, cx| {
+                if let Err(e) = result {
+                    this.action_error = Some(e);
+                }
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
+        cx.notify();
+    }
+
+    pub fn add_repo(&mut self, path: String, _window: &mut Window, cx: &mut Context<Self>) {
+        self.action_error = None;
+        let api = self.api.clone();
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            let result = cx
+                .background_executor()
+                .spawn(async move { api.add_repo(&path) })
+                .await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(_) => this.load_repos(cx),
+                    Err(e) => this.action_error = Some(e),
+                }
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
+        cx.notify();
+    }
+
+    pub fn browse_repo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let picked = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("add repository".into()),
+        });
+        cx.spawn_in(window, async move |this, cx| -> gpui::Result<()> {
+            if let Ok(Ok(Some(paths))) = picked.await {
+                if let Some(path) = paths.first() {
+                    let path = path.to_string_lossy().into_owned();
+                    this.update_in(cx, |this, window, cx| this.add_repo(path, window, cx))?;
+                }
+            }
+            Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    pub fn banner(&self) -> Option<String> {
+        match &self.state.conversations {
+            Load::Failed(e) => Some(daemon_error_text(e)),
+            _ => None,
+        }
+    }
+
+    pub fn retry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.retrying = true;
+        self.reload(true, window, cx);
+        cx.notify();
     }
 
     pub fn on_event(&mut self, event: ServerEvent, window: &mut Window, cx: &mut Context<Self>) {
         match self.state.apply(event) {
             Refetch::Nothing => {}
             Refetch::Everything => {
-                self.load_list(false, window, cx);
+                self.reload(false, window, cx);
                 if let Some(id) = self.state.selected.clone() {
                     self.load_detail(id, cx);
                 }
             }
         }
         self.sync_thinking(window, cx);
+        self.sync_thread(cx);
         cx.notify();
     }
 
-    fn sync_thinking(&self, window: &mut Window, cx: &mut Context<Self>) {
-        let thinking = match (&self.state.conversations, self.state.selected.as_deref()) {
+    fn selected_thinking(&self) -> bool {
+        match (&self.state.conversations, self.state.selected.as_deref()) {
             (Load::Ready(list), Some(id)) => list
                 .iter()
                 .any(|c| c.id == id && c.status == ConversationStatus::Thinking),
             _ => false,
-        };
+        }
+    }
+
+    fn sync_thinking(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let thinking = self.selected_thinking();
         self.composer.update(cx, |composer, cx| {
             composer.set_thinking(thinking, window, cx)
         });
+    }
+
+    fn sync_thread(&self, cx: &mut Context<Self>) {
+        let thinking = self.selected_thinking();
+        let state = &self.state;
+        self.thread.update(cx, |thread, cx| {
+            let detail = match &state.detail {
+                Load::Ready(detail) => Some(detail),
+                _ => None,
+            };
+            thread.sync(detail, thinking, cx);
+        });
+    }
+
+    fn reload(&self, select_newest: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.load_list(select_newest, window, cx);
+        self.load_tasks(cx);
+        self.load_repos(cx);
+        self.load_info(cx);
     }
 
     fn load_list(&self, select_newest: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -129,6 +612,7 @@ impl Root {
                 .spawn(async move { api.conversations() })
                 .await;
             this.update_in(cx, |this, window, cx| {
+                this.retrying = false;
                 this.state.set_list(result);
                 if select_newest && this.state.selected.is_none() {
                     if let Some(id) = this.state.newest() {
@@ -142,12 +626,60 @@ impl Root {
         .detach_and_log_err(cx);
     }
 
+    fn load_tasks(&self, cx: &mut Context<Self>) {
+        let api = self.api.clone();
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            let result = cx
+                .background_executor()
+                .spawn(async move { api.tasks() })
+                .await;
+            this.update(cx, |this, cx| {
+                this.state.set_tasks(result);
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
+    }
+
+    fn load_repos(&self, cx: &mut Context<Self>) {
+        let api = self.api.clone();
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            let result = cx
+                .background_executor()
+                .spawn(async move { api.repos() })
+                .await;
+            this.update(cx, |this, cx| {
+                this.state.set_repos(result);
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
+    }
+
+    fn load_info(&self, cx: &mut Context<Self>) {
+        let api = self.api.clone();
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            let result = cx
+                .background_executor()
+                .spawn(async move { api.info() })
+                .await;
+            this.update(cx, |this, cx| {
+                this.state.set_info(result);
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
+    }
+
     pub fn select(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.home = false;
+        self.asking_end = false;
         self.state.select(id.clone());
         self.composer.update(cx, |composer, cx| {
             composer.switch_to(Some(id.clone()), window, cx)
         });
         self.sync_thinking(window, cx);
+        self.sync_thread(cx);
         self.load_detail(id, cx);
         cx.notify();
     }
@@ -162,188 +694,304 @@ impl Root {
                 .await;
             this.update(cx, |this, cx| {
                 this.state.set_detail(&id, result);
+                this.sync_thread(cx);
                 cx.notify();
             })
         })
         .detach_and_log_err(cx);
     }
 
-    fn sidebar(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    fn conversation_header(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
         let p = t.palette;
-        let mut rows = div().flex().flex_col();
-        match &self.state.conversations {
-            Load::Loading => rows = rows.child(note(p.fg_faint, "loading…")),
-            Load::Failed(e) => rows = rows.child(note(t.status_error(), format!("error: {e}"))),
-            Load::Ready(_) => {
-                let active = self.active_rows();
-                rows = rows.child(section(t, "active", active.len()));
-                for row in active {
-                    rows = rows.child(self.row(t, row, cx));
-                }
-                let older = self.older_rows();
-                rows = rows.child(section(t, "older", older.len()));
-                for row in older {
-                    rows = rows.child(self.row(t, row, cx));
-                }
+        let Load::Ready(detail) = &self.state.detail else {
+            return div()
+                .h(px(theme::BAR))
+                .flex_none()
+                .border_b(px(theme::BORDER))
+                .border_color(p.line)
+                .into_any_element();
+        };
+        let conversation = &detail.conversation;
+        let status = conversation_status(conversation);
+        let unfinished = unfinished_count(&detail.tasks);
+        let waiting = needs_you_count(&detail.tasks);
+        let id = conversation.id.clone();
+        let repo = crate::session_model::repo_line(detail)
+            .map(|line| line.label.trim_start_matches("~ ").to_string())
+            .unwrap_or_default();
+        let ch = theme::TEXT_SM * 0.6;
+        let mut actions = div()
+            .flex()
+            .items_center()
+            .gap(px(theme::SPACE_1))
+            .ml_auto();
+        if self.asking_end {
+            let end_id = id.clone();
+            actions = actions
+                .child(
+                    div()
+                        .text_size(px(theme::TEXT_SM))
+                        .text_color(p.fg_muted)
+                        .child(end_question(&conversation.title, unfinished)),
+                )
+                .child(crate::home::button(
+                    &t,
+                    "end-cancel",
+                    "cancel".to_string(),
+                    false,
+                    Box::new(cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                        this.asking_end = false;
+                        cx.notify();
+                    })),
+                ))
+                .child(crate::home::button(
+                    &t,
+                    "end-confirm",
+                    "end".to_string(),
+                    true,
+                    Box::new(cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.asking_end = false;
+                        this.run_menu(MenuAction::End(end_id.clone()), cx);
+                    })),
+                ));
+        } else {
+            let label = if waiting > 0 {
+                format!("◆ {waiting} · session")
+            } else {
+                "session".to_string()
+            };
+            actions = actions.child(crate::home::button(
+                &t,
+                "rail-toggle",
+                label,
+                false,
+                Box::new(cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.rail_open = !this.rail_open;
+                    cx.notify();
+                })),
+            ));
+            if !conversation.ended {
+                actions = actions.child(crate::home::button(
+                    &t,
+                    "end",
+                    "end".to_string(),
+                    false,
+                    Box::new(cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        if unfinished > 0 {
+                            this.asking_end = true;
+                            cx.notify();
+                        } else {
+                            this.run_menu(MenuAction::End(id.clone()), cx);
+                        }
+                    })),
+                ));
             }
         }
-        div()
-            .w(px(theme::SIDEBAR))
-            .h_full()
-            .flex_none()
-            .flex()
-            .flex_col()
-            .bg(p.surface)
-            .border_r(px(theme::BORDER))
-            .border_color(p.line)
-            .child(
-                div()
-                    .h(px(theme::BAR))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .px(px(theme::SPACE_3))
-                    .gap(px(theme::SPACE_2))
-                    .border_b(px(theme::BORDER))
-                    .border_color(p.line)
-                    .child(div().text_color(p.fg).child("▟"))
-                    .child(
-                        div()
-                            .flex()
-                            .font_weight(FontWeight::BOLD)
-                            .child(div().text_color(p.accent).child("/"))
-                            .child("townhall"),
-                    ),
-            )
-            .child(
-                div()
-                    .id("conversations")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .child(rows),
-            )
-    }
-
-    fn row(&self, t: Theme, row: Row, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = t.palette;
-        let (glyph, color) = if row.ended {
-            ("○", t.status_dead())
-        } else if row.thinking {
-            ("⠋", t.status_working())
-        } else {
-            ("●", t.status_alive())
+        let status_color: Rgba = match status {
+            "thinking" => t.status_working(),
+            "ended" => p.fg_faint,
+            _ => p.fg_muted,
         };
-        let id = row.id.clone();
-        let mut title = div()
-            .flex_1()
-            .overflow_hidden()
-            .text_color(if row.ended { p.fg_muted } else { p.fg })
-            .child(row.title.clone());
-        if row.selected {
-            title = title.font_weight(FontWeight::BOLD);
-        }
-        let mut el = div()
-            .id(SharedString::from(row.id.clone()))
-            .h(px(theme::ROW))
+        div()
+            .h(px(theme::BAR))
+            .flex_none()
             .flex()
             .items_center()
             .gap(px(theme::SPACE_2))
-            .px(px(theme::SPACE_3))
-            .cursor_pointer()
-            .hover(move |s| s.bg(p.surface_2))
-            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                this.select(id.clone(), window, cx);
-            }))
-            .child(div().w(px(theme::SPACE_4)).text_color(color).child(glyph))
-            .child(title)
+            .pl(px(theme::SPACE_4))
+            .pr(px(theme::SPACE_2))
+            .border_b(px(theme::BORDER))
+            .border_color(p.line)
+            .bg(p.surface)
             .child(
                 div()
-                    .text_size(px(theme::TEXT_XS))
-                    .text_color(p.fg_faint)
-                    .child(format!("{} tasks", row.tasks)),
-            );
-        if row.selected {
-            el = el
-                .bg(p.surface_2)
-                .border_l(px(theme::ACCENT_RULE))
-                .border_color(p.accent);
-        }
-        el
+                    .truncate()
+                    .font_weight(FontWeight::BOLD)
+                    .child(conversation.title.clone()),
+            )
+            .when(!self.asking_end, |d| {
+                d.child(
+                    div()
+                        .truncate()
+                        .text_size(px(theme::TEXT_XS))
+                        .text_color(p.fg_faint)
+                        .child(repo),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .flex()
+                        .gap(px(ch))
+                        .text_size(px(theme::TEXT_SM))
+                        .text_color(status_color)
+                        .when(status == "thinking", |d| d.child("⠋"))
+                        .child(status),
+                )
+            })
+            .child(actions)
+            .into_any_element()
     }
 
-    fn thread(&self, t: Theme, pane_width: f32) -> impl IntoElement {
+    fn conversation_screen(
+        &mut self,
+        t: Theme,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = t.palette;
-        let (title, body): (String, AnyElement) = match &self.state.detail {
-            Load::Loading => (
-                String::new(),
-                note(p.fg_faint, "loading…").into_any_element(),
-            ),
-            Load::Failed(e) => (
-                String::new(),
-                note(t.status_error(), format!("error: {e}")).into_any_element(),
-            ),
-            Load::Ready(d) => {
-                let mut col = div()
-                    .w_full()
-                    .max_w(px(theme::measure(pane_width)))
-                    .flex()
-                    .flex_col()
-                    .gap(px(theme::SPACE_3))
-                    .py(px(theme::SPACE_4));
-                for entry in &d.entries {
-                    col = col.child(entry_view(t, entry));
-                }
-                (d.conversation.title.clone(), col.into_any_element())
-            }
+        let viewport = f32::from(window.viewport_size().width);
+        let rail = self.rail_open && viewport >= RAIL_MIN_WIDTH;
+        let pane_width =
+            viewport - theme::SIDEBAR - if rail { theme::RAIL } else { 0.0 } - 2.0 * theme::SPACE_4;
+        self.thread
+            .update(cx, |thread, cx| thread.set_pane_width(pane_width, cx));
+        let header = self.conversation_header(t, cx);
+        let body: AnyElement = match &self.state.detail {
+            Load::Ready(_) => div()
+                .flex_1()
+                .min_h_0()
+                .child(self.thread.clone())
+                .into_any_element(),
+            Load::Loading => note(p.fg_faint, "loading…").into_any_element(),
+            Load::Failed(e) => note(t.status_error(), format!("error: {e}")).into_any_element(),
         };
-        div()
+        let measure = theme::measure(pane_width) + 2.0 * theme::SPACE_4;
+        let center = div()
             .flex_1()
             .min_w_0()
             .h_full()
             .flex()
             .flex_col()
-            .child(
-                div()
-                    .h(px(theme::BAR))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .px(px(theme::SPACE_4))
-                    .border_b(px(theme::BORDER))
-                    .border_color(p.line)
-                    .font_weight(FontWeight::BOLD)
-                    .child(title),
-            )
-            .child(
-                div()
-                    .id("thread")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .px(px(theme::SPACE_4))
-                    .child(body),
-            )
+            .child(header)
+            .child(body)
             .child(
                 div().w_full().flex_none().flex().justify_center().child(
                     div()
                         .w_full()
-                        .max_w(px(theme::measure(pane_width) + 2.0 * theme::SPACE_4))
+                        .max_w(px(measure))
                         .child(self.composer.clone()),
                 ),
-            )
+            );
+        let mut row = div().flex_1().min_h_0().flex().child(center);
+        if rail {
+            if let Load::Ready(detail) = &self.state.detail {
+                row = row.child(crate::session::session_panel(detail, &t));
+            }
+        }
+        row.into_any_element()
     }
+
+    fn home_screen(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
+        let p = t.palette;
+        let hour = local_hour();
+        let mut starters = div()
+            .flex()
+            .flex_wrap()
+            .justify_center()
+            .gap(px(theme::SPACE_2));
+        for (i, prompt) in self.starters().into_iter().enumerate() {
+            let text = prompt.clone();
+            starters = starters.child(crate::home::starter(
+                &t,
+                SharedString::from(format!("starter-{i}")),
+                prompt,
+                Box::new(cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                    this.pick_starter(&text, window, cx)
+                })),
+            ));
+        }
+        let known = match &self.state.repos {
+            Load::Ready(repos) if !repos.is_empty() => {
+                let names: Vec<&str> = repos.iter().map(|r| r.name.as_str()).collect();
+                Some((repos_known_label(repos.len()), names.join(", ")))
+            }
+            _ => None,
+        };
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .justify_center()
+            .p(px(theme::SPACE_5))
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(theme::HOME))
+                    .mx_auto()
+                    .flex()
+                    .flex_col()
+                    .gap(px(theme::SPACE_4))
+                    .child(crate::home::greeting(&t, self.greeting_at(hour)))
+                    .child(div().w_full().child(self.start.clone()))
+                    .when_some(known, |d, (label, names)| {
+                        d.child(
+                            div()
+                                .flex()
+                                .justify_center()
+                                .gap(px(theme::TEXT_XS * 0.6))
+                                .text_size(px(theme::TEXT_XS))
+                                .text_color(p.fg_faint)
+                                .child(div().text_color(p.accent).child("~"))
+                                .child(label)
+                                .child(format!("({names})")),
+                        )
+                    })
+                    .child(starters),
+            )
+            .into_any_element()
+    }
+
+    fn main_screen(&mut self, t: Theme, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        match self.screen() {
+            Screen::Conversation => self.conversation_screen(t, window, cx),
+            Screen::Home => self.home_screen(t, cx),
+            Screen::FirstRun => {
+                crate::home::first_run(
+                    &t,
+                    self.action_error.clone(),
+                    Box::new(cx.listener(|this, _: &MouseDownEvent, window, cx| {
+                        this.browse_repo(window, cx)
+                    })),
+                )
+            }
+        }
+    }
+}
+
+fn local_hour() -> u32 {
+    let secs = (now_ms() / 1000) as libc::time_t;
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&secs, &mut tm) }.is_null() {
+        return 12;
+    }
+    tm.tm_hour as u32
+}
+
+pub(crate) fn note(color: Rgba, text: impl Into<SharedString>) -> impl IntoElement {
+    div()
+        .px(px(theme::SPACE_3))
+        .py(px(theme::SPACE_2))
+        .text_color(color)
+        .child(text.into())
 }
 
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.renders += 1;
         let t = Theme::of(cx);
         let p = t.palette;
-        let pane_width =
-            f32::from(window.viewport_size().width) - theme::SIDEBAR - 2.0 * theme::SPACE_4;
+        let banner = self.banner().map(|text| {
+            crate::home::banner(
+                &t,
+                text,
+                self.retrying,
+                Box::new(
+                    cx.listener(|this, _: &MouseDownEvent, window, cx| this.retry(window, cx)),
+                ),
+            )
+        });
+        let main = self.main_screen(t, window, cx);
+        let sidebar = self.sidebar(t, cx);
         div()
             .size_full()
             .flex()
@@ -353,13 +1001,26 @@ impl Render for Root {
             .font_family(theme::FONT)
             .font_features(theme::no_ligatures())
             .text_size(px(theme::TEXT_MD))
+            .on_action(
+                cx.listener(|this, _: &FocusSearch, window, cx| this.focus_search(window, cx)),
+            )
+            .on_action(cx.listener(|this, _: &PreviousConversation, window, cx| {
+                this.step_conversation(-1, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &NextConversation, window, cx| {
+                this.step_conversation(1, window, cx)
+            }))
             .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .child(self.sidebar(t, cx))
-                    .child(self.thread(t, pane_width)),
+                div().flex_1().min_h_0().flex().child(sidebar).child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .flex()
+                        .flex_col()
+                        .when_some(banner, |d, b| d.child(b))
+                        .child(div().flex_1().min_h_0().flex().child(main)),
+                ),
             )
             .child(
                 div()
@@ -378,119 +1039,6 @@ impl Render for Root {
     }
 }
 
-fn note(color: Rgba, text: impl Into<SharedString>) -> impl IntoElement {
-    div()
-        .px(px(theme::SPACE_3))
-        .py(px(theme::SPACE_2))
-        .text_color(color)
-        .child(text.into())
-}
-
-fn section(t: Theme, label: &str, count: usize) -> impl IntoElement {
-    div()
-        .h(px(theme::KEYBAR))
-        .flex()
-        .items_center()
-        .px(px(theme::SPACE_3))
-        .text_size(px(theme::TEXT_XS))
-        .text_color(t.palette.fg_faint)
-        .child(format!("{label} {count}"))
-}
-
-fn event_line(t: Theme, glyph: &str, color: Rgba, text: String) -> AnyElement {
-    div()
-        .flex()
-        .justify_center()
-        .gap(px(theme::SPACE_2))
-        .text_size(px(theme::TEXT_SM))
-        .text_color(t.palette.fg_faint)
-        .child(div().text_color(color).child(glyph.to_string()))
-        .child(text)
-        .into_any_element()
-}
-
-fn bubble(t: Theme, tint: Rgba, rule: Rgba, from_you: bool, text: String) -> AnyElement {
-    let mut el = div()
-        .w_full()
-        .max_w(gpui::relative(theme::BUBBLE))
-        .px(px(theme::SPACE_3))
-        .py(px(theme::SPACE_2))
-        .bg(tint)
-        .text_color(t.palette.fg)
-        .child(text);
-    el = if from_you {
-        el.border_r(px(theme::ACCENT_RULE))
-    } else {
-        el.border_l(px(theme::ACCENT_RULE))
-    };
-    let row = div().flex().w_full();
-    let row = if from_you { row.justify_end() } else { row };
-    row.child(el.border_color(rule)).into_any_element()
-}
-
-fn entry_view(t: Theme, entry: &ThreadEntry) -> AnyElement {
-    let p = t.palette;
-    match &entry.body {
-        EntryBody::You { text, .. } => bubble(t, p.surface_2, p.accent, true, text.clone()),
-        EntryBody::Townhall { text } => bubble(t, p.info_tint, p.info, false, text.clone()),
-        EntryBody::Repo {
-            repo,
-            base_branch,
-            reason,
-            ..
-        } => event_line(
-            t,
-            "~",
-            p.fg_faint,
-            format!("repo {repo} · {base_branch}, {reason}"),
-        ),
-        EntryBody::RepoAsk { question, .. } => {
-            event_line(t, "◆", t.status_waiting(), question.clone())
-        }
-        EntryBody::TasksCreated { tasks } => event_line(
-            t,
-            "+",
-            p.fg_faint,
-            format!("{} tasks: {}", tasks.len(), tasks.join(", ")),
-        ),
-        EntryBody::NeedsYou {
-            agent, question, ..
-        } => bubble(
-            t,
-            p.accent_tint,
-            p.accent,
-            false,
-            format!("◆ {agent} needs you\n{question}"),
-        ),
-        EntryBody::Agent { agent, event, text } => {
-            let (glyph, color) = match event {
-                AgentEvent::Sent => ("→", p.fg_faint),
-                AgentEvent::Passed => ("✓", p.ok),
-                AgentEvent::Failed => ("×", p.danger),
-                AgentEvent::Ended => ("○", p.fg_faint),
-                AgentEvent::Allowed => ("+", p.fg_faint),
-            };
-            event_line(t, glyph, color, format!("{agent}: {text}"))
-        }
-        EntryBody::Event { text } => event_line(t, "◇", p.fg_faint, text.clone()),
-        EntryBody::Handoff {
-            task,
-            from,
-            to,
-            reason,
-        } => event_line(
-            t,
-            "↩",
-            p.fg_faint,
-            format!("{task}: {from} handed back to {to}, {reason}"),
-        ),
-        EntryBody::Plugin { plugin, text } => {
-            event_line(t, "◇", p.fg_faint, format!("plugin {plugin}: {text}"))
-        }
-        EntryBody::Error { message } => event_line(t, "×", p.danger, format!("error: {message}")),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,21 +1046,63 @@ mod tests {
     use gpui::TestAppContext;
     use gpui::{EntityInputHandler, VisualTestContext};
     use std::sync::Mutex;
-    use townhall_core::model::{Conversation, ConversationDetail};
+    use townhall_core::model::{Conversation, ConversationDetail, ThreadEntry};
 
+    #[derive(Default)]
     struct Fake {
         list: Mutex<Vec<Conversation>>,
         details: Mutex<Vec<ConversationDetail>>,
         sent: Mutex<Vec<(String, String)>>,
         send_error: Mutex<Option<String>>,
+        tasks: Mutex<Vec<townhall_core::model::Task>>,
+        repos: Mutex<Vec<townhall_core::model::Repo>>,
+        user_name: Mutex<Option<String>>,
+        hits: Mutex<Vec<townhall_core::search::SearchHit>>,
+        searched: Mutex<Vec<String>>,
+        ended: Mutex<Vec<String>>,
+        linked: Mutex<Vec<(String, Option<String>)>>,
+        started: Mutex<Vec<String>>,
+        added: Mutex<Vec<String>>,
+        action_error: Mutex<Option<String>>,
+        down: Mutex<bool>,
+    }
+
+    impl Fake {
+        fn check_up(&self) -> Result<(), String> {
+            if *self.down.lock().unwrap() {
+                Err("connection refused".into())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn check_action(&self) -> Result<(), String> {
+            self.check_up()?;
+            match self.action_error.lock().unwrap().clone() {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        }
+
+        fn find(&self, id: &str) -> Result<Conversation, String> {
+            self.list
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|c| c.id == id)
+                .cloned()
+                .ok_or_else(|| format!("no conversation {id}"))
+        }
     }
 
     impl Api for Fake {
         fn conversations(&self) -> Result<Vec<Conversation>, String> {
+            self.check_up()?;
             Ok(self.list.lock().unwrap().clone())
         }
 
         fn conversation(&self, id: &str) -> Result<ConversationDetail, String> {
+            self.check_up()?;
             self.details
                 .lock()
                 .unwrap()
@@ -532,6 +1122,68 @@ mod tests {
                 .push((id.to_string(), text.to_string()));
             Ok(entry(99, text))
         }
+
+        fn tasks(&self) -> Result<Vec<townhall_core::model::Task>, String> {
+            self.check_up()?;
+            Ok(self.tasks.lock().unwrap().clone())
+        }
+
+        fn repos(&self) -> Result<Vec<townhall_core::model::Repo>, String> {
+            self.check_up()?;
+            Ok(self.repos.lock().unwrap().clone())
+        }
+
+        fn info(&self) -> Result<crate::client::Info, String> {
+            self.check_up()?;
+            Ok(crate::client::Info {
+                user_name: self.user_name.lock().unwrap().clone(),
+            })
+        }
+
+        fn search(&self, query: &str) -> Result<Vec<townhall_core::search::SearchHit>, String> {
+            self.check_up()?;
+            self.searched.lock().unwrap().push(query.to_string());
+            Ok(self.hits.lock().unwrap().clone())
+        }
+
+        fn end_conversation(&self, id: &str) -> Result<Conversation, String> {
+            self.check_action()?;
+            self.ended.lock().unwrap().push(id.to_string());
+            let mut c = self.find(id)?;
+            c.ended = true;
+            Ok(c)
+        }
+
+        fn link_repo(&self, id: &str, repo: Option<&str>) -> Result<Conversation, String> {
+            self.check_action()?;
+            self.linked
+                .lock()
+                .unwrap()
+                .push((id.to_string(), repo.map(String::from)));
+            let mut c = self.find(id)?;
+            c.linked_repo = repo.map(String::from);
+            Ok(c)
+        }
+
+        fn start_conversation(&self, text: &str) -> Result<ConversationDetail, String> {
+            self.check_action()?;
+            self.started.lock().unwrap().push(text.to_string());
+            let mut c = conversation("new", text, "2026-11-12T11:00:00.000Z");
+            c.session_started = true;
+            Ok(detail_for(c, vec![entry(1, "on it")]))
+        }
+
+        fn add_repo(&self, path: &str) -> Result<townhall_core::model::Repo, String> {
+            self.check_action()?;
+            self.added.lock().unwrap().push(path.to_string());
+            let repo = crate::testkit::repo("shop", "main");
+            self.repos.lock().unwrap().push(repo.clone());
+            Ok(repo)
+        }
+    }
+
+    fn detail_for(conversation: Conversation, entries: Vec<ThreadEntry>) -> ConversationDetail {
+        crate::testkit::detail_of(conversation, entries, vec![])
     }
 
     fn fake() -> Arc<Fake> {
@@ -546,8 +1198,8 @@ mod tests {
                 detail("a", vec![entry(1, "on it")]),
                 detail("b", vec![entry(1, "done")]),
             ]),
-            sent: Mutex::new(Vec::new()),
-            send_error: Mutex::new(None),
+            repos: Mutex::new(vec![crate::testkit::repo("shop", "develop")]),
+            ..Fake::default()
         })
     }
 
@@ -570,6 +1222,7 @@ mod tests {
         cx.update(|cx| {
             gpui_component::init(cx);
             cx.set_global(Theme::new(theme::Mode::Dark));
+            bind_keys(cx);
         });
     }
 
@@ -579,8 +1232,10 @@ mod tests {
         home: &std::path::Path,
     ) -> (Entity<Root>, &'a mut VisualTestContext) {
         let drafts = Drafts::open(home).unwrap();
-        let (root, vcx) =
-            cx.add_window_view(move |window, cx| Root::new(api, None, drafts, window, cx));
+        let prefs = crate::prefs::Prefs::open(home).unwrap();
+        let (root, vcx) = cx.add_window_view(move |window, cx| {
+            Root::new(api, None, drafts, window, cx).with_prefs(prefs)
+        });
         vcx.run_until_parked();
         (root, vcx)
     }
@@ -698,6 +1353,30 @@ mod tests {
                 Err("connection refused".into())
             }
             fn send_message(&self, _: &str, _: &str) -> Result<ThreadEntry, String> {
+                Err("connection refused".into())
+            }
+            fn tasks(&self) -> Result<Vec<townhall_core::model::Task>, String> {
+                Err("connection refused".into())
+            }
+            fn repos(&self) -> Result<Vec<townhall_core::model::Repo>, String> {
+                Err("connection refused".into())
+            }
+            fn info(&self) -> Result<crate::client::Info, String> {
+                Err("connection refused".into())
+            }
+            fn search(&self, _: &str) -> Result<Vec<townhall_core::search::SearchHit>, String> {
+                Err("connection refused".into())
+            }
+            fn end_conversation(&self, _: &str) -> Result<Conversation, String> {
+                Err("connection refused".into())
+            }
+            fn link_repo(&self, _: &str, _: Option<&str>) -> Result<Conversation, String> {
+                Err("connection refused".into())
+            }
+            fn start_conversation(&self, _: &str) -> Result<ConversationDetail, String> {
+                Err("connection refused".into())
+            }
+            fn add_repo(&self, _: &str) -> Result<townhall_core::model::Repo, String> {
                 Err("connection refused".into())
             }
         }
@@ -956,5 +1635,583 @@ mod tests {
         vcx.run_until_parked();
         assert_eq!(text(&composer, vcx), "pasted\ntext");
         assert_eq!(Drafts::open(home.path()).unwrap().get("a"), "pasted\ntext");
+    }
+
+    use crate::repo_group::ConversationRepo;
+    use crate::row_menu::MenuAction;
+    use crate::sidebar_rows::SidebarRow;
+    use std::time::Duration;
+    use townhall_core::model::{Task, TaskState};
+    use townhall_core::search::{SearchHit, SearchMatch};
+
+    fn task_on(name: &str, conversation: &str, repo: &str, state: TaskState) -> Task {
+        let mut t = crate::testkit::task(name, state);
+        t.conversation_id = conversation.into();
+        t.repo = repo.into();
+        t
+    }
+
+    fn row_ids(rows: &[SidebarRow]) -> Vec<String> {
+        rows.iter().map(|r| r.conversation.id.clone()).collect()
+    }
+
+    fn message_hit(id: &str) -> SearchHit {
+        SearchHit {
+            conversation_id: id.into(),
+            title: "t".into(),
+            matched: SearchMatch::Message,
+            entry_id: Some(3),
+            snippet: Some("…".into()),
+            updated_at: "2026-11-12T10:00:00.000Z".into(),
+        }
+    }
+
+    fn three_active() -> Arc<Fake> {
+        let api = fake();
+        api.list.lock().unwrap().push(conversation(
+            "c",
+            "flaky ci on main",
+            "2026-11-12T09:00:00.000Z",
+        ));
+        api.details
+            .lock()
+            .unwrap()
+            .push(detail("c", vec![entry(1, "looking")]));
+        api
+    }
+
+    #[gpui::test]
+    fn rows_carry_the_status_and_repo_of_their_own_tasks(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        *api.tasks.lock().unwrap() = vec![task_on("t1", "a", "shop", TaskState::NeedsYou)];
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api, home.path());
+        root.read_with(vcx, |root, _| {
+            let rows = root.sections().active;
+            assert_eq!(rows[0].summary.status, "t1 needs you");
+            assert_eq!(rows[0].repo, ConversationRepo::Repo("shop".into()));
+        });
+    }
+
+    #[gpui::test]
+    fn a_task_event_updates_the_row_and_the_open_session(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        *api.tasks.lock().unwrap() = vec![task_on("t1", "a", "shop", TaskState::Queued)];
+        let (tx, rx) = async_channel::unbounded();
+        let (root, vcx) =
+            cx.add_window_view(|window, cx| Root::new(api, Some(rx), drafts(), window, cx));
+        vcx.run_until_parked();
+        tx.send_blocking(ServerEvent::TaskUpdated {
+            task: task_on("t1", "a", "shop", TaskState::Working),
+        })
+        .unwrap();
+        vcx.run_until_parked();
+        root.read_with(vcx, |root, _| {
+            assert_eq!(
+                root.sections().active[0].summary.status,
+                "your turn · 1 running"
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn by_repo_groups_the_active_rows_folds_to_the_current_one_and_is_remembered(
+        cx: &mut TestAppContext,
+    ) {
+        init(cx);
+        let api = three_active();
+        *api.tasks.lock().unwrap() = vec![
+            task_on("t1", "a", "shop", TaskState::Working),
+            task_on("t2", "c", "shop", TaskState::Working),
+        ];
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api, home.path());
+        root.read_with(vcx, |root, _| assert!(root.blocks().is_none()));
+        root.update(vcx, |root, cx| root.toggle_by_repo(cx));
+        root.read_with(vcx, |root, _| {
+            let blocks = root.blocks().unwrap();
+            assert_eq!(blocks.len(), 1);
+            assert_eq!((blocks[0].label.as_str(), blocks[0].count), ("shop", 2));
+            assert_eq!(row_ids(&blocks[0].rows), ["a", "c"]);
+        });
+        root.update(vcx, |root, cx| root.toggle_group("repo:shop", cx));
+        root.read_with(vcx, |root, _| {
+            let blocks = root.blocks().unwrap();
+            assert!(!blocks[0].open);
+            assert_eq!(row_ids(&blocks[0].rows), ["a"]);
+        });
+        assert!(crate::prefs::Prefs::open(home.path()).unwrap().by_repo());
+        root.update(vcx, |root, cx| root.toggle_by_repo(cx));
+        assert!(!crate::prefs::Prefs::open(home.path()).unwrap().by_repo());
+    }
+
+    #[gpui::test]
+    fn typing_in_the_search_filters_titles_at_once_and_adds_message_matches_later(
+        cx: &mut TestAppContext,
+    ) {
+        init(cx);
+        let api = three_active();
+        *api.hits.lock().unwrap() = vec![message_hit("c")];
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        root.update_in(vcx, |root, window, cx| root.focus_search(window, cx));
+        vcx.simulate_input("build");
+        root.read_with(vcx, |root, cx| {
+            assert_eq!(root.query(cx), "build");
+            assert_eq!(row_ids(&root.sections().active), ["a"]);
+        });
+        assert!(api.searched.lock().unwrap().is_empty());
+        vcx.executor().advance_clock(Duration::from_millis(200));
+        vcx.run_until_parked();
+        assert_eq!(*api.searched.lock().unwrap(), ["build"]);
+        root.read_with(vcx, |root, _| {
+            assert_eq!(row_ids(&root.sections().active), ["a", "c"]);
+        });
+    }
+
+    #[gpui::test]
+    fn only_the_settled_search_text_is_sent_to_the_daemon(cx: &mut TestAppContext) {
+        init(cx);
+        let api = three_active();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        root.update_in(vcx, |root, window, cx| root.focus_search(window, cx));
+        vcx.simulate_input("b");
+        vcx.executor().advance_clock(Duration::from_millis(100));
+        vcx.simulate_input("ui");
+        vcx.executor().advance_clock(Duration::from_millis(100));
+        vcx.run_until_parked();
+        assert!(api.searched.lock().unwrap().is_empty());
+        vcx.executor().advance_clock(Duration::from_millis(100));
+        vcx.run_until_parked();
+        assert_eq!(*api.searched.lock().unwrap(), ["bui"]);
+    }
+
+    #[gpui::test]
+    fn clearing_the_search_brings_every_row_back(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, three_active(), home.path());
+        root.update_in(vcx, |root, window, cx| root.focus_search(window, cx));
+        vcx.simulate_input("zzz");
+        root.read_with(vcx, |root, _| assert!(root.sections().active.is_empty()));
+        root.update_in(vcx, |root, window, cx| root.clear_search(window, cx));
+        vcx.run_until_parked();
+        root.read_with(vcx, |root, cx| {
+            assert_eq!(root.query(cx), "");
+            assert_eq!(root.sections().active.len(), 2);
+        });
+    }
+
+    #[gpui::test]
+    fn a_failed_message_search_keeps_the_title_matches_and_says_why(cx: &mut TestAppContext) {
+        init(cx);
+        let api = three_active();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        *api.down.lock().unwrap() = true;
+        root.update_in(vcx, |root, window, cx| root.focus_search(window, cx));
+        vcx.simulate_input("build");
+        vcx.executor().advance_clock(Duration::from_millis(200));
+        vcx.run_until_parked();
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.match_error(), Some("connection refused"));
+            assert_eq!(row_ids(&root.sections().active), ["a"]);
+        });
+    }
+
+    fn repo_ask_api(offer_all: bool, answered: bool, thinking: bool) -> Arc<Fake> {
+        use townhall_core::model::EntryBody;
+        let api = fake();
+        let mut entries = vec![
+            crate::testkit::you(1, "do the thing"),
+            crate::testkit::entry_of(
+                2,
+                EntryBody::RepoAsk {
+                    question: "which repo?".into(),
+                    candidates: vec!["shop".into(), "admin".into()],
+                    offer_all,
+                },
+            ),
+        ];
+        if answered {
+            entries.push(crate::testkit::you(3, "shop"));
+        }
+        let mut c = conversation("a", "fix the build", "2026-11-12T10:00:00.000Z");
+        if thinking {
+            c.status = ConversationStatus::Thinking;
+        }
+        api.details.lock().unwrap()[0] = detail_for(c.clone(), entries);
+        api.list.lock().unwrap()[0] = c;
+        api
+    }
+
+    fn click(vcx: &mut VisualTestContext, selector: &'static str) {
+        let at = vcx
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("{selector} is not on screen"))
+            .center();
+        vcx.simulate_click(at, gpui::Modifiers::none());
+        vcx.run_until_parked();
+    }
+
+    #[gpui::test]
+    fn an_open_repo_question_offers_its_candidates_and_a_click_answers_it(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(false, false, false);
+        let home = fresh_home();
+        let (_root, vcx) = open(cx, api.clone(), home.path());
+        click(vcx, "ask-admin");
+        assert_eq!(
+            *api.sent.lock().unwrap(),
+            [("a".to_string(), "admin".to_string())]
+        );
+    }
+
+    #[gpui::test]
+    fn both_is_offered_next_to_two_candidates_when_the_daemon_allows_it(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(true, false, false);
+        let home = fresh_home();
+        let (_root, vcx) = open(cx, api.clone(), home.path());
+        click(vcx, "ask-both");
+        assert_eq!(api.sent.lock().unwrap()[0].1, "both");
+    }
+
+    #[gpui::test]
+    fn the_repo_question_buttons_wait_while_townhall_is_thinking(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(false, false, true);
+        let home = fresh_home();
+        let (_root, vcx) = open(cx, api.clone(), home.path());
+        click(vcx, "ask-shop");
+        assert!(api.sent.lock().unwrap().is_empty());
+    }
+
+    #[gpui::test]
+    fn an_answered_repo_question_has_no_buttons(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(false, true, false);
+        let home = fresh_home();
+        let (_root, vcx) = open(cx, api, home.path());
+        assert!(vcx.debug_bounds("ask-shop").is_none());
+    }
+
+    #[gpui::test]
+    fn a_failed_answer_shows_its_error_in_the_sidebar(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(false, false, false);
+        *api.send_error.lock().unwrap() = Some("daemon is down".into());
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api, home.path());
+        click(vcx, "ask-shop");
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.action_error(), Some("daemon is down"));
+        });
+    }
+
+    fn selected_id(root: &Entity<Root>, vcx: &mut VisualTestContext) -> Option<String> {
+        root.read_with(vcx, |root, _| root.state().selected.clone())
+    }
+
+    #[gpui::test]
+    fn alt_up_and_down_walk_the_visible_conversations_and_stop_at_the_ends(
+        cx: &mut TestAppContext,
+    ) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, three_active(), home.path());
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("a"));
+        vcx.simulate_keystrokes("alt-down");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("c"));
+        vcx.simulate_keystrokes("alt-down");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("b"));
+        vcx.simulate_keystrokes("alt-down");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("b"));
+        vcx.simulate_keystrokes("alt-up");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("c"));
+    }
+
+    #[gpui::test]
+    fn alt_down_from_home_opens_the_first_conversation(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, three_active(), home.path());
+        root.update_in(vcx, |root, window, cx| root.go_home(window, cx));
+        vcx.simulate_keystrokes("alt-down");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("a"));
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.screen(), Screen::Conversation)
+        });
+    }
+
+    #[gpui::test]
+    fn the_row_menu_offers_what_the_web_menu_does(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, fake(), home.path());
+        root.read_with(vcx, |root, _| {
+            let labels: Vec<String> = root.menu_items("a").into_iter().map(|i| i.label).collect();
+            assert_eq!(labels, ["end conversation", "repo: auto", "repo: shop"]);
+            let labels: Vec<String> = root.menu_items("b").into_iter().map(|i| i.label).collect();
+            assert_eq!(labels, ["repo: auto", "repo: shop"]);
+            assert!(root.menu_items("nope").is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn ending_a_conversation_from_the_menu_moves_it_under_older(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        root.update(vcx, |root, cx| {
+            root.run_menu(MenuAction::End("a".into()), cx)
+        });
+        vcx.run_until_parked();
+        assert_eq!(*api.ended.lock().unwrap(), ["a"]);
+        root.read_with(vcx, |root, _| {
+            assert!(root.active_rows().is_empty());
+            assert_eq!(
+                titles(root.older_rows()),
+                ["fix the build", "finished work"]
+            );
+            assert_eq!(root.action_error(), None);
+        });
+    }
+
+    #[gpui::test]
+    fn linking_a_repo_from_the_menu_sets_it_and_auto_clears_it(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        root.update(vcx, |root, cx| {
+            root.run_menu(MenuAction::Link("a".into(), Some("shop".into())), cx)
+        });
+        vcx.run_until_parked();
+        root.read_with(vcx, |root, _| {
+            assert_eq!(
+                root.sections().active[0].repo,
+                ConversationRepo::Repo("shop".into())
+            );
+        });
+        root.update(vcx, |root, cx| {
+            root.run_menu(MenuAction::Link("a".into(), None), cx)
+        });
+        vcx.run_until_parked();
+        assert_eq!(
+            *api.linked.lock().unwrap(),
+            [
+                ("a".to_string(), Some("shop".to_string())),
+                ("a".to_string(), None)
+            ]
+        );
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.sections().active[0].repo, ConversationRepo::None);
+        });
+    }
+
+    #[gpui::test]
+    fn a_failed_menu_action_shows_its_error_until_the_next_one_works(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        *api.action_error.lock().unwrap() = Some("boom".into());
+        root.update(vcx, |root, cx| {
+            root.run_menu(MenuAction::End("a".into()), cx)
+        });
+        vcx.run_until_parked();
+        root.read_with(vcx, |root, _| assert_eq!(root.action_error(), Some("boom")));
+        *api.action_error.lock().unwrap() = None;
+        root.update(vcx, |root, cx| {
+            root.run_menu(MenuAction::End("a".into()), cx)
+        });
+        vcx.run_until_parked();
+        root.read_with(vcx, |root, _| assert_eq!(root.action_error(), None));
+    }
+
+    #[gpui::test]
+    fn the_app_opens_the_newest_conversation_and_home_is_one_click_away(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, fake(), home.path());
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.screen(), Screen::Conversation)
+        });
+        root.update_in(vcx, |root, window, cx| root.go_home(window, cx));
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.screen(), Screen::Home);
+            assert!(root.active_rows().iter().all(|r| !r.selected));
+        });
+        select(&root, "b", vcx);
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.screen(), Screen::Conversation)
+        });
+    }
+
+    #[gpui::test]
+    fn home_greets_by_first_name_and_suggests_work_on_known_repos(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        *api.user_name.lock().unwrap() = Some("Ada Lovelace".into());
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api, home.path());
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.greeting_at(9), "good morning, Ada");
+            assert_eq!(
+                root.starters(),
+                [
+                    "fix the failing tests on shop develop",
+                    "find dead code in shop",
+                    "tidy the readme in shop"
+                ]
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn picking_a_starter_fills_the_hero_composer(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, fake(), home.path());
+        root.update_in(vcx, |root, window, cx| {
+            root.go_home(window, cx);
+            root.pick_starter("find dead code in shop", window, cx)
+        });
+        let start = root.read_with(vcx, |root, _| root.start_composer().clone());
+        assert_eq!(text(&start, vcx), "find dead code in shop");
+    }
+
+    #[gpui::test]
+    fn starting_from_home_starts_a_conversation_and_opens_it(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        root.update_in(vcx, |root, window, cx| {
+            root.go_home(window, cx);
+            root.pick_starter("tidy the readme in shop", window, cx)
+        });
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert_eq!(*api.started.lock().unwrap(), ["tidy the readme in shop"]);
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.screen(), Screen::Conversation);
+            assert_eq!(root.state().selected.as_deref(), Some("new"));
+            assert!(titles(root.active_rows()).contains(&"tidy the readme in shop".to_string()));
+        });
+        let start = root.read_with(vcx, |root, _| root.start_composer().clone());
+        assert_eq!(text(&start, vcx), "");
+    }
+
+    #[gpui::test]
+    fn nothing_starts_from_blank_text_and_a_failed_start_keeps_the_text(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        root.update_in(vcx, |root, window, cx| root.go_home(window, cx));
+        let start = root.read_with(vcx, |root, _| root.start_composer().clone());
+        vcx.update(|window, cx| start.update(cx, |c, cx| c.focus(window, cx)));
+        vcx.simulate_keystrokes("enter");
+        vcx.simulate_input("  ");
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert!(api.started.lock().unwrap().is_empty());
+        *api.action_error.lock().unwrap() = Some("no repo".into());
+        vcx.simulate_input("go");
+        vcx.simulate_keystrokes("enter");
+        vcx.run_until_parked();
+        assert_eq!(text(&start, vcx), "  go");
+        assert_eq!(
+            start.read_with(vcx, |c, _| c.error().map(String::from)),
+            Some("no repo".to_string())
+        );
+        root.read_with(vcx, |root, _| assert_eq!(root.screen(), Screen::Home));
+    }
+
+    #[gpui::test]
+    fn with_no_repos_and_no_conversations_the_first_run_view_shows_until_a_repo_is_added(
+        cx: &mut TestAppContext,
+    ) {
+        init(cx);
+        let api = Arc::new(Fake::default());
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        root.read_with(vcx, |root, _| assert_eq!(root.screen(), Screen::FirstRun));
+        root.update_in(vcx, |root, window, cx| {
+            root.add_repo("/work/shop".into(), window, cx)
+        });
+        vcx.run_until_parked();
+        assert_eq!(*api.added.lock().unwrap(), ["/work/shop"]);
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.screen(), Screen::Home);
+            assert_eq!(root.action_error(), None);
+        });
+    }
+
+    #[gpui::test]
+    fn a_failed_add_repo_stays_on_first_run_and_says_why(cx: &mut TestAppContext) {
+        init(cx);
+        let api = Arc::new(Fake::default());
+        *api.action_error.lock().unwrap() = Some("not a git repo".into());
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api, home.path());
+        root.update_in(vcx, |root, window, cx| {
+            root.add_repo("/work/x".into(), window, cx)
+        });
+        vcx.run_until_parked();
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.screen(), Screen::FirstRun);
+            assert_eq!(root.action_error(), Some("not a git repo"));
+        });
+    }
+
+    #[gpui::test]
+    fn an_unreachable_daemon_shows_a_banner_and_retry_clears_it(cx: &mut TestAppContext) {
+        init(cx);
+        let api = fake();
+        *api.down.lock().unwrap() = true;
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api.clone(), home.path());
+        root.read_with(vcx, |root, _| {
+            assert_eq!(
+                root.banner().as_deref(),
+                Some("cannot reach the daemon: connection refused")
+            );
+        });
+        *api.down.lock().unwrap() = false;
+        root.update_in(vcx, |root, window, cx| root.retry(window, cx));
+        vcx.run_until_parked();
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.banner(), None);
+            assert_eq!(titles(root.active_rows()), ["fix the build"]);
+        });
+    }
+
+    #[gpui::test]
+    fn ages_tick_once_a_minute_and_nothing_else_redraws_while_idle(cx: &mut TestAppContext) {
+        init(cx);
+        cx.update(|cx| theme::apply_to_components(&Theme::new(theme::Mode::Dark), cx));
+        let home = fresh_home();
+        let (root, vcx) = open(cx, fake(), home.path());
+        vcx.executor().advance_clock(Duration::from_secs(5));
+        vcx.run_until_parked();
+        let before = root.read_with(vcx, |root, _| root.renders());
+        vcx.executor().advance_clock(Duration::from_secs(54));
+        vcx.run_until_parked();
+        assert_eq!(root.read_with(vcx, |root, _| root.renders()), before);
+        vcx.executor().advance_clock(Duration::from_secs(1));
+        vcx.run_until_parked();
+        assert_eq!(root.read_with(vcx, |root, _| root.renders()), before + 1);
     }
 }

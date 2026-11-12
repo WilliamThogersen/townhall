@@ -218,6 +218,22 @@ mod tests {
     }
 
     #[test]
+    fn the_daemon_answers_the_new_endpoints_in_the_shapes_the_client_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let daemon = Daemon::start_with(addr, home_in(dir.path()), Some(listener)).unwrap();
+        let client = Client::new(daemon.base_url());
+        assert_eq!(client.tasks().unwrap(), vec![]);
+        assert_eq!(client.repos().unwrap(), vec![]);
+        client.info().unwrap();
+        assert_eq!(client.search("anything").unwrap(), vec![]);
+        assert!(client.end_conversation("nope").is_err());
+        assert!(client.link_repo("nope", None).is_err());
+        daemon.stop();
+    }
+
+    #[test]
     fn adopts_a_daemon_already_on_the_port() {
         let dir = tempfile::tempdir().unwrap();
         let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
