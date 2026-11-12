@@ -193,10 +193,6 @@ pub fn task_summary(tasks: &[Task]) -> String {
     parts.join(" · ")
 }
 
-pub fn same_task(a: Option<&str>, b: &str) -> bool {
-    a.is_some_and(|a| same_name(a, b))
-}
-
 pub fn task_words(task: &Task, tasks: &[Task]) -> String {
     task_view(task, tasks).words
 }
@@ -600,12 +596,6 @@ mod tests {
         );
         assert_eq!(task_summary(&[]), "0 tasks");
         assert_eq!(task_count(1), "1 task");
-    }
-
-    #[test]
-    fn same_task_ignores_case_and_needs_a_name() {
-        assert!(same_task(Some("Fix"), "fix"));
-        assert!(!same_task(None, "fix"));
     }
 
     #[test]

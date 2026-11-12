@@ -152,11 +152,7 @@ fn main() {
         }
         gpui_component::init(cx);
         thread::bind_keys(cx);
-        cx.bind_keys([gpui::KeyBinding::new(
-            "/",
-            view::FocusSearch,
-            Some(thread::CONTEXT),
-        )]);
+        view::bind_keys(cx);
         let initial = theme::Theme::for_appearance(cx.window_appearance());
         theme::apply_to_components(&initial, cx);
         cx.set_global(initial);

@@ -4,7 +4,7 @@ use townhall_core::model::{Conversation, Task};
 
 use crate::repo_group::{group_by_repo, infer_repo, repo_of_conversation, ConversationRepo};
 use crate::row_summary::{summarize_row, RowSummary};
-use crate::sections::{split_sections, Filter};
+use crate::sections::{fold_parts, split_sections, Filter};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SidebarRow {
@@ -79,8 +79,12 @@ fn shown_rows(rows: Vec<SidebarRow>, open: bool, current_id: Option<&str>) -> Ve
     if open {
         return rows;
     }
+    let conversations: Vec<Conversation> = rows.iter().map(|r| r.conversation.clone()).collect();
+    let Some(current) = fold_parts(&conversations, current_id).current else {
+        return Vec::new();
+    };
     rows.into_iter()
-        .filter(|row| Some(row.conversation.id.as_str()) == current_id)
+        .filter(|row| row.conversation.id == current.id)
         .collect()
 }
 
@@ -112,11 +116,60 @@ pub fn visible_ids(sections: &RowSections, blocks: Option<&[GroupBlock]>) -> Vec
         .collect()
 }
 
+pub fn next_conversation(ids: &[String], current: Option<&str>, step: i32) -> Option<String> {
+    if ids.is_empty() {
+        return None;
+    }
+    let at = current.and_then(|id| ids.iter().position(|other| other == id));
+    match at {
+        None if step > 0 => ids.first().cloned(),
+        None => ids.last().cloned(),
+        Some(at) => usize::try_from(at as i64 + i64::from(step))
+            .ok()
+            .and_then(|next| ids.get(next))
+            .cloned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testkit::{conversation, task};
     use townhall_core::model::TaskState;
+
+    fn order() -> Vec<String> {
+        ["a", "b", "c"].iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn stepping_moves_to_the_neighbour_and_stops_at_the_ends() {
+        assert_eq!(
+            next_conversation(&order(), Some("b"), 1).as_deref(),
+            Some("c")
+        );
+        assert_eq!(
+            next_conversation(&order(), Some("b"), -1).as_deref(),
+            Some("a")
+        );
+        assert_eq!(next_conversation(&order(), Some("c"), 1), None);
+        assert_eq!(next_conversation(&order(), Some("a"), -1), None);
+    }
+
+    #[test]
+    fn with_no_current_conversation_down_starts_at_the_top_and_up_at_the_bottom() {
+        assert_eq!(next_conversation(&order(), None, 1).as_deref(), Some("a"));
+        assert_eq!(next_conversation(&order(), None, -1).as_deref(), Some("c"));
+        assert_eq!(
+            next_conversation(&order(), Some("gone"), 1).as_deref(),
+            Some("a")
+        );
+    }
+
+    #[test]
+    fn an_empty_list_has_nowhere_to_go() {
+        assert_eq!(next_conversation(&[], None, 1), None);
+        assert_eq!(next_conversation(&[], Some("a"), -1), None);
+    }
 
     fn at(minute: u32) -> String {
         format!("2026-11-04T10:{minute:02}:00.000Z")

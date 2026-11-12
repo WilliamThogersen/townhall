@@ -12,8 +12,8 @@ use crate::selectable::SelectableText;
 use crate::selection::BlockKey;
 use crate::task_rows::{task_block_head, task_words};
 use crate::theme::{self, Theme};
-use crate::thread::Thread;
-use crate::thread_model::{clock_time, reply_target, repo_reason, Item};
+use crate::thread::{Reply, Thread};
+use crate::thread_model::{ask_choices, clock_time, reply_target, repo_reason, AskChoices, Item};
 
 const CH: f32 = theme::TEXT_MD * 0.6;
 const MAX_COLUMN_CH: usize = 60;
@@ -167,6 +167,7 @@ impl Thread {
             .into_any_element()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn event_line(
         &self,
         keys: &mut Keys,
@@ -262,7 +263,7 @@ impl Thread {
             EntryBody::RepoAsk {
                 question,
                 candidates,
-                ..
+                offer_all,
             } => self.ask_block(
                 &mut keys,
                 t,
@@ -270,7 +271,7 @@ impl Thread {
                 "townhall",
                 question,
                 answer,
-                Some(&candidates.join(" · ")),
+                Some(ask_choices(candidates, *offer_all)),
                 at,
                 cx,
             ),
@@ -343,7 +344,7 @@ impl Thread {
         who: &str,
         question: &str,
         answer: Option<&str>,
-        hint: Option<&str>,
+        choices: Option<AskChoices>,
         at: &str,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -382,13 +383,17 @@ impl Thread {
                     .child(div().text_color(p.fg).child(answer.to_string())),
             );
         }
-        if let (true, Some(hint)) = (open, hint) {
-            col = col.child(
-                div()
-                    .text_size(px(theme::TEXT_SM))
-                    .text_color(p.fg_faint)
-                    .child(format!("{hint} · answer in the composer")),
-            );
+        if let (true, Some(choices)) = (open, choices) {
+            let names = choices
+                .candidates
+                .iter()
+                .cloned()
+                .chain(choices.all.map(String::from));
+            let mut row = div().flex().flex_wrap().gap(px(theme::SPACE_2));
+            for name in names {
+                row = row.child(self.reply_button(t, name, cx));
+            }
+            col = col.child(row);
         }
         let sign = if open { "◆" } else { "◇" };
         let sign_color = if open { p.accent } else { p.fg_faint };
@@ -412,6 +417,39 @@ impl Thread {
             )
             .child(div().child(col))
             .child(time_el(t, at))
+            .into_any_element()
+    }
+
+    fn reply_button(&self, t: &Theme, name: String, cx: &mut Context<Self>) -> AnyElement {
+        let p = t.palette;
+        let key = format!("ask-{name}");
+        let selector = key.clone();
+        if self.thinking {
+            return div()
+                .debug_selector(move || selector)
+                .flex()
+                .items_center()
+                .h(px(theme::ROW))
+                .px(px(10.0))
+                .border(px(theme::BORDER))
+                .border_color(p.line)
+                .text_size(px(theme::TEXT_SM))
+                .text_color(p.fg_faint)
+                .child(name)
+                .into_any_element();
+        }
+        let reply = name.clone();
+        div()
+            .debug_selector(move || selector)
+            .child(crate::home::button(
+                t,
+                SharedString::from(key),
+                name,
+                false,
+                Box::new(
+                    cx.listener(move |_, _: &MouseDownEvent, _, cx| cx.emit(Reply(reply.clone()))),
+                ),
+            ))
             .into_any_element()
     }
 

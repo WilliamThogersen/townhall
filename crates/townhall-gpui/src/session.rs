@@ -5,11 +5,10 @@ use gpui::{
 use townhall_core::model::ConversationDetail;
 
 use crate::session_model::{context_view, repo_line, ContextView, RepoLine};
-use crate::task_rows::{task_count, task_summary, task_views, TaskTone, TaskView};
+use crate::task_rows::{task_summary, task_views, TaskTone, TaskView};
 use crate::theme::{self, Theme};
 
 pub struct SessionModel {
-    pub count: String,
     pub summary: String,
     pub views: Vec<TaskView>,
     pub repo: Option<RepoLine>,
@@ -19,7 +18,6 @@ pub struct SessionModel {
 
 pub fn session_model(detail: &ConversationDetail) -> SessionModel {
     SessionModel {
-        count: task_count(detail.tasks.len()),
         summary: task_summary(&detail.tasks),
         views: task_views(&detail.tasks),
         repo: repo_line(detail),
@@ -293,9 +291,12 @@ pub fn session_panel(detail: &ConversationDetail, t: &Theme) -> AnyElement {
                 .child(div().font_weight(FontWeight::BOLD).child("session"))
                 .child(
                     div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
                         .text_size(px(theme::TEXT_XS))
                         .text_color(p.fg_faint)
-                        .child(m.count.clone()),
+                        .child(m.summary.clone()),
                 ),
         )
         .child(body)
@@ -351,7 +352,6 @@ mod tests {
         let m = session_model(&detail());
         let names: Vec<&str> = m.views.iter().map(|v| v.task.name.as_str()).collect();
         assert_eq!(names, ["ask", "run", "done"]);
-        assert_eq!(m.count, "3 tasks");
         assert_eq!(m.summary, "3 tasks · 1 needs you · 1 working · 1 merged");
     }
 
@@ -372,7 +372,7 @@ mod tests {
             vec![],
         );
         let m = session_model(&d);
-        assert_eq!(m.count, "0 tasks");
+        assert_eq!(m.summary, "0 tasks");
         assert!(m.views.is_empty() && m.repo.is_none() && m.files.is_empty());
         assert!(m.context.is_none());
     }

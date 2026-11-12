@@ -12,6 +12,7 @@ pub struct Sections {
     pub older: Vec<Conversation>,
 }
 
+#[allow(dead_code)]
 pub struct FoldParts {
     pub before: Vec<Conversation>,
     pub current: Option<Conversation>,

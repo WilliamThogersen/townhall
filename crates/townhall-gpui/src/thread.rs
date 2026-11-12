@@ -18,6 +18,10 @@ actions!(townhall_thread, [CopySelection]);
 
 pub const CONTEXT: &str = "Thread";
 
+pub struct Reply(pub String);
+
+impl gpui::EventEmitter<Reply> for Thread {}
+
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-c", CopySelection, Some(CONTEXT)),
@@ -37,6 +41,7 @@ pub struct Thread {
     pub(crate) registry: Registry,
     pub(crate) parsed: HashMap<u64, (String, Rc<Vec<Block>>)>,
     pub(crate) pane_width: f32,
+    pub(crate) thinking: bool,
     dragging: Option<BlockKey>,
     press: Option<(BlockKey, usize)>,
     focus: FocusHandle,
@@ -56,6 +61,7 @@ impl Thread {
             registry: Rc::new(RefCell::new(HashMap::new())),
             parsed: HashMap::new(),
             pane_width: 800.0,
+            thinking: false,
             dragging: None,
             press: None,
             focus: cx.focus_handle(),
@@ -79,6 +85,7 @@ impl Thread {
         };
         let same = id == self.conversation_id;
         self.conversation_id = id;
+        self.thinking = thinking;
         self.entries = entries;
         self.tasks = tasks;
         let shown: Vec<(Item, Option<ThreadEntry>)> =
@@ -132,6 +139,7 @@ impl Thread {
         cx.notify();
     }
 
+    #[cfg(test)]
     pub fn list(&self) -> &ListState {
         &self.list
     }

@@ -18,19 +18,33 @@ use crate::home_model::{greeting_text, repos_known_label, starter_prompts};
 use crate::prefs::Prefs;
 use crate::row_menu::{row_menu_items, MenuAction, MenuItem};
 use crate::sections::{normalize_query, Filter};
-use crate::sidebar_rows::{build_sections, repo_blocks, FoldState, GroupBlock, RowSections};
+use crate::sidebar_rows::{
+    build_sections, next_conversation, repo_blocks, visible_ids, FoldState, GroupBlock, RowSections,
+};
 use crate::state::{Load, Refetch, State};
 use crate::task_rows::{needs_you_count, unfinished_count};
 use crate::theme::{self, Theme};
-use crate::thread::Thread;
+use crate::thread::{Reply, Thread};
 use crate::thread_model::{conversation_status, end_question};
 
-actions!(townhall_root, [FocusSearch]);
+actions!(
+    townhall_root,
+    [FocusSearch, PreviousConversation, NextConversation]
+);
+
+pub fn bind_keys(cx: &mut gpui::App) {
+    cx.bind_keys([
+        gpui::KeyBinding::new("alt-up", PreviousConversation, None),
+        gpui::KeyBinding::new("alt-down", NextConversation, None),
+        gpui::KeyBinding::new("/", FocusSearch, Some(crate::thread::CONTEXT)),
+    ]);
+}
 
 pub const SEARCH_DELAY: Duration = Duration::from_millis(200);
 pub const AGE_TICK: Duration = Duration::from_secs(60);
 const RAIL_MIN_WIDTH: f32 = 1200.0;
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
     pub id: String,
@@ -98,6 +112,7 @@ impl Root {
         let subscriptions = vec![
             cx.subscribe_in(&search, window, Self::on_search),
             cx.subscribe_in(&start, window, Self::on_started),
+            cx.subscribe_in(&thread, window, Self::on_reply),
         ];
         let root = Self {
             api,
@@ -163,6 +178,7 @@ impl Root {
         &self.state
     }
 
+    #[cfg(test)]
     pub fn renders(&self) -> usize {
         self.renders
     }
@@ -216,14 +232,17 @@ impl Root {
         ))
     }
 
+    #[cfg(test)]
     pub fn active_rows(&self) -> Vec<Row> {
         self.rows(false)
     }
 
+    #[cfg(test)]
     pub fn older_rows(&self) -> Vec<Row> {
         self.rows(true)
     }
 
+    #[cfg(test)]
     fn rows(&self, ended: bool) -> Vec<Row> {
         let sections = self.sections();
         let rows = if ended {
@@ -258,6 +277,14 @@ impl Root {
         cx.notify();
     }
 
+    pub fn step_conversation(&mut self, step: i32, window: &mut Window, cx: &mut Context<Self>) {
+        let ids = visible_ids(&self.sections(), self.blocks().as_deref());
+        let current = self.state.selected.as_deref().filter(|_| !self.home);
+        if let Some(next) = next_conversation(&ids, current, step) {
+            self.select(next, window, cx);
+        }
+    }
+
     pub fn toggle_group(&mut self, key: &str, cx: &mut Context<Self>) {
         if !self.folded.remove(key) {
             self.folded.insert(key.to_string());
@@ -277,6 +304,7 @@ impl Root {
             .update(cx, |composer, cx| composer.focus(window, cx));
     }
 
+    #[cfg(test)]
     pub fn query(&self, cx: &gpui::App) -> String {
         self.search.read(cx).value().to_string()
     }
@@ -416,6 +444,7 @@ impl Root {
             .update(cx, |composer, cx| composer.fill(text, window, cx));
     }
 
+    #[cfg(test)]
     pub fn start_composer(&self) -> &Entity<Composer> {
         &self.start
     }
@@ -441,6 +470,35 @@ impl Root {
         });
         self.sync_thinking(window, cx);
         self.sync_thread(cx);
+        cx.notify();
+    }
+
+    fn on_reply(
+        &mut self,
+        _: &Entity<Thread>,
+        event: &Reply,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(id) = self.state.selected.clone() else {
+            return;
+        };
+        self.action_error = None;
+        let text = event.0.clone();
+        let api = self.api.clone();
+        cx.spawn(async move |this, cx| -> gpui::Result<()> {
+            let result = cx
+                .background_executor()
+                .spawn(async move { api.send_message(&id, &text) })
+                .await;
+            this.update(cx, |this, cx| {
+                if let Err(e) = result {
+                    this.action_error = Some(e);
+                }
+                cx.notify();
+            })
+        })
+        .detach_and_log_err(cx);
         cx.notify();
     }
 
@@ -946,6 +1004,12 @@ impl Render for Root {
             .on_action(
                 cx.listener(|this, _: &FocusSearch, window, cx| this.focus_search(window, cx)),
             )
+            .on_action(cx.listener(|this, _: &PreviousConversation, window, cx| {
+                this.step_conversation(-1, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &NextConversation, window, cx| {
+                this.step_conversation(1, window, cx)
+            }))
             .child(
                 div().flex_1().min_h_0().flex().child(sidebar).child(
                     div()
@@ -955,7 +1019,7 @@ impl Render for Root {
                         .flex()
                         .flex_col()
                         .when_some(banner, |d, b| d.child(b))
-                        .child(div().flex_1().min_h_0().child(main)),
+                        .child(div().flex_1().min_h_0().flex().child(main)),
                 ),
             )
             .child(
@@ -1158,6 +1222,7 @@ mod tests {
         cx.update(|cx| {
             gpui_component::init(cx);
             cx.set_global(Theme::new(theme::Mode::Dark));
+            bind_keys(cx);
         });
     }
 
@@ -1754,6 +1819,136 @@ mod tests {
         root.read_with(vcx, |root, _| {
             assert_eq!(root.match_error(), Some("connection refused"));
             assert_eq!(row_ids(&root.sections().active), ["a"]);
+        });
+    }
+
+    fn repo_ask_api(offer_all: bool, answered: bool, thinking: bool) -> Arc<Fake> {
+        use townhall_core::model::EntryBody;
+        let api = fake();
+        let mut entries = vec![
+            crate::testkit::you(1, "do the thing"),
+            crate::testkit::entry_of(
+                2,
+                EntryBody::RepoAsk {
+                    question: "which repo?".into(),
+                    candidates: vec!["shop".into(), "admin".into()],
+                    offer_all,
+                },
+            ),
+        ];
+        if answered {
+            entries.push(crate::testkit::you(3, "shop"));
+        }
+        let mut c = conversation("a", "fix the build", "2026-11-12T10:00:00.000Z");
+        if thinking {
+            c.status = ConversationStatus::Thinking;
+        }
+        api.details.lock().unwrap()[0] = detail_for(c.clone(), entries);
+        api.list.lock().unwrap()[0] = c;
+        api
+    }
+
+    fn click(vcx: &mut VisualTestContext, selector: &'static str) {
+        let at = vcx
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("{selector} is not on screen"))
+            .center();
+        vcx.simulate_click(at, gpui::Modifiers::none());
+        vcx.run_until_parked();
+    }
+
+    #[gpui::test]
+    fn an_open_repo_question_offers_its_candidates_and_a_click_answers_it(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(false, false, false);
+        let home = fresh_home();
+        let (_root, vcx) = open(cx, api.clone(), home.path());
+        click(vcx, "ask-admin");
+        assert_eq!(
+            *api.sent.lock().unwrap(),
+            [("a".to_string(), "admin".to_string())]
+        );
+    }
+
+    #[gpui::test]
+    fn both_is_offered_next_to_two_candidates_when_the_daemon_allows_it(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(true, false, false);
+        let home = fresh_home();
+        let (_root, vcx) = open(cx, api.clone(), home.path());
+        click(vcx, "ask-both");
+        assert_eq!(api.sent.lock().unwrap()[0].1, "both");
+    }
+
+    #[gpui::test]
+    fn the_repo_question_buttons_wait_while_townhall_is_thinking(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(false, false, true);
+        let home = fresh_home();
+        let (_root, vcx) = open(cx, api.clone(), home.path());
+        click(vcx, "ask-shop");
+        assert!(api.sent.lock().unwrap().is_empty());
+    }
+
+    #[gpui::test]
+    fn an_answered_repo_question_has_no_buttons(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(false, true, false);
+        let home = fresh_home();
+        let (_root, vcx) = open(cx, api, home.path());
+        assert!(vcx.debug_bounds("ask-shop").is_none());
+    }
+
+    #[gpui::test]
+    fn a_failed_answer_shows_its_error_in_the_sidebar(cx: &mut TestAppContext) {
+        init(cx);
+        let api = repo_ask_api(false, false, false);
+        *api.send_error.lock().unwrap() = Some("daemon is down".into());
+        let home = fresh_home();
+        let (root, vcx) = open(cx, api, home.path());
+        click(vcx, "ask-shop");
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.action_error(), Some("daemon is down"));
+        });
+    }
+
+    fn selected_id(root: &Entity<Root>, vcx: &mut VisualTestContext) -> Option<String> {
+        root.read_with(vcx, |root, _| root.state().selected.clone())
+    }
+
+    #[gpui::test]
+    fn alt_up_and_down_walk_the_visible_conversations_and_stop_at_the_ends(
+        cx: &mut TestAppContext,
+    ) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, three_active(), home.path());
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("a"));
+        vcx.simulate_keystrokes("alt-down");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("c"));
+        vcx.simulate_keystrokes("alt-down");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("b"));
+        vcx.simulate_keystrokes("alt-down");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("b"));
+        vcx.simulate_keystrokes("alt-up");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("c"));
+    }
+
+    #[gpui::test]
+    fn alt_down_from_home_opens_the_first_conversation(cx: &mut TestAppContext) {
+        init(cx);
+        let home = fresh_home();
+        let (root, vcx) = open(cx, three_active(), home.path());
+        root.update_in(vcx, |root, window, cx| root.go_home(window, cx));
+        vcx.simulate_keystrokes("alt-down");
+        vcx.run_until_parked();
+        assert_eq!(selected_id(&root, vcx).as_deref(), Some("a"));
+        root.read_with(vcx, |root, _| {
+            assert_eq!(root.screen(), Screen::Conversation)
         });
     }
 

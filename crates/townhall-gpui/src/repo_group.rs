@@ -29,7 +29,7 @@ pub fn infer_repo(tasks: &[Task]) -> ConversationRepo {
             None => counts.push((key, task.repo.clone(), 1)),
         }
     }
-    counts.sort_by(|a, b| b.2.cmp(&a.2));
+    counts.sort_by_key(|c| std::cmp::Reverse(c.2));
     match counts.as_slice() {
         [] => ConversationRepo::None,
         [top, next, ..] if top.2 == next.2 => ConversationRepo::Multiple,
