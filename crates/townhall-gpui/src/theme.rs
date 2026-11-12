@@ -182,6 +182,21 @@ impl Theme {
     }
 }
 
+pub fn apply_to_components(theme: &Theme, cx: &mut App) {
+    let p = theme.palette;
+    let component = gpui_component::Theme::global_mut(cx);
+    component.colors.foreground = p.fg.into();
+    component.colors.muted_foreground = p.fg_faint.into();
+    component.colors.caret = p.accent.into();
+    component.colors.selection = p.selection.into();
+    component.colors.input = p.line_control.into();
+    component.colors.background = p.surface.into();
+    component.font_family = FONT.into();
+    component.font_size = gpui::px(TEXT_MD);
+    component.radius = gpui::px(0.0);
+    component.radius_lg = gpui::px(0.0);
+}
+
 pub fn no_ligatures() -> FontFeatures {
     FontFeatures::disable_ligatures()
 }

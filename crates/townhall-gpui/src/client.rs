@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use townhall_core::model::{Conversation, ConversationDetail, ServerEvent};
+use townhall_core::model::{Conversation, ConversationDetail, ServerEvent, ThreadEntry};
 use tungstenite::Message;
 
 const RECONNECT_FIRST: Duration = Duration::from_millis(500);
@@ -11,6 +11,7 @@ const RECONNECT_MAX: Duration = Duration::from_secs(5);
 pub trait Api: Send + Sync + 'static {
     fn conversations(&self) -> Result<Vec<Conversation>, String>;
     fn conversation(&self, id: &str) -> Result<ConversationDetail, String>;
+    fn send_message(&self, id: &str, text: &str) -> Result<ThreadEntry, String>;
 }
 
 #[derive(Clone)]
@@ -25,24 +26,63 @@ impl Client {
 
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
         let url = format!("{}/api{path}", self.base);
-        let mut response = match ureq::get(&url)
+        let result = ureq::get(&url)
             .config()
             .http_status_as_error(false)
             .build()
-            .call()
-        {
-            Ok(response) => response,
-            Err(e) => return Err(format!("GET {url}: {e}")),
-        };
-        let body = response
-            .body_mut()
-            .read_to_string()
-            .map_err(|e| format!("GET {url}: cannot read the response: {e}"))?;
-        parse_envelope(&body).map_err(|e| format!("GET {url}: {e}"))
+            .call();
+        read_envelope("GET", &url, result)
+    }
+
+    fn post<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &impl serde::Serialize,
+    ) -> Result<T, String> {
+        let url = format!("{}/api{path}", self.base);
+        let result = ureq::post(&url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .send_json(body);
+        read_envelope("POST", &url, result)
     }
 }
 
+fn read_envelope<T: DeserializeOwned>(
+    method: &str,
+    url: &str,
+    result: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+) -> Result<T, String> {
+    let mut response = result.map_err(|e| format!("{method} {url}: {e}"))?;
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| format!("{method} {url}: cannot read the response: {e}"))?;
+    parse_envelope(&body).map_err(|e| format!("{method} {url}: {e}"))
+}
+
+fn encode_segment(segment: &str) -> String {
+    let mut out = String::new();
+    for byte in segment.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
 impl Api for Client {
+    fn send_message(&self, id: &str, text: &str) -> Result<ThreadEntry, String> {
+        self.post(
+            &format!("/conversations/{}/messages", encode_segment(id)),
+            &serde_json::json!({ "text": text }),
+        )
+    }
+
     fn conversations(&self) -> Result<Vec<Conversation>, String> {
         self.get("/conversations")
     }
@@ -205,6 +245,83 @@ mod tests {
     fn unknown_event_type_is_an_error() {
         let err = parse_event(r#"{"type":"nope"}"#).unwrap_err();
         assert!(err.starts_with("unexpected event"), "{err}");
+    }
+
+    fn serve_once(status: &str, body: String) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let status = status.to_string();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut buf = [0u8; 1024];
+            loop {
+                let n = stream.read(&mut buf).unwrap();
+                request.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&request).to_string();
+                if let Some(split) = text.find("\r\n\r\n") {
+                    let length = text[..split]
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length: ")
+                                .map(|v| v.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= split + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            String::from_utf8(request).unwrap()
+        });
+        (base, handle)
+    }
+
+    #[test]
+    fn send_message_posts_the_text_to_the_messages_endpoint() {
+        let entry = json!({
+            "id": 7,
+            "at": "2026-11-12T10:00:00.000Z",
+            "kind": "you",
+            "text": "hello\nworld",
+            "attachments": []
+        });
+        let (base, request) = serve_once(
+            "200 OK",
+            json!({"success": true, "data": entry}).to_string(),
+        );
+        let sent = Client::new(base)
+            .send_message("c 1", "hello\nworld")
+            .unwrap();
+        assert_eq!(sent.id, 7);
+        let request = request.join().unwrap();
+        assert!(
+            request.starts_with("POST /api/conversations/c%201/messages "),
+            "{request}"
+        );
+        let body = request.split("\r\n\r\n").nth(1).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(body).unwrap(),
+            json!({"text": "hello\nworld"})
+        );
+    }
+
+    #[test]
+    fn send_message_reports_the_daemons_error() {
+        let (base, request) = serve_once(
+            "400 Bad Request",
+            json!({"success": false, "error": "message is empty"}).to_string(),
+        );
+        let err = Client::new(base).send_message("c1", "x").unwrap_err();
+        request.join().unwrap();
+        assert!(err.ends_with("message is empty"), "{err}");
     }
 
     #[test]
