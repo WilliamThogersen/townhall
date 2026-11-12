@@ -1,4 +1,8 @@
-use townhall_core::model::{Conversation, ConversationDetail, ServerEvent, ThreadEntry};
+use townhall_core::model::{
+    Conversation, ConversationDetail, Repo, ServerEvent, Task, ThreadEntry,
+};
+
+use crate::client::Info;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Load<T> {
@@ -18,6 +22,9 @@ pub struct State {
     pub conversations: Load<Vec<Conversation>>,
     pub selected: Option<String>,
     pub detail: Load<ConversationDetail>,
+    pub tasks: Load<Vec<Task>>,
+    pub repos: Load<Vec<Repo>>,
+    pub info: Option<Info>,
 }
 
 impl State {
@@ -26,7 +33,46 @@ impl State {
             conversations: Load::Loading,
             selected: None,
             detail: Load::Loading,
+            tasks: Load::Loading,
+            repos: Load::Loading,
+            info: None,
         }
+    }
+
+    pub fn set_tasks(&mut self, result: Result<Vec<Task>, String>) {
+        self.tasks = match result {
+            Ok(tasks) => Load::Ready(tasks),
+            Err(e) => Load::Failed(e),
+        };
+    }
+
+    pub fn set_repos(&mut self, result: Result<Vec<Repo>, String>) {
+        self.repos = match result {
+            Ok(repos) => Load::Ready(repos),
+            Err(e) => Load::Failed(e),
+        };
+    }
+
+    pub fn set_info(&mut self, result: Result<Info, String>) {
+        self.info = result.ok();
+    }
+
+    pub fn task_list(&self) -> &[Task] {
+        match &self.tasks {
+            Load::Ready(tasks) => tasks,
+            _ => &[],
+        }
+    }
+
+    pub fn repo_list(&self) -> &[Repo] {
+        match &self.repos {
+            Load::Ready(repos) => repos,
+            _ => &[],
+        }
+    }
+
+    pub fn user_name(&self) -> Option<&str> {
+        self.info.as_ref().and_then(|i| i.user_name.as_deref())
     }
 
     pub fn set_list(&mut self, result: Result<Vec<Conversation>, String>) {
@@ -75,6 +121,12 @@ impl State {
                 Refetch::Nothing
             }
             ServerEvent::TaskUpdated { task } => {
+                if let Load::Ready(tasks) = &mut self.tasks {
+                    match tasks.iter_mut().find(|t| t.name == task.name) {
+                        Some(slot) => *slot = task.clone(),
+                        None => tasks.push(task.clone()),
+                    }
+                }
                 if let Load::Ready(detail) = &mut self.detail {
                     if detail.conversation.id == task.conversation_id {
                         match detail.tasks.iter_mut().find(|t| t.name == task.name) {
@@ -130,7 +182,7 @@ fn sort_newest_first(list: &mut [Conversation]) {
 pub mod tests {
     use super::*;
     use serde_json::json;
-    use townhall_core::model::EntryBody;
+    use townhall_core::model::{EntryBody, TaskState};
 
     pub fn conversation(id: &str, title: &str, updated: &str) -> Conversation {
         serde_json::from_value(json!({
@@ -258,6 +310,66 @@ pub mod tests {
             entry: entry(9, "elsewhere"),
         });
         assert_eq!(entry_ids(&s), [1]);
+    }
+
+    fn named_tasks(s: &State) -> Vec<(String, TaskState)> {
+        s.task_list()
+            .iter()
+            .map(|t| (t.name.clone(), t.state))
+            .collect()
+    }
+
+    #[test]
+    fn tasks_repos_and_info_are_kept_when_they_load_and_empty_when_they_do_not() {
+        let mut s = State::new();
+        assert!(s.task_list().is_empty() && s.repo_list().is_empty());
+        assert_eq!(s.user_name(), None);
+        s.set_tasks(Ok(vec![crate::testkit::task("a", TaskState::Working)]));
+        s.set_repos(Ok(vec![crate::testkit::repo("shop", "main")]));
+        s.set_info(Ok(Info {
+            user_name: Some("Ada".into()),
+        }));
+        assert_eq!(named_tasks(&s), [("a".to_string(), TaskState::Working)]);
+        assert_eq!(s.repo_list()[0].name, "shop");
+        assert_eq!(s.user_name(), Some("Ada"));
+        s.set_tasks(Err("down".into()));
+        s.set_repos(Err("down".into()));
+        s.set_info(Err("down".into()));
+        assert!(s.task_list().is_empty() && s.repo_list().is_empty());
+        assert_eq!(s.tasks, Load::Failed("down".into()));
+        assert_eq!(s.user_name(), None);
+    }
+
+    #[test]
+    fn task_updated_replaces_a_known_task_and_adds_an_unknown_one_in_the_global_list() {
+        let mut s = ready();
+        s.set_tasks(Ok(vec![crate::testkit::task("a", TaskState::Working)]));
+        s.apply(ServerEvent::TaskUpdated {
+            task: crate::testkit::task("a", TaskState::Merged),
+        });
+        s.apply(ServerEvent::TaskUpdated {
+            task: crate::testkit::task("b", TaskState::Queued),
+        });
+        assert_eq!(
+            named_tasks(&s),
+            [
+                ("a".to_string(), TaskState::Merged),
+                ("b".to_string(), TaskState::Queued)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_task_update_before_the_task_list_loaded_is_not_lost_to_the_open_thread() {
+        let mut s = ready();
+        let mut task = crate::testkit::task("a", TaskState::Working);
+        task.conversation_id = "new".into();
+        s.apply(ServerEvent::TaskUpdated { task });
+        match &s.detail {
+            Load::Ready(d) => assert_eq!(d.tasks.len(), 1),
+            other => panic!("{other:?}"),
+        }
+        assert!(s.task_list().is_empty());
     }
 
     #[test]

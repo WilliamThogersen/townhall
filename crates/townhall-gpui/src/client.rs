@@ -2,16 +2,33 @@ use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use townhall_core::model::{Conversation, ConversationDetail, ServerEvent, ThreadEntry};
+use townhall_core::model::{
+    Conversation, ConversationDetail, Repo, ServerEvent, Task, ThreadEntry,
+};
+use townhall_core::search::SearchHit;
 use tungstenite::Message;
 
 const RECONNECT_FIRST: Duration = Duration::from_millis(500);
 const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Info {
+    pub user_name: Option<String>,
+}
+
 pub trait Api: Send + Sync + 'static {
     fn conversations(&self) -> Result<Vec<Conversation>, String>;
     fn conversation(&self, id: &str) -> Result<ConversationDetail, String>;
     fn send_message(&self, id: &str, text: &str) -> Result<ThreadEntry, String>;
+    fn tasks(&self) -> Result<Vec<Task>, String>;
+    fn repos(&self) -> Result<Vec<Repo>, String>;
+    fn info(&self) -> Result<Info, String>;
+    fn search(&self, query: &str) -> Result<Vec<SearchHit>, String>;
+    fn end_conversation(&self, id: &str) -> Result<Conversation, String>;
+    fn link_repo(&self, id: &str, repo: Option<&str>) -> Result<Conversation, String>;
+    fn start_conversation(&self, text: &str) -> Result<ConversationDetail, String>;
+    fn add_repo(&self, path: &str) -> Result<Repo, String>;
 }
 
 #[derive(Clone)]
@@ -46,6 +63,30 @@ impl Client {
             .build()
             .send_json(body);
         read_envelope("POST", &url, result)
+    }
+
+    fn post_empty<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+        let url = format!("{}/api{path}", self.base);
+        let result = ureq::post(&url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .send_empty();
+        read_envelope("POST", &url, result)
+    }
+
+    fn patch<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &impl serde::Serialize,
+    ) -> Result<T, String> {
+        let url = format!("{}/api{path}", self.base);
+        let result = ureq::patch(&url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .send_json(body);
+        read_envelope("PATCH", &url, result)
     }
 }
 
@@ -89,6 +130,41 @@ impl Api for Client {
 
     fn conversation(&self, id: &str) -> Result<ConversationDetail, String> {
         self.get(&format!("/conversations/{id}"))
+    }
+
+    fn tasks(&self) -> Result<Vec<Task>, String> {
+        self.get("/tasks")
+    }
+
+    fn repos(&self) -> Result<Vec<Repo>, String> {
+        self.get("/repos")
+    }
+
+    fn info(&self) -> Result<Info, String> {
+        self.get("/info")
+    }
+
+    fn search(&self, query: &str) -> Result<Vec<SearchHit>, String> {
+        self.get(&format!("/search?q={}", encode_segment(query)))
+    }
+
+    fn end_conversation(&self, id: &str) -> Result<Conversation, String> {
+        self.post_empty(&format!("/conversations/{}/end", encode_segment(id)))
+    }
+
+    fn link_repo(&self, id: &str, repo: Option<&str>) -> Result<Conversation, String> {
+        self.patch(
+            &format!("/conversations/{}", encode_segment(id)),
+            &serde_json::json!({ "linkedRepo": repo }),
+        )
+    }
+
+    fn start_conversation(&self, text: &str) -> Result<ConversationDetail, String> {
+        self.post("/conversations", &serde_json::json!({ "text": text }))
+    }
+
+    fn add_repo(&self, path: &str) -> Result<Repo, String> {
+        self.post("/repos", &serde_json::json!({ "path": path }))
     }
 }
 
@@ -322,6 +398,121 @@ mod tests {
         let err = Client::new(base).send_message("c1", "x").unwrap_err();
         request.join().unwrap();
         assert!(err.ends_with("message is empty"), "{err}");
+    }
+
+    fn request_of(request: std::thread::JoinHandle<String>) -> (String, serde_json::Value) {
+        let request = request.join().unwrap();
+        let line = request.lines().next().unwrap().to_string();
+        let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+        let body = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+        (line, body)
+    }
+
+    fn task_json(name: &str) -> serde_json::Value {
+        json!({
+            "name": name, "title": "t", "prompt": "p", "repo": "shop", "baseBranch": "main",
+            "after": [], "state": "working", "conversationId": "c1", "attachments": [],
+            "createdAt": "2026-11-12T09:00:00.000Z", "pr": null, "agent": "Coder",
+            "blocked": null, "prBase": null
+        })
+    }
+
+    fn ok(data: serde_json::Value) -> String {
+        json!({"success": true, "data": data}).to_string()
+    }
+
+    #[test]
+    fn tasks_come_from_the_tasks_endpoint() {
+        let (base, request) = serve_once("200 OK", ok(json!([task_json("fix")])));
+        let tasks = Client::new(base).tasks().unwrap();
+        assert_eq!(tasks[0].name, "fix");
+        assert_eq!(request_of(request).0, "GET /api/tasks HTTP/1.1");
+    }
+
+    #[test]
+    fn repos_come_from_the_repos_endpoint() {
+        let repo = json!({"name": "shop", "path": "/x/shop", "baseBranch": "develop"});
+        let (base, request) = serve_once("200 OK", ok(json!([repo])));
+        let repos = Client::new(base).repos().unwrap();
+        assert_eq!(repos[0].base_branch, "develop");
+        assert_eq!(request_of(request).0, "GET /api/repos HTTP/1.1");
+    }
+
+    #[test]
+    fn info_gives_the_user_name_and_ignores_the_rest() {
+        let (base, request) = serve_once(
+            "200 OK",
+            ok(
+                json!({"home": "/h", "repo": "/r", "repoKey": "k", "userName": "Ada Lovelace", "version": "1"}),
+            ),
+        );
+        let info = Client::new(base).info().unwrap();
+        assert_eq!(info.user_name.as_deref(), Some("Ada Lovelace"));
+        assert_eq!(request_of(request).0, "GET /api/info HTTP/1.1");
+    }
+
+    #[test]
+    fn search_encodes_the_query_and_reads_title_and_message_hits() {
+        let hits = json!([
+            {"conversationId": "a", "title": "t", "match": "title", "entryId": null, "snippet": null, "updatedAt": "2026-11-12T10:00:00.000Z"},
+            {"conversationId": "b", "title": "u", "match": "message", "entryId": 4, "snippet": "…x…", "updatedAt": "2026-11-12T10:00:00.000Z"}
+        ]);
+        let (base, request) = serve_once("200 OK", ok(hits));
+        let found = Client::new(base).search("login loop&x").unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[1].entry_id, Some(4));
+        assert_eq!(
+            request_of(request).0,
+            "GET /api/search?q=login%20loop%26x HTTP/1.1"
+        );
+    }
+
+    #[test]
+    fn ending_posts_to_the_end_endpoint() {
+        let (base, request) = serve_once("200 OK", ok(conversation_json("c 1")));
+        let ended = Client::new(base).end_conversation("c 1").unwrap();
+        assert_eq!(ended.id, "c 1");
+        assert_eq!(
+            request_of(request).0,
+            "POST /api/conversations/c%201/end HTTP/1.1"
+        );
+    }
+
+    #[test]
+    fn linking_a_repo_patches_the_conversation_and_null_sets_auto() {
+        let (base, request) = serve_once("200 OK", ok(conversation_json("c1")));
+        Client::new(base).link_repo("c1", Some("shop")).unwrap();
+        let (line, body) = request_of(request);
+        assert_eq!(line, "PATCH /api/conversations/c1 HTTP/1.1");
+        assert_eq!(body, json!({"linkedRepo": "shop"}));
+        let (base, request) = serve_once("200 OK", ok(conversation_json("c1")));
+        Client::new(base).link_repo("c1", None).unwrap();
+        assert_eq!(request_of(request).1, json!({"linkedRepo": null}));
+    }
+
+    #[test]
+    fn starting_posts_the_text_and_returns_the_new_conversation() {
+        let detail = json!({
+            "conversation": conversation_json("new"),
+            "entries": [], "tasks": [], "attachments": []
+        });
+        let (base, request) = serve_once("200 OK", ok(detail));
+        let started = Client::new(base).start_conversation("fix it").unwrap();
+        assert_eq!(started.conversation.id, "new");
+        let (line, body) = request_of(request);
+        assert_eq!(line, "POST /api/conversations HTTP/1.1");
+        assert_eq!(body, json!({"text": "fix it"}));
+    }
+
+    #[test]
+    fn adding_a_repo_posts_its_path() {
+        let repo = json!({"name": "shop", "path": "/x/shop", "baseBranch": "main"});
+        let (base, request) = serve_once("200 OK", ok(repo));
+        let added = Client::new(base).add_repo("/x/shop").unwrap();
+        assert_eq!(added.name, "shop");
+        let (line, body) = request_of(request);
+        assert_eq!(line, "POST /api/repos HTTP/1.1");
+        assert_eq!(body, json!({"path": "/x/shop"}));
     }
 
     #[test]

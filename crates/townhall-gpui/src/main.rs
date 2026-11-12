@@ -1,13 +1,35 @@
+mod age;
 mod client;
 mod composer;
 mod daemon;
 mod drafts;
+mod entries;
 mod fonts;
+mod glyph;
+mod home;
+mod home_model;
+mod markdown;
 #[cfg(target_os = "macos")]
 mod measure;
+mod prefs;
+mod repo_group;
+mod row_menu;
+mod row_summary;
 mod scene;
+mod sections;
+mod selectable;
+mod selection;
+mod session;
+mod session_model;
+mod sidebar;
+mod sidebar_rows;
 mod state;
+mod task_rows;
+#[cfg(test)]
+mod testkit;
 mod theme;
+mod thread;
+mod thread_model;
 mod view;
 
 use std::path::PathBuf;
@@ -150,6 +172,7 @@ fn main() {
         }
     };
     let drafts = drafts::Drafts::open(&drafts_home).unwrap_or_else(|e| fail(e));
+    let prefs = prefs::Prefs::open(&drafts_home).unwrap_or_else(|e| fail(e));
     let events = client::subscribe(&base).unwrap_or_else(|e| fail(e));
     let api = Arc::new(client::Client::new(base));
 
@@ -158,6 +181,8 @@ fn main() {
             fail(e);
         }
         gpui_component::init(cx);
+        thread::bind_keys(cx);
+        view::bind_keys(cx);
         let forced = scene.mode;
         let initial = match forced {
             Some(mode) => theme::Theme::new(mode),
@@ -191,8 +216,9 @@ fn main() {
                     }
                     cx.new(|cx| {
                         view::Root::new(api, Some(events), drafts, window, cx)
+                            .with_prefs(prefs)
                             .with_daemon_note(note)
-                            .with_start(start)
+                            .with_route(start)
                     })
                 },
             )
