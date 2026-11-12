@@ -6,7 +6,7 @@ use std::path::Path;
 use super::accounts::{Accounts, Picked};
 use super::auth_env::{auth_failure, remote_env};
 use super::source::split_remote;
-use crate::cmd::{probe_blocking, run_blocking, run_blocking_env};
+use crate::cmd::{probe_blocking, probe_blocking_env, run_blocking, run_blocking_env};
 use crate::model::ForgeKind;
 use crate::redact::redact;
 use crate::{Error, Result};
@@ -334,7 +334,7 @@ fn create(
     };
     let mut envs = with_session(session);
     envs.push(extra);
-    match run_blocking_env(program, &args, Some(req.worktree), &envs) {
+    match probe_blocking_env(program, &args, Some(req.worktree), &envs) {
         Ok(out) => link_in(&out)
             .ok_or_else(|| invalid(format!("`{shown}` printed no link: {}", out.trim()))),
         Err(Error::Command { stderr, .. }) => {

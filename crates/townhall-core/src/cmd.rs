@@ -145,8 +145,18 @@ pub fn run_blocking_env(
 
 /// `run_blocking` for a question: a non-zero exit logs at debug, not warn.
 pub fn probe_blocking(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    probe_blocking_env(program, args, cwd, &[])
+}
+
+/// `probe_blocking` with extra environment variables for the child.
+pub fn probe_blocking_env(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    envs: &[(&str, &str)],
+) -> Result<String> {
     let started = Instant::now();
-    let result = exec_blocking(program, args, cwd, &[]);
+    let result = exec_blocking(program, args, cwd, envs);
     log_run(program, args, started, &result, true);
     result
 }
