@@ -27,6 +27,14 @@ impl CheckState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrFacts {
+    pub head: String,
+    pub conflicting: bool,
+    pub unknown: bool,
+    pub behind: u64,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChecksRequest<'a> {
     pub worktree: &'a Path,
