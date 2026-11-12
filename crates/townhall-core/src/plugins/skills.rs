@@ -1,6 +1,3 @@
-//! The skills and slash commands a plugin ships: found at install (they go on the permission
-//! list) and staged per task at launch (`--plugin-dir`, `docs/plugins.md` section 6.5).
-
 use std::path::{Path, PathBuf};
 
 use super::check;
@@ -156,9 +153,6 @@ fn manifest_text(name: &str, version: Option<&str>, declared: &Declared) -> Stri
     serde_json::Value::Object(manifest).to_string()
 }
 
-/// Builds `dest`, a plugin folder claude loads with `--plugin-dir`: a generated manifest, real
-/// copies of the skills and commands, and links to everything else the plugin ships except
-/// what townhall injects itself (hooks, MCP servers, subagents).
 pub fn stage(
     root: &Path,
     dest: &Path,
@@ -247,8 +241,6 @@ fn stage_plugin(home: &Home, plugin: &Plugin, under: &Path) -> Result<Option<Pat
     Ok(Some(dest))
 }
 
-/// The folders to pass to `--plugin-dir` for the enabled plugins in `names` that ship skills
-/// or commands, staged under `under`. A plugin with neither adds nothing.
 pub async fn selected(store: &Store, names: &[String], under: PathBuf) -> Result<Vec<PathBuf>> {
     if names.is_empty() {
         return Ok(Vec::new());

@@ -34,8 +34,6 @@ pub struct LaunchOptions {
     /// `claude --settings`: the path of the generated settings file that carries plugin
     /// hooks. `None` keeps the inline isolated settings.
     pub settings: Option<String>,
-    /// `claude --plugin-dir`, one per folder: the per task folders that carry the skills and
-    /// commands of the plugins a type chose. Empty adds no flag.
     pub plugin_dirs: Vec<String>,
     /// Extra environment variables for the process, set after the ones townhall unsets.
     /// Names are checked and values quoted when the command is built; values are never logged.
