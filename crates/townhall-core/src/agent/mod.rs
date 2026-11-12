@@ -12,8 +12,8 @@ use std::path::PathBuf;
 pub use adapter::{shell_quote, AgentAdapter, LaunchOptions, ShellAdapter};
 pub(crate) use claude::{add_dir, plain};
 pub use claude::{
-    mcp_tool_timeout_ms, ClaudeCodeAdapter, AGENT_ISOLATION, DEFAULT_CLAUDE_BIN, ISOLATED_SETTINGS,
-    MCP_TOOL_TIMEOUT_ENV, OUTER_SESSION_ENV,
+    mcp_tool_timeout_ms, ClaudeCodeAdapter, AGENT_ISOLATION, DEFAULT_CLAUDE_BIN, FOREGROUND_RULE,
+    ISOLATED_SETTINGS, MCP_TOOL_TIMEOUT_ENV, OUTER_SESSION_ENV,
 };
 
 use crate::cmd::{run, validate_name};
