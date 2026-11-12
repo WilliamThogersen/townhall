@@ -134,7 +134,6 @@ Replaces the earlier estimate, which assumed the 25% was visible on the start vi
 
 - Idle start view: already about 1.3% and 116 MB. Fix 1 can only take a fraction of a point off it. A native UI would not materially improve idle CPU here.
 - The user's 25% and 500 MB sit in the unmeasured scenarios. The next measurement is one conversation open with a live agent, then a visible terminal, taking the same `top` series and a `sample` of WebContent. If WebContent shows xterm rendering or the websocket message handler, fix 2 is the priority; if it shows a Spinner tick, fix 3.
-- A decision on a native UI (GPUI) should wait for those numbers: on the start view the three WebKit helpers cost about 80 MB and 1.2% together, much less than the 250 to 350 MB floor estimated earlier.
 
 ## How to measure the other scenarios
 
@@ -151,3 +150,7 @@ Also available: `xcrun xctrace record --template 'Time Profiler' --attach <pid> 
 
 - Branch was up to date with origin/main at the time of writing; nothing was merged.
 - No application code was changed. The measurement harness lived in the agent's scratch directory and is not part of the repo.
+
+## Decision
+
+Decision 2026-11-12: the GPUI migration was tried and dropped. The release Tauri app idles at about 1.3% CPU and ~116 MB, and the higher numbers reported earlier came from running the dev build.
