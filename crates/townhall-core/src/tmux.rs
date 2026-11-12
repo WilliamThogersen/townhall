@@ -53,7 +53,6 @@ async fn run_tmux(args: &[&str]) -> Result<String> {
     run("tmux", &all, None).await
 }
 
-/// `run_tmux` for a call whose failure the caller handles (a session that is already gone).
 async fn probe_tmux(args: &[&str]) -> Result<String> {
     let server = server_args()?;
     let all: Vec<&str> = server

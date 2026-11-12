@@ -148,7 +148,6 @@ pub fn probe_blocking(program: &str, args: &[&str], cwd: Option<&Path>) -> Resul
     probe_blocking_env(program, args, cwd, &[])
 }
 
-/// `probe_blocking` with extra environment variables for the child.
 pub fn probe_blocking_env(
     program: &str,
     args: &[&str],
