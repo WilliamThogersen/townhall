@@ -173,3 +173,54 @@ async fn a_base_branch_deleted_after_its_merge_is_skipped_without_a_warning() {
     assert!(pass.warnings.is_empty(), "{:?}", pass.warnings);
     assert_eq!(s.state(&ended).await, TaskState::Ended);
 }
+
+async fn backdate_launch(s: &Sched, name: &str) {
+    let launch = s.store().task_launch(name).await.unwrap().unwrap();
+    let old = scheduler::TaskLaunch {
+        launched_at: "2026-01-01T00:00:00.000Z".into(),
+        ..launch
+    };
+    s.store().record_launch(old).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_working_task_without_a_session_is_ended_and_a_live_one_is_left() {
+    let s = Sched::new().await;
+    let (zombie, alive, fresh) = (unique("zombie"), unique("alive"), unique("fresh"));
+    for name in [&zombie, &alive, &fresh] {
+        s.create(name, &[]).await;
+    }
+    run_once(s.ctx()).await.unwrap();
+    for name in [&zombie, &alive] {
+        backdate_launch(&s, name).await;
+    }
+    for name in [&zombie, &fresh] {
+        townhall_core::tmux::kill(s.ws.key(), name).await.unwrap();
+    }
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert_eq!(pass.reconciled, [zombie.as_str()]);
+    assert_eq!(s.state(&zombie).await, TaskState::Ended);
+    assert_eq!(s.state(&alive).await, TaskState::Working);
+    assert_eq!(
+        s.state(&fresh).await,
+        TaskState::Working,
+        "inside its grace"
+    );
+    assert!(run_once(s.ctx()).await.unwrap().reconciled.is_empty());
+}
+
+#[tokio::test]
+async fn a_zombie_whose_branch_is_merged_ends_as_merged() {
+    let s = Sched::new().await;
+    let name = unique("landed");
+    s.create(&name, &[]).await;
+    run_once(s.ctx()).await.unwrap();
+    commit(&s.worktree(&name), "the work").await;
+    merge(&s.repo, &format!("townhall/{name}")).await;
+    backdate_launch(&s, &name).await;
+    townhall_core::tmux::kill(s.ws.key(), &name).await.unwrap();
+    let pass = run_once(s.ctx()).await.unwrap();
+    assert_eq!(pass.reconciled, [name.as_str()]);
+    assert_eq!(pass.merged, [name.as_str()]);
+    assert_eq!(s.state(&name).await, TaskState::Merged);
+}
