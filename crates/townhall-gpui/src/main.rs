@@ -1,11 +1,18 @@
+mod age;
 mod client;
 mod composer;
 mod daemon;
 mod drafts;
 mod fonts;
+mod glyph;
 #[cfg(target_os = "macos")]
 mod measure;
+mod repo_group;
+mod row_summary;
+mod sections;
 mod state;
+#[cfg(test)]
+mod testkit;
 mod theme;
 mod view;
 
