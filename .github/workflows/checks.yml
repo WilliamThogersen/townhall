@@ -38,6 +38,20 @@ jobs:
           CI_MERGE_REQUEST_SOURCE_BRANCH_SHA: ${{ github.event.pull_request.head.sha }}
         run: .github/ci/check-secrets.sh
 
+  migration-numbers:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Check migration numbers
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/migration-number.sh check "$BASE_SHA" HEAD
+
   no-added-comments:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
