@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::time::SystemTime;
 
 use crate::context::Context;
 use crate::definitions::{parse_workflow, render, variables, Step, Values, Var, WorkflowDef};
@@ -24,6 +25,12 @@ const FIXING: &str = "fixing";
 const REDONE: &str = "redone";
 const ANSWERED: &str = "adviser answered";
 const BUDGET_USED: &str = "adviser budget used";
+const LAND_AGENT: &str = "lander";
+const RETRY_AT: &str = "retry at ";
+const RETRIED: &str = "retried after an error";
+const ASKED: &str = "asked for a verdict";
+const ASK_FOR_VERDICT: &str = "end with exactly one line: VERDICT: PASS or VERDICT: FAIL";
+const RETRY_DELAY_MS: i64 = 30_000;
 const MAX_LISTED_FILES: usize = 200;
 const MAX_NOTE_CHARS: usize = 300;
 
@@ -437,7 +444,13 @@ async fn settle(ctx: &Context, run: &Run, def: &WorkflowDef) -> Result<bool> {
         if !plan::finished(task.state) {
             continue;
         }
-        match verdict_problem(ctx, task).await? {
+        match problem(ctx, task).await? {
+            Some(again @ (Problem::Errored(_) | Problem::NoVerdict { .. })) => {
+                if !try_again(ctx, run, &row, task, again).await? {
+                    return Ok(false);
+                }
+                continue;
+            }
             Some(Problem::Stop(why)) => {
                 fail_step(ctx, run, &row, &why).await?;
                 end_run(ctx, run, RUN_NEEDS_YOU, &why).await?;
@@ -729,29 +742,127 @@ async fn last_said(ctx: &Context, task: &Task) -> Result<String> {
 enum Problem {
     Stop(String),
     Rejected { why: String, report: String },
+    Errored(String),
+    NoVerdict { who: String, report: String },
 }
 
-async fn verdict_problem(ctx: &Context, task: &Task) -> Result<Option<Problem>> {
-    if report::vocabulary(&task.agent).is_none() {
+fn is_land(agent: &str) -> bool {
+    agent.eq_ignore_ascii_case(LAND_AGENT)
+}
+
+fn landed(task: &Task) -> bool {
+    task.state == TaskState::Merged || task.pr.as_ref().is_some_and(|p| p.merge_sha.is_some())
+}
+
+async fn problem(ctx: &Context, task: &Task) -> Result<Option<Problem>> {
+    let land = is_land(&task.agent);
+    if report::vocabulary(&task.agent).is_none() && !land {
+        return Ok(None);
+    }
+    if land && landed(task) {
         return Ok(None);
     }
     let who = format!("`{}` ({})", task.name, task.agent);
-    if let Some(why) = moved(ctx, task, &who).await? {
-        return Ok(Some(Problem::Stop(why)));
+    if !land {
+        if let Some(why) = moved(ctx, task, &who).await? {
+            return Ok(Some(Problem::Stop(why)));
+        }
     }
     let text = match report_of(ctx, task, &who).await? {
         Ok(text) => text,
-        Err(why) => return Ok(Some(Problem::Stop(format!("no VERDICT line: {why}")))),
+        Err(why) => return Ok(Some(Problem::Errored(why))),
     };
+    if let Some(error) = report::agent_error(&text) {
+        return Ok(Some(Problem::Errored(error)));
+    }
+    if land {
+        let why = format!("{who} ended without reporting a merge: nothing landed");
+        return Ok(Some(Problem::Stop(why)));
+    }
     Ok(match report::parse(&text, &task.agent).verdict {
         Ok(Some(verdict)) if verdict.clears() => None,
         Ok(Some(verdict)) => Some(Problem::Rejected {
             why: format!("{who} reported {}", verdict.as_str()),
             report: text,
         }),
-        Ok(None) => Some(Problem::Stop(format!("{who} report has no VERDICT line"))),
+        Ok(None) => Some(Problem::NoVerdict { who, report: text }),
         Err(why) => Some(Problem::Stop(format!("{who} report: {why}"))),
     })
+}
+
+fn retry_due(note: &str) -> bool {
+    let at = note
+        .strip_prefix(RETRY_AT)
+        .and_then(|rest| rest.split(':').next())
+        .and_then(|ms| ms.parse::<i64>().ok());
+    at.is_some_and(|at| clock::unix_millis(SystemTime::now()) >= at)
+}
+
+async fn try_again(
+    ctx: &Context,
+    run: &Run,
+    row: &RunStep,
+    task: &Task,
+    problem: Problem,
+) -> Result<bool> {
+    let store = ctx.store()?;
+    let note = row.note.as_deref().unwrap_or("");
+    let (reason, marked) = match problem {
+        Problem::Errored(error) if note.starts_with(RETRIED) => {
+            let why = format!("`{}` ({}) failed again: {error}", task.name, task.agent);
+            fail_step(ctx, run, row, &why).await?;
+            end_run(ctx, run, RUN_NEEDS_YOU, &why).await?;
+            return Ok(false);
+        }
+        Problem::Errored(error) if !note.starts_with(RETRY_AT) => {
+            let at = clock::unix_millis(SystemTime::now()) + RETRY_DELAY_MS;
+            let waiting = format!("{RETRY_AT}{at}: {error}");
+            let update = StepUpdate {
+                note: Some(&waiting),
+                ..StepUpdate::state(STARTED)
+            };
+            store
+                .set_run_step(&run.id, &row.step_id, row.round, update)
+                .await?;
+            return Ok(true);
+        }
+        Problem::Errored(_) if !retry_due(note) => return Ok(true),
+        Problem::Errored(error) => (
+            format!("The previous attempt ended with an error: {error}. Do the step again."),
+            format!("{RETRIED}: {error}"),
+        ),
+        Problem::NoVerdict { who, .. } if note.starts_with(ASKED) => {
+            let why = format!("{who} report has no VERDICT line");
+            fail_step(ctx, run, row, &why).await?;
+            end_run(ctx, run, RUN_NEEDS_YOU, &why).await?;
+            return Ok(false);
+        }
+        Problem::NoVerdict { report, .. } => (
+            format!(
+                "Your report had no VERDICT line. Your report:\n{report}\n\nNow {ASK_FOR_VERDICT}"
+            ),
+            ASKED.to_string(),
+        ),
+        Problem::Stop(_) | Problem::Rejected { .. } => return Ok(true),
+    };
+    match store.hand_on(&task.name, &task.agent, &reason, "").await {
+        Ok(_) => {}
+        Err(Error::Conflict(said)) => {
+            let why = format!("`{}` cannot be asked again: {said}", task.name);
+            fail_step(ctx, run, row, &why).await?;
+            end_run(ctx, run, RUN_NEEDS_YOU, &why).await?;
+            return Ok(false);
+        }
+        Err(e) => return Err(e),
+    }
+    let update = StepUpdate {
+        note: Some(&marked),
+        ..StepUpdate::state(STARTED)
+    };
+    store
+        .set_run_step(&run.id, &row.step_id, row.round, update)
+        .await?;
+    Ok(true)
 }
 
 async fn moved(ctx: &Context, task: &Task, who: &str) -> Result<Option<String>> {

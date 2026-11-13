@@ -52,6 +52,30 @@ pub fn unrequirable(agent_type: &str) -> Option<String> {
     ))
 }
 
+const ERROR_MARKERS: [&str; 4] = [
+    "api error",
+    "please run /login",
+    "connection lost",
+    "went to sleep",
+];
+
+const MAX_ERROR_CHARS: usize = 300;
+
+/// Why a final message is a failure of the agent's own session (API, login or connection)
+/// and not a report: the message, with a hint when the login expired, or `None`.
+pub fn agent_error(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    if !ERROR_MARKERS.iter().any(|m| lower.contains(m)) {
+        return None;
+    }
+    let said: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let said: String = said.chars().take(MAX_ERROR_CHARS).collect();
+    Some(match lower.contains("/login") {
+        true => format!("claude login expired: run /login ({said})"),
+        false => said,
+    })
+}
+
 /// What a report says. Each field is `Err` with the reason when its lines cannot be trusted
 /// and `Ok(None)` when there is no such line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -258,6 +282,26 @@ mod tests {
         );
         assert!(Verdict::Approve.clears() && Verdict::Pass.clears());
         assert!(!Verdict::Reject.clears() && !Verdict::Fail.clears());
+    }
+
+    #[test]
+    fn an_agent_error_is_told_from_a_report() {
+        let login = agent_error("Please run /login · API Error: 403 forbidden").unwrap();
+        assert!(
+            login.starts_with("claude login expired: run /login"),
+            "{login}"
+        );
+        assert!(login.contains("API Error: 403"), "{login}");
+        assert_eq!(
+            agent_error("API Error: 529 overloaded").as_deref(),
+            Some("API Error: 529 overloaded")
+        );
+        assert!(agent_error("The connection lost its way").is_some());
+        assert!(agent_error("the machine went to sleep").is_some());
+        assert!(agent_error("VERDICT: PASS\nall good").is_none());
+        assert!(agent_error("").is_none());
+        let long = agent_error(&format!("API Error {}", "x".repeat(900))).unwrap();
+        assert!(long.chars().count() <= 300, "{}", long.len());
     }
 
     #[test]

@@ -269,7 +269,7 @@ async fn plan_build_land_run_in_order() {
     assert_eq!(run_state(&s, "feat").await, RUN_RUNNING);
     assert!(waiting(&s).is_empty());
 
-    s.end("feat-land").await;
+    s.set_state("feat-land", TaskState::Merged).await;
     run_once(s.ctx()).await.unwrap();
     run_once(s.ctx()).await.unwrap();
     assert_eq!(run_state(&s, "feat").await, RUN_FINISHED);
@@ -412,17 +412,175 @@ async fn a_pass_lets_the_run_go_on() {
 }
 
 #[tokio::test]
-async fn a_verdict_step_with_no_verdict_line_needs_the_user() {
+async fn a_verdict_with_trailing_text_clears_the_step() {
+    let s = setup().await;
+    let said = "Ran it.\n\nVERDICT: PASS for all three criteria, with one note\n";
+    run_to_a_finished_tester(&s, Some(said)).await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(run_state(&s, "chk").await, RUN_RUNNING);
+    assert_eq!(names(&s).await, ["chk-build", "chk-land", "chk-test"]);
+    assert!(waiting(&s).is_empty());
+}
+
+async fn finish_again(s: &Sched, name: &str, report: &str) {
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(s.state(name).await, TaskState::Working);
+    tester_reports(s, name, report).await;
+    s.end(name).await;
+}
+
+#[tokio::test]
+async fn a_report_without_a_verdict_is_asked_for_one_in_the_same_task() {
     let s = setup().await;
     run_to_a_finished_tester(&s, Some("Looks fine to me.\n")).await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(run_state(&s, "chk").await, RUN_RUNNING);
+    assert!(waiting(&s).is_empty(), "{:?}", waiting(&s));
+    let handed = s.store().handoffs("chk-test").await.unwrap();
+    assert_eq!(handed.len(), 1);
+    assert_eq!(handed[0].to, "tester");
+    assert!(
+        handed[0]
+            .reason
+            .contains("end with exactly one line: VERDICT: PASS or VERDICT: FAIL"),
+        "{:?}",
+        handed[0]
+    );
+    assert!(
+        handed[0].reason.contains("Looks fine to me."),
+        "{:?}",
+        handed[0]
+    );
+    assert_eq!(names(&s).await, ["chk-build", "chk-test"]);
+
+    finish_again(&s, "chk-test", "VERDICT: PASS\n").await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(run_state(&s, "chk").await, RUN_RUNNING);
+    assert_eq!(names(&s).await, ["chk-build", "chk-land", "chk-test"]);
+    assert_eq!(s.store().handoffs("chk-test").await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_verdict_step_still_without_a_verdict_line_needs_the_user() {
+    let s = setup().await;
+    run_to_a_finished_tester(&s, Some("Looks fine to me.\n")).await;
+    run_once(s.ctx()).await.unwrap();
+    finish_again(&s, "chk-test", "Still fine.\n").await;
     for _ in 0..2 {
         run_once(s.ctx()).await.unwrap();
     }
     assert_eq!(run_state(&s, "chk").await, RUN_NEEDS_YOU);
     assert_eq!(names(&s).await, ["chk-build", "chk-test"]);
+    assert_eq!(s.store().handoffs("chk-test").await.unwrap().len(), 1);
     let told = waiting(&s);
     assert_eq!(told.len(), 1, "{told:?}");
     assert!(told[0].contains("no VERDICT"), "{told:?}");
+}
+
+const LOGIN_ERROR: &str = "Please run /login · API Error: 403 {\"error\":\"forbidden\"}";
+
+async fn let_the_retry_delay_pass(s: &Sched, step: &str) {
+    let row = step_row(s, "chk", step).await;
+    let note = row.note.unwrap();
+    assert!(note.starts_with("retry at "), "{note}");
+    let update = townhall_core::store::StepUpdate {
+        note: Some("retry at 0: waited"),
+        ..townhall_core::store::StepUpdate::state("started")
+    };
+    s.store()
+        .set_run_step("chk", step, row.round, update)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn an_api_error_is_retried_once_after_a_delay_and_not_called_a_missing_verdict() {
+    let s = setup().await;
+    run_to_a_finished_tester(&s, Some(LOGIN_ERROR)).await;
+    run_once(s.ctx()).await.unwrap();
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(run_state(&s, "chk").await, RUN_RUNNING);
+    assert!(s.store().handoffs("chk-test").await.unwrap().is_empty());
+    assert!(waiting(&s).is_empty(), "{:?}", waiting(&s));
+
+    let_the_retry_delay_pass(&s, "test").await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(s.store().handoffs("chk-test").await.unwrap().len(), 1);
+    assert_eq!(run_state(&s, "chk").await, RUN_RUNNING);
+
+    finish_again(&s, "chk-test", "VERDICT: PASS\n").await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(names(&s).await, ["chk-build", "chk-land", "chk-test"]);
+    assert!(waiting(&s).is_empty(), "{:?}", waiting(&s));
+}
+
+#[tokio::test]
+async fn an_api_error_that_comes_back_needs_the_user_with_the_real_error() {
+    let s = setup().await;
+    run_to_a_finished_tester(&s, Some(LOGIN_ERROR)).await;
+    run_once(s.ctx()).await.unwrap();
+    let_the_retry_delay_pass(&s, "test").await;
+    run_once(s.ctx()).await.unwrap();
+    finish_again(&s, "chk-test", LOGIN_ERROR).await;
+    for _ in 0..2 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_eq!(run_state(&s, "chk").await, RUN_NEEDS_YOU);
+    assert_eq!(s.store().handoffs("chk-test").await.unwrap().len(), 1);
+    let told = waiting(&s);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(
+        told[0].contains("claude login expired: run /login"),
+        "{told:?}"
+    );
+    assert!(told[0].contains("API Error: 403"), "{told:?}");
+    assert!(!told[0].contains("no VERDICT"), "{told:?}");
+}
+
+#[tokio::test]
+async fn a_tester_that_never_ran_is_retried_like_an_api_error() {
+    let s = setup().await;
+    run_to_a_finished_tester(&s, None).await;
+    run_once(s.ctx()).await.unwrap();
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(run_state(&s, "chk").await, RUN_RUNNING);
+    let_the_retry_delay_pass(&s, "test").await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(s.store().handoffs("chk-test").await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_land_step_that_ended_without_a_merge_does_not_finish_the_run() {
+    let s = setup().await;
+    run_to_a_finished_tester(&s, Some("VERDICT: PASS\n")).await;
+    run_once(s.ctx()).await.unwrap();
+    s.end("chk-land").await;
+    for _ in 0..3 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_ne!(run_state(&s, "chk").await, RUN_FINISHED);
+    assert_eq!(run_state(&s, "chk").await, RUN_RUNNING);
+}
+
+#[tokio::test]
+async fn a_land_step_that_hit_an_api_error_needs_the_user_after_one_retry() {
+    let s = setup().await;
+    run_to_a_finished_tester(&s, Some("VERDICT: PASS\n")).await;
+    run_once(s.ctx()).await.unwrap();
+    tester_reports(&s, "chk-land", LOGIN_ERROR).await;
+    s.end("chk-land").await;
+    run_once(s.ctx()).await.unwrap();
+    let_the_retry_delay_pass(&s, "land").await;
+    run_once(s.ctx()).await.unwrap();
+    assert_eq!(s.store().handoffs("chk-land").await.unwrap().len(), 1);
+    finish_again(&s, "chk-land", LOGIN_ERROR).await;
+    for _ in 0..2 {
+        run_once(s.ctx()).await.unwrap();
+    }
+    assert_eq!(run_state(&s, "chk").await, RUN_NEEDS_YOU);
+    let told = waiting(&s);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("claude login expired"), "{told:?}");
 }
 
 #[tokio::test]
@@ -563,7 +721,7 @@ async fn a_fail_hands_the_build_back_and_a_pass_after_the_fix_lands() {
     s.end("chk-test-r2").await;
     run_once(s.ctx()).await.unwrap();
     assert_eq!(task(&s, "chk-land").await.after, ["chk-test-r2"]);
-    s.end("chk-land").await;
+    s.set_state("chk-land", TaskState::Merged).await;
     run_once(s.ctx()).await.unwrap();
     run_once(s.ctx()).await.unwrap();
     assert_eq!(run_state(&s, "chk").await, RUN_FINISHED);
