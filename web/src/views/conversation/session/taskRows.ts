@@ -67,7 +67,16 @@ export function pendingAfter(task: Task, siblings: readonly Task[]): readonly st
   });
 }
 
+export const NEEDS_YOU_FALLBACK = "waiting for your answer: reply in the thread or open the terminal";
+
+export function reasonOf(task: Task): string | null {
+  if (task.state !== "needsYou") return null;
+  const said = task.blocked?.trim() ?? "";
+  return said === "" ? NEEDS_YOU_FALLBACK : said;
+}
+
 function blockedOf(task: Task, siblings: readonly Task[]): string | null {
+  if (task.state === "needsYou") return reasonOf(task);
   if (task.state !== "queued" || pendingAfter(task, siblings).length > 0) return null;
   return task.blocked;
 }
