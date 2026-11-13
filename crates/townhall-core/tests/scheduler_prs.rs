@@ -329,3 +329,98 @@ async fn an_open_pr_on_a_task_branch_is_found_and_tracked() {
     assert_eq!(found.owner, name);
     assert_eq!(found.base, "main");
 }
+
+async fn use_up_handoffs(s: &Sched, name: &str) {
+    let agent = s.store().find_task(name).await.unwrap().unwrap().agent;
+    for _ in 0..townhall_core::model::MAX_HANDOFFS {
+        s.store().hand_on(name, &agent, "again", "").await.unwrap();
+        s.set_state(name, TaskState::Ended).await;
+    }
+}
+
+#[tokio::test]
+async fn a_red_pr_whose_owner_has_no_hand_backs_left_needs_you_once() {
+    let s = setup().await;
+    let name = ended(&s, "owner", RED).await;
+    use_up_handoffs(&s, &name).await;
+    track(&s, &name).await;
+    until_state(&s, &name, TaskState::NeedsYou).await;
+    let pr = until_pr(&s, |p| p.woke_for.is_some()).await;
+    assert_eq!(pr.woke_for.as_deref(), Some("abc123"));
+    let blocked = s.store().find_task(&name).await.unwrap().unwrap().blocked;
+    let blocked = blocked.unwrap();
+    assert!(
+        blocked.contains("#7") && blocked.contains("build"),
+        "{blocked}"
+    );
+    let calls = log(&name, "").len();
+    passes(&s, 4).await;
+    let give_up = Instant::now() + Duration::from_secs(10);
+    let mut seen = log(&name, "").len();
+    let mut settled = 0;
+    while settled < 3 && Instant::now() < give_up {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let now = log(&name, "").len();
+        match now == seen && log(&name, "pr view").len() == log(&name, "pr checks").len() {
+            true => settled += 1,
+            false => settled = 0,
+        }
+        seen = now;
+    }
+    assert_eq!(s.state(&name).await, TaskState::NeedsYou);
+    assert!(log(&name, "run view").is_empty());
+    assert_eq!(log(&name, "pr view").len(), log(&name, "pr checks").len());
+    assert!(log(&name, "").len() >= calls);
+}
+
+#[tokio::test]
+async fn a_failed_hand_back_puts_the_owner_back_and_backs_off() {
+    let s = setup().await;
+    let name = ended(&s, "owner", RED).await;
+    s.store()
+        .update_task(&name, |t| {
+            Ok(Task {
+                agent: "ghost".into(),
+                ..t
+            })
+        })
+        .await
+        .unwrap();
+    track(&s, &name).await;
+    let give_up = Instant::now() + Duration::from_secs(30);
+    while !tracked(&s, 7)
+        .await
+        .and_then(|p| p.detail)
+        .is_some_and(|d| d.starts_with("waking the owner failed"))
+        && Instant::now() < give_up
+    {
+        let _ = run_once(s.ctx()).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(s.state(&name).await, TaskState::Ended);
+    let pr = tracked(&s, 7).await.unwrap();
+    assert_eq!(pr.woke_for, None);
+    assert!(pr.detail.unwrap().starts_with("waking the owner failed"));
+    for _ in 0..3 {
+        let _ = run_once(s.ctx()).await;
+    }
+    assert_eq!(log(&name, "run view").len(), 1);
+    assert_eq!(s.state(&name).await, TaskState::Ended);
+}
+
+#[tokio::test]
+async fn a_new_head_wakes_an_owner_that_needed_you_again() {
+    let s = setup().await;
+    let name = ended(&s, "owner", RED).await;
+    use_up_handoffs(&s, &name).await;
+    track(&s, &name).await;
+    until_state(&s, &name, TaskState::NeedsYou).await;
+    s.set_state(&name, TaskState::Ended).await;
+    says(
+        &name,
+        "view",
+        r#"{"headRefOid":"new999","mergeable":"MERGEABLE"}"#,
+    );
+    until_pr(&s, |p| p.woke_for.as_deref() == Some("new999")).await;
+    until_state(&s, &name, TaskState::NeedsYou).await;
+}
