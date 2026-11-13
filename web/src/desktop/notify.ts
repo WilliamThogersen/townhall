@@ -20,7 +20,6 @@ export async function notifyDesktop({ title, body }: DesktopNotification): Promi
   }
 }
 
-/** Native notification that an agent's session died. No-op outside the desktop shell. */
 export async function notifyAgentDied(name: string): Promise<void> {
   await notifyDesktop({ title: "Agent stopped", body: `${name}: session ended` });
 }
