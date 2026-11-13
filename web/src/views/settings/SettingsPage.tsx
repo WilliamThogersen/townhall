@@ -6,7 +6,15 @@ import { Button } from "../../ui/Button";
 import { DRAG_REGION } from "../../ui/dragRegion";
 import { PluginSettingsFrames } from "./PluginSettingsFrames";
 import { PluginSettingsGroups } from "./PluginSettingsGroups";
-import { AboutYouGroup, AccountsGroup, AgentsGroup, AppearanceGroup, ConversationsGroup, ReposGroup } from "./SettingGroups";
+import {
+  AboutYouGroup,
+  AccountsGroup,
+  AdviserGroup,
+  AgentsGroup,
+  AppearanceGroup,
+  ConversationsGroup,
+  ReposGroup,
+} from "./SettingGroups";
 import "./cap.css";
 
 export const SETTINGS_HINTS: readonly KeyHint[] = [
@@ -54,6 +62,7 @@ export function SettingsPage() {
         <SettingsProblem problem={problem} loading={loading} retry={retry} dismissProblem={dismissProblem} />
         <div className="th-settings" aria-busy={loading}>
           <AgentsGroup />
+          <AdviserGroup />
           <ConversationsGroup />
           <ReposGroup />
           <AccountsGroup />

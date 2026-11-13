@@ -377,6 +377,7 @@ async fn needs_you(ctx: &Context, task: &Task, from: TaskState, why: String) -> 
                 agent: task.name.clone(),
                 question: said.clone(),
                 choices: vec![],
+                advice: None,
             };
             store.append_entry(&task.conversation_id, body).await?;
             runner::notify(ctx, &task.conversation_id, said);

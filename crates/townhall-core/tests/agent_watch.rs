@@ -270,6 +270,7 @@ async fn a_question_needs_you_once_then_working_again() {
         agent: name.clone(),
         question: "continue? [y/n]".into(),
         choices: vec!["y".into(), "n".into()],
+        advice: None,
     };
     assert_eq!(env.agent_entries().await, vec![asked.clone()]);
 
@@ -300,6 +301,7 @@ async fn an_answered_y_n_prompt_works_again_with_one_entry() {
         agent: name.clone(),
         question: "go on? (y/n)".into(),
         choices: vec!["y".into(), "n".into()],
+        advice: None,
     };
     assert_eq!(env.agent_entries().await, vec![asked]);
     agent::stop(env.ctx().startup(), &name).await.unwrap();
@@ -388,6 +390,7 @@ async fn a_transcript_question_needs_you_with_numbered_choices() {
         agent: name.clone(),
         question: "Which db?\n1. postgres\n2. sqlite".into(),
         choices: vec!["1".into(), "2".into()],
+        advice: None,
     };
     assert_eq!(env.agent_entries().await, vec![asked]);
     agent::stop(env.ctx().startup(), &name).await.unwrap();

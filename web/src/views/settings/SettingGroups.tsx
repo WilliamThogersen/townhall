@@ -11,7 +11,8 @@ import { AccountsSection } from "./AccountsSection";
 import { ClonesDirRow } from "./ClonesDirRow";
 import { ProfileSection } from "./ProfileSection";
 import { SettingGroup, SettingRow } from "./SettingRow";
-import { HELP, NOTIFY_CHOICES, REPO_UNCLEAR_CHOICES, THEME_CHOICES } from "./settingsCopy";
+import { PermissionSuggestions } from "./PermissionSuggestions";
+import { HELP, NOTIFY_CHOICES, PERMISSION_TIMEOUT_CHOICES, REPO_UNCLEAR_CHOICES, THEME_CHOICES } from "./settingsCopy";
 
 export function AgentsGroup() {
   const { settings, update } = useSettings();
@@ -26,6 +27,33 @@ export function AgentsGroup() {
           onChange={(agentsAtOnce) => update({ agentsAtOnce })}
         />
       </SettingRow>
+    </SettingGroup>
+  );
+}
+
+export function AdviserGroup() {
+  const { settings, update } = useSettings();
+  return (
+    <SettingGroup title="adviser">
+      <SettingRow label="adviser answers permissions" help={HELP.adviserPermissions}>
+        <Switch
+          label="Adviser answers permission prompts"
+          checked={settings.adviserPermissions}
+          onChange={(adviserPermissions) => update({ adviserPermissions })}
+        />
+      </SettingRow>
+      {settings.adviserPermissions ? (
+        <SettingRow label="adviser time limit" help={HELP.permissionTimeout}>
+          <Segmented
+            name="th-setting-permission-timeout"
+            label="Adviser time limit"
+            value={String(settings.permissionTimeoutSecs)}
+            options={PERMISSION_TIMEOUT_CHOICES}
+            onChange={(secs) => update({ permissionTimeoutSecs: Number(secs) })}
+          />
+        </SettingRow>
+      ) : null}
+      <PermissionSuggestions />
     </SettingGroup>
   );
 }

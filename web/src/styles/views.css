@@ -784,6 +784,68 @@
   gap: 1ch;
 }
 
+.th-suggestions,
+.th-decisions {
+  display: grid;
+  gap: var(--th-space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.th-suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--th-space-2) 1ch;
+  min-width: 0;
+}
+
+.th-suggestion-tool,
+.th-decision-command {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.th-suggestion-tool {
+  padding: 2px 1ch;
+  border: var(--th-border) solid var(--th-line);
+  background: var(--th-surface);
+}
+
+.th-suggestion-why,
+.th-decision-type,
+.th-decision-reason {
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-sm);
+}
+
+.th-decision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 1ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.th-decision-verdict {
+  min-width: 9ch;
+  font-weight: var(--th-weight-bold);
+}
+
+.th-decision[data-verdict="hard-deny"] .th-decision-verdict,
+.th-decision[data-verdict="deny"] .th-decision-verdict {
+  color: var(--th-danger);
+}
+
+.th-decision-reason {
+  flex-basis: 100%;
+}
+
 .th-segmented label[data-tone="danger"] input:checked + span {
   background: var(--th-danger);
   color: var(--th-on-danger);
