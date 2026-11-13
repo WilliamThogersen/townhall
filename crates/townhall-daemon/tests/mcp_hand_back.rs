@@ -266,21 +266,33 @@ async fn hand_back_never_moves_a_task_to_a_plan_mode_type() {
         .await
         .unwrap()
         .is_empty());
-    let ghost = hand_back(&m, "fix-planner-prompt", json!({"to": "ghost", "reason": "r"})).await;
+    let ghost = hand_back(
+        &m,
+        "fix-planner-prompt",
+        json!({"to": "ghost", "reason": "r"}),
+    )
+    .await;
     let said = text(&ghost);
-    assert!(!said.contains("planner") && !said.contains("adviser"), "{said}");
+    assert!(
+        !said.contains("planner") && !said.contains("adviser"),
+        "{said}"
+    );
 }
 
 #[tokio::test]
 async fn a_listed_plan_mode_type_is_still_refused() {
     let m = Mcp::new().await;
     m.store().save_agent_type(PLANNER).await.unwrap();
-    let lister = "name = \"lister\"\nadapter = \"claude\"\ncan_hand_back_to = [\"planner\", \"coder\"]\n";
+    let lister =
+        "name = \"lister\"\nadapter = \"claude\"\ncan_hand_back_to = [\"planner\", \"coder\"]\n";
     m.store().save_agent_type(lister).await.unwrap();
     running(&m, "fix-login", "lister").await;
     let refused = hand_back(&m, "fix-login", json!({"to": "planner", "reason": "r"})).await;
     assert_eq!(refused["isError"], true, "{refused}");
-    assert!(text(&refused).contains("`planner` is a plan-mode type"), "{refused}");
+    assert!(
+        text(&refused).contains("`planner` is a plan-mode type"),
+        "{refused}"
+    );
     let allowed = hand_back(&m, "fix-login", json!({"to": "coder", "reason": "r"})).await;
     assert!(allowed.get("isError").is_none(), "{allowed}");
 }
