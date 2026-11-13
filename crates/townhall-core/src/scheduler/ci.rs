@@ -21,7 +21,6 @@ const REASON_PREFIX: &str = "the checks of PR #";
 struct Watch {
     busy: bool,
     next: Option<Instant>,
-    since: Option<Instant>,
 }
 
 static WATCHES: Mutex<Option<HashMap<(PathBuf, String), Watch>>> = Mutex::new(None);
@@ -48,18 +47,6 @@ fn release(key: &(PathBuf, String), poll: Duration) {
     });
 }
 
-fn begin_wait(key: &(PathBuf, String)) {
-    watching(key, |w| w.since = Some(Instant::now()));
-}
-
-fn end_wait(key: &(PathBuf, String)) {
-    watching(key, |w| w.since = None);
-}
-
-fn waited(key: &(PathBuf, String)) -> Duration {
-    watching(key, |w| w.since.get_or_insert_with(Instant::now).elapsed())
-}
-
 fn due(tasks: &[Task]) -> Vec<&Task> {
     tasks
         .iter()
@@ -82,7 +69,7 @@ pub(super) fn start(ctx: &Context, tasks: &[Task]) -> Vec<String> {
         started.push(task.name.clone());
         let (ctx, task) = (ctx.clone(), task.clone());
         tokio::spawn(async move {
-            if let Err(e) = judge(&ctx, &task, &key).await {
+            if let Err(e) = judge(&ctx, &task).await {
                 tracing::warn!(
                     target: "townhall::task", event = "task.ci_unread", task = %task.name,
                     error_kind = e.kind(), error = %crate::redact::redact(&e.to_string()),
@@ -159,7 +146,7 @@ fn describe(states: &[CheckState]) -> String {
     }
 }
 
-async fn judge(ctx: &Context, task: &Task, key: &(PathBuf, String)) -> Result<()> {
+async fn judge(ctx: &Context, task: &Task) -> Result<()> {
     let Some(pr) = task.pr.clone() else {
         return Ok(());
     };
@@ -169,37 +156,31 @@ async fn judge(ctx: &Context, task: &Task, key: &(PathBuf, String)) -> Result<()
     if matches!(task.state, TaskState::Ended | TaskState::InCi)
         && merges_on_green(ctx, task).await?
     {
-        return judge_for_merge(ctx, task, &pr, &states, key).await;
+        return judge_for_merge(ctx, task, &pr, &states).await;
     }
     let pending = states.iter().any(CheckState::pending);
     match (task.state, pending) {
-        (TaskState::Ended, true) => wait(ctx, task, &pr, &states, key).await,
+        (TaskState::Ended, true) => wait(ctx, task, &pr, &states).await,
         (TaskState::Ended, false) => record(ctx, task, &states).await,
-        (TaskState::InCi, true) => bound(ctx, task, &pr, &states, key).await,
-        (TaskState::InCi, false) => relaunch(ctx, task, &pr, &states, key, None).await,
+        (TaskState::InCi, true) => Ok(()),
+        (TaskState::InCi, false) => relaunch(ctx, task, &pr, &states, None).await,
         _ => Ok(()),
     }
 }
 
-async fn judge_for_merge(
-    ctx: &Context,
-    task: &Task,
-    pr: &Pr,
-    states: &[CheckState],
-    key: &(PathBuf, String),
-) -> Result<()> {
+async fn judge_for_merge(ctx: &Context, task: &Task, pr: &Pr, states: &[CheckState]) -> Result<()> {
     let seen = match all_green(states) {
         true => facts(ctx, task, pr.number).await?,
         false => None,
     };
     match decide(states, seen.as_ref()) {
         Verdict::Merge => match seen {
-            Some(f) => merge(ctx, task, pr, states, &f.head, key).await,
+            Some(f) => merge(ctx, task, pr, states, &f.head).await,
             None => Ok(()),
         },
         Verdict::Wait => match task.state {
-            TaskState::Ended => wait(ctx, task, pr, states, key).await,
-            _ => bound(ctx, task, pr, states, key).await,
+            TaskState::Ended => wait(ctx, task, pr, states).await,
+            _ => Ok(()),
         },
         Verdict::Relaunch => {
             if task.state == TaskState::Ended {
@@ -210,10 +191,9 @@ async fn judge_for_merge(
                 {
                     return Ok(());
                 }
-                begin_wait(key);
             }
             let advice = seen.map(|f| fix_advice(task.pr_target(), &f));
-            relaunch(ctx, task, pr, states, key, advice).await
+            relaunch(ctx, task, pr, states, advice).await
         }
     }
 }
@@ -234,7 +214,6 @@ async fn merge(
     pr: &Pr,
     states: &[CheckState],
     head: &str,
-    key: &(PathBuf, String),
 ) -> Result<()> {
     let head = head.to_string();
     let merged = on_forge(ctx, task, pr.number, move |req, programs| {
@@ -265,7 +244,6 @@ async fn merge(
         Err(Error::Conflict(m)) if m == MOVED => return Ok(()),
         Err(e) => return Err(e),
     }
-    end_wait(key);
     let said = format!(
         "task {} merged PR #{} into {}: merged, sha {sha}",
         task.name,
@@ -299,28 +277,21 @@ async fn waits_done(ctx: &Context, task: &Task) -> Result<usize> {
         .count())
 }
 
-async fn wait(
-    ctx: &Context,
-    task: &Task,
-    pr: &Pr,
-    states: &[CheckState],
-    key: &(PathBuf, String),
-) -> Result<()> {
+async fn wait(ctx: &Context, task: &Task, pr: &Pr, states: &[CheckState]) -> Result<()> {
     let seen = describe(states);
     if waits_done(ctx, task).await? >= ctx.pacing().ci_waits {
         let why = format!(
-            "its pull request #{} still has pending checks after {} waits for CI ({seen})",
+            "CI is still pending on PR #{} after {} waits ({seen}): check the run, then tell it to continue or stop",
             pr.number,
             ctx.pacing().ci_waits
         );
-        return needs_you(ctx, task, TaskState::Ended, why, key).await;
+        return needs_you(ctx, task, TaskState::Ended, why).await;
     }
     let store = ctx.store()?;
     if transition(store, &task.name, TaskState::Ended, TaskState::InCi)
         .await?
         .is_some()
     {
-        begin_wait(key);
         let text = format!(
             "ended with pending checks: waiting for CI on PR #{} ({seen})",
             pr.number
@@ -333,26 +304,6 @@ async fn wait(
         store.append_entry(&task.conversation_id, body).await?;
     }
     Ok(())
-}
-
-async fn bound(
-    ctx: &Context,
-    task: &Task,
-    pr: &Pr,
-    states: &[CheckState],
-    key: &(PathBuf, String),
-) -> Result<()> {
-    let limit = ctx.pacing().ci_timeout;
-    if waited(key) < limit {
-        return Ok(());
-    }
-    let why = format!(
-        "its pull request #{} still has pending checks after waiting {} min for CI ({})",
-        pr.number,
-        limit.as_secs() / 60,
-        describe(states)
-    );
-    needs_you(ctx, task, TaskState::InCi, why, key).await
 }
 
 fn judged(states: &[CheckState]) -> Checks {
@@ -384,7 +335,6 @@ async fn relaunch(
     task: &Task,
     pr: &Pr,
     states: &[CheckState],
-    key: &(PathBuf, String),
     advice: Option<String>,
 ) -> Result<()> {
     record(ctx, task, states).await?;
@@ -396,14 +346,11 @@ async fn relaunch(
     );
     let store = ctx.store()?;
     match store.hand_after_ci(&task.name, &task.agent, &reason).await {
-        Ok(_) => {
-            end_wait(key);
-            Ok(())
-        }
+        Ok(_) => Ok(()),
         Err(Error::Conflict(why)) => {
             let still = store.find_task(&task.name).await?;
             match still.is_some_and(|t| t.state == TaskState::InCi) {
-                true => needs_you(ctx, task, TaskState::InCi, why, key).await,
+                true => needs_you(ctx, task, TaskState::InCi, why).await,
                 false => Ok(()),
             }
         }
@@ -411,13 +358,7 @@ async fn relaunch(
     }
 }
 
-async fn needs_you(
-    ctx: &Context,
-    task: &Task,
-    from: TaskState,
-    why: String,
-    key: &(PathBuf, String),
-) -> Result<()> {
+async fn needs_you(ctx: &Context, task: &Task, from: TaskState, why: String) -> Result<()> {
     let store = ctx.store()?;
     let blocked = plan::capped(&why, 500);
     let held = blocked.clone();
@@ -431,7 +372,6 @@ async fn needs_you(
     };
     match store.update_task(&task.name, change).await {
         Ok(_) => {
-            end_wait(key);
             let said = format!("task {} needs you: {blocked}", task.name);
             let body = EntryBody::NeedsYou {
                 agent: task.name.clone(),

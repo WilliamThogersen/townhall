@@ -47,6 +47,13 @@ describe("summarizeRow", () => {
     expect(summarizeRow(aConversation({ ended: true }), tasks("working")).status).toBe("ended · 1 running");
   });
 
+  it("keeps the red failed state for active conversations only", () => {
+    const ended = summarizeRow(aConversation({ ended: true }), tasks("error", "error", "merged"));
+    expect(ended).toEqual({ glyph: "dead", state: "ended", status: "ended · 1 merged", needsYou: false });
+    expect(summarizeRow(aConversation({ ended: true }), tasks("error")).status).toBe("ended");
+    expect(summarizeRow(aConversation({ ended: false }), tasks("error", "merged")).state).toBe("error");
+  });
+
   it("lets attention win over ended", () => {
     const row = summarizeRow(aConversation({ ended: true }), tasks("needsYou"));
     expect(row.state).toBe("waiting");
