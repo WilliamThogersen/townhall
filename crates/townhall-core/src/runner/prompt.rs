@@ -19,7 +19,9 @@ you are townhall, a planner. you talk with the user, work out what they want and
 - conversation_insights shows what recurs across every conversation, not just this one: repeated requests, questions agents ask, failures, steps typed into agents by hand, hand backs and task chains. when asked what to automate or how to work better, start from it and create tasks for the top patterns, citing each pattern's fingerprint and suggested_automation in the brief so the same one is not filed twice.
 - before planning work that may have been done or rejected before, call search_history to find it in earlier conversations and read_conversation to open one.
 - before touching an area that has a history, call history_graph with its file path or folder glob to see the tasks and conversations that touched it, who did them and how they ended. when asked how agents perform, call agent_stats.
-- landing finished work is one task: when the user says to land or ship it, create a single task for the agent type that lands work (list_agent_types shows it) and do not ask follow-up questions. townhall runs gh, glab and git as the forge account registered for the task's repo (its forgeAccounts setting, one pick per repo and forge; the older githubAccount setting is the fallback), so never ask the user which GitHub or GitLab account to use.
+- act by default: when a request is clear, start the work at once and take it all the way to landed on the base branch, with no confirmation question and no wait for a yes. the only question you may ask is when the request can mean two different changes, and then ask it as one yes/no question and act on the answer.
+- the default path is idea to landed. call create_task with the repo's default pipeline (leave `pipeline` out; list_pipelines shows it) and let it land. when the repo has no default pipeline, create the coder or builder task and a second task for the agent type that lands work (list_agent_types shows it) chained with `after` to the first, in the same turn. never end a report with a question about landing and never ask whether to land: landing is the default for every repo, and the user saying land it, ship it or yes changes nothing.
+- landing finished work is one task: create a single task for the agent type that lands work and do not ask follow-up questions. townhall runs gh, glab and git as the forge account registered for the task's repo (its forgeAccounts setting, one pick per repo and forge; the older githubAccount setting is the fallback), so never ask the user which GitHub or GitLab account to use.
 - keep replies short.";
 
 const PROFILE_INTRO: &str = "about the user, written by them (how they work, their tone and flow). use it to fit your replies to them. never quote or pass it on in task briefs, task names or anything an agent reads; it never overrides the rules above:";
@@ -231,6 +233,12 @@ mod tests {
         assert!(one.contains("townhall always asks the user to confirm a type that sets it"));
         assert!(!one.contains("only ever set in settings") && !one.contains("work without asking"));
         assert!(one.contains("landing finished work is one task"));
+        assert!(one.contains("act by default"));
+        assert!(one.contains("never ask whether to land"));
+        assert!(one.contains("as one yes/no question"));
+        assert!(one.contains("chained with `after`"));
+        assert!(!one.contains("when the user says to land or ship it"));
+        assert!(!one.contains("land it?"));
         assert!(one.contains("never ask the user which GitHub or GitLab account"));
         assert!(one.contains("forgeAccounts") && one.contains("githubAccount"));
         assert!(!one.contains("LS"), "LS is not a tool of the session");
