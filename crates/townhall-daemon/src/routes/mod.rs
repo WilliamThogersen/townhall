@@ -170,6 +170,7 @@ pub fn router(state: AppState) -> Router {
         .route("/settings", get(settings::get))
         .route("/settings/{key}", put(settings::put))
         .route("/permissions", get(permissions::get))
+        .route("/permissions/suggestions/accept", post(permissions::accept))
         .route(
             "/profile",
             get(profile::get).put(profile::put).delete(profile::remove),
