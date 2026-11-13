@@ -142,6 +142,7 @@ async fn tasks_and_agent_reports_carry_their_task_agent_state_branch_and_pr() {
         agent: "fix-login".into(),
         question: "keep the oauth provider?".into(),
         choices: vec![],
+        advice: None,
     };
     env.store.append_entry(&c.id, asks).await.unwrap();
 

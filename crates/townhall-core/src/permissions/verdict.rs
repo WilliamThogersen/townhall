@@ -91,7 +91,13 @@ fn screen_command(screen: &str) -> String {
         .filter(|l| !l.is_empty());
     let mut kept: Vec<&str> = above.copied().collect();
     kept.reverse();
-    kept.join("\n")
+    let tool = kept.first().and_then(|l| l.strip_suffix(" command"));
+    match tool {
+        Some(tool) if kept.len() > 1 && tool.chars().all(|c| c.is_alphanumeric() || c == '_') => {
+            format!("{tool}: {}", kept[1..].join("\n"))
+        }
+        _ => kept.join("\n"),
+    }
 }
 
 pub fn prompt_of(question: &str, screen: Option<&str>) -> Option<Prompt> {
@@ -111,10 +117,14 @@ pub fn prompt_of(question: &str, screen: Option<&str>) -> Option<Prompt> {
         .find(|(_, l)| starts(l, "yes") && !l.to_lowercase().contains("don't ask again"))?;
     let deny = options.iter().rev().find(|(_, l)| starts(l, "no"))?;
     let mut command = lines[..at].join("\n");
-    if command.is_empty() {
-        command = screen.map(screen_command).unwrap_or_default();
+    let shown = screen.map(screen_command).unwrap_or_default();
+    if !shown.is_empty() && !command.contains(&shown) {
+        if !command.is_empty() {
+            command.push('\n');
+        }
+        command.push_str(&shown);
     }
-    (!command.is_empty()).then(|| Prompt {
+    Some(Prompt {
         command,
         allow_key: allow.0.clone(),
         deny_key: deny.0.clone(),
@@ -228,6 +238,28 @@ mod tests {
         let two = "Edit: src/a.rs\nDo you want to make this edit to src/a.rs?\n1. Yes\n2. No";
         let p = prompt_of(two, None).unwrap();
         assert_eq!((p.allow_key.as_str(), p.deny_key.as_str()), ("1", "2"));
+    }
+
+    #[test]
+    fn a_screens_tool_header_becomes_a_call_line() {
+        let question = "Do you want to proceed?\n1. Yes\n2. No";
+        let screen = " Bash command\n\n   cargo test -p x\n   Run the tests\n\n Do you want to proceed?\n \u{276f} 1. Yes\n   2. No\n";
+        let p = prompt_of(question, Some(screen)).unwrap();
+        assert_eq!(p.command, "Bash: cargo test -p x\nRun the tests");
+        assert_eq!(pattern_of(&p.command), "Bash(cargo test *)");
+    }
+
+    #[test]
+    fn a_call_line_and_the_screen_both_count() {
+        let screen =
+            " Bash command\n\n   rm -rf build /etc\n\n Do you want to proceed?\n 1. Yes\n 2. No\n";
+        let p = prompt_of(PENDING, Some(screen)).unwrap();
+        assert!(
+            p.command.starts_with("Bash: rm -rf build\n"),
+            "{}",
+            p.command
+        );
+        assert!(p.command.contains("rm -rf build /etc"), "{}", p.command);
     }
 
     #[test]
