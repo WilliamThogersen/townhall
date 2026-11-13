@@ -16,6 +16,7 @@ const bodies: readonly EntryBody[] = [
   { kind: "repoAsk", question: "which one?", candidates: ["shop", "admin"], offerAll: false },
   { kind: "tasksCreated", tasks: ["fix-login"] },
   { kind: "needsYou", agent: "fix-login", question: "go?", choices: ["y", "n"] },
+  { kind: "needsYou", agent: "fix-login", question: "go?", choices: ["y", "n"], advice: "it publishes" },
   { kind: "agent", agent: "fix-login", event: "passed", text: "merged into main" },
   { kind: "event", text: "task fix ended (ended)" },
   { kind: "handoff", task: "fix-login", from: "shipper", to: "coder", reason: "lint fails" },
@@ -39,6 +40,12 @@ describe("conversation guards", () => {
   it.each(bodies.map((body) => [body.kind, body] as const))("reads a %s entry", (_, body) => {
     const entry = anEntry(4, body);
     expect(parseThreadEntry(entry)).toEqual(entry);
+  });
+
+  it("keeps no advice key on a needs-you entry that has none and refuses a bad one", () => {
+    const plain = anEntry(4, { kind: "needsYou", agent: "a", question: "go?", choices: [] });
+    expect("advice" in parseThreadEntry(plain)).toBe(false);
+    expect(() => parseThreadEntry({ ...plain, advice: 3 })).toThrow("entry.advice");
   });
 
   it("refuses unknown kinds and missing fields", () => {

@@ -159,7 +159,8 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
             "minFreeDiskGb": 5, "learnAboutMe": false,
             "githubAccount": "WilliamThogersen", "forgeAccounts": [],
             "reflectAfterTasks": false, "clonesDir": "",
-            "flakyChecks": ["secret-detection"]
+            "flakyChecks": ["secret-detection"],
+            "adviserPermissions": true, "permissionTimeoutSecs": 60
         })
     );
     let put = Some(json!({"value": [{"forge": "gitlab", "login": "me"}]}));

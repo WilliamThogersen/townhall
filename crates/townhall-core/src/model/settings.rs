@@ -9,6 +9,9 @@ pub const AGENTS_AT_ONCE_MAX: u32 = 50;
 pub const AGENTS_AT_ONCE_DEFAULT: u32 = 6;
 pub const DISK_GB_MAX: u32 = 100_000;
 pub const MIN_FREE_DISK_GB_DEFAULT: u32 = 5;
+pub const PERMISSION_TIMEOUT_SECS_MIN: u32 = 5;
+pub const PERMISSION_TIMEOUT_SECS_MAX: u32 = 600;
+pub const PERMISSION_TIMEOUT_SECS_DEFAULT: u32 = 60;
 
 /// Claude Code's `--permission-mode`, named as in `web/src/settings/settings.ts`.
 /// `BypassPermissions` is `skip all`; only an agent type's `permission_mode` sets it.
@@ -70,10 +73,12 @@ pub enum SettingKey {
     ReflectAfterTasks,
     ClonesDir,
     FlakyChecks,
+    AdviserPermissions,
+    PermissionTimeoutSecs,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 11] = [
+    pub const ALL: [SettingKey; 13] = [
         Self::AgentsAtOnce,
         Self::RepoUnclear,
         Self::SessionPanelOpen,
@@ -85,6 +90,8 @@ impl SettingKey {
         Self::ReflectAfterTasks,
         Self::ClonesDir,
         Self::FlakyChecks,
+        Self::AdviserPermissions,
+        Self::PermissionTimeoutSecs,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -100,6 +107,8 @@ impl SettingKey {
             Self::ReflectAfterTasks => "reflectAfterTasks",
             Self::ClonesDir => "clonesDir",
             Self::FlakyChecks => "flakyChecks",
+            Self::AdviserPermissions => "adviserPermissions",
+            Self::PermissionTimeoutSecs => "permissionTimeoutSecs",
         }
     }
 
@@ -121,9 +130,14 @@ impl SettingKey {
         let valid = match self {
             Self::RepoUnclear => parses::<RepoUnclear>(value),
             Self::NotifyWhen => parses::<NotifyWhen>(value),
-            Self::SessionPanelOpen | Self::LearnAboutMe | Self::ReflectAfterTasks => {
-                value.is_boolean()
-            }
+            Self::SessionPanelOpen
+            | Self::LearnAboutMe
+            | Self::ReflectAfterTasks
+            | Self::AdviserPermissions => value.is_boolean(),
+            Self::PermissionTimeoutSecs => value.as_u64().is_some_and(|n| {
+                (u64::from(PERMISSION_TIMEOUT_SECS_MIN)..=u64::from(PERMISSION_TIMEOUT_SECS_MAX))
+                    .contains(&n)
+            }),
             Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
             Self::GithubAccount => value.as_str().is_some_and(is_github_login),
             Self::ClonesDir => value.as_str().is_some_and(is_clones_dir),
@@ -188,6 +202,8 @@ pub struct Settings {
     /// The folder a repo added by link is cloned into; empty means `<home>/repos`.
     pub clones_dir: String,
     pub flaky_checks: Vec<String>,
+    pub adviser_permissions: bool,
+    pub permission_timeout_secs: u32,
 }
 
 impl Default for Settings {
@@ -204,6 +220,8 @@ impl Default for Settings {
             reflect_after_tasks: false,
             clones_dir: String::new(),
             flaky_checks: vec!["secret-detection".to_string()],
+            adviser_permissions: true,
+            permission_timeout_secs: PERMISSION_TIMEOUT_SECS_DEFAULT,
         }
     }
 }
@@ -231,6 +249,12 @@ impl Settings {
             reflect_after_tasks: field(raw, SettingKey::ReflectAfterTasks, d.reflect_after_tasks),
             clones_dir: field(raw, SettingKey::ClonesDir, d.clones_dir),
             flaky_checks: field(raw, SettingKey::FlakyChecks, d.flaky_checks),
+            adviser_permissions: field(raw, SettingKey::AdviserPermissions, d.adviser_permissions),
+            permission_timeout_secs: field(
+                raw,
+                SettingKey::PermissionTimeoutSecs,
+                d.permission_timeout_secs,
+            ),
         }
     }
 
@@ -280,7 +304,9 @@ mod tests {
                 "forgeAccounts": [],
                 "reflectAfterTasks": false,
                 "clonesDir": "",
-                "flakyChecks": ["secret-detection"]
+                "flakyChecks": ["secret-detection"],
+                "adviserPermissions": true,
+                "permissionTimeoutSecs": 60
             })
         );
         let keys: Vec<&str> = SettingKey::ALL.iter().map(|k| k.as_str()).collect();
@@ -438,6 +464,32 @@ mod tests {
         );
         assert!(SettingKey::ReflectAfterTasks.check(&json!(true)).is_ok());
         assert!(SettingKey::ReflectAfterTasks.check(&json!(1)).is_err());
+    }
+
+    #[test]
+    fn the_adviser_answers_permission_prompts_for_60_seconds_unless_turned_off() {
+        let d = Settings::default();
+        assert!(d.adviser_permissions);
+        assert_eq!(d.permission_timeout_secs, PERMISSION_TIMEOUT_SECS_DEFAULT);
+        let off: Settings = serde_json::from_value(json!({"adviserPermissions": false})).unwrap();
+        assert!(!off.adviser_permissions);
+        let bad: Settings = serde_json::from_value(json!({"adviserPermissions": "no"})).unwrap();
+        assert!(bad.adviser_permissions);
+        let slow: Settings = serde_json::from_value(json!({"permissionTimeoutSecs": 120})).unwrap();
+        assert_eq!(slow.permission_timeout_secs, 120);
+        for bad in [json!(0), json!(4), json!(601), json!("60"), json!(1.5)] {
+            assert!(
+                SettingKey::PermissionTimeoutSecs.check(&bad).is_err(),
+                "{bad}"
+            );
+        }
+        assert!(SettingKey::PermissionTimeoutSecs.check(&json!(5)).is_ok());
+        assert!(SettingKey::AdviserPermissions.check(&json!(false)).is_ok());
+        assert!(SettingKey::AdviserPermissions.check(&json!(0)).is_err());
+        assert_eq!(
+            SettingKey::parse("permissionTimeoutSecs").unwrap(),
+            SettingKey::PermissionTimeoutSecs
+        );
     }
 
     #[test]

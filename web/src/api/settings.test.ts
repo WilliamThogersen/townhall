@@ -15,6 +15,8 @@ const daemon: Settings = {
   reflectAfterTasks: true,
   clonesDir: "~/Developer",
   flakyChecks: ["lint"],
+  adviserPermissions: false,
+  permissionTimeoutSecs: 90,
 };
 
 function mockFetch(status: number, body: unknown) {

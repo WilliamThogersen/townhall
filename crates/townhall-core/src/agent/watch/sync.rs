@@ -86,6 +86,7 @@ fn entry_for(agent: &str, now: &AgentState) -> Option<EntryBody> {
             agent: agent.to_string(),
             question: question.clone(),
             choices: choices(question),
+            advice: None,
         }),
         AgentState::Error { exit_code } => {
             let text = match exit_code {
@@ -187,6 +188,7 @@ mod tests {
                 agent: "fix".into(),
                 question: "go? [y/n]".into(),
                 choices: vec!["y".into(), "n".into()],
+                advice: None,
             })
         );
         let back = plan(&task(TaskState::NeedsYou), &AgentState::Working, None).unwrap();

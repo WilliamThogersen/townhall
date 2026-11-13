@@ -172,6 +172,7 @@ fn needs_you_failed_sent_and_errors_are_counted_per_kind() {
                 agent: name.into(),
                 question: format!("Run the migrations for {name}?"),
                 choices: vec![],
+                advice: None,
             },
         )
     };

@@ -73,6 +73,8 @@ pub enum EntryBody {
         agent: String,
         question: String,
         choices: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        advice: Option<String>,
     },
     Agent {
         agent: String,
@@ -198,8 +200,18 @@ mod tests {
                 agent: "fix-login".into(),
                 question: "run migrations?".into(),
                 choices: vec!["y".into(), "n".into()],
+                advice: None,
             },
             json!({"kind": "needsYou", "agent": "fix-login", "question": "run migrations?", "choices": ["y", "n"]}),
+        );
+        round_trip(
+            EntryBody::NeedsYou {
+                agent: "fix-login".into(),
+                question: "Do you want to proceed?".into(),
+                choices: vec!["1".into()],
+                advice: Some("it publishes to npm".into()),
+            },
+            json!({"kind": "needsYou", "agent": "fix-login", "question": "Do you want to proceed?", "choices": ["1"], "advice": "it publishes to npm"}),
         );
         round_trip(
             EntryBody::Agent {

@@ -135,6 +135,7 @@ mod tests {
             agent: "fix-login".into(),
             question: "run migrations?".into(),
             choices: vec![],
+            advice: None,
         };
         assert_eq!(
             quote_of(asks).unwrap(),

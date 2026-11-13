@@ -22,6 +22,8 @@ export interface Settings {
   readonly reflectAfterTasks: boolean;
   readonly clonesDir: string;
   readonly flakyChecks: readonly string[];
+  readonly adviserPermissions: boolean;
+  readonly permissionTimeoutSecs: number;
 }
 
 export const REPO_UNCLEAR_VALUES: readonly RepoUnclear[] = ["ask", "guess"];
@@ -34,6 +36,8 @@ export const AGENTS_AT_ONCE_MAX = 50;
 export const DISK_GB_MAX = 100_000;
 export const FLAKY_CHECKS_MAX = 50;
 export const FLAKY_CHECK_NAME_MAX = 100;
+export const PERMISSION_TIMEOUT_MIN = 5;
+export const PERMISSION_TIMEOUT_MAX = 600;
 
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
   agentsAtOnce: 6,
@@ -47,6 +51,8 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   reflectAfterTasks: false,
   clonesDir: "",
   flakyChecks: Object.freeze(["secret-detection"]),
+  adviserPermissions: true,
+  permissionTimeoutSecs: 60,
 });
 
 export type SettingKey = keyof Settings;
@@ -63,6 +69,8 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "reflectAfterTasks",
   "clonesDir",
   "flakyChecks",
+  "adviserPermissions",
+  "permissionTimeoutSecs",
 ]);
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -86,6 +94,13 @@ const isAgentsAtOnce: Check<number> = (value): value is number =>
 
 const isDiskGb: Check<number> = (value): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= DISK_GB_MAX;
+
+const isPermissionTimeout: Check<number> = (value): value is number =>
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= PERMISSION_TIMEOUT_MIN &&
+  value <= PERMISSION_TIMEOUT_MAX;
+
 const GITHUB_LOGIN = /^(?!-)[A-Za-z0-9-]{0,39}$/;
 
 const isGithubAccount: Check<string> = (value): value is string =>
@@ -132,6 +147,8 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   reflectAfterTasks: isFlag,
   clonesDir: isClonesDir,
   flakyChecks: isFlakyChecks,
+  adviserPermissions: isFlag,
+  permissionTimeoutSecs: isPermissionTimeout,
 };
 
 export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
@@ -162,5 +179,7 @@ export function parseSettings(raw: unknown): Settings {
     reflectAfterTasks: pick(fields, "reflectAfterTasks"),
     clonesDir: pick(fields, "clonesDir"),
     flakyChecks: pick(fields, "flakyChecks"),
+    adviserPermissions: pick(fields, "adviserPermissions"),
+    permissionTimeoutSecs: pick(fields, "permissionTimeoutSecs"),
   });
 }

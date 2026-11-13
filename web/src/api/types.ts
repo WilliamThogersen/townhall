@@ -83,6 +83,8 @@ export interface Settings {
   readonly reflectAfterTasks: boolean;
   readonly clonesDir: string;
   readonly flakyChecks: readonly string[];
+  readonly adviserPermissions: boolean;
+  readonly permissionTimeoutSecs: number;
 }
 
 export type SettingKey = keyof Settings;
@@ -161,6 +163,7 @@ export type EntryBody =
       readonly agent: string;
       readonly question: string;
       readonly choices: readonly string[];
+      readonly advice?: string;
     }
   | {
       readonly kind: "agent";

@@ -121,6 +121,7 @@ async fn every_entry_kind_round_trips_in_order() {
             agent: "t1".into(),
             question: "go?".into(),
             choices: vec!["y".into(), "n".into()],
+            advice: None,
         },
         EntryBody::Agent {
             agent: "t1".into(),
