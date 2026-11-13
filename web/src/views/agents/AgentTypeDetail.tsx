@@ -7,6 +7,7 @@ import { Button } from "../../ui/Button";
 import { Loading } from "../../ui/Loading";
 import { compactNumber } from "../home/format";
 import { AgentAvatar } from "./AgentAvatar";
+import { AgentPluginsPicker } from "./AgentPluginsPicker";
 import { AgentPrompt } from "./AgentPrompt";
 import { CopyButton } from "./CopyButton";
 import { AvatarEditor } from "./AvatarEditor";
@@ -172,6 +173,15 @@ export function AgentTypeDetail({ name, onSaved }: { readonly name: string; read
           </Field>
           <Field label="env">{envNames(data.env)}</Field>
         </dl>
+      </Section>
+      <Section title="plugins">
+        <AgentPluginsPicker
+          type={data}
+          onSaved={() => {
+            reload();
+            onSaved();
+          }}
+        />
       </Section>
       <Section title="prompt">
         <AgentPrompt prompt={data.prompt} />

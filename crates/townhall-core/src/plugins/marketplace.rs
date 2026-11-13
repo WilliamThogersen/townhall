@@ -15,7 +15,33 @@ pub const MAX_MARKETPLACE_BYTES: usize = 1024 * 1024;
 pub struct Owner {
     pub name: String,
     #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
     pub url: Option<String>,
+}
+
+pub(super) fn path_list<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Vec<String>, D::Error> {
+    match Value::deserialize(deserializer)? {
+        Value::String(path) => Ok(vec![path]),
+        Value::Array(items) => items
+            .into_iter()
+            .map(|item| match item {
+                Value::String(path) => Ok(path),
+                _ => Err(D::Error::custom("must be a path or a list of paths")),
+            })
+            .collect(),
+        _ => Err(D::Error::custom("must be a path or a list of paths")),
+    }
+}
+
+pub(super) fn check_paths(what: &str, paths: &[String]) -> Result<()> {
+    for path in paths {
+        let inside = path.strip_prefix("./").unwrap_or(path);
+        check::rel_path(what, inside)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -46,7 +72,10 @@ pub enum Source {
         git_ref: Option<String>,
         sha: Option<String>,
     },
+    Unsupported(String),
 }
+
+const UNSUPPORTED_KINDS: [&str; 1] = ["command"];
 
 #[derive(Deserialize)]
 #[serde(tag = "source", rename_all = "kebab-case", deny_unknown_fields)]
@@ -60,6 +89,8 @@ enum Tagged {
     },
     Url {
         url: String,
+        #[serde(default)]
+        path: Option<String>,
         #[serde(rename = "ref", default)]
         git_ref: Option<String>,
         #[serde(default)]
@@ -79,11 +110,36 @@ impl<'de> Deserialize<'de> for Source {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         match Value::deserialize(deserializer)? {
             Value::String(path) => Ok(Source::Path(path)),
+            Value::Object(map)
+                if map
+                    .get("source")
+                    .and_then(Value::as_str)
+                    .is_some_and(|kind| UNSUPPORTED_KINDS.contains(&kind)) =>
+            {
+                let kind = map["source"].as_str().unwrap_or_default();
+                Ok(Source::Unsupported(kind.to_string()))
+            }
             object @ Value::Object(_) => {
                 let tagged = serde_json::from_value::<Tagged>(object).map_err(D::Error::custom)?;
                 Ok(match tagged {
                     Tagged::Github { repo, git_ref, sha } => Source::Github { repo, git_ref, sha },
-                    Tagged::Url { url, git_ref, sha } => Source::Url { url, git_ref, sha },
+                    Tagged::Url {
+                        url,
+                        path: Some(path),
+                        git_ref,
+                        sha,
+                    } => Source::GitSubdir {
+                        url,
+                        path,
+                        git_ref,
+                        sha,
+                    },
+                    Tagged::Url {
+                        url,
+                        path: None,
+                        git_ref,
+                        sha,
+                    } => Source::Url { url, git_ref, sha },
                     Tagged::GitSubdir {
                         url,
                         path,
@@ -139,6 +195,7 @@ impl Source {
                 check::rel_path("path", path)?;
                 pin(git_ref, sha)
             }
+            Source::Unsupported(_) => Ok(()),
         }
     }
 }
@@ -165,6 +222,8 @@ pub struct TownhallEntry {
 #[serde(deny_unknown_fields)]
 pub struct Entry {
     pub name: String,
+    #[serde(default, rename = "displayName")]
+    pub display_name: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
@@ -185,6 +244,12 @@ pub struct Entry {
     pub keywords: Vec<String>,
     #[serde(default)]
     pub strict: Option<bool>,
+    #[serde(default, deserialize_with = "path_list")]
+    pub skills: Vec<String>,
+    #[serde(default, deserialize_with = "path_list")]
+    pub commands: Vec<String>,
+    #[serde(default, rename = "lspServers")]
+    pub lsp_servers: Option<Value>,
     pub source: Source,
     #[serde(default)]
     pub townhall: Option<TownhallEntry>,
@@ -207,6 +272,8 @@ impl Entry {
             }
             townhall.permissions.validate()?;
         }
+        check_paths("skills", &self.skills)?;
+        check_paths("commands", &self.commands)?;
         self.source.validate()
     }
 }
@@ -224,6 +291,8 @@ pub struct Marketplace {
     pub owner: Owner,
     #[serde(default)]
     pub metadata: Option<Metadata>,
+    #[serde(default)]
+    pub renames: Option<Value>,
     pub plugins: Vec<Entry>,
 }
 
