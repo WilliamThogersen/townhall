@@ -58,6 +58,15 @@ describe("library api", () => {
     await expect(getAgentType("builder")).rejects.toMatchObject({ kind: "protocol" });
   });
 
+  it("reads the plugins a type uses and leaves them out for a daemon that does not send them", async () => {
+    mockFetch(200, { ...anAgentType(), plugins: ["modern-web-guidance@claude-plugins-official"] });
+    expect((await getAgentType("web")).plugins).toEqual(["modern-web-guidance@claude-plugins-official"]);
+    mockFetch(200, anAgentType());
+    expect(await getAgentType("web")).not.toHaveProperty("plugins");
+    mockFetch(200, { ...anAgentType(), plugins: "notes" });
+    await expect(getAgentType("web")).rejects.toMatchObject({ kind: "protocol" });
+  });
+
   it("accepts null model and permission mode", async () => {
     mockFetch(200, [anAgentTypeSummary({ model: null, permissionMode: null })]);
     expect(await listAgentTypes()).toHaveLength(1);

@@ -69,6 +69,58 @@ pub async fn install_files(
     store.add_plugin(row).await.unwrap()
 }
 
+pub async fn install_plain(
+    store: &Store,
+    name: &str,
+    market: &str,
+    files: &[(&str, &str)],
+    source: serde_json::Value,
+    enabled: bool,
+) -> Plugin {
+    let root = store
+        .home()
+        .plugins_dir()
+        .unwrap()
+        .join("cache")
+        .join(market)
+        .join(name)
+        .join(SHA);
+    for (rel, text) in files {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    if store.marketplace(market).await.is_err() {
+        let row = Marketplace {
+            name: market.into(),
+            source: json!({"source": "github", "repo": "acme/market"}),
+            account: None,
+            enabled: true,
+            official: false,
+            head_sha: None,
+            fetched_at: None,
+            error: None,
+        };
+        store.add_marketplace(row).await.unwrap();
+    }
+    let row = Plugin {
+        id: String::new(),
+        marketplace: market.into(),
+        name: name.into(),
+        version: Some("1.0.0".into()),
+        sha: SHA.into(),
+        source,
+        enabled,
+        pinned: false,
+        permissions_hash: "sha256:aa".into(),
+        approved: json!([]),
+        installed_at: String::new(),
+        updated_at: String::new(),
+        error: None,
+    };
+    store.add_plugin(row).await.unwrap()
+}
+
 pub fn everything(name: &str) -> serde_json::Value {
     json!({
         "name": name,

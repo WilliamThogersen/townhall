@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aTask } from "../../../api/fixtures";
 import type { Pr, Task, TaskState } from "../../../api/types";
-import { pendingAfter, sortTasks, taskSummary, taskView } from "./taskRows";
+import { NEEDS_YOU_FALLBACK, pendingAfter, reasonOf, sortTasks, taskSummary, taskView } from "./taskRows";
 
 const pr = (over: Partial<Pr> = {}): Pr => ({ number: 41, url: "https://git.test/pr/41", checks: "pending", ...over });
 
@@ -207,5 +207,26 @@ describe("taskSummary", () => {
   it("says task for one and tasks for none", () => {
     expect(taskSummary([named("a", "working")])).toBe("1 task · 1 working");
     expect(taskSummary([])).toBe("0 tasks");
+  });
+});
+
+describe("the reason a task needs you", () => {
+  it("shows what the daemon stored on a needs-you row", () => {
+    const why = "CI is still pending on PR #148 after 3 waits (build: IN_PROGRESS): check the run, then tell it to continue or stop";
+    const view = taskView(named("land", "needsYou", { blocked: why }), []);
+    expect(view.words).toBe("needs you");
+    expect(view.blocked).toBe(why);
+    expect(reasonOf(named("land", "needsYou", { blocked: why }))).toBe(why);
+  });
+
+  it("never leaves a needs-you row without a reason", () => {
+    for (const blocked of [null, "", "  "]) {
+      expect(taskView(named("land", "needsYou", { blocked }), []).blocked).toBe(NEEDS_YOU_FALLBACK);
+    }
+  });
+
+  it("has no reason for a task that does not need you", () => {
+    expect(reasonOf(named("land", "inCi", { blocked: "old" }))).toBeNull();
+    expect(taskView(named("land", "inCi", { blocked: "old" }), []).blocked).toBeNull();
   });
 });

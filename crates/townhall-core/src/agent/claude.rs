@@ -297,6 +297,22 @@ fn add_dirs(options: &LaunchOptions) -> Result<Vec<String>> {
     options.add_dirs.iter().map(|dir| add_dir(dir)).collect()
 }
 
+fn plugin_dirs(options: &LaunchOptions) -> Result<Vec<String>> {
+    options
+        .plugin_dirs
+        .iter()
+        .map(|dir| {
+            plain("plugin folder", dir)?;
+            if !Path::new(dir).is_absolute() {
+                return Err(Error::InvalidInput(format!(
+                    "plugin folder {dir:?} must be an absolute path"
+                )));
+            }
+            Ok(format!("--plugin-dir={dir}"))
+        })
+        .collect()
+}
+
 fn prompt(options: &LaunchOptions) -> Vec<String> {
     match options.prompt.as_deref().filter(|p| !p.is_empty()) {
         Some(p) if p.chars().any(char::is_whitespace) => vec![END_OF_OPTIONS.into(), p.into()],
@@ -332,6 +348,7 @@ impl ClaudeCodeAdapter {
             add_dirs(options)?,
             isolation(options)?,
             mcp_config(options)?,
+            plugin_dirs(options)?,
             prompt(options),
         ]
         .concat())
