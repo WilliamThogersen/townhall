@@ -2,7 +2,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/errors";
-import { aMarketplace, anAvailablePlugin, aPlugin, aPreview } from "../../api/fixtures";
+import { aMarketplace, anAgentTypeSummary, anAvailablePlugin, aPlugin, aPreview } from "../../api/fixtures";
+import * as libraryApi from "../../api/library";
 import * as marketsApi from "../../api/marketplaces";
 import * as pluginsApi from "../../api/plugins";
 import type { Marketplace, PluginList } from "../../api/types";
@@ -112,6 +113,46 @@ describe("PluginsPage marketplaces", () => {
     stub({ markets: [aMarketplace({ error: "could not fetch" })] });
     renderPage();
     expect(await within(await section("marketplaces")).findByText("could not fetch")).toBeInTheDocument();
+  });
+
+  it("adds Anthropic's marketplace in one click", async () => {
+    const add = vi.spyOn(marketsApi, "addMarketplace").mockResolvedValue(aMarketplace({ name: "claude-plugins-official" }));
+    renderPage();
+    const markets = await section("marketplaces");
+    await userEvent.click(within(markets).getByRole("button", { name: "add claude-plugins-official" }));
+    expect(add).toHaveBeenCalledWith({ source: "anthropics/claude-plugins-official" });
+  });
+
+  it("does not offer a known marketplace the user already has", async () => {
+    stub({ markets: [official, aMarketplace({ name: "Claude-Plugins-Official" })] });
+    renderPage();
+    const markets = await section("marketplaces");
+    expect(within(markets).queryByRole("button", { name: "add claude-plugins-official" })).toBeNull();
+  });
+});
+
+describe("PluginsPage installed plugins that add skills", () => {
+  it("says how many skills and commands an installed plugin adds and lets the user pick the types", async () => {
+    vi.spyOn(libraryApi, "listAgentTypes").mockResolvedValue([
+      anAgentTypeSummary({ name: "coder", plugins: ["modern-web-guidance@claude-plugins-official"] }),
+    ]);
+    stub({
+      list: {
+        installed: [
+          aPlugin({
+            id: "modern-web-guidance@claude-plugins-official",
+            name: "modern-web-guidance",
+            marketplace: "claude-plugins-official",
+            permissions: ["claude.skill:chrome-extensions", "claude.skill:modern-web-guidance", "claude.command:go"],
+          }),
+        ],
+      },
+    });
+    renderPage();
+    const installed = await section("installed plugins");
+    const row = article(installed, "modern-web-guidance@claude-plugins-official");
+    expect(within(row).getByText("adds 2 skills, 1 command")).toBeInTheDocument();
+    expect(await within(row).findByText("used by 1 agent type")).toBeInTheDocument();
   });
 });
 

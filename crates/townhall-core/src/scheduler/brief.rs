@@ -16,6 +16,7 @@ const TASKS_DIR: &str = "tasks";
 const BRIEF_FILE: &str = "brief.md";
 const MCP_FILE: &str = "mcp.json";
 const SETTINGS_FILE: &str = "claude-settings.json";
+const PLUGINS_DIR: &str = "plugins";
 
 /// `<home>/tasks/<name>/brief.md`, absolute.
 pub fn brief_file(home: &Home, name: &str) -> PathBuf {
@@ -30,6 +31,11 @@ pub fn mcp_file(home: &Home, name: &str) -> PathBuf {
 
 pub fn settings_file(home: &Home, name: &str) -> PathBuf {
     let path = home.root().join(TASKS_DIR).join(name).join(SETTINGS_FILE);
+    std::path::absolute(&path).unwrap_or(path)
+}
+
+pub fn plugins_dir(home: &Home, name: &str) -> PathBuf {
+    let path = home.root().join(TASKS_DIR).join(name).join(PLUGINS_DIR);
     std::path::absolute(&path).unwrap_or(path)
 }
 
