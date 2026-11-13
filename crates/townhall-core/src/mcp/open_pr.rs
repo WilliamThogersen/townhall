@@ -133,6 +133,10 @@ pub(super) async fn open_pr(ctx: &Context, task: &str, input: OpenPrInput) -> Ch
                 };
                 let change = move |t: Task| Ok(Task { pr: Some(pr), ..t });
                 store.update_task(&task.name, change).await.map_err(text)?;
+                let base = task.pr_target().to_string();
+                crate::scheduler::track(ctx, &task, number, Some(url.clone()), &base)
+                    .await
+                    .map_err(text)?;
             }
             hooks::fire(
                 ctx,

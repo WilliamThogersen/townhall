@@ -31,7 +31,7 @@ fn watching<T>(key: &(PathBuf, String), act: impl FnOnce(&mut Watch) -> T) -> T 
     act(all.entry(key.clone()).or_default())
 }
 
-fn claim(key: &(PathBuf, String)) -> bool {
+pub(super) fn claim(key: &(PathBuf, String)) -> bool {
     watching(key, |w| {
         let due = w.next.is_none_or(|at| Instant::now() >= at);
         let free = due && !w.busy;
@@ -40,7 +40,7 @@ fn claim(key: &(PathBuf, String)) -> bool {
     })
 }
 
-fn release(key: &(PathBuf, String), poll: Duration) {
+pub(super) fn release(key: &(PathBuf, String), poll: Duration) {
     watching(key, |w| {
         w.busy = false;
         w.next = Some(Instant::now() + poll);
@@ -156,6 +156,9 @@ async fn judge(ctx: &Context, task: &Task) -> Result<()> {
     if matches!(task.state, TaskState::Ended | TaskState::InCi)
         && merges_on_green(ctx, task).await?
     {
+        if task.prs.iter().any(|p| p.number == pr.number) {
+            return Ok(());
+        }
         return judge_for_merge(ctx, task, &pr, &states).await;
     }
     let pending = states.iter().any(CheckState::pending);

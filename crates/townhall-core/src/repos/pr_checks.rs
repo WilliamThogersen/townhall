@@ -399,6 +399,48 @@ pub fn update_branch(
     }
 }
 
+fn parse_conflicts(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .skip(1)
+        .take_while(|l| !l.trim().is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+pub fn conflict_files(worktree: &Path, base: &str, head: &str) -> Result<Vec<String>> {
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .current_dir(worktree)
+            .output()
+            .map_err(|e| Error::io("run `git merge-tree`", e))
+    };
+    let remote = format!("origin/{base}");
+    let known = git(&["rev-parse", "--verify", "--quiet", &remote])?;
+    let base_ref = if known.status.success() {
+        remote.as_str()
+    } else {
+        base
+    };
+    let out = git(&[
+        "merge-tree",
+        "--write-tree",
+        "--name-only",
+        "--no-messages",
+        base_ref,
+        head,
+    ])?;
+    match out.status.code() {
+        Some(0) => Ok(Vec::new()),
+        Some(1) => Ok(parse_conflicts(&String::from_utf8_lossy(&out.stdout))),
+        _ => Err(invalid(format!(
+            "`git merge-tree` of {base_ref} and {head} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))),
+    }
+}
+
 pub fn merge_pr(req: &ChecksRequest, head: &str, programs: &Programs) -> Result<Option<String>> {
     let Some(gh) = github_of(req, programs)? else {
         return Ok(None);
@@ -536,6 +578,15 @@ mod tests {
         )
         .unwrap();
         assert!(open.merge_commit.is_none());
+    }
+
+    #[test]
+    fn conflicting_files_follow_the_tree_line() {
+        assert_eq!(
+            parse_conflicts("abc123\nsrc/a.rs\nb.txt\n\nAuto-merging x\n"),
+            vec!["src/a.rs".to_string(), "b.txt".to_string()]
+        );
+        assert!(parse_conflicts("abc123\n").is_empty());
     }
 
     #[test]
