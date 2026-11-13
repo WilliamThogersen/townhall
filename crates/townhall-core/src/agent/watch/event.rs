@@ -54,12 +54,55 @@ pub(super) async fn for_entry(ctx: &Context, task: &Task, entry: &EntryBody) -> 
             event: AgentEvent::Ended,
             text,
             ..
-        } => Some(match said(ctx, task).await {
-            Some(last) => format!("task {name} ended ({text}). its agent's last message: {last}"),
-            None => format!("task {name} ended ({text})"),
-        }),
+        } => {
+            let last = said(ctx, task).await;
+            if told_before(ctx, task, last.as_deref()).await {
+                return None;
+            }
+            Some(match last {
+                Some(last) => {
+                    format!("task {name} ended ({text}). its agent's last message: {last}")
+                }
+                None => format!("task {name} ended ({text})"),
+            })
+        }
         _ => None,
     }
+}
+
+const LAST_MARKER: &str = ". its agent's last message: ";
+
+fn same_end(told: &str, name: &str, last: Option<&str>) -> bool {
+    if !told.starts_with(&format!("task {name} ended (")) {
+        return false;
+    }
+    match last {
+        Some(l) => told.ends_with(&format!("{LAST_MARKER}{l}")),
+        None => !told.contains(LAST_MARKER),
+    }
+}
+
+async fn told_before(ctx: &Context, task: &Task, last: Option<&str>) -> bool {
+    let entries = match ctx.store() {
+        Ok(store) => store.entries(&task.conversation_id).await,
+        Err(e) => Err(e),
+    };
+    let mut texts = ctx.notes().waiting(&task.conversation_id);
+    match entries {
+        Ok(entries) => texts.extend(entries.into_iter().filter_map(|e| match e.body {
+            EntryBody::Event { text } => Some(text),
+            _ => None,
+        })),
+        Err(e) => {
+            tracing::warn!(
+                target: "townhall::agent", event = "agent.told_unread", task = %task.name,
+                error = %crate::redact::redact(&e.to_string()),
+                "could not read what the planner was already told"
+            );
+            return false;
+        }
+    }
+    texts.iter().any(|t| same_end(t, &task.name, last))
 }
 
 async fn of_a_run(ctx: &Context, task: &Task) -> bool {
@@ -122,5 +165,34 @@ mod tests {
         let cut = capped(&long);
         assert_eq!(cut.chars().count(), MAX_SAID_CHARS);
         assert!(cut.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn the_same_end_matches_across_parentheticals() {
+        let told = "task fix ended (ended). its agent's last message: done";
+        assert!(same_end(told, "fix", Some("done")));
+        let removed = "task fix ended (the agent was removed). its agent's last message: done";
+        assert!(same_end(removed, "fix", Some("done")));
+    }
+
+    #[test]
+    fn another_last_message_is_not_the_same_end() {
+        let told = "task fix ended (ended). its agent's last message: done";
+        assert!(!same_end(told, "fix", Some("done more")));
+        assert!(!same_end(told, "fix", Some("one")));
+    }
+
+    #[test]
+    fn another_task_is_not_the_same_end() {
+        let told = "task fix-2 ended (ended). its agent's last message: done";
+        assert!(!same_end(told, "fix", Some("done")));
+    }
+
+    #[test]
+    fn no_last_message_matches_only_a_text_without_one() {
+        assert!(same_end("task fix ended (ended)", "fix", None));
+        let told = "task fix ended (ended). its agent's last message: done";
+        assert!(!same_end(told, "fix", None));
+        assert!(!same_end("task fix ended (ended)", "fix", Some("done")));
     }
 }

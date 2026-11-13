@@ -156,3 +156,34 @@ async fn a_second_default_is_refused_through_save_pipeline() {
     let text = m.refused("save_pipeline", json!({"source": other})).await;
     assert!(text.contains("already the default"), "{text}");
 }
+
+#[tokio::test]
+async fn create_task_with_an_explicit_agent_makes_one_plain_task_even_with_a_default_pipeline() {
+    let m = Mcp::new().await;
+    m.note_repo("shop").await;
+    m.store().save_workflow(DEFAULT_PIPE).await.unwrap();
+    let coder = "name = \"coder\"\nadapter = \"claude\"\n";
+    let planner = "name = \"planner\"\nadapter = \"claude\"\npermission_mode = \"plan\"\n";
+    m.store().save_agent_type(coder).await.unwrap();
+    m.store().save_agent_type(planner).await.unwrap();
+
+    let mut explicit = task("fix-planner-prompt");
+    explicit["agent"] = json!("coder");
+    let made = m.ok("create_task", explicit).await;
+    assert_eq!(made["name"], "fix-planner-prompt");
+    assert_eq!(made["agent"], "coder");
+    assert!(m.store().run("fix-planner-prompt").await.unwrap().is_none());
+    let built = m
+        .store()
+        .find_task("fix-planner-prompt-build")
+        .await
+        .unwrap();
+    assert!(built.is_none());
+    let stored = m
+        .store()
+        .find_task("fix-planner-prompt")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.agent, "coder");
+}

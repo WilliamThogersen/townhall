@@ -65,6 +65,10 @@ impl AgentType {
         !self.def.name.eq_ignore_ascii_case(CONVERSATION_AGENT_TYPE)
     }
 
+    pub fn takes_hand_backs(&self) -> bool {
+        self.for_tasks() && self.def.permission_mode != Some(PermissionMode::Plan)
+    }
+
     pub fn summary(&self) -> AgentTypeSummary {
         AgentTypeSummary {
             name: self.def.name.clone(),
