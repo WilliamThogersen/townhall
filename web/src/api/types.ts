@@ -256,6 +256,7 @@ export interface AgentTypeSummary {
   readonly effort?: AgentTypeEffort | null;
   readonly permissionMode: AgentTypeMode | null;
   readonly avatar: AvatarSpec | null;
+  readonly plugins?: readonly string[];
   readonly updatedAt: string;
 }
 
@@ -320,6 +321,7 @@ export interface AgentType {
   readonly canHandBackTo: readonly string[] | null;
   readonly avatar: AvatarSpec | null;
   readonly env: Readonly<Record<string, string>>;
+  readonly plugins?: readonly string[];
   readonly source: string;
   readonly updatedAt: string;
   readonly origin?: "user" | "plugin";

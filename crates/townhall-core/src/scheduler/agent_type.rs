@@ -9,7 +9,7 @@ use crate::context::Context;
 use crate::definitions::AdapterKind;
 use crate::mcp;
 use crate::model::{AgentType, Task, ADVISER_AGENT_TYPE};
-use crate::plugins::{agent_types, claude_hooks, claude_mcp, tokens};
+use crate::plugins::{agent_types, claude_hooks, claude_mcp, skills, tokens};
 use crate::{Error, Result};
 
 use super::brief;
@@ -110,6 +110,12 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
             let path = brief::write_settings(ctx.home(), &task.name, settings).await?;
             options.settings = Some(path.display().to_string());
         }
+        let under = brief::plugins_dir(ctx.home(), &task.name);
+        options.plugin_dirs = skills::selected(store, &chosen, under)
+            .await?
+            .into_iter()
+            .map(|dir| dir.display().to_string())
+            .collect();
     }
     Ok(Launcher {
         adapter,

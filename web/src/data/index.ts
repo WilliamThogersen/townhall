@@ -14,6 +14,7 @@ export { useConversation, useConversations } from "./useConversations";
 export { useConversationActions } from "./useConversationActions";
 export { useContributions } from "./useContributions";
 export { usePipeline, usePipelines } from "./usePipelines";
+export { useInstalledPlugins } from "./useInstalledPlugins";
 export { usePlugins } from "./usePlugins";
 export { useRepos } from "./useRepos";
 export { useStats } from "./useStats";
