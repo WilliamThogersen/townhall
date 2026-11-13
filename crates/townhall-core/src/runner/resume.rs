@@ -2,24 +2,25 @@ use crate::model::{Conversation, EntryBody, ThreadEntry};
 
 pub const RESUME_NOTE: &str = "townhall restarted mid-reply (automatic, the user did not write this): continue where you left off";
 
+pub const RESUMED_MARKER: &str = "resumed after restart";
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Plan {
     Resume(u64),
-    Restarted,
+    Restarted(&'static str),
 }
 
 pub(super) fn plan(conversation: &Conversation, entries: &[ThreadEntry]) -> Plan {
-    let trigger = entries.iter().rev().find(|e| {
-        matches!(
-            e.body,
-            EntryBody::You { .. } | EntryBody::Plugin { .. } | EntryBody::Event { .. }
-        )
+    let trigger = entries.iter().rev().find(|e| match &e.body {
+        EntryBody::You { .. } | EntryBody::Plugin { .. } => true,
+        EntryBody::Event { text } => text != RESUMED_MARKER,
+        _ => false,
     });
     match trigger {
-        Some(entry) if conversation.session_started && !conversation.ended => {
-            Plan::Resume(entry.id)
-        }
-        _ => Plan::Restarted,
+        None => Plan::Restarted("no message or event to resume"),
+        Some(_) if !conversation.session_started => Plan::Restarted("no claude session started"),
+        Some(_) if conversation.ended => Plan::Restarted("conversation ended"),
+        Some(entry) => Plan::Resume(entry.id),
     }
 }
 
@@ -87,14 +88,28 @@ mod tests {
     }
 
     #[test]
+    fn the_resumed_marker_is_not_a_turn() {
+        let marker = entry(
+            4,
+            EntryBody::Event {
+                text: RESUMED_MARKER.into(),
+            },
+        );
+        let entries = [you(1), reply(2), you(3), marker];
+        assert_eq!(plan(&conversation(true), &entries), Plan::Resume(3));
+    }
+
+    #[test]
     fn no_started_session_keeps_the_restart_message() {
-        assert_eq!(plan(&conversation(false), &[you(1)]), Plan::Restarted);
+        let planned = plan(&conversation(false), &[you(1)]);
+        assert_eq!(planned, Plan::Restarted("no claude session started"));
     }
 
     #[test]
     fn a_thread_without_a_trigger_keeps_the_restart_message() {
-        assert_eq!(plan(&conversation(true), &[reply(1)]), Plan::Restarted);
-        assert_eq!(plan(&conversation(true), &[]), Plan::Restarted);
+        let none = Plan::Restarted("no message or event to resume");
+        assert_eq!(plan(&conversation(true), &[reply(1)]), none);
+        assert_eq!(plan(&conversation(true), &[]), none);
     }
 
     #[test]
@@ -103,6 +118,7 @@ mod tests {
             ended: true,
             ..conversation(true)
         };
-        assert_eq!(plan(&ended, &[you(1)]), Plan::Restarted);
+        let planned = plan(&ended, &[you(1)]);
+        assert_eq!(planned, Plan::Restarted("conversation ended"));
     }
 }
