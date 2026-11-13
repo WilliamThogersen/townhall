@@ -65,9 +65,12 @@ pub struct Prompt {
 }
 
 fn option_of(line: &str) -> Option<(String, String)> {
-    let line = line.trim().trim_start_matches(|c: char| "\u{276f}\u{203a}>".contains(c));
+    let line = line
+        .trim()
+        .trim_start_matches(|c: char| "\u{276f}\u{203a}>".contains(c));
     let (number, label) = line.trim().split_once(['.', ')'])?;
-    let valid = !number.is_empty() && number.len() <= 2 && number.chars().all(|c| c.is_ascii_digit());
+    let valid =
+        !number.is_empty() && number.len() <= 2 && number.chars().all(|c| c.is_ascii_digit());
     valid.then(|| (number.to_string(), label.trim().to_string()))
 }
 
@@ -98,7 +101,10 @@ pub fn prompt_of(question: &str, screen: Option<&str>) -> Option<Prompt> {
         .filter(|l| !l.is_empty())
         .collect();
     let at = lines.iter().position(|l| l.starts_with("Do you want"))?;
-    let options: Vec<(String, String)> = lines[at + 1..].iter().filter_map(|l| option_of(l)).collect();
+    let options: Vec<(String, String)> = lines[at + 1..]
+        .iter()
+        .filter_map(|l| option_of(l))
+        .collect();
     let starts = |label: &str, word: &str| label.to_lowercase().starts_with(word);
     let allow = options
         .iter()
@@ -141,7 +147,10 @@ pub fn pattern_of(command: &str) -> String {
     let sub = words
         .next()
         .filter(|w| w.starts_with(|c: char| c.is_ascii_alphabetic()))
-        .filter(|w| w.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-'));
+        .filter(|w| {
+            w.chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        });
     match sub {
         Some(sub) => format!("Bash({program} {sub} *)"),
         None => format!("Bash({program} *)"),
@@ -149,8 +158,9 @@ pub fn pattern_of(command: &str) -> String {
 }
 
 fn is_assignment(word: &str) -> bool {
-    word.split_once('=')
-        .is_some_and(|(name, _)| !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_'))
+    word.split_once('=').is_some_and(|(name, _)| {
+        !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+    })
 }
 
 #[cfg(test)]
@@ -192,7 +202,10 @@ mod tests {
     fn markup_and_case_around_the_verdict_are_ignored() {
         assert_eq!(verdict("**Allow** - tests only").0, Kind::Allow);
         assert_eq!(verdict("\n\n  deny: no\n").1, "no");
-        assert_eq!(verdict("DENY\nuse cargo check instead").1, "use cargo check instead");
+        assert_eq!(
+            verdict("DENY\nuse cargo check instead").1,
+            "use cargo check instead"
+        );
         assert_eq!(verdict("ask-user: unsure").0, Kind::AskUser);
     }
 
@@ -222,7 +235,11 @@ mod tests {
         let question = "Do you want to proceed?\n1. Yes\n2. No";
         let screen = "\u{23fa} Bash(ls)\n\u{2500}\u{2500}\u{2500}\u{2500}\n Bash command\n\n   git push --force origin main\n   Push\n\n Do you want to proceed?\n \u{276f} 1. Yes\n   2. No\n";
         let p = prompt_of(question, Some(screen)).unwrap();
-        assert!(p.command.contains("git push --force origin main"), "{}", p.command);
+        assert!(
+            p.command.contains("git push --force origin main"),
+            "{}",
+            p.command
+        );
         assert!(!p.command.contains("Bash(ls)"), "{}", p.command);
     }
 
@@ -246,7 +263,10 @@ mod tests {
             ("Bash: cargo test -p x && rm -rf y", "Bash(cargo test *)"),
             ("Bash: ls", "Bash(ls *)"),
             ("Bash: FOO=1 npm run build", "Bash(npm run *)"),
-            ("Bash: ./scripts/demo.sh --fast", "Bash(./scripts/demo.sh *)"),
+            (
+                "Bash: ./scripts/demo.sh --fast",
+                "Bash(./scripts/demo.sh *)",
+            ),
             ("Edit: src/a.rs", "Edit"),
             ("WebFetch: https://example.com", "WebFetch"),
             ("Bash: $(evil)", ""),

@@ -24,6 +24,8 @@ const custom: Settings = {
   ],
   reflectAfterTasks: true,
   clonesDir: "~/Developer",
+  adviserPermissions: false,
+  permissionTimeoutSecs: 90,
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -39,7 +41,16 @@ describe("DEFAULT_SETTINGS", () => {
       forgeAccounts: [],
       reflectAfterTasks: false,
       clonesDir: "",
+      adviserPermissions: true,
+      permissionTimeoutSecs: 60,
     });
+  });
+
+  it("checks the permission timeout like the daemon: a whole number from 5 to 600", () => {
+    [5, 60, 600].forEach((value) => expect(isSettingValue("permissionTimeoutSecs", value)).toBe(true));
+    [0, 4, 601, 1.5, "60", null].forEach((value) => expect(isSettingValue("permissionTimeoutSecs", value)).toBe(false));
+    expect(parseSettings({ permissionTimeoutSecs: 9000 }).permissionTimeoutSecs).toBe(60);
+    expect(parseSettings({ adviserPermissions: "no" }).adviserPermissions).toBe(true);
   });
 
   it("checks the clones dir like the daemon: empty, ~, ~/x or absolute", () => {

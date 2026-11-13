@@ -29,8 +29,18 @@ export const FORGE_CHOICES: readonly Choice<ForgeKind>[] = [
   { value: "gitlab", label: "gitlab" },
 ];
 
+export const PERMISSION_TIMEOUT_CHOICES: readonly Choice<string>[] = [
+  { value: "30", label: "30 s" },
+  { value: "60", label: "1 min" },
+  { value: "120", label: "2 min" },
+  { value: "300", label: "5 min" },
+];
+
 export const HELP = {
   agentsAtOnce: "the rest wait as queued and start when one finishes.",
+  adviserPermissions:
+    "when an agent asks to run a command, the adviser decides: allow, deny with a reason, or hand it to you. secrets, deletes outside the worktree, force pushes to main and dropping data always come to you.",
+  permissionTimeout: "if the adviser has not answered by then, the prompt comes to you.",
   repoUnclear: "ask shows the candidates as buttons. guess picks the best match and says why.",
   sessionPanel: "open in new conversations. you can always fold it with s.",
   clonesDir:

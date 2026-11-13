@@ -79,8 +79,7 @@ pub fn check(command: &str, worktree: &Path, base: &str) -> Option<&'static str>
         return Some("it force-pushes to main or the base branch");
     }
     let roots = roots_of(worktree);
-    if words.iter().any(|w| DELETERS.contains(&w.as_str())) && words.iter().any(|w| unresolved(w))
-    {
+    if words.iter().any(|w| DELETERS.contains(&w.as_str())) && words.iter().any(|w| unresolved(w)) {
         return Some("it deletes something it cannot tie to the worktree");
     }
     if words.iter().any(|w| outside(w, worktree, &roots)) {
@@ -123,9 +122,9 @@ fn force_pushes(words: &[String], base: &str) -> bool {
     if args.iter().any(|w| w == "--mirror") {
         return true;
     }
-    let forced = args
-        .iter()
-        .any(|w| short_force(w) || w.starts_with("--force") || w == "--delete" || w.starts_with('+'));
+    let forced = args.iter().any(|w| {
+        short_force(w) || w.starts_with("--force") || w == "--delete" || w.starts_with('+')
+    });
     if !forced {
         return false;
     }

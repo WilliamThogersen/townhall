@@ -9,6 +9,7 @@ mod attachment;
 mod conversation;
 mod event;
 mod library;
+mod permission;
 mod repo;
 mod settings;
 mod task;
@@ -29,6 +30,9 @@ pub use event::ServerEvent;
 pub use library::{
     AdviserCall, AgentType, AgentTypeSummary, AgentUsage, Origin, TaskRun, Workflow,
     ADVISER_AGENT_TYPE, CONVERSATION_AGENT_TYPE, DEFAULT_AGENT_TYPE,
+};
+pub use permission::{
+    NewPermissionDecision, PermissionDecision, PermissionSuggestion, PermissionVerdict,
 };
 pub use repo::{AddRepo, PatchRepo, PutRepoAccounts, Repo};
 pub use settings::{
