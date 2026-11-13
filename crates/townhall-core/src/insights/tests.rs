@@ -64,6 +64,7 @@ fn task(name: &str, agent: &str, state: TaskState, after: &[&str], conv: &str) -
             agent: agent.into(),
             blocked: None,
             pr_base: None,
+            prs: vec![],
             done: Default::default(),
         },
         handoffs: vec![],

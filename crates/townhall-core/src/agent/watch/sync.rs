@@ -167,6 +167,7 @@ mod tests {
             agent: "builder".into(),
             blocked: None,
             pr_base: None,
+            prs: vec![],
             done: Default::default(),
         }
     }

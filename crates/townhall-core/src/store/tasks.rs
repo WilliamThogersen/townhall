@@ -86,6 +86,7 @@ fn build(row: Row) -> Result<Task> {
         agent,
         blocked,
         pr_base,
+        prs: vec![],
         done: Done {
             done_when,
             check,
@@ -252,6 +253,7 @@ fn queued(conversation_id: &str, new: NewTask) -> Task {
         agent: new.agent,
         blocked: None,
         pr_base: new.pr_base,
+        prs: vec![],
         done: Done {
             verify: None,
             ..new.done
