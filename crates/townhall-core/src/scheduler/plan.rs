@@ -21,9 +21,7 @@ pub fn closing_line(tasks: &[Task]) -> Option<String> {
         .map(|t| {
             let pr = t.pr.as_ref();
             let number = pr.map_or_else(String::new, |p| format!("PR #{}, ", p.number));
-            let sha = pr
-                .and_then(|p| p.merge_sha.as_deref())
-                .unwrap_or("unknown");
+            let sha = pr.and_then(|p| p.merge_sha.as_deref()).unwrap_or("unknown");
             format!("{}: {number}merge sha {sha}", t.name)
         })
         .collect();

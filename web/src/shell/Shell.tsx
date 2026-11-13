@@ -5,6 +5,7 @@ import { useMenuDrawer } from "./useMenuDrawer";
 import { HelpOverlay } from "./HelpOverlay";
 import { KeyBar } from "./KeyBar";
 import { KeyHintsProvider } from "./keyHints";
+import { ProgressOverview } from "../sidebar/ProgressOverview";
 import { Sidebar } from "./Sidebar";
 
 export interface ShellProps {
@@ -32,6 +33,7 @@ function Frame({ children, sidebarFoot }: ShellProps) {
           menu
         </button>
         <span className="th-wordmark">townhall</span>
+        <ProgressOverview bar />
       </header>
       <Sidebar foot={sidebarFoot} />
       <main className="th-main">

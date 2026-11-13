@@ -31,3 +31,50 @@
 .th-nav-search-input::placeholder {
   color: var(--th-fg-faint);
 }
+
+.th-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--th-space-3);
+  margin: 0 var(--th-space-2) var(--th-space-2);
+  padding: var(--th-space-1) var(--th-space-2);
+  border: var(--th-border) solid var(--th-line-strong);
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-sm);
+  text-decoration: none;
+}
+
+.th-navbar .th-progress {
+  flex: 1;
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 0 var(--th-space-2);
+}
+
+@media (max-width: 639px) {
+  .th-sidebar > .th-progress {
+    display: none;
+  }
+}
+
+.th-progress:hover {
+  background: var(--th-surface-2);
+}
+
+.th-progress-item[hidden] {
+  display: none;
+}
+
+.th-progress-item[data-kind="running"] {
+  color: var(--th-fg);
+}
+
+.th-progress-item[data-kind="waiting"] {
+  color: var(--th-accent);
+}
+
+.th-progress-item[data-kind="landed"] {
+  color: var(--th-ok);
+}
