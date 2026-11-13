@@ -345,7 +345,7 @@ async fn a_red_pr_whose_owner_has_no_hand_backs_left_needs_you_once() {
     use_up_handoffs(&s, &name).await;
     track(&s, &name).await;
     until_state(&s, &name, TaskState::NeedsYou).await;
-    let pr = tracked(&s, 7).await.unwrap();
+    let pr = until_pr(&s, |p| p.woke_for.is_some()).await;
     assert_eq!(pr.woke_for.as_deref(), Some("abc123"));
     let blocked = s.store().find_task(&name).await.unwrap().unwrap().blocked;
     let blocked = blocked.unwrap();
@@ -355,6 +355,18 @@ async fn a_red_pr_whose_owner_has_no_hand_backs_left_needs_you_once() {
     );
     let calls = log(&name, "").len();
     passes(&s, 4).await;
+    let give_up = Instant::now() + Duration::from_secs(10);
+    let mut seen = log(&name, "").len();
+    let mut settled = 0;
+    while settled < 3 && Instant::now() < give_up {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let now = log(&name, "").len();
+        match now == seen && log(&name, "pr view").len() == log(&name, "pr checks").len() {
+            true => settled += 1,
+            false => settled = 0,
+        }
+        seen = now;
+    }
     assert_eq!(s.state(&name).await, TaskState::NeedsYou);
     assert!(log(&name, "run view").is_empty());
     assert_eq!(log(&name, "pr view").len(), log(&name, "pr checks").len());
