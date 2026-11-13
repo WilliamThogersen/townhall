@@ -87,6 +87,7 @@ const BODY_PARSERS: Readonly<Record<EntryBody["kind"], BodyParser>> = {
     agent: str(r.agent, "entry.agent"),
     question: str(r.question, "entry.question"),
     choices: strings(r.choices, "entry.choices"),
+    ...(r.advice === undefined || r.advice === null ? {} : { advice: str(r.advice, "entry.advice") }),
   }),
   agent: (r) => ({
     kind: "agent",

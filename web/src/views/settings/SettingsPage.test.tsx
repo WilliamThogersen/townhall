@@ -34,6 +34,7 @@ function fakeDaemon(
   initial: Partial<Settings> = {},
   found: readonly Found[] = [],
   start: PluginContributions = someContributions(),
+  permissions: { decisions: readonly unknown[]; suggestions: readonly unknown[] } = { decisions: [], suggestions: [] },
 ) {
   let settings: Settings = { ...DEFAULT_SETTINGS, ...initial };
   let calls: readonly Call[] = [];
@@ -60,6 +61,7 @@ function fakeDaemon(
         );
       return reply(200, found.map((f) => ({ ...f, registered: registered(f) })), null, warnings);
     }
+    if (url === "/api/permissions") return reply(200, permissions, null);
     if (url === "/api/info") {
       if (failing.has("info")) return reply(503, null, HELD);
       return reply(200, { home: "/h", repo: "/r", repoKey: "r-1", userName: null, version: VERSION }, null);
@@ -133,11 +135,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("SettingsPage", () => {
-  it("shows the six groups and how changes are saved", async () => {
+  it("shows the seven groups and how changes are saved", async () => {
     await renderLoaded();
     expect(screen.getByRole("heading", { level: 1, name: "settings" })).toBeInTheDocument();
     expect(screen.getByText("saved as you change them")).toBeInTheDocument();
-    ["agents", "conversations", "repos", "forge accounts", "appearance and notifications", "about you"].forEach((name) => {
+    ["agents", "adviser", "conversations", "repos", "forge accounts", "appearance and notifications", "about you"].forEach((name) => {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     });
     const saves = screen.getAllByRole("button", { name: /^save/ });
@@ -188,6 +190,8 @@ describe("SettingsPage", () => {
     const labels = [...document.querySelectorAll(".th-setting-label")].map((label) => label.textContent);
     expect(labels).toEqual([
       "agents at once",
+      "adviser answers permissions",
+      "adviser time limit",
       "when the repo is unclear",
       "session panel",
       "clone folder",
@@ -197,6 +201,17 @@ describe("SettingsPage", () => {
       "learn about me",
       "profile",
     ]);
+  });
+
+  it("turns the adviser's permission answers off and sets how long it has", async () => {
+    await renderLoaded();
+    const limit = screen.getByRole("radiogroup", { name: "Adviser time limit" });
+    expect(within(limit).getByRole("radio", { name: "1 min" })).toBeChecked();
+    await userEvent.click(within(limit).getByRole("radio", { name: "2 min" }));
+    await waitFor(() => expect(lastPut()).toEqual(["/api/settings/permissionTimeoutSecs", { value: 120 }]));
+    await userEvent.click(screen.getByRole("switch", { name: "Adviser answers permission prompts" }));
+    await waitFor(() => expect(lastPut()).toEqual(["/api/settings/adviserPermissions", { value: false }]));
+    await waitFor(() => expect(screen.queryByRole("radiogroup", { name: "Adviser time limit" })).toBeNull());
   });
 
   it("saves the folder repos are cloned into, and refuses a relative one", async () => {
@@ -604,6 +619,7 @@ describe("plugin settings and theme", () => {
     await renderLoaded();
     expect(headings()).toEqual([
       "agents",
+      "adviser",
       "conversations",
       "repos",
       "forge accounts",

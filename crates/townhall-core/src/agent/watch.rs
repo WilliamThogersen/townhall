@@ -7,6 +7,7 @@
 //! (`trust.rs`).
 
 mod event;
+mod permission;
 mod sync;
 mod trust;
 
@@ -76,6 +77,7 @@ pub struct Watcher {
     worktrees: PathBuf,
     /// Sessions (pane id and start) whose trust dialog was answered, never twice.
     trusted: HashSet<(Key, String)>,
+    decisions: permission::Decisions,
     last_warning: Option<String>,
 }
 
@@ -104,6 +106,7 @@ impl Watcher {
             missing: HashMap::new(),
             worktrees,
             trusted: HashSet::new(),
+            decisions: permission::Decisions::new(),
             last_warning: None,
         };
         let stored = match watcher.ctx.store() {
@@ -126,6 +129,7 @@ impl Watcher {
 
     /// One round over every agent. Failures are logged and retried on the next round.
     pub async fn poll(&mut self) {
+        self.decisions.collect();
         let agents = match fleet::list(&self.ctx).await {
             Ok(agents) => agents,
             Err(e) => return self.warn(&format!("cannot list agents: {e}")),
@@ -166,6 +170,9 @@ impl Watcher {
         if changed && self.trust(info, &key, task).await {
             return;
         }
+        if changed && self.permission(info, &key, task).await {
+            return;
+        }
         if changed && terminal(&info.state) {
             let first = self.settling.insert(key.clone(), info.state.clone());
             if first.as_ref() != Some(&info.state) {
@@ -173,10 +180,9 @@ impl Watcher {
             }
         }
         if let Some(task) = task {
-            if !self
-                .apply(task, sync::plan(task, &info.state, before.as_ref()))
-                .await
-            {
+            let planned = sync::plan(task, &info.state, before.as_ref());
+            let advice = self.decisions.advice(&key, &info.state);
+            if !self.apply(task, permission::attach(planned, advice)).await {
                 return;
             }
         }
@@ -242,6 +248,41 @@ impl Watcher {
             self.apply(task, Some(change)).await;
         }
         true
+    }
+
+    async fn permission(&mut self, info: &AgentInfo, key: &Key, task: Option<&Task>) -> bool {
+        let gate = self.decisions.gate(key, &info.state);
+        let Some(task) = task else {
+            return false;
+        };
+        match gate {
+            permission::Gate::Pass => false,
+            permission::Gate::Hold => true,
+            permission::Gate::Ask => {
+                let settings = match self.ctx.settings().await {
+                    Ok(settings) => settings,
+                    Err(e) => {
+                        self.warn(&format!("cannot read the settings: {e}"));
+                        return false;
+                    }
+                };
+                if !settings.adviser_permissions {
+                    return false;
+                }
+                let ws = match self.workspace_of(&info.repo).await {
+                    Ok(ws) => ws,
+                    Err(e) => {
+                        self.warn(&format!("cannot ask the adviser for `{}`: {e}", info.name));
+                        return false;
+                    }
+                };
+                let limit = Duration::from_secs(u64::from(settings.permission_timeout_secs));
+                let (ctx, info, task) = (self.ctx.clone(), info.clone(), task.clone());
+                self.decisions
+                    .start(key.clone(), ctx, ws, info, task, limit);
+                true
+            }
+        }
     }
 
     async fn record_tokens(&mut self, info: &AgentInfo, task: &Task) {
@@ -409,6 +450,7 @@ impl Watcher {
         self.missing.remove(key);
         self.settling.remove(key);
         self.trusted.retain(|(k, _)| k != key);
+        self.decisions.leave(key);
         let forgotten = match self.ctx.store() {
             Ok(store) => store.forget_agent_state(&seen.repo, &seen.agent).await,
             Err(e) => Err(e),

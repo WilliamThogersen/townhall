@@ -187,6 +187,25 @@ describe("Thread needs-you block", () => {
     expect(value.onOpenTask).toHaveBeenCalledWith("fix-login");
   });
 
+  it("shows what the adviser said when it handed the prompt over", () => {
+    const advised = entry(5, {
+      kind: "needsYou",
+      agent: "fix-login",
+      question: "Do you want to proceed?\n1. Yes\n2. No",
+      choices: ["1", "2"],
+      advice: "it publishes to a registry",
+    });
+    renderThread([advised], { tasks });
+    const group = screen.getByRole("group", { name: "fix-login needs you" });
+    expect(within(group).getByText("it publishes to a registry")).toHaveClass("th-ask-advice");
+    expect(within(group).getByText("adviser")).toBeVisible();
+  });
+
+  it("shows no adviser line without advice", () => {
+    renderThread([ask], { tasks });
+    expect(screen.queryByText("adviser")).toBeNull();
+  });
+
   it("sends a free text answer and clears it", async () => {
     const { value } = renderThread([ask], { tasks });
     const input = screen.getByRole("textbox", { name: "Answer for fix-login" });

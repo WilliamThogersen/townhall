@@ -14,6 +14,8 @@ const daemon: Settings = {
   forgeAccounts: [{ forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "work" }],
   reflectAfterTasks: true,
   clonesDir: "~/Developer",
+  adviserPermissions: false,
+  permissionTimeoutSecs: 90,
 };
 
 function mockFetch(status: number, body: unknown) {
