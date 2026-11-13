@@ -53,7 +53,7 @@ fn the_migration_indexes_the_rows_that_exist_before_it() {
            values ('fix-login', 'c1', 'Fix login', 'the login page is broken', 'shop', 'main', 'ended', '2026-01-01T00:00:07.000Z');",
     )
     .unwrap();
-    assert_eq!(migrate::apply(&mut conn, &migrate::all()).unwrap(), 6);
+    assert_eq!(migrate::apply(&mut conn, &migrate::all()).unwrap(), 7);
     assert_eq!(count(&conn, "message"), 2);
     assert_eq!(count(&conn, "needs_you"), 1);
     assert_eq!(count(&conn, "agent_report"), 1);
