@@ -40,6 +40,9 @@ export const HELP = {
   agentsAtOnce: "the rest wait as queued and start when one finishes.",
   adviserPermissions:
     "when an agent asks to run a command, the adviser decides: allow, deny with a reason, or hand it to you. secrets, deletes outside the worktree, force pushes to main and dropping data always come to you.",
+  permissionSuggestions:
+    "the adviser allowed these three times or more for the same agent type. adding one saves it on that type's tools; it applies from the type's next launch.",
+  permissionLog: "what the adviser decided, newest first. hard-deny and ask-user came to you.",
   permissionTimeout: "if the adviser has not answered by then, the prompt comes to you.",
   repoUnclear: "ask shows the candidates as buttons. guess picks the best match and says why.",
   sessionPanel: "open in new conversations. you can always fold it with s.",

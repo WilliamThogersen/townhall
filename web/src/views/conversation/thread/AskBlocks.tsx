@@ -31,10 +31,11 @@ interface AskProps {
   readonly context?: readonly string[];
   /** What the answer picked, once there was one. */
   readonly picked?: string | null;
+  readonly advice?: string;
   readonly children?: ReactNode;
 }
 
-function Ask({ who, open, question, context = [], picked = null, children }: AskProps) {
+function Ask({ who, open, question, context = [], picked = null, advice, children }: AskProps) {
   const label = open ? `${who} needs you` : `${who} asked`;
   return (
     <div className="th-ask" role="group" aria-label={label} data-answered={open ? undefined : "true"}>
@@ -45,6 +46,12 @@ function Ask({ who, open, question, context = [], picked = null, children }: Ask
         </code>
       ))}
       {question === "" ? null : <p className="th-ask-quote">{question}</p>}
+      {advice === undefined ? null : (
+        <p className="th-ask-note">
+          <span className="th-ask-who">adviser</span>
+          <span className="th-ask-advice">{advice}</span>
+        </p>
+      )}
       {picked === null ? null : (
         <p className="th-ask-answer">
           <span aria-hidden="true">{"\u2192"} </span>
@@ -180,7 +187,14 @@ export function NeedsYouBlock({ entry, open, answer: sent }: NeedsYouBlockProps)
   const picked = sent === undefined ? null : answerText(view, sent);
   return (
     <Message from="ask" at={entry.at} answered={!open} entry={entry}>
-      <Ask who={entry.agent} open={open} question={view.prompt} context={view.context} picked={picked}>
+      <Ask
+        who={entry.agent}
+        open={open}
+        question={view.prompt}
+        context={view.context}
+        picked={picked}
+        advice={entry.advice}
+      >
         {open && hasOptions ? <AskOptions options={view.options} busy={busy} onPick={(n) => void pick(n)} /> : null}
         {open && task !== undefined && suggestion !== null && yes !== null ? (
           <AlwaysAllow

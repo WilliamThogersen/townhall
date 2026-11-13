@@ -162,6 +162,7 @@ export type EntryBody =
       readonly agent: string;
       readonly question: string;
       readonly choices: readonly string[];
+      readonly advice?: string;
     }
   | {
       readonly kind: "agent";

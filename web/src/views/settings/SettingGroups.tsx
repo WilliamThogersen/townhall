@@ -27,6 +27,14 @@ export function AgentsGroup() {
           onChange={(agentsAtOnce) => update({ agentsAtOnce })}
         />
       </SettingRow>
+    </SettingGroup>
+  );
+}
+
+export function AdviserGroup() {
+  const { settings, update } = useSettings();
+  return (
+    <SettingGroup title="adviser">
       <SettingRow label="adviser answers permissions" help={HELP.adviserPermissions}>
         <Switch
           label="Adviser answers permission prompts"
