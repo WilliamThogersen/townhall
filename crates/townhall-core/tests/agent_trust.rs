@@ -210,6 +210,7 @@ async fn a_trust_dialog_still_there_after_one_answer_is_left_waiting() {
         agent: name.clone(),
         question: "claude asks whether to trust this worktree".into(),
         choices: vec!["yes, trust it".into(), "no, exit".into()],
+        advice: None,
     };
     assert_eq!(env.agent_entries().await, vec![trusted(&name), asked]);
     agent::stop(env.ctx.startup(), &name).await.unwrap();
@@ -218,6 +219,9 @@ async fn a_trust_dialog_still_there_after_one_answer_is_left_waiting() {
 #[tokio::test]
 async fn a_permission_prompt_is_never_answered() {
     let mut env = env().await;
+    let store = env.ctx.store().unwrap();
+    let off = townhall_core::model::SettingKey::AdviserPermissions;
+    store.set_setting(off, false.into()).await.unwrap();
     let name = env.agent(PERMISSION, false).await;
     let mut watcher = Watcher::new(env.ctx.clone()).await;
     let needs_you = Until::State(TaskState::NeedsYou);

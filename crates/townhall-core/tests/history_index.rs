@@ -103,6 +103,7 @@ async fn the_index_follows_inserts_updates_and_deletes() {
         agent: "fix-login".into(),
         question: "which provider?".into(),
         choices: vec![],
+        advice: None,
     };
     store.append_entry(&c.id, asks).await.unwrap();
     store

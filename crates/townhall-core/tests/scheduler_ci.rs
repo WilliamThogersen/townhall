@@ -219,6 +219,10 @@ async fn the_wait_is_in_the_thread() {
     let s = Sched::new().await;
     let name = lander(&s, PENDING).await;
     until(&s, &name, |t| t.state == TaskState::InCi).await;
+    assert!(
+        s.ctx().notes().waiting(&s.conversation).is_empty(),
+        "the wait wakes no planner"
+    );
     let entries = s.store().entries(&s.conversation).await.unwrap();
     let said = format!("{:?}", entries.last().unwrap().body);
     assert!(

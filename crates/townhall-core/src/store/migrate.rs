@@ -10,7 +10,7 @@ use rusqlite::{params, Connection};
 
 use super::{
     unit_2_2, unit_2_3, unit_2_5, unit_2_6, unit_2_7, unit_2_8b, unit_2_8c, unit_2_9, unit_graph,
-    unit_history, unit_plugins,
+    unit_history, unit_permissions, unit_plugins,
 };
 use crate::{clock, Error, Result};
 
@@ -46,7 +46,7 @@ const BASE: &[Migration] = &[
 ];
 
 /// Who owns which numbers. Ask the orchestrator for a range before adding a unit.
-pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 12] = [
+pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 13] = [
     ("2.0 storage, 2.1 contract", 1..=99, BASE),
     ("2.2 conversations", 100..=199, unit_2_2::MIGRATIONS),
     ("2.3 tasks", 200..=299, unit_2_3::MIGRATIONS),
@@ -59,6 +59,7 @@ pub const RANGES: [(&str, RangeInclusive<u32>, &[Migration]); 12] = [
     ("plugins", 950..=999, unit_plugins::MIGRATIONS),
     ("history search", 1000..=1049, unit_history::MIGRATIONS),
     ("history graph", 1050..=1099, unit_graph::MIGRATIONS),
+    ("permissions", 1100..=1149, unit_permissions::MIGRATIONS),
 ];
 
 pub const NEWER: &str = "townhall.db is from a newer townhall";

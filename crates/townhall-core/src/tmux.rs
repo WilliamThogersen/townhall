@@ -262,6 +262,13 @@ pub async fn send(key: &str, name: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn send_text(key: &str, name: &str, text: &str) -> Result<()> {
+    let target = live_target(key, name).await?;
+    let typed = literal(text);
+    run_tmux(&["send-keys", "-t", &target, "-l", "--", &typed]).await?;
+    Ok(())
+}
+
 /// tmux's name for a key townhall presses.
 fn key_name(pressed: AgentKey) -> &'static str {
     match pressed {
