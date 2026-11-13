@@ -309,7 +309,10 @@ async fn an_end_with_pending_checks_then_the_same_end_is_told_once() {
         event: AgentEvent::Ended,
         text: format!("ended with pending checks: waiting for CI on PR #1 ({name})"),
     };
-    store.append_entry(&env.conversation, pending).await.unwrap();
+    store
+        .append_entry(&env.conversation, pending)
+        .await
+        .unwrap();
     let mut watcher = Watcher::new(env.ctx().clone()).await;
     env.poll_until(&mut watcher, &name, TaskState::Ended).await;
     assert_eq!(env.ctx().notes().waiting(&env.conversation).len(), 1);
