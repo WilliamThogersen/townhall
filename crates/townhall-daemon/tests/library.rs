@@ -53,9 +53,11 @@ async fn the_list_starts_with_builder() {
             "model",
             "name",
             "permissionMode",
+            "plugins",
             "updatedAt"
         ]
     );
+    assert_eq!(rows[0]["plugins"], json!([]));
     assert_eq!(
         (
             &rows[1]["name"],
@@ -70,6 +72,32 @@ async fn the_list_starts_with_builder() {
             &json!("acceptEdits")
         )
     );
+}
+
+#[tokio::test]
+async fn the_plugins_a_type_uses_round_trip_through_put_get_and_the_list() {
+    let env = Env::new("alpha").await;
+    let (_state, app) = env.start();
+    let with =
+        format!("{CODER}plugins = [\"modern-web-guidance@claude-plugins-official\", \"notes\"]\n");
+    let (s, v) = put(&app, "coder", &with).await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+    let want = json!(["modern-web-guidance@claude-plugins-official", "notes"]);
+    assert_eq!(v["data"]["plugins"], want);
+    assert_eq!(v["data"]["source"], with.as_str());
+    let (_, v) = call(&app, "GET", "/api/library/agents/coder", None).await;
+    assert_eq!(v["data"]["plugins"], want);
+    let (_, v) = call(&app, "GET", "/api/library/agents", None).await;
+    let row = v["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == "coder")
+        .unwrap();
+    assert_eq!(row["plugins"], want);
+    let (s, v) = put(&app, "coder", CODER).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["data"]["plugins"], json!([]));
 }
 
 #[tokio::test]

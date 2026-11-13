@@ -28,6 +28,17 @@ describe("buildSections", () => {
     expect(older[0]?.repo).toEqual({ kind: "none" });
   });
 
+  it("keeps failed red in active rows and neutral in older ones", () => {
+    const failed = [
+      aTask({ name: "f1", conversationId: "a", state: "error" }),
+      aTask({ name: "f2", conversationId: "d", state: "error" }),
+      aTask({ name: "m1", conversationId: "d", state: "merged" }),
+    ];
+    const { active, older } = buildSections(conversations, failed);
+    expect(active.find((row) => row.conversation.id === "a")?.summary).toMatchObject({ state: "error", status: "f1 failed" });
+    expect(older[0]?.summary).toEqual({ glyph: "dead", state: "ended", status: "ended · 1 merged", needsYou: false });
+  });
+
   it("filters with the search", () => {
     const { active } = buildSections(conversations, tasks, { query: "be", textMatches: new Set(["a"]) });
     expect(idsOf(active)).toEqual(["a", "b"]);

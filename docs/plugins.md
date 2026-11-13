@@ -144,7 +144,7 @@ Rules:
 | `.claude-plugin/plugin.json` (`name`, `version`, `description`, `author`) | identity of a plain Claude plugin; the townhall file wins when both exist | |
 | `hooks/hooks.json` (`{"hooks":{"<Event>":[{"matcher","hooks":[{"type":"command","command","timeout"}]}]}}`, checked on disk) | Claude hooks, injected into agents (section 6) | `${CLAUDE_PLUGIN_ROOT}` (used by plugins on disk) is replaced by townhall with the plugin's absolute path |
 | `.mcp.json` / `mcpServers` | Claude MCP servers, merged into the agent's `--mcp-config` (section 6) | server keys are renamed to avoid clashes |
-| `commands/`, `skills/` | not supported in phase 3 | task agents keep claude's own skills and slash commands today (`AGENT_ISOLATION` only removes settings, hooks and MCP); injecting a plugin's skills would need `--plugin-dir` or `--add-dir` and is a separate decision (open question 7) |
+| `commands/`, `skills/`, `skills`/`commands` keys of `plugin.json` or of a `strict: false` marketplace entry | task agents of a type that lists the plugin, through a staged folder passed with `--plugin-dir` (section 6.5) | listed on the permission prompt as `claude.skill:<name>` and `claude.command:<name>`; decided in open question 7 |
 | `agents/*.md` (Claude subagents) | not supported | not the same thing as townhall agent types, which are whole sessions; the names collide, so townhall's are in `agent-types/*.toml` |
 | `outputStyles`, `lspServers` | ignored | |
 | none | `contributes`, `permissions`, townhall hooks, UI, settings, theme | townhall only |
@@ -323,6 +323,26 @@ For the planner, steps 1 to 4 run in `runner/persona.rs` and `runner/args.rs` (`
 - A selected plugin that is broken (files missing, manifest no longer valid) does not fail the task silently: the launch fails with `plugin <id>: <reason>` as `fail_start` does for other start errors, so the user sees it, and a toggle `skip broken plugins` is not offered.
 - Tokens are per task and revoked when the task leaves `working`/`needsYou` for a final state (section 9.2).
 - A plugin's MCP server writes to its data folder (`TOWNHALL_PLUGIN_DATA`), not to the worktree. Whatever else it does is the agent's permission mode's business, as for any MCP tool.
+
+### 6.5 Skills and slash commands (phase 5)
+
+Decision: `--plugin-dir=<folder>`, one per selected plugin that ships skills or commands, appended after `--mcp-config` and before the prompt (`agent/claude.rs::plugin_dirs`, `LaunchOptions.plugin_dirs`). The isolation flags are untouched (`--setting-sources=`, the isolated `--settings`, `--strict-mcp-config`), and a type that selects no such plugin gets exactly today's argv (`claude_tests.rs`: one inserted element per folder, nothing else moves; `scheduler_plugin_skills.rs`).
+
+Why `--plugin-dir` and not `--add-dir` with `.claude/skills`: `claude --help` describes `--plugin-dir <path>` as "load a plugin from a directory or .zip for this session only". It is the one flag that loads a plugin's `skills/` and `commands/` together, namespaces them under the plugin and handles `${CLAUDE_PLUGIN_ROOT}` in them. `--add-dir` grants tool access to a folder; whether it also loads `.claude/skills` from there is not something to build on, and it would give no commands and no plugin root.
+
+Why a staged folder and not the cached tree: `--plugin-dir` makes claude read the whole plugin folder, so it would also load the plugin's `hooks/hooks.json`, `.mcp.json` and `agents/`. Townhall already injects hooks (section 6.2) and MCP servers (section 6.3) itself, under the permissions the user approved, so loading them a second time would run them twice or without the `permissions.env` filter. So `plugins::skills::stage` builds `<home>/tasks/<task>/plugins/<plugin id>/` for each launch (and each resume):
+
+- `.claude-plugin/plugin.json` generated: `name`, `version` and, for a plugin that names its skill or command paths (`plugin.json` `skills`/`commands`, or a `strict: false` marketplace entry), those paths. No `hooks`, no `mcpServers`.
+- real copies of `skills/`, `commands/` and the declared paths (claude reads these, and a copy is safe whatever claude does with symlinks);
+- symlinks to every other top level entry, so `${CLAUDE_PLUGIN_ROOT}/scripts/...` in a skill still resolves, except `hooks`, `.mcp.json`, `agents`, `.claude-plugin`, `.townhall-plugin` and `.git`.
+
+Selection is the one of section 6.1: the plugin is enabled and the type lists it in `plugins = [...]` (or ships it). A plugin with no skills and no commands adds no flag. `default` (the planner) never gets a plugin folder: `runner/args.rs` has no such option and keeps `--disable-slash-commands`.
+
+What the install records: `claude.skill:<name>` and `claude.command:<name>` lines on the permission list (they change the hash, so an update that adds a skill needs approval), and the entry's or manifest's `skills`/`commands` paths in the stored `source` JSON of the plugin, which is where launch reads them from. Marketplace parsing accepts what Anthropic's own marketplace has: `owner.email`, a top level `renames`, entry `skills`, `commands` and `lspServers` (the last is kept and ignored).
+
+Anthropic's marketplace is `anthropics/claude-plugins-official` (`.claude-plugin/marketplace.json`, about 190 KB, under the 1 MiB cap). `modern-web-guidance@claude-plugins-official` is a `url` source (`https://github.com/GoogleChrome/modern-web-guidance.git`, pinned by sha) whose repo has `.claude-plugin/plugin.json` (`name`, `description`, `version`, `author`) and two skills, `skills/modern-web-guidance` and `skills/chrome-extensions`. The plugins page offers it as a known marketplace with one click (`web/src/plugins/knownMarketplaces.ts`).
+
+What was verified with the installed `claude` (2.1.322) and what was not: `claude --help` lists `--plugin-dir`, `--disable-slash-commands`, `--setting-sources`, `--strict-mcp-config`, and `claude plugin validate <folder>` in a throwaway `HOME` accepted a `.claude-plugin/plugin.json` plus `skills/<name>/SKILL.md` and `commands/<name>.md` (only warnings about author, README, license and icon). Running a model session (`claude -p ... --plugin-dir <folder>` with the isolation flags in a throwaway `HOME`, asking it to list its skills) was refused by the sandbox of the build run, so these are not confirmed by a run and a follow-up must do it before relying on them: that the staged skills are listed under the isolation flags; that `${CLAUDE_PLUGIN_ROOT}` resolves to the staged folder; that symlinked top level entries are readable; that nothing from the user's `~/.claude` loads (user level `~/.claude/skills` and `~/.claude/commands` are not governed by `--setting-sources=`; if a run shows they leak into agents, that is an isolation gap that exists today and is not made worse here).
 
 ## 7. UI extensions
 
@@ -543,7 +563,7 @@ The user accepted every recommendation below on 2026-11-09. Each item states the
 4. Auto update. Decided: off for everything in v1 (check and report only), on later as a per-plugin switch that still requires approval for any permission growth.
 5. Plugin changes to townhall's own settings. Decided: no in v1; a plugin may ship an `applyRecommended` suggestion the user clicks, later.
 6. Failing open or closed for hooks. Decided: open by default with a per-hook `failClosed` that the install prompt shows (section 4.2), because one broken plugin should not stop every task, and a security gate can opt in.
-7. Skills and slash commands from plugins into agents. Decided: not in phase 3. Agents today keep claude's own skills (only the planner has `--disable-slash-commands`), so enabling plugin skills means `--plugin-dir` or `--add-dir` and a second isolation question; do it after hooks and MCP prove out, as phase 5 with its own verification task.
+7. Skills and slash commands from plugins into agents. Decided (phase 5): `--plugin-dir` with a per task staged folder, for the agent types that list the plugin in `plugins = [...]`. Section 6.5 has the reasoning and what was and was not checked with the installed `claude`.
 8. Claude hooks that can approve tool calls (`PreToolUse`). Decided: allowed, flagged in the prompt, and only after phase 3.1 shows `--disallowedTools` and a type's deny rules still win; otherwise leave `PreToolUse` out of v1.
 9. Plugin agent type naming `<plugin>-<name>`. Decided: keep it, since `create_task`'s pattern excludes `:` and `/`; the agents page can show the plugin and the short name separately.
 10. Planner access to plugin MCP tools. Decided: off by default and read only tools only (section 6.1); it keeps the planner's "can plan, never write" rule intact. Say no to it entirely if you would rather the planner never changes with plugins.

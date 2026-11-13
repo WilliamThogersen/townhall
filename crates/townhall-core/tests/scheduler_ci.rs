@@ -336,29 +336,19 @@ async fn a_task_that_keeps_ending_with_pending_checks_needs_you_after_the_last_w
 }
 
 #[tokio::test]
-async fn checks_that_stay_pending_past_the_timeout_need_you_with_their_states() {
+async fn checks_that_stay_pending_for_a_long_time_keep_being_watched_without_needing_you() {
     let s = Sched::new().await;
     let name = lander(&s, PENDING).await;
-    s.ctx().set_pacing(Pacing {
-        ci_timeout: Duration::from_secs(3600),
-        ..s.ctx().pacing()
-    });
     until(&s, &name, |t| t.state == TaskState::InCi).await;
-    passes(&s, 2).await;
-    assert_eq!(s.state(&name).await, TaskState::InCi);
-
-    s.ctx().set_pacing(Pacing {
-        ci_timeout: Duration::ZERO,
-        ..s.ctx().pacing()
-    });
-    let task = until(&s, &name, |t| t.state == TaskState::NeedsYou).await;
-    let why = task.blocked.unwrap();
-    assert!(
-        why.contains("build: IN_PROGRESS") && why.contains("lint: SUCCESS"),
-        "{why}"
-    );
-    assert!(why.contains("#7"), "{why}");
+    passes(&s, 4).await;
+    let task = s.store().find_task(&name).await.unwrap().unwrap();
+    assert_eq!(task.state, TaskState::InCi);
+    assert_eq!(task.blocked, None);
     assert!(s.store().handoffs(&name).await.unwrap().is_empty());
+
+    reports(&name, GREEN);
+    relaunches(&s, &name).await;
+    assert_eq!(s.state(&name).await, TaskState::Working);
 }
 
 #[tokio::test]

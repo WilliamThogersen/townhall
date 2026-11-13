@@ -37,6 +37,31 @@ const pane = (name: string) => screen.getByRole("article", { name: `${name} term
 
 afterEach(() => vi.restoreAllMocks());
 
+describe("TaskTerminal reason", () => {
+  it("says why a task needs you above a live terminal and without one", async () => {
+    const why = "merge conflict with main: resolve it and push";
+    const stuck = aTask({ name: "fix-login", state: "needsYou", repo: "shop", blocked: why });
+    stubDaemon([anAgentInfo({ name: "fix-login", repo: "shop" })], [stuck]);
+    const live = renderTerminal(stuck);
+    expect(await screen.findByTestId("terminal")).toBeInTheDocument();
+    expect(screen.getByText(why).closest(".th-pane-reason")).not.toBeNull();
+    live.unmount();
+
+    stubDaemon([], [stuck]);
+    renderTerminal(stuck);
+    await screen.findByRole("article", { name: "fix-login terminal" });
+    expect(screen.getByText(why).closest(".th-pane-reason")).not.toBeNull();
+  });
+
+  it("shows no reason line for a task that does not need you", async () => {
+    const ci = aTask({ name: "fix-login", state: "inCi", repo: "shop" });
+    stubDaemon([anAgentInfo({ name: "fix-login", repo: "shop" })], [ci]);
+    renderTerminal(ci);
+    await screen.findByTestId("terminal");
+    expect(document.querySelector(".th-pane-reason")).toBeNull();
+  });
+});
+
 describe("TaskTerminal with a live agent", () => {
   beforeEach(() => stubDaemon([anAgentInfo({ name: "fix-login", repo: "shop" })]));
 

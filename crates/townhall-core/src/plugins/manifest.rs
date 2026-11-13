@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use super::check;
+use super::marketplace::path_list;
 use crate::Result;
 
 pub const MAX_MANIFEST_BYTES: usize = 64 * 1024;
@@ -205,6 +206,12 @@ pub struct ClaudeManifest {
     pub repository: Option<String>,
     #[serde(default)]
     pub license: Option<String>,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default, deserialize_with = "path_list")]
+    pub skills: Vec<String>,
+    #[serde(default, deserialize_with = "path_list")]
+    pub commands: Vec<String>,
 }
 
 pub fn parse_townhall(text: &str) -> Result<TownhallManifest> {
@@ -254,6 +261,8 @@ impl ClaudeManifest {
         if let Some(version) = &self.version {
             check::semver("version", version)?;
         }
+        super::marketplace::check_paths("skills", &self.skills)?;
+        super::marketplace::check_paths("commands", &self.commands)?;
         validate_links(
             self.author.as_ref(),
             self.homepage.as_deref(),
