@@ -51,7 +51,7 @@ async fn the_agent_reads_its_brief_in_accept_edits_when_its_type_sets_no_mode() 
     assert!(!brief.starts_with(&s.repo) && !brief.starts_with(s.worktree(&name)));
     assert_eq!(lines[0], "--permission-mode=acceptEdits");
     assert!(
-        lines[1].starts_with("--append-system-prompt=you can hand back to: adviser, builder."),
+        lines[1].starts_with("--append-system-prompt=you can hand back to: builder."),
         "{args}"
     );
     assert!(
