@@ -88,7 +88,13 @@ async fn the_default_type_gets_the_pipeline_tools_once() {
         let entry = format!("mcp__townhall__{tool}");
         assert_eq!(default.def.tools.iter().filter(|t| **t == entry).count(), 1);
     }
-    assert_eq!(default.source.matches("list_pipelines").count(), 1);
+    assert_eq!(
+        default
+            .source
+            .matches("\"mcp__townhall__list_pipelines\"")
+            .count(),
+        1
+    );
 }
 
 #[tokio::test]
