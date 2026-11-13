@@ -291,7 +291,11 @@ mod tests {
         apply(&mut conn, &before).unwrap();
         assert!(user_version(&conn).unwrap() < 950);
         assert!(conn.prepare("select name from marketplaces").is_err());
-        assert_eq!(apply(&mut conn, &all()).unwrap(), 11);
+        let expected = all().iter().filter(|m| m.id >= 950).count();
+        assert_eq!(apply(&mut conn, &all()).unwrap(), expected);
+        assert!([950, 951, 952]
+            .iter()
+            .all(|id| applied(&conn).unwrap().contains(id)));
         assert!(conn
             .prepare("select name, source from marketplaces")
             .is_ok());
@@ -307,7 +311,7 @@ mod tests {
                 "select token_hash, plugin_id, task, created_at, revoked_at from plugin_tokens"
             )
             .is_ok());
-        assert_eq!(user_version(&conn).unwrap(), 1100);
+        assert_eq!(user_version(&conn).unwrap(), all().last().unwrap().id);
         assert_eq!(apply(&mut conn, &all()).unwrap(), 0);
     }
 

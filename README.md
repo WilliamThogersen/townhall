@@ -160,6 +160,10 @@ docs/style-guide         design: tokens, components, preview.html
 docs/versioning.md       versions and how to release
 ```
 
+## adding a migration
+
+Each store unit owns a number range in `crates/townhall-core/src/store/migrate.rs` (`RANGES`). Pick a new migration's number with `scripts/migration-number.sh next <range start>` (for example `next 1050`); it skips every number used on main or on any pushed branch. Never edit or renumber a migration that is on main. CI runs `scripts/migration-number.sh check` and fails when a branch reuses a number or changes an applied migration.
+
 ## design
 
 The interface follows [`docs/style-guide`](docs/style-guide/README.md): monospace
