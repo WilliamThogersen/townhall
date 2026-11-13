@@ -339,8 +339,8 @@ describe("SettingsPage", () => {
 
   it("chooses when to notify", async () => {
     await renderLoaded();
-    expect(group("Notify me when").getByRole("radio", { name: "needs you" })).toBeChecked();
-    await userEvent.click(group("Notify me when").getByRole("radio", { name: "everything" }));
+    expect(group("Notify me when").getByRole("radio", { name: "+ landed" })).toBeChecked();
+    await userEvent.click(group("Notify me when").getByRole("radio", { name: "off" }));
     await userEvent.click(group("Notify me when").getByRole("radio", { name: "+ failed" }));
     await waitFor(() => expect(daemon.settings().notifyWhen).toBe("failed"));
   });

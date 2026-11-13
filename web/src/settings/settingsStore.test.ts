@@ -141,11 +141,11 @@ describe("changes", () => {
 
   it("sends one PUT per changed key and skips the rest", async () => {
     const { store, put } = await loadedStore();
-    store.update({ notifyWhen: "everything", sessionPanelOpen: false, agentsAtOnce: 6 });
+    store.update({ notifyWhen: "off", sessionPanelOpen: false, agentsAtOnce: 6 });
     await flush();
     expect(put.mock.calls).toEqual([
       ["sessionPanelOpen", false],
-      ["notifyWhen", "everything"],
+      ["notifyWhen", "off"],
     ]);
   });
 
@@ -153,7 +153,7 @@ describe("changes", () => {
     const { store, put } = await loadedStore();
     const listener = vi.fn();
     store.subscribe(listener);
-    store.update({ agentsAtOnce: 6, notifyWhen: "needsYou" });
+    store.update({ agentsAtOnce: 6, notifyWhen: "everything" });
     await flush();
     expect(put).not.toHaveBeenCalled();
     expect(listener).not.toHaveBeenCalled();
@@ -199,10 +199,10 @@ describe("changes", () => {
     put.mockRejectedValueOnce(down());
     store.update({ notifyWhen: "failed" });
     await flush();
-    store.update({ notifyWhen: "everything" });
+    store.update({ notifyWhen: "off" });
     await flush();
     expect(store.getState().problem).toBeNull();
-    expect(store.getState().settings.notifyWhen).toBe("everything");
+    expect(store.getState().settings.notifyWhen).toBe("off");
 
     put.mockRejectedValueOnce(down());
     store.update({ notifyWhen: "failed" });
@@ -249,17 +249,17 @@ describe("changes", () => {
     load.mockReturnValueOnce(loading.promise);
     const store = createSettingsStore(deps);
     store.ensureLoaded();
-    store.update({ notifyWhen: "everything" });
+    store.update({ notifyWhen: "off" });
     await flush();
     expect(put).not.toHaveBeenCalled();
     loading.resolve({ ...DEFAULT_SETTINGS, agentsAtOnce: 9, repoUnclear: "guess" });
     await flush();
-    expect(put.mock.calls).toEqual([["notifyWhen", "everything"]]);
+    expect(put.mock.calls).toEqual([["notifyWhen", "off"]]);
     expect(store.getState().settings).toEqual({
       ...DEFAULT_SETTINGS,
       agentsAtOnce: 9,
       repoUnclear: "guess",
-      notifyWhen: "everything",
+      notifyWhen: "off",
     });
   });
 
@@ -315,7 +315,7 @@ describe("browser settings import", () => {
   });
 
   it("drops a key from a kept import once you choose it here", async () => {
-    localStorage.setItem("th-settings", JSON.stringify({ notifyWhen: "everything", agentsAtOnce: 9 }));
+    localStorage.setItem("th-settings", JSON.stringify({ notifyWhen: "off", agentsAtOnce: 9 }));
     const { deps, put } = fakeDeps();
     put.mockRejectedValueOnce(down()).mockRejectedValueOnce(down());
     const store = createSettingsStore(deps);

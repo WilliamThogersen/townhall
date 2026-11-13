@@ -5,6 +5,7 @@ import { useRepos } from "../data";
 import { PluginNavItems } from "../plugins/PluginNavItems";
 import { PluginSlot } from "../plugins/PluginSlot";
 import { Link, PATHS, useRoute } from "../router";
+import { ProgressOverview } from "../sidebar/ProgressOverview";
 import { SearchNavItem } from "../sidebar/SearchNavItem";
 import { SidebarConversations } from "../sidebar/SidebarConversations";
 import { UsageMeter } from "../usage/UsageMeter";
@@ -70,6 +71,7 @@ export function Sidebar({ foot }: { readonly foot?: ReactNode }) {
         </Link>
       </div>
       <Nav search={search} />
+      <ProgressOverview />
       <SidebarConversations query={search.query} />
       <div className="th-sidebar-foot">
         <UsageMeter />

@@ -61,7 +61,7 @@ export interface PatchRepoInput {
 }
 
 export type RepoUnclear = "ask" | "guess";
-export type NotifyWhen = "needsYou" | "failed" | "everything";
+export type NotifyWhen = "off" | "needsYou" | "failed" | "everything";
 export type ForgeKind = "github" | "gitlab";
 
 export interface ForgeAccount {

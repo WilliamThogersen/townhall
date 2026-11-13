@@ -265,7 +265,7 @@ One row per key in the `settings` table, the value as JSON. `PUT /api/settings/{
 | `agentsAtOnce` | integer 1 to 50 | `6` |
 | `repoUnclear` | `ask`, `guess`: what townhall does when a message points at several repos (names two, or its code fits two equally): ask, or run in the first candidate. A message that points at no repo is not unclear: it keeps the conversation's repo, else runs with no repo (the session passes `repo` to `create_task`), and nothing is asked or noted | `ask` |
 | `sessionPanelOpen` | boolean | `true` |
-| `notifyWhen` | `needsYou`, `failed`, `everything` | `needsYou` |
+| `notifyWhen` | `off`, `needsYou`, `failed`, `everything` | `everything` |
 | `minFreeDiskGb` | integer 0 to 100000: a task does not start with less free space on the data volume; `0` is off | `5` |
 | `learnAboutMe` | boolean: while on, the profile text (below) is added to townhall's own session prompt. Nothing learns into the profile automatically yet | `false` |
 | `githubAccount` | the old single account: a GitHub login, or empty for none. Still read, and still the account `open_pr` uses for a GitHub repo that has no registered account of its own (see `forgeAccounts`) | `WilliamThogersen` on a new database (migration 0003), empty when the row is missing or invalid |

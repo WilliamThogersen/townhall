@@ -256,7 +256,12 @@ async fn merge(
         text: plan::capped(&said, 400),
     };
     store.append_entry(&task.conversation_id, body).await?;
-    runner::notify(ctx, &task.conversation_id, said);
+    let all = store.tasks(&task.conversation_id).await?;
+    let event = match plan::closing_line(&all) {
+        Some(closing) => format!("{said}. {closing}"),
+        None => said,
+    };
+    runner::notify(ctx, &task.conversation_id, event);
     tracing::info!(
         target: "townhall::task", event = "task.merged", task = %task.name,
         sha = %sha, "the daemon merged a green pull request"
