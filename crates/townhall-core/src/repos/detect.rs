@@ -20,6 +20,19 @@ const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 const USER_TIMEOUT: Duration = Duration::from_secs(4);
 
+#[derive(Clone, Copy)]
+struct Timeouts {
+    status: Duration,
+    version: Duration,
+    user: Duration,
+}
+
+const TIMEOUTS: Timeouts = Timeouts {
+    status: STATUS_TIMEOUT,
+    version: VERSION_TIMEOUT,
+    user: USER_TIMEOUT,
+};
+
 /// One login found on one host.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -345,19 +358,14 @@ fn not_found(program: &str) -> String {
     format!("`{program}` was not found on PATH, so its accounts cannot be listed")
 }
 
-fn gh_by_command(program: &str) -> Result<Option<Pairs>> {
-    let Some(json) = capture(
-        program,
-        &["auth", "status", "--json", "hosts"],
-        STATUS_TIMEOUT,
-    )?
-    else {
+fn gh_by_command(program: &str, timeout: Duration) -> Result<Option<Pairs>> {
+    let Some(json) = capture(program, &["auth", "status", "--json", "hosts"], timeout)? else {
         return Ok(None);
     };
     if let Some(found) = from_json(&json.stdout) {
         return Ok(Some(found));
     }
-    let Some(out) = capture(program, &["auth", "status"], STATUS_TIMEOUT)? else {
+    let Some(out) = capture(program, &["auth", "status"], timeout)? else {
         return Ok(None);
     };
     let mut found = from_text(&out.stdout);
@@ -366,9 +374,9 @@ fn gh_by_command(program: &str) -> Result<Option<Pairs>> {
 }
 
 /// `gh auth status` first; when it fails or lists nothing, `hosts.yml` in the config dir.
-fn probe_gh(program: &str, config: &[PathBuf]) -> Probe {
+fn probe_gh(program: &str, config: &[PathBuf], timeouts: Timeouts) -> Probe {
     let mut probe = Probe::default();
-    match gh_by_command(program) {
+    match gh_by_command(program, timeouts.status) {
         Ok(Some(pairs)) if !pairs.is_empty() => {
             probe.pairs = pairs;
             return probe;
@@ -397,8 +405,8 @@ fn probe_gh(program: &str, config: &[PathBuf]) -> Probe {
 }
 
 /// The user glab is logged in as on `host`, asked of the host with a short timeout.
-fn glab_user(program: &str, host: &str) -> std::result::Result<String, String> {
-    let out = match capture(program, &["api", "user", "--hostname", host], USER_TIMEOUT) {
+fn glab_user(program: &str, host: &str, timeout: Duration) -> std::result::Result<String, String> {
+    let out = match capture(program, &["api", "user", "--hostname", host], timeout) {
         Ok(Some(out)) => out,
         Ok(None) => return Err(not_found(program)),
         Err(e) => return Err(e.to_string()),
@@ -416,9 +424,9 @@ fn glab_user(program: &str, host: &str) -> std::result::Result<String, String> {
 
 /// glab's hosts and users from `config.yml`, never from `auth status`. A host with no `user` key
 /// is asked with `glab api user`, so one slow host costs a few seconds, not the whole list.
-fn probe_glab(program: &str, config: &[PathBuf]) -> Probe {
+fn probe_glab(program: &str, config: &[PathBuf], timeouts: Timeouts) -> Probe {
     let mut probe = Probe::default();
-    match capture(program, &["--version"], VERSION_TIMEOUT) {
+    match capture(program, &["--version"], timeouts.version) {
         Ok(Some(_)) => {}
         Ok(None) => {
             probe.warnings.push(not_found(program));
@@ -451,7 +459,7 @@ fn probe_glab(program: &str, config: &[PathBuf]) -> Probe {
     for (host, user) in asked {
         match user {
             Some(user) => probe.pairs.push((host, user)),
-            None => match glab_user(program, &host) {
+            None => match glab_user(program, &host, timeouts.user) {
                 Ok(user) => probe.pairs.push((host, user)),
                 Err(why) => probe
                     .warnings
@@ -501,10 +509,11 @@ fn detect_in(
     gh_config: &[PathBuf],
     glab_config: &[PathBuf],
     registered: &[ForgeAccount],
+    timeouts: Timeouts,
 ) -> Detection {
     let (gh, glab) = std::thread::scope(|scope| {
-        let glab = scope.spawn(|| probe_glab(&programs.glab, glab_config));
-        let gh = probe_gh(&programs.gh, gh_config);
+        let glab = scope.spawn(|| probe_glab(&programs.glab, glab_config, timeouts));
+        let gh = probe_gh(&programs.gh, gh_config, timeouts);
         let glab = glab.join().unwrap_or_else(|_| Probe {
             pairs: vec![],
             warnings: vec!["detecting glab accounts panicked".to_string()],
@@ -539,6 +548,7 @@ pub fn detect_blocking(programs: &Programs, registered: &[ForgeAccount]) -> Dete
         &config_dirs("GH_CONFIG_DIR", "gh", false),
         &config_dirs("GLAB_CONFIG_DIR", "glab-cli", true),
         registered,
+        TIMEOUTS,
     )
 }
 
@@ -756,7 +766,13 @@ mod tests {
 
         // The real machine: gh answers; glab's `auth status` would hang on gitlab.com, so the stub
         // fails loudly if it is ever called, and only the config file knows the user.
-        const GLAB: &str = "case \"$1\" in --version) echo 'glab 1.50';; api) echo \"{\\\"username\\\":\\\"from-api-$4\\\"}\";; *) echo 'auth status must not be called' >&2; sleep 30;; esac";
+        const GLAB: &str = "case \"$1\" in --version) echo 'glab 1.50';; api) echo \"{\\\"username\\\":\\\"from-api-$4\\\"}\";; *) touch \"$(dirname \"$0\")/auth-status-called\"; echo 'auth status must not be called' >&2; sleep 30;; esac";
+
+        const PATIENT: Timeouts = Timeouts {
+            status: Duration::from_secs(60),
+            version: Duration::from_secs(60),
+            user: Duration::from_secs(60),
+        };
 
         #[test]
         fn glab_account_comes_from_its_config_without_auth_status() {
@@ -770,15 +786,21 @@ mod tests {
                 "hosts:\n    gitlab.example.com:\n        token: x\n        user: alice\n",
             );
             let started = Instant::now();
-            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[]);
-            assert!(started.elapsed() < Duration::from_secs(8));
+            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[], PATIENT);
+            assert!(started.elapsed() < Duration::from_secs(25));
+            assert!(
+                !dir.path().join("bin").join("auth-status-called").exists(),
+                "glab auth status was called"
+            );
             assert_eq!(
                 logins(&found),
                 vec![
                     "Github WilliamThogersen@github.com",
                     "Github alice@github.com",
                     "Gitlab alice@gitlab.example.com"
-                ]
+                ],
+                "{:?}",
+                found.warnings
             );
             assert_eq!(found.warnings, Vec::<String>::new());
         }
@@ -795,6 +817,7 @@ mod tests {
                 &candidate_dirs(&env, "GH_CONFIG_DIR", "gh", false),
                 &candidate_dirs(&env, "GLAB_CONFIG_DIR", "glab-cli", macos),
                 &[],
+                PATIENT,
             )
         }
 
@@ -804,7 +827,12 @@ mod tests {
             let support = home.path().join("Library").join("Application Support");
             config(&support, "glab-cli", REAL_GLAB_CONFIG);
             let found = detect_with_home(home.path(), &[], true);
-            assert_eq!(logins(&found), vec!["Gitlab alice@gitlab.example.com"]);
+            assert_eq!(
+                logins(&found),
+                vec!["Gitlab alice@gitlab.example.com"],
+                "{:?}",
+                found.warnings
+            );
             assert!(
                 found.warnings.iter().all(|w| !w.starts_with("glab:")),
                 "{:?}",
@@ -817,7 +845,12 @@ mod tests {
             let home = tempfile::tempdir().unwrap();
             config(&home.path().join(".config"), "glab-cli", REAL_GLAB_CONFIG);
             let found = detect_with_home(home.path(), &[], false);
-            assert_eq!(logins(&found), vec!["Gitlab alice@gitlab.example.com"]);
+            assert_eq!(
+                logins(&found),
+                vec!["Gitlab alice@gitlab.example.com"],
+                "{:?}",
+                found.warnings
+            );
         }
 
         #[test]
@@ -836,7 +869,9 @@ mod tests {
                 vec![
                     "Gitlab alice@gitlab.example.com",
                     "Gitlab corp@gitlab.corp.io"
-                ]
+                ],
+                "{:?}",
+                found.warnings
             );
         }
 
@@ -862,7 +897,9 @@ mod tests {
             );
             assert_eq!(
                 logins(&found),
-                vec!["Gitlab first@a.io", "Gitlab second@b.io"]
+                vec!["Gitlab first@a.io", "Gitlab second@b.io"],
+                "{:?}",
+                found.warnings
             );
         }
 
@@ -893,10 +930,12 @@ mod tests {
                 "glab-cli",
                 "hosts:\n    gitlab.example.com:\n        api_host: gitlab.example.com\n",
             );
-            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[]);
+            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[], PATIENT);
             assert_eq!(
                 logins(&found),
-                vec!["Gitlab from-api-gitlab.example.com@gitlab.example.com"]
+                vec!["Gitlab from-api-gitlab.example.com@gitlab.example.com"],
+                "{:?}",
+                found.warnings
             );
         }
 
@@ -907,7 +946,7 @@ mod tests {
             let glab = stub(dir.path(), "glab", GLAB);
             let gh_cfg = config(dir.path(), "gh", GH_HOSTS);
             let glab_cfg = dir.path().join("none");
-            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[]);
+            let found = detect_in(&Programs { gh, glab }, &[gh_cfg], &[glab_cfg], &[], PATIENT);
             assert!(logins(&found).contains(&"Github alice@github.com".to_string()));
             assert!(logins(&found).iter().all(|l| !l.starts_with("Gitlab")));
             assert!(
@@ -945,7 +984,13 @@ mod tests {
                 gh: "/no/such/gh".to_string(),
                 glab,
             };
-            let found = detect_in(&programs, &[dir.path().join("none")], &[glab_cfg], &[]);
+            let found = detect_in(
+                &programs,
+                &[dir.path().join("none")],
+                &[glab_cfg],
+                &[],
+                PATIENT,
+            );
             assert_eq!(found.accounts, vec![]);
             assert!(
                 found
@@ -978,6 +1023,7 @@ mod tests {
                 &[dir.path().join("a")],
                 &[dir.path().join("b")],
                 &registered,
+                PATIENT,
             );
             let marks: Vec<_> = found.accounts.iter().map(|d| d.registered).collect();
             assert_eq!(marks, vec![false, true]);
