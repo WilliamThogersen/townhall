@@ -11,6 +11,31 @@ pub fn finished(state: TaskState) -> bool {
     matches!(state, TaskState::Ended | TaskState::Merged)
 }
 
+pub fn closing_line(tasks: &[Task]) -> Option<String> {
+    if tasks.is_empty() || !tasks.iter().all(|t| finished(t.state)) {
+        return None;
+    }
+    let landed: Vec<String> = tasks
+        .iter()
+        .filter(|t| t.state == TaskState::Merged)
+        .map(|t| {
+            let pr = t.pr.as_ref();
+            let number = pr.map_or_else(String::new, |p| format!("PR #{}, ", p.number));
+            let sha = pr
+                .and_then(|p| p.merge_sha.as_deref())
+                .unwrap_or("unknown");
+            format!("{}: {number}merge sha {sha}", t.name)
+        })
+        .collect();
+    if landed.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "all work of this conversation has landed. post a short closing summary now, without being asked: what landed, the PR numbers and the merge shas. landed: {}",
+        landed.join("; ")
+    ))
+}
+
 fn done(tasks: &[Task], name: &str) -> bool {
     tasks
         .iter()
@@ -175,6 +200,36 @@ mod tests {
         ];
         let names: Vec<&str> = ready(&tasks).iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["b", "e"]);
+    }
+
+    fn merged(name: &str, number: u64, sha: &str) -> Task {
+        Task {
+            pr: Some(crate::model::Pr {
+                number,
+                url: None,
+                checks: crate::model::Checks::Passed,
+                merge_sha: Some(sha.into()),
+            }),
+            ..task(name, TaskState::Merged, &[])
+        }
+    }
+
+    #[test]
+    fn the_last_landing_asks_for_a_closing_summary() {
+        let tasks = [merged("a", 7, "abc123"), merged("b", 8, "def456")];
+        let line = closing_line(&tasks).expect("all landed");
+        assert!(line.contains("all work of this conversation has landed"));
+        assert!(line.contains("a: PR #7, merge sha abc123"));
+        assert!(line.contains("b: PR #8, merge sha def456"));
+    }
+
+    #[test]
+    fn work_still_running_or_failed_asks_for_no_summary() {
+        let running = [merged("a", 7, "abc"), task("b", TaskState::Working, &[])];
+        assert_eq!(closing_line(&running), None);
+        let failed = [merged("a", 7, "abc"), task("b", TaskState::Error, &[])];
+        assert_eq!(closing_line(&failed), None);
+        assert_eq!(closing_line(&[task("a", TaskState::Ended, &[])]), None);
     }
 
     #[test]
