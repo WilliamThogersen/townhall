@@ -55,6 +55,7 @@ pub struct AgentTypeSummary {
     pub effort: Option<Effort>,
     pub permission_mode: Option<PermissionMode>,
     pub avatar: Option<AvatarDef>,
+    pub plugins: Vec<String>,
     pub updated_at: String,
 }
 
@@ -73,6 +74,7 @@ impl AgentType {
             effort: self.def.effort,
             permission_mode: self.def.permission_mode,
             avatar: self.def.avatar.clone(),
+            plugins: self.def.plugins.clone(),
             updated_at: self.updated_at.clone(),
         }
     }
@@ -118,6 +120,7 @@ mod tests {
                 "model",
                 "name",
                 "permissionMode",
+                "plugins",
                 "updatedAt"
             ]
         );

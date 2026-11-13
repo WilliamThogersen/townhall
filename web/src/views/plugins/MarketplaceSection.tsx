@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { Marketplace, MarketplaceSource } from "../../api/types";
 import type { PluginsState } from "../../data";
+import { missingKnown, type KnownMarketplace } from "../../plugins/knownMarketplaces";
 import { Button } from "../../ui/Button";
 import type { Run } from "./useInstallFlow";
 import "./plugins.css";
@@ -107,6 +108,44 @@ function AddMarketplace({ plugins, run }: { readonly plugins: PluginsState; read
   );
 }
 
+function KnownMarketplaces({ plugins, run }: { readonly plugins: PluginsState; readonly run: Run }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const add = async (known: KnownMarketplace) => {
+    setBusy(known.name);
+    try {
+      await run(() => plugins.addMarketplace({ source: known.source }));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <>
+      {missingKnown(plugins.marketplaces).map((known) => (
+        <article key={known.name} className="th-plugin-row" aria-label={`known marketplace ${known.name}`}>
+          <div className="th-plugin-name">
+            <b>{known.name}</b>
+          </div>
+          <p className="th-plugin-meta">
+            <span>{known.about}</span>
+          </p>
+          <div className="th-plugin-actions">
+            <Button
+              size="sm"
+              busy={busy === known.name}
+              busyLabel="adding"
+              disabled={busy !== null}
+              aria-label={`add ${known.name}`}
+              onClick={() => void add(known)}
+            >
+              add
+            </Button>
+          </div>
+        </article>
+      ))}
+    </>
+  );
+}
+
 export function MarketplaceSection({ plugins, run }: { readonly plugins: PluginsState; readonly run: Run }) {
   return (
     <section className="th-plugins-section" aria-label="marketplaces">
@@ -115,6 +154,7 @@ export function MarketplaceSection({ plugins, run }: { readonly plugins: Plugins
         <span className="th-cap">{plugins.marketplaces.length}</span>
       </header>
       <AddMarketplace plugins={plugins} run={run} />
+      <KnownMarketplaces plugins={plugins} run={run} />
       {plugins.marketplaces.map((market) => (
         <MarketplaceRow key={market.name} market={market} plugins={plugins} run={run} />
       ))}

@@ -46,6 +46,7 @@ function parseSummary(value: unknown): AgentTypeSummary {
     effort: nullable(r.effort, "agentType.effort", effort),
     permissionMode: nullable(r.permissionMode, "agentType.permissionMode", mode),
     avatar: nullable(r.avatar, "agentType.avatar", parseAvatar),
+    ...(r.plugins === undefined ? {} : { plugins: strings(r.plugins, "agentType.plugins") }),
     updatedAt: str(r.updatedAt, "agentType.updatedAt"),
   };
 }

@@ -6,6 +6,19 @@
 
 /* ---------- agent panes ---------- */
 
+.th-panes[data-reason="true"] {
+  grid-template-rows: auto;
+}
+
+.th-pane-reason {
+  margin: 0;
+  padding: var(--th-space-2) var(--th-space-3);
+  background: var(--th-surface);
+  color: var(--th-fg);
+  font-size: var(--th-text-sm);
+  overflow-wrap: anywhere;
+}
+
 .th-panes {
   display: grid;
   grid-auto-rows: minmax(var(--th-pane-min-h), 1fr);

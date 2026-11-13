@@ -76,7 +76,6 @@ pub struct Pacing {
     pub check_backoff: Duration,
     pub check_backoff_max: Duration,
     pub ci_poll: Duration,
-    pub ci_timeout: Duration,
     pub ci_waits: usize,
 }
 
@@ -86,7 +85,6 @@ impl Default for Pacing {
             check_backoff: Duration::from_secs(60),
             check_backoff_max: Duration::from_secs(600),
             ci_poll: Duration::from_secs(30),
-            ci_timeout: Duration::from_secs(3600),
             ci_waits: 3,
         }
     }
