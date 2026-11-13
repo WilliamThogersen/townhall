@@ -252,6 +252,93 @@ async fn exit_zero_ends_its_task_once() {
 }
 
 #[tokio::test]
+async fn a_relaunched_task_seen_ended_again_is_not_told_twice() {
+    let mut env = env().await;
+    let name = env.agent("true").await;
+    env.task(&name, TaskState::Working).await;
+    let mut watcher = Watcher::new(env.ctx().clone()).await;
+    env.poll_until(&mut watcher, &name, TaskState::Ended).await;
+    assert_eq!(env.ctx().notes().waiting(&env.conversation).len(), 1);
+    env.set_state(&name, TaskState::Working).await;
+    env.poll_until(&mut watcher, &name, TaskState::Ended).await;
+    env.polls(&mut watcher, 2).await;
+    assert_eq!(env.ctx().notes().waiting(&env.conversation).len(), 1);
+    let ended = env
+        .agent_entries()
+        .await
+        .into_iter()
+        .filter(|b| {
+            matches!(
+                b,
+                EntryBody::Agent {
+                    event: AgentEvent::Ended,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(ended, 2);
+    agent::stop(env.ctx().startup(), &name).await.unwrap();
+}
+
+#[tokio::test]
+async fn an_end_already_delivered_is_not_told_again() {
+    let mut env = env().await;
+    let name = env.agent("true").await;
+    env.task(&name, TaskState::Working).await;
+    let store = env.ctx().store().unwrap();
+    let told = EntryBody::Event {
+        text: format!("task {name} ended (ended)"),
+    };
+    store.append_entry(&env.conversation, told).await.unwrap();
+    let mut watcher = Watcher::new(env.ctx().clone()).await;
+    env.poll_until(&mut watcher, &name, TaskState::Ended).await;
+    env.polls(&mut watcher, 2).await;
+    assert!(!env.ctx().notes().is_waiting(&env.conversation));
+    agent::stop(env.ctx().startup(), &name).await.unwrap();
+}
+
+#[tokio::test]
+async fn an_end_with_pending_checks_then_the_same_end_is_told_once() {
+    let mut env = env().await;
+    let name = env.agent("true").await;
+    env.task(&name, TaskState::Working).await;
+    let store = env.ctx().store().unwrap();
+    let pending = EntryBody::Agent {
+        agent: name.clone(),
+        event: AgentEvent::Ended,
+        text: format!("ended with pending checks: waiting for CI on PR #1 ({name})"),
+    };
+    store
+        .append_entry(&env.conversation, pending)
+        .await
+        .unwrap();
+    let mut watcher = Watcher::new(env.ctx().clone()).await;
+    env.poll_until(&mut watcher, &name, TaskState::Ended).await;
+    assert_eq!(env.ctx().notes().waiting(&env.conversation).len(), 1);
+    env.set_state(&name, TaskState::Working).await;
+    env.poll_until(&mut watcher, &name, TaskState::Ended).await;
+    env.polls(&mut watcher, 2).await;
+    assert_eq!(env.ctx().notes().waiting(&env.conversation).len(), 1);
+    agent::stop(env.ctx().startup(), &name).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_removed_agent_after_an_end_is_not_told_twice() {
+    let mut env = env().await;
+    let name = env.agent("true").await;
+    env.task(&name, TaskState::Working).await;
+    let mut watcher = Watcher::new(env.ctx().clone()).await;
+    env.poll_until(&mut watcher, &name, TaskState::Ended).await;
+    assert_eq!(env.ctx().notes().waiting(&env.conversation).len(), 1);
+    env.set_state(&name, TaskState::Working).await;
+    agent::stop(env.ctx().startup(), &name).await.unwrap();
+    env.poll_until(&mut watcher, &name, TaskState::Ended).await;
+    env.polls(&mut watcher, 2).await;
+    assert_eq!(env.ctx().notes().waiting(&env.conversation).len(), 1);
+}
+
+#[tokio::test]
 async fn a_question_needs_you_once_then_working_again() {
     let mut env = env().await;
     let name = env
