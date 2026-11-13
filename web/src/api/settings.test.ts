@@ -14,6 +14,7 @@ const daemon: Settings = {
   forgeAccounts: [{ forge: "gitlab", login: "me", host: "gitlab.corp.io", label: "work" }],
   reflectAfterTasks: true,
   clonesDir: "~/Developer",
+  flakyChecks: ["lint"],
   adviserPermissions: false,
   permissionTimeoutSecs: 90,
 };

@@ -775,6 +775,7 @@ async fn a_shipper_started_from_the_reviewed_branch_starts_and_keeps_its_pr_targ
     let aim = |t: Task| {
         Ok(Task {
             pr_base: Some("main".into()),
+            prs: vec![],
             done: Default::default(),
             ..t
         })

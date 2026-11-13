@@ -63,6 +63,7 @@ export const aTask = (over: Partial<Task> = {}): Task => ({
   attachments: [],
   createdAt: FIXTURE_TIME,
   pr: null,
+  prs: [],
   agent: "builder",
   blocked: null,
   prBase: null,

@@ -72,12 +72,13 @@ pub enum SettingKey {
     ForgeAccounts,
     ReflectAfterTasks,
     ClonesDir,
+    FlakyChecks,
     AdviserPermissions,
     PermissionTimeoutSecs,
 }
 
 impl SettingKey {
-    pub const ALL: [SettingKey; 12] = [
+    pub const ALL: [SettingKey; 13] = [
         Self::AgentsAtOnce,
         Self::RepoUnclear,
         Self::SessionPanelOpen,
@@ -88,6 +89,7 @@ impl SettingKey {
         Self::ForgeAccounts,
         Self::ReflectAfterTasks,
         Self::ClonesDir,
+        Self::FlakyChecks,
         Self::AdviserPermissions,
         Self::PermissionTimeoutSecs,
     ];
@@ -104,6 +106,7 @@ impl SettingKey {
             Self::ForgeAccounts => "forgeAccounts",
             Self::ReflectAfterTasks => "reflectAfterTasks",
             Self::ClonesDir => "clonesDir",
+            Self::FlakyChecks => "flakyChecks",
             Self::AdviserPermissions => "adviserPermissions",
             Self::PermissionTimeoutSecs => "permissionTimeoutSecs",
         }
@@ -138,6 +141,7 @@ impl SettingKey {
             Self::MinFreeDiskGb => value.as_u64().is_some_and(|n| n <= u64::from(DISK_GB_MAX)),
             Self::GithubAccount => value.as_str().is_some_and(is_github_login),
             Self::ClonesDir => value.as_str().is_some_and(is_clones_dir),
+            Self::FlakyChecks => is_check_list(value),
             Self::ForgeAccounts => unreachable!("handled above"),
             Self::AgentsAtOnce => value.as_u64().is_some_and(|n| {
                 (u64::from(AGENTS_AT_ONCE_MIN)..=u64::from(AGENTS_AT_ONCE_MAX)).contains(&n)
@@ -161,6 +165,16 @@ fn is_github_login(login: &str) -> bool {
 /// Empty (townhall's own `repos` folder), `~`, `~/...` or an absolute path.
 pub fn is_clones_dir(dir: &str) -> bool {
     dir.is_empty() || dir == "~" || dir.starts_with("~/") || dir.starts_with('/')
+}
+
+fn is_check_list(value: &Value) -> bool {
+    value.as_array().is_some_and(|names| {
+        names.len() <= 50
+            && names.iter().all(|n| {
+                n.as_str()
+                    .is_some_and(|n| !n.is_empty() && n.chars().count() <= 100)
+            })
+    })
 }
 
 fn parses<T: serde::de::DeserializeOwned>(value: &Value) -> bool {
@@ -187,6 +201,7 @@ pub struct Settings {
     pub reflect_after_tasks: bool,
     /// The folder a repo added by link is cloned into; empty means `<home>/repos`.
     pub clones_dir: String,
+    pub flaky_checks: Vec<String>,
     pub adviser_permissions: bool,
     pub permission_timeout_secs: u32,
 }
@@ -204,6 +219,7 @@ impl Default for Settings {
             forge_accounts: Vec::new(),
             reflect_after_tasks: false,
             clones_dir: String::new(),
+            flaky_checks: vec!["secret-detection".to_string()],
             adviser_permissions: true,
             permission_timeout_secs: PERMISSION_TIMEOUT_SECS_DEFAULT,
         }
@@ -232,6 +248,7 @@ impl Settings {
             forge_accounts: field(raw, SettingKey::ForgeAccounts, d.forge_accounts),
             reflect_after_tasks: field(raw, SettingKey::ReflectAfterTasks, d.reflect_after_tasks),
             clones_dir: field(raw, SettingKey::ClonesDir, d.clones_dir),
+            flaky_checks: field(raw, SettingKey::FlakyChecks, d.flaky_checks),
             adviser_permissions: field(raw, SettingKey::AdviserPermissions, d.adviser_permissions),
             permission_timeout_secs: field(
                 raw,
@@ -287,6 +304,7 @@ mod tests {
                 "forgeAccounts": [],
                 "reflectAfterTasks": false,
                 "clonesDir": "",
+                "flakyChecks": ["secret-detection"],
                 "adviserPermissions": true,
                 "permissionTimeoutSecs": 60
             })
@@ -296,6 +314,37 @@ mod tests {
         let mut sorted = keys.clone();
         sorted.sort_unstable();
         assert_eq!(fields, sorted);
+    }
+
+    #[test]
+    fn flaky_checks_are_a_list_of_short_names() {
+        let long = "x".repeat(100);
+        for good in [
+            json!([]),
+            json!(["secret-detection", "lint"]),
+            json!([long]),
+        ] {
+            assert_eq!(SettingKey::FlakyChecks.check(&good).unwrap(), good);
+        }
+        let too_long = "x".repeat(101);
+        let many: Vec<String> = (0..51).map(|i| format!("c{i}")).collect();
+        for bad in [
+            json!("lint"),
+            json!([""]),
+            json!([1]),
+            json!([too_long]),
+            json!(many),
+        ] {
+            assert!(SettingKey::FlakyChecks.check(&bad).is_err(), "{bad}");
+        }
+        let set: Settings = serde_json::from_value(json!({"flakyChecks": ["a"]})).unwrap();
+        assert_eq!(set.flaky_checks, vec!["a".to_string()]);
+        let bad: Settings = serde_json::from_value(json!({"flakyChecks": "a"})).unwrap();
+        assert_eq!(bad.flaky_checks, vec!["secret-detection".to_string()]);
+        assert_eq!(
+            SettingKey::parse("flakyChecks").unwrap(),
+            SettingKey::FlakyChecks
+        );
     }
 
     #[test]

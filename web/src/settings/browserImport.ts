@@ -42,7 +42,9 @@ function parseJson(raw: string): unknown {
   }
 }
 
-const BROWSER_KEYS: readonly SettingKey[] = SETTING_KEYS.filter((key) => key !== "forgeAccounts");
+const BROWSER_KEYS: readonly SettingKey[] = SETTING_KEYS.filter(
+  (key) => key !== "forgeAccounts" && key !== "flakyChecks",
+);
 
 export function readStoredSettings(raw: string): readonly StoredSetting[] {
   const fields = parseJson(raw);

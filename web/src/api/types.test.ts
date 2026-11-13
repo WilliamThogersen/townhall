@@ -73,6 +73,7 @@ const task = {
   attachments: [],
   createdAt: "2026-11-04T10:42:05.000Z",
   pr: { number: 41, url: null, checks: "failed" },
+  prs: [],
   agent: "builder",
   blocked: null,
   prBase: null,

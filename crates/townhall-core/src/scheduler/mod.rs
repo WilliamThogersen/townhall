@@ -28,6 +28,7 @@ mod merged;
 mod paths;
 pub(crate) mod pipeline;
 mod plan;
+mod prs;
 pub mod reflect;
 pub mod report;
 pub mod requires;
@@ -48,6 +49,7 @@ use crate::{Error, Result};
 
 pub use brief::brief_file;
 pub use launch::start_failure;
+pub(crate) use prs::track;
 
 /// The slow tick: merges and freed slots are noticed at least this often.
 pub const TICK: Duration = Duration::from_secs(2);
@@ -145,6 +147,7 @@ pub async fn run_once(ctx: &Context) -> Result<Pass> {
     }
     let verifying = verify::start(ctx, &tasks);
     let reading_ci = ci::start(ctx, &tasks);
+    prs::start(ctx);
     let pass = launch::start_ready(ctx, &tasks).await?;
     let (merged, warnings) = merged::detect(ctx, &tasks).await?;
     let graph_warnings = graph::record(ctx).await?;

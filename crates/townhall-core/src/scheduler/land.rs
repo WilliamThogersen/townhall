@@ -35,6 +35,7 @@ mod tests {
             name: name.into(),
             state: bucket.to_uppercase(),
             bucket: bucket.into(),
+            link: String::new(),
         }
     }
 
@@ -44,6 +45,9 @@ mod tests {
             conflicting,
             unknown,
             behind,
+            state: "OPEN".into(),
+            merge_state: String::new(),
+            merge_commit: None,
         }
     }
 

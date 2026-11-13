@@ -16,6 +16,7 @@ mod import;
 mod lock;
 pub mod migrate;
 mod plugin_tokens;
+mod prs;
 mod repos;
 mod search;
 mod settings;

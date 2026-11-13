@@ -37,6 +37,39 @@ pub struct Pr {
     pub merge_sha: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PrStatus {
+    Pending,
+    Rerunning,
+    Red,
+    Green,
+    Updating,
+    Conflict,
+    Blocked,
+    Merged,
+    Closed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackedPr {
+    pub repo: String,
+    pub number: u64,
+    pub url: Option<String>,
+    pub branch: String,
+    pub base: String,
+    pub owner: String,
+    pub pusher: Option<String>,
+    pub head: Option<String>,
+    pub status: PrStatus,
+    pub detail: Option<String>,
+    pub reruns: Vec<String>,
+    pub woke_for: Option<String>,
+    pub seen_pending: bool,
+    pub updated_at: String,
+}
+
 /// Retries a task with a check gets when it names no `maxRetries`.
 pub const DEFAULT_MAX_RETRIES: u32 = 2;
 
@@ -120,6 +153,8 @@ pub struct Task {
     /// are not met. Set and cleared by the scheduler, `None` when nothing holds it back.
     pub blocked: Option<String>,
     pub pr_base: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prs: Vec<TrackedPr>,
     #[serde(flatten)]
     pub done: Done,
 }
@@ -227,6 +262,7 @@ mod tests {
             agent: "builder".into(),
             blocked: None,
             pr_base: None,
+            prs: vec![],
             done: Default::default(),
         };
         let v = serde_json::to_value(&t).unwrap();
@@ -247,6 +283,55 @@ mod tests {
             json!({"number": 41, "url": null, "checks": "failed"})
         );
         assert_eq!(t.branch(), "townhall/fix-login");
+        assert_eq!(serde_json::from_value::<Task>(v).unwrap(), t);
+    }
+
+    fn tracked() -> TrackedPr {
+        TrackedPr {
+            repo: "shop".into(),
+            number: 7,
+            url: Some("https://github.com/o/r/pull/7".into()),
+            branch: "townhall/fix-login".into(),
+            base: "main".into(),
+            owner: "fix-login".into(),
+            pusher: None,
+            head: Some("abc123".into()),
+            status: PrStatus::Red,
+            detail: None,
+            reruns: vec![],
+            woke_for: None,
+            seen_pending: false,
+            updated_at: "2026-11-04T10:42:05.000Z".into(),
+        }
+    }
+
+    #[test]
+    fn tracked_prs_are_listed_on_the_task_only_when_there_are_some() {
+        let mut t = Task {
+            name: "fix-login".into(),
+            title: "t".into(),
+            prompt: "p".into(),
+            repo: "shop".into(),
+            base_branch: "main".into(),
+            after: vec![],
+            state: TaskState::Ended,
+            conversation_id: "a1b2c3d4e5f6".into(),
+            attachments: vec![],
+            created_at: "2026-11-04T10:42:05.000Z".into(),
+            pr: None,
+            agent: "lander".into(),
+            blocked: None,
+            pr_base: None,
+            prs: vec![],
+            done: Default::default(),
+        };
+        let v = serde_json::to_value(&t).unwrap();
+        assert!(v.get("prs").is_none());
+        t.prs.push(tracked());
+        let v = serde_json::to_value(&t).unwrap();
+        assert_eq!(v["prs"][0]["status"], "red");
+        assert_eq!(v["prs"][0]["wokeFor"], json!(null));
+        assert_eq!(v["prs"][0]["seenPending"], false);
         assert_eq!(serde_json::from_value::<Task>(v).unwrap(), t);
     }
 

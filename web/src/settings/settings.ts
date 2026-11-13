@@ -21,6 +21,7 @@ export interface Settings {
   readonly forgeAccounts: readonly ForgeAccount[];
   readonly reflectAfterTasks: boolean;
   readonly clonesDir: string;
+  readonly flakyChecks: readonly string[];
   readonly adviserPermissions: boolean;
   readonly permissionTimeoutSecs: number;
 }
@@ -33,6 +34,8 @@ export const FORGE_ACCOUNTS_MAX = 50;
 export const AGENTS_AT_ONCE_MIN = 1;
 export const AGENTS_AT_ONCE_MAX = 50;
 export const DISK_GB_MAX = 100_000;
+export const FLAKY_CHECKS_MAX = 50;
+export const FLAKY_CHECK_NAME_MAX = 100;
 export const PERMISSION_TIMEOUT_MIN = 5;
 export const PERMISSION_TIMEOUT_MAX = 600;
 
@@ -47,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   forgeAccounts: Object.freeze([]),
   reflectAfterTasks: false,
   clonesDir: "",
+  flakyChecks: Object.freeze(["secret-detection"]),
   adviserPermissions: true,
   permissionTimeoutSecs: 60,
 });
@@ -64,6 +68,7 @@ export const SETTING_KEYS: readonly SettingKey[] = Object.freeze([
   "forgeAccounts",
   "reflectAfterTasks",
   "clonesDir",
+  "flakyChecks",
   "adviserPermissions",
   "permissionTimeoutSecs",
 ]);
@@ -106,6 +111,11 @@ export const isClonesDirText = (value: string): boolean =>
 
 const isClonesDir: Check<string> = (value): value is string => typeof value === "string" && isClonesDirText(value);
 
+const isFlakyChecks: Check<readonly string[]> = (value): value is readonly string[] =>
+  Array.isArray(value) &&
+  value.length <= FLAKY_CHECKS_MAX &&
+  value.every((name) => typeof name === "string" && name !== "" && [...name].length <= FLAKY_CHECK_NAME_MAX);
+
 const ACCOUNT_KEYS = ["forge", "login", "host", "label"];
 
 function isForgeAccount(value: unknown): value is ForgeAccount {
@@ -136,6 +146,7 @@ const CHECKS: { readonly [K in SettingKey]: Check<Settings[K]> } = {
   forgeAccounts: isForgeAccounts,
   reflectAfterTasks: isFlag,
   clonesDir: isClonesDir,
+  flakyChecks: isFlakyChecks,
   adviserPermissions: isFlag,
   permissionTimeoutSecs: isPermissionTimeout,
 };
@@ -167,6 +178,7 @@ export function parseSettings(raw: unknown): Settings {
     forgeAccounts: pick(fields, "forgeAccounts"),
     reflectAfterTasks: pick(fields, "reflectAfterTasks"),
     clonesDir: pick(fields, "clonesDir"),
+    flakyChecks: pick(fields, "flakyChecks"),
     adviserPermissions: pick(fields, "adviserPermissions"),
     permissionTimeoutSecs: pick(fields, "permissionTimeoutSecs"),
   });

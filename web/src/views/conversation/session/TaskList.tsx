@@ -1,5 +1,5 @@
 import { useState, type RefObject } from "react";
-import type { Pr } from "../../../api/types";
+import type { Pr, TrackedPr } from "../../../api/types";
 import { TaskGlyph } from "./TaskGlyph";
 import { sameTask, type TaskView } from "./taskRows";
 import { onTaskListKeyDown } from "./useTaskKeys";
@@ -34,6 +34,43 @@ function PrLink({ pr, tabbable }: { readonly pr: Pr | null; readonly tabbable: b
   );
 }
 
+const PR_WORDS: Readonly<Record<TrackedPr["status"], string>> = {
+  pending: "checks running",
+  rerunning: "rerunning a flaky check",
+  red: "checks failed",
+  green: "ready to merge",
+  updating: "merging main in",
+  conflict: "conflict",
+  blocked: "blocked by the forge",
+  merged: "merged",
+  closed: "closed",
+};
+
+function prWords(pr: TrackedPr): string {
+  const words = PR_WORDS[pr.status];
+  return pr.detail ? `${words}: ${pr.detail}` : words;
+}
+
+function TrackedPrs({ prs, tabbable }: { readonly prs: readonly TrackedPr[]; readonly tabbable: boolean }) {
+  if (prs.length === 0) return null;
+  return (
+    <ul className="th-task-prs" aria-label="pull requests">
+      {prs.map((pr) => (
+        <li key={`${pr.repo}#${pr.number}`} className="th-task-pr" data-status={pr.status} title={prWords(pr)}>
+          {pr.url === null ? (
+            `#${pr.number}`
+          ) : (
+            <a href={pr.url} target="_blank" rel="noreferrer" tabIndex={tabbable ? 0 : -1}>
+              #{pr.number}
+            </a>
+          )}{" "}
+          {prWords(pr)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function TaskRow({ view, open, tabbable, onOpen, onFocus }: TaskRowProps) {
   const { task } = view;
   return (
@@ -59,6 +96,7 @@ function TaskRow({ view, open, tabbable, onOpen, onFocus }: TaskRowProps) {
         {view.blocked !== null && <span className="th-task-blocked">{view.blocked}</span>}
       </button>
       <PrLink pr={task.pr} tabbable={tabbable} />
+      <TrackedPrs prs={task.prs} tabbable={tabbable} />
     </li>
   );
 }
