@@ -388,8 +388,14 @@ async fn a_failed_hand_back_puts_the_owner_back_and_backs_off() {
         .unwrap();
     track(&s, &name).await;
     let give_up = Instant::now() + Duration::from_secs(30);
-    while log(&name, "run view").is_empty() && Instant::now() < give_up {
+    while !tracked(&s, 7)
+        .await
+        .and_then(|p| p.detail)
+        .is_some_and(|d| d.starts_with("waking the owner failed"))
+        && Instant::now() < give_up
+    {
         let _ = run_once(s.ctx()).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(s.state(&name).await, TaskState::Ended);
     let pr = tracked(&s, 7).await.unwrap();
