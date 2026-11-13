@@ -54,7 +54,7 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
         .agent_types()
         .await?
         .into_iter()
-        .filter(AgentType::for_tasks)
+        .filter(AgentType::takes_hand_backs)
         .map(|t| t.def.name)
         .collect();
     let targets = found.def.hand_back_targets(&found.def.name, &names);
