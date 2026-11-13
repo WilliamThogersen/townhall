@@ -56,8 +56,8 @@ describe("useSettings", () => {
   it("re-renders when the store changes elsewhere", async () => {
     const { store } = fakeStore();
     const hook = renderSettings(store);
-    act(() => store.update({ notifyWhen: "everything" }));
-    expect(hook.result.current.settings.notifyWhen).toBe("everything");
+    act(() => store.update({ notifyWhen: "off" }));
+    expect(hook.result.current.settings.notifyWhen).toBe("off");
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
   });
 

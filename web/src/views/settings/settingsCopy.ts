@@ -19,9 +19,10 @@ export const THEME_CHOICES: readonly Choice<ThemeChoice>[] = [
 ];
 
 export const NOTIFY_CHOICES: readonly Choice<NotifyWhen>[] = [
+  { value: "off", label: "off" },
   { value: "needsYou", label: "needs you" },
   { value: "failed", label: "+ failed" },
-  { value: "everything", label: "everything" },
+  { value: "everything", label: "+ landed" },
 ];
 
 export const FORGE_CHOICES: readonly Choice<ForgeKind>[] = [
@@ -39,7 +40,7 @@ export const HELP = {
     "the gh and glab logins townhall may use. no token is stored. pick one per repo on the repos page, else the first for the host is used.",
   theme: "dark is the default.",
   pluginTheme: "a theme from an enabled plugin, drawn over the built in colours. none keeps the built in look.",
-  notifyWhen: "desktop notifications and toasts.",
+  notifyWhen: "desktop notifications. off sends none; each step adds to the one before it.",
   learnAboutMe:
     "while on, townhall reads your profile in its own conversations: how you work, your tone of voice, your typical flow. stored locally, edit or reset it below at any time.",
   profileOff: "not used while learn about me is off.",

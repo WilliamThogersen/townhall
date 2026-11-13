@@ -48,9 +48,10 @@ pub enum RepoUnclear {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum NotifyWhen {
-    #[default]
+    Off,
     NeedsYou,
     Failed,
+    #[default]
     Everything,
 }
 
@@ -180,7 +181,7 @@ impl Default for Settings {
             agents_at_once: AGENTS_AT_ONCE_DEFAULT,
             repo_unclear: RepoUnclear::Ask,
             session_panel_open: true,
-            notify_when: NotifyWhen::NeedsYou,
+            notify_when: NotifyWhen::default(),
             min_free_disk_gb: MIN_FREE_DISK_GB_DEFAULT,
             learn_about_me: false,
             github_account: String::new(),
@@ -255,7 +256,7 @@ mod tests {
                 "agentsAtOnce": 6,
                 "repoUnclear": "ask",
                 "sessionPanelOpen": true,
-                "notifyWhen": "needsYou",
+                "notifyWhen": "everything",
                 "minFreeDiskGb": 5,
                 "learnAboutMe": false,
                 "githubAccount": "",
@@ -276,7 +277,7 @@ mod tests {
         let raw = json!({"agentsAtOnce": 99, "notifyWhen": "x", "repoUnclear": "guess", "townhallModel": "gpt"});
         let s: Settings = serde_json::from_value(raw).unwrap();
         assert_eq!(s.agents_at_once, AGENTS_AT_ONCE_DEFAULT);
-        assert_eq!(s.notify_when, NotifyWhen::NeedsYou);
+        assert_eq!(s.notify_when, NotifyWhen::Everything);
         assert_eq!(s.repo_unclear, RepoUnclear::Guess);
         let old: Settings = serde_json::from_value(json!({"townhallModel": "opus"})).unwrap();
         assert_eq!(old, Settings::default());
@@ -291,6 +292,7 @@ mod tests {
         let ok = [
             (SettingKey::AgentsAtOnce, json!(50)),
             (SettingKey::NotifyWhen, json!("everything")),
+            (SettingKey::NotifyWhen, json!("off")),
         ];
         for (key, value) in ok {
             assert_eq!(key.check(&value).unwrap(), value);
