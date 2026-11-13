@@ -17,6 +17,7 @@
 mod memo;
 mod question;
 mod screen;
+mod stall;
 mod stamp;
 mod transcript;
 
@@ -38,7 +39,7 @@ use transcript::Turn;
 /// How long a turn must have ended, without a question, before the agent counts as ended.
 pub const IDLE_SETTLE_MS: i64 = 10_000;
 
-pub const QUIET_SECS: u64 = 300;
+pub use stall::{limit_secs as stall_secs, STALL_ENV};
 
 /// Overrides where Claude's transcripts are read from (tests point it at a temp folder);
 /// the same variable 2.7's steps read.
@@ -128,30 +129,64 @@ fn waiting(question: String) -> AgentState {
 }
 
 async fn live(projects: Option<&Path>, ws: &Workspace, agent: &Agent, pane: &Pane) -> AgentState {
-    let turn = match projects {
+    let (turn, written) = match projects {
         Some(dir) => current_turn(dir, &agent.worktree, &agent.name, pane.created).await,
-        None => None,
+        None => (None, None),
     };
-    let busy = busy_state(unix_secs(SystemTime::now()), pane.activity);
-    let asked = |q: Option<String>| q.map_or(AgentState::Working, waiting);
-    let stalled = |q: Option<String>| q.map_or(busy.clone(), waiting);
     match turn {
         Some(Turn::Asking { question }) => waiting(question),
-        Some(Turn::Busy) => stalled(on_screen(ws, agent, pane, false).await),
-        Some(Turn::Pending { call }) => stalled(
-            on_screen(ws, agent, pane, false)
-                .await
-                .map(|q| question::shorten(&format!("{call}\n{q}"))),
-        ),
+        Some(Turn::Busy) => match on_screen(ws, agent, pane, false).await {
+            Some(q) => waiting(q),
+            None => quiet(ws, agent, pane, written).await,
+        },
+        Some(Turn::Pending { call }) => match on_screen(ws, agent, pane, false).await {
+            Some(q) => waiting(question::shorten(&format!("{call}\n{q}"))),
+            None => quiet(ws, agent, pane, written).await,
+        },
         Some(Turn::Idle { text, at }) => idle(ws, agent, pane, &text, at).await,
-        None => asked(on_screen(ws, agent, pane, true).await),
+        None => match on_screen(ws, agent, pane, true).await {
+            Some(q) => waiting(q),
+            None => quiet(ws, agent, pane, written).await,
+        },
     }
 }
 
-fn busy_state(now: u64, activity: u64) -> AgentState {
-    match now.saturating_sub(activity) >= QUIET_SECS {
-        true => AgentState::Ended,
-        false => AgentState::Working,
+async fn quiet(ws: &Workspace, agent: &Agent, pane: &Pane, written: Option<u64>) -> AgentState {
+    let now = unix_secs(SystemTime::now());
+    let limit = stall::limit_secs();
+    let settled = now.saturating_sub(pane.activity) * 1000 >= stall::API_SETTLE_MS as u64;
+    let on_screen_hang = settled
+        && screen_text(ws, agent, pane)
+            .await
+            .is_some_and(|text| stall::hang_on_screen(&text));
+    let hang = if on_screen_hang {
+        Some(stall::Hang::ApiError)
+    } else if stall::stalled(now, pane.activity, written, limit) {
+        Some(stall::Hang::Stalled)
+    } else {
+        None
+    };
+    recover(ws, agent, pane, hang, limit).await
+}
+
+async fn recover(
+    ws: &Workspace,
+    agent: &Agent,
+    pane: &Pane,
+    hang: Option<stall::Hang>,
+    limit: u64,
+) -> AgentState {
+    let session = stall::session_id(&pane.id, pane.created);
+    match (stall::verdict(hang, stall::was_nudged(&session)), hang) {
+        (stall::Verdict::Nudge, Some(_)) => {
+            stall::mark_nudged(&session);
+            if let Err(e) = tmux::send(ws.key(), &agent.name, stall::NUDGE).await {
+                warn_once(&format!("cannot nudge `{}`: {e}", agent.name));
+            }
+            AgentState::Working
+        }
+        (stall::Verdict::Surface, Some(hang)) => waiting(stall::reason(hang, limit)),
+        _ => AgentState::Working,
     }
 }
 
@@ -171,6 +206,11 @@ async fn idle(
         return waiting(question);
     }
     let now = unix_millis(SystemTime::now());
+    if stall::hang_text(text) {
+        let settled = at.is_some_and(|at| now - at >= stall::API_SETTLE_MS);
+        let hang = settled.then_some(stall::Hang::ApiError);
+        return recover(ws, agent, pane, hang, stall::limit_secs()).await;
+    }
     match at {
         Some(at) if now - at >= IDLE_SETTLE_MS => AgentState::Ended,
         _ => AgentState::Working,
@@ -212,20 +252,25 @@ async fn screen_text(ws: &Workspace, agent: &Agent, pane: &Pane) -> Option<Strin
 
 /// The turn in the newest transcript for `worktree` written since `since` (unix seconds,
 /// the session's start), so an earlier session's transcript is never read as this one's.
-async fn current_turn(projects: &Path, worktree: &Path, agent: &str, since: u64) -> Option<Turn> {
+async fn current_turn(
+    projects: &Path,
+    worktree: &Path,
+    agent: &str,
+    since: u64,
+) -> (Option<Turn>, Option<u64>) {
     let (projects, worktree) = (projects.to_path_buf(), worktree.to_path_buf());
     let agent = agent.to_string();
     let read =
         tokio::task::spawn_blocking(move || read_turn(&projects, &worktree, &agent, since)).await;
     match read {
-        Ok(Ok(turn)) => turn,
+        Ok(Ok(read)) => read,
         Ok(Err(e)) => {
             warn_once(&format!("cannot read a transcript: {e}"));
-            None
+            (None, None)
         }
         Err(e) => {
             warn_once(&format!("transcript read failed: {e}"));
-            None
+            (None, None)
         }
     }
 }
@@ -235,9 +280,9 @@ fn read_turn(
     worktree: &Path,
     agent: &str,
     since: u64,
-) -> crate::Result<Option<Turn>> {
+) -> crate::Result<(Option<Turn>, Option<u64>)> {
     let Some(path) = steps::latest_transcript(projects, worktree)? else {
-        return Ok(None);
+        return Ok((None, None));
     };
     let io = |source| crate::Error::Io {
         context: format!("read transcript {}", path.display()),
@@ -246,17 +291,18 @@ fn read_turn(
     let meta = std::fs::metadata(&path).map_err(io)?;
     let modified = meta.modified().map_err(io)?;
     if unix_secs(modified) < since {
-        return Ok(None);
+        return Ok((None, None));
     }
+    let written = Some(unix_secs(modified));
     let stamp = (meta.len(), modified);
     if let Some(turn) = memo::turn(&path, stamp) {
-        return Ok(turn);
+        return Ok((turn, written));
     }
     let turn = transcript::read_as(&path, agent)
         .map_err(io)?
         .map(|t| ended_at(t, modified));
     memo::keep_turn(&path, stamp, turn.clone());
-    Ok(turn)
+    Ok((turn, written))
 }
 
 /// What the agent in `worktree` said when its last turn ended, from its newest transcript
@@ -343,14 +389,6 @@ fn warn_once(message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_busy_transcript_in_a_quiet_pane_is_ended() {
-        let now = 1_000;
-        assert_eq!(busy_state(now, now - QUIET_SECS + 1), AgentState::Working);
-        assert_eq!(busy_state(now, now - QUIET_SECS), AgentState::Ended);
-        assert_eq!(busy_state(now, now + 5), AgentState::Working);
-    }
 
     #[test]
     fn exits_map_to_ended_or_error() {
