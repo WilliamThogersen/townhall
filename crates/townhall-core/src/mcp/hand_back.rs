@@ -86,15 +86,28 @@ pub(super) async fn hand_back(ctx: &Context, task: &str, input: HandBackInput) -
         return Err("`reason` must not be blank: say what the next type must do".into());
     }
     let own = store.agent_type(&task.agent).await.map_err(text)?;
-    let names: Vec<String> = store
+    let types: Vec<AgentType> = store
         .agent_types()
         .await
         .map_err(text)?
         .into_iter()
         .filter(AgentType::for_tasks)
-        .map(|t| t.def.name)
         .collect();
     let to = input.to.trim();
+    if let Some(plan) = types
+        .iter()
+        .find(|t| t.def.name.eq_ignore_ascii_case(to) && !t.takes_hand_backs())
+    {
+        return Err(format!(
+            "`{}` is a plan-mode type and cannot take over a task: to stop because the brief cannot be done yet, end your run with a report saying why, and the conversation's planner reads it",
+            plan.def.name
+        ));
+    }
+    let names: Vec<String> = types
+        .into_iter()
+        .filter(AgentType::takes_hand_backs)
+        .map(|t| t.def.name)
+        .collect();
     if !names.iter().any(|n| n.eq_ignore_ascii_case(to)) {
         return Err(format!(
             "unknown agent type `{to}`: you can hand back to: {}",
