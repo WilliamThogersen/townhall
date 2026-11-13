@@ -448,7 +448,10 @@ async fn launch(
         prompt: Some(brief::order(&brief)),
         session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
-        extra_allowed: agent_type::own_rules(&ws.worktrees_dir().join(&task.name)),
+        extra_allowed: agent_type::own_rules(
+            &ws.worktrees_dir().join(&task.name),
+            !launcher.options.allowed_tools.is_empty(),
+        ),
         env: env_with(launcher.options.env.clone(), asked),
         ..launcher.options
     };
@@ -514,7 +517,7 @@ async fn resume(
         prompt: Some(brief::order(&brief)),
         session_id: session_id.clone(),
         add_dirs: read_dirs(&brief, &files),
-        extra_allowed: agent_type::own_rules(&dir),
+        extra_allowed: agent_type::own_rules(&dir, !launcher.options.allowed_tools.is_empty()),
         env: env_with(launcher.options.env.clone(), asked),
         ..launcher.options
     };
