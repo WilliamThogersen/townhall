@@ -61,10 +61,7 @@ fn the_migration_indexes_the_rows_that_exist_before_it() {
            values ('fix-login', 'c1', 'Fix login', 'the login page is broken', 'shop', 'main', 'ended', '2026-01-01T00:00:07.000Z');",
     )
     .unwrap();
-    let expected = migrate::all()
-        .iter()
-        .filter(|m| m.id >= first)
-        .count();
+    let expected = migrate::all().iter().filter(|m| m.id >= first).count();
     assert_eq!(
         migrate::apply(&mut conn, &migrate::all()).unwrap(),
         expected
