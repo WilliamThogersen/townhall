@@ -202,6 +202,30 @@ export interface Pr {
   readonly checks: Checks;
 }
 
+export type PrStatus =
+  | "pending"
+  | "rerunning"
+  | "red"
+  | "green"
+  | "updating"
+  | "conflict"
+  | "blocked"
+  | "merged"
+  | "closed";
+
+export interface TrackedPr {
+  readonly repo: string;
+  readonly number: number;
+  readonly url: string | null;
+  readonly branch: string;
+  readonly base: string;
+  readonly owner: string;
+  readonly pusher: string | null;
+  readonly status: PrStatus;
+  readonly detail: string | null;
+  readonly updatedAt: string;
+}
+
 export type VerifyPhase = "verifying" | "retrying" | "passed" | "failed";
 
 export interface Verify {
@@ -222,6 +246,7 @@ export interface Task {
   readonly attachments: readonly string[];
   readonly createdAt: string;
   readonly pr: Pr | null;
+  readonly prs: readonly TrackedPr[];
   readonly agent: string;
   readonly blocked: string | null;
   readonly prBase: string | null;

@@ -184,6 +184,28 @@ describe("SessionPanel tasks", () => {
     ]);
   });
 
+  it("shows the state of every pull request the daemon tracks for a task", () => {
+    const tracked = (number: number, status: "green" | "conflict", detail: string | null) => ({
+      repo: "shop",
+      number,
+      url: `https://git.test/${number}`,
+      branch: "townhall/x",
+      base: "main",
+      owner: "x",
+      pusher: null,
+      status,
+      detail,
+      updatedAt: "2026-11-13T10:00:00.000Z",
+    });
+    const detail = aDetail({
+      tasks: [aTask({ name: "x", state: "inReview", prs: [tracked(7, "green", null), tracked(9, "conflict", "a.rs")] })],
+    });
+    renderPanel(fullDetail({ tasks: detail.tasks }));
+    const items = [...panel().querySelectorAll(".th-task-pr")];
+    expect(items.map((i) => i.textContent)).toEqual(["#7 ready to merge", "#9 conflict: a.rs"]);
+    expect(items[1]).toHaveAttribute("data-status", "conflict");
+  });
+
   it("shows glyph, state words, title, tags and the pull request link", () => {
     renderPanel();
     const [needs, guard, working, queued, merged] = [rowAt(0), rowAt(1), rowAt(2), rowAt(3), rowAt(4)];

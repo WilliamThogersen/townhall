@@ -9,6 +9,24 @@ describe("task guards", () => {
     expect(parseTask(reviewed)).toEqual(reviewed);
   });
 
+  it("reads the pull requests the daemon tracks for a task, none when absent", () => {
+    const tracked = {
+      repo: "shop",
+      number: 7,
+      url: "https://git.test/7",
+      branch: "townhall/fix-login",
+      base: "main",
+      owner: "fix-login",
+      pusher: "other",
+      status: "conflict",
+      detail: "src/a.rs",
+      updatedAt: "2026-11-13T10:00:00.000Z",
+    };
+    expect(parseTask(aTask({ prs: [tracked] } as never)).prs).toEqual([tracked]);
+    expect(parseTask({ ...aTask(), prs: undefined }).prs).toEqual([]);
+    expect(() => parseTask({ ...aTask(), prs: [{ ...tracked, status: "fine" }] })).toThrow("task.prs[0].status");
+  });
+
   it("reads why a queued task is held back", () => {
     const held = aTask({ blocked: "`t1` (reviewer) reported REJECT" });
     expect(parseTask(held).blocked).toBe("`t1` (reviewer) reported REJECT");

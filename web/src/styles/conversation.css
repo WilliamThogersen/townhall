@@ -768,6 +768,32 @@ button.th-msg-quote:focus-visible {
   text-decoration: underline;
 }
 
+.th-task-prs {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--th-space-3);
+  margin: 0;
+  padding: 0 var(--th-space-3) 6px var(--th-space-3);
+  list-style: none;
+  color: var(--th-fg-faint);
+  font-size: var(--th-text-xs);
+}
+
+.th-task-pr {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.th-task-pr a {
+  color: inherit;
+}
+
+.th-task-pr[data-status="red"],
+.th-task-pr[data-status="conflict"],
+.th-task-pr[data-status="blocked"] { color: var(--th-danger); }
+.th-task-pr[data-status="green"] { color: var(--th-accent); }
+
 .th-ctx {
   display: inline-flex;
   align-items: center;

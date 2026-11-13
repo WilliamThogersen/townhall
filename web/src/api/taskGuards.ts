@@ -1,5 +1,5 @@
-import { listOf, nullable, num, oneOf, record, str, strings, type Guard } from "./guardKit";
-import type { Checks, Pr, Task, TaskState, Verify, VerifyPhase } from "./types";
+import { fail, listOf, nullable, num, oneOf, record, str, strings, type Guard } from "./guardKit";
+import type { Checks, Pr, PrStatus, Task, TrackedPr, TaskState, Verify, VerifyPhase } from "./types";
 
 const TASK_STATES = [
   "queued",
@@ -21,6 +21,40 @@ export function parsePr(value: unknown): Pr {
     url: nullable(r.url, "task.pr.url", str),
     checks: oneOf(CHECKS)(r.checks, "task.pr.checks"),
   };
+}
+
+const PR_STATUSES = [
+  "pending",
+  "rerunning",
+  "red",
+  "green",
+  "updating",
+  "conflict",
+  "blocked",
+  "merged",
+  "closed",
+] as const satisfies readonly PrStatus[];
+
+function parseTrackedPr(value: unknown, at: string): TrackedPr {
+  const r = record(value, at);
+  return {
+    repo: str(r.repo, `${at}.repo`),
+    number: num(r.number, `${at}.number`),
+    url: nullable(r.url, `${at}.url`, str),
+    branch: str(r.branch, `${at}.branch`),
+    base: str(r.base, `${at}.base`),
+    owner: str(r.owner, `${at}.owner`),
+    pusher: nullable(r.pusher, `${at}.pusher`, str),
+    status: oneOf(PR_STATUSES)(r.status, `${at}.status`),
+    detail: nullable(r.detail, `${at}.detail`, str),
+    updatedAt: str(r.updatedAt, `${at}.updatedAt`),
+  };
+}
+
+function parseTrackedPrs(value: unknown): readonly TrackedPr[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return fail("task.prs");
+  return value.map((item, i) => parseTrackedPr(item, `task.prs[${i}]`));
 }
 
 const DEFAULT_MAX_RETRIES = 2;
@@ -50,6 +84,7 @@ export function parseTask(value: unknown): Task {
     attachments: strings(r.attachments, "task.attachments"),
     createdAt: str(r.createdAt, "task.createdAt"),
     pr: nullable(r.pr, "task.pr", parsePr),
+    prs: parseTrackedPrs(r.prs),
     agent: str(r.agent, "task.agent"),
     blocked: nullable(r.blocked, "task.blocked", str),
     prBase: nullable(r.prBase, "task.prBase", str),
