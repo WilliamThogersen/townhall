@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use crate::cmd::run;
 use crate::context::Context;
-use crate::model::{AgentEvent, Checks, EntryBody, Pr, PrStatus, Task, TaskState, TrackedPr};
+use crate::model::{
+    AgentEvent, Checks, EntryBody, Pr, PrStatus, Task, TaskState, TrackedPr, MAX_HANDOFFS,
+};
 use crate::repos::accounts::Accounts;
 use crate::repos::pr_checks::{
     conflict_files, failed_log, job_id, merge_pr, open_prs, pr_checks, pr_facts, rerun_job,
@@ -16,6 +18,8 @@ use super::{ci, plan, transition};
 const KEY: &str = "<pull requests>";
 const RERUN_GRACE_MS: i64 = 120_000;
 const LOG_JOBS: usize = 3;
+const RETRY_DETAIL: &str = "waking the owner failed";
+const RETRY_BACKOFF_MS: i64 = 300_000;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Cause {
@@ -484,10 +488,23 @@ async fn wake(
     if !matches!(task.state, TaskState::Ended | TaskState::InCi) {
         return settle(ctx, pr, status, None, false).await;
     }
+    let store = ctx.store()?;
+    if backing_off(pr) {
+        return Ok(());
+    }
+    if store.handoffs(&task.name).await?.len() >= MAX_HANDOFFS {
+        let why = format!(
+            "pull request #{} needs work ({}) but task `{}` was already handed back {MAX_HANDOFFS} times",
+            pr.number,
+            summary(&cause),
+            task.name
+        );
+        return give_up(ctx, pr, task, task.state, facts, status, why).await;
+    }
     let advice = describe(ctx, anchor, pr, facts, &cause).await;
     let reason = format!("pull request #{} needs work: {advice}", pr.number);
-    let store = ctx.store()?;
-    if task.state == TaskState::Ended
+    let was = task.state;
+    if was == TaskState::Ended
         && transition(store, &task.name, TaskState::Ended, TaskState::InCi)
             .await?
             .is_none()
@@ -495,12 +512,63 @@ async fn wake(
         return Ok(());
     }
     match store.hand_after_ci(&task.name, &task.agent, &reason).await {
-        Ok(_) => {}
-        Err(Error::Conflict(_)) => return Ok(()),
-        Err(e) => return Err(e),
+        Ok(_) => woke(ctx, pr, facts, status, plan::capped(&advice, 200)).await,
+        Err(Error::Conflict(why)) => {
+            let why = format!("pull request #{} needs work: {why}. {advice}", pr.number);
+            give_up(ctx, pr, task, TaskState::InCi, facts, status, why).await
+        }
+        Err(e) => {
+            if was == TaskState::Ended {
+                transition(store, &task.name, TaskState::InCi, TaskState::Ended).await?;
+            }
+            let detail = format!("{RETRY_DETAIL}: {e}");
+            settle(ctx, pr, status, Some(plan::capped(&detail, 200)), false).await?;
+            Err(e)
+        }
     }
+}
+
+fn backing_off(pr: &TrackedPr) -> bool {
+    let failed = pr
+        .detail
+        .as_deref()
+        .is_some_and(|d| d.starts_with(RETRY_DETAIL));
+    let at = clock::parse_rfc3339(&pr.updated_at);
+    let now = clock::unix_millis(std::time::SystemTime::now());
+    failed && at.is_some_and(|at| now - at < RETRY_BACKOFF_MS)
+}
+
+fn summary(cause: &Cause) -> String {
+    match cause {
+        Cause::Conflict => "it conflicts with its base".to_string(),
+        Cause::Checks(states) => {
+            let failed: Vec<&CheckState> = states.iter().filter(|c| c.failed()).collect();
+            format!("red checks: {}", names(&failed))
+        }
+    }
+}
+
+async fn give_up(
+    ctx: &Context,
+    pr: &TrackedPr,
+    task: &Task,
+    from: TaskState,
+    facts: &PrFacts,
+    status: PrStatus,
+    why: String,
+) -> Result<()> {
+    ci::needs_you(ctx, task, from, why.clone()).await?;
+    woke(ctx, pr, facts, status, plan::capped(&why, 200)).await
+}
+
+async fn woke(
+    ctx: &Context,
+    pr: &TrackedPr,
+    facts: &PrFacts,
+    status: PrStatus,
+    detail: String,
+) -> Result<()> {
     let head = facts.head.clone();
-    let detail = plan::capped(&advice, 200);
     let change = move |p: TrackedPr| {
         Ok(TrackedPr {
             status,

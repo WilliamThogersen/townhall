@@ -361,7 +361,12 @@ async fn relaunch(
     }
 }
 
-async fn needs_you(ctx: &Context, task: &Task, from: TaskState, why: String) -> Result<()> {
+pub(super) async fn needs_you(
+    ctx: &Context,
+    task: &Task,
+    from: TaskState,
+    why: String,
+) -> Result<()> {
     let store = ctx.store()?;
     let blocked = plan::capped(&why, 500);
     let held = blocked.clone();
