@@ -290,7 +290,7 @@ mod tests {
         apply(&mut conn, &before).unwrap();
         assert!(user_version(&conn).unwrap() < 950);
         assert!(conn.prepare("select name from marketplaces").is_err());
-        assert_eq!(apply(&mut conn, &all()).unwrap(), 10);
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 11);
         assert!(conn
             .prepare("select name, source from marketplaces")
             .is_ok());
@@ -306,7 +306,7 @@ mod tests {
                 "select token_hash, plugin_id, task, created_at, revoked_at from plugin_tokens"
             )
             .is_ok());
-        assert_eq!(user_version(&conn).unwrap(), 1054);
+        assert_eq!(user_version(&conn).unwrap(), 1055);
         assert_eq!(apply(&mut conn, &all()).unwrap(), 0);
     }
 
