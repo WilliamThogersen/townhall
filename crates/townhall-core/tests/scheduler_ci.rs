@@ -27,7 +27,7 @@ echo "$@ GH_TOKEN=$GH_TOKEN" >> "$here/$task.log"
 if [ "$1 $2" = "auth token" ]; then echo "tok-$4"; exit 0; fi
 if [ "$1 $2" = "pr checks" ]; then cat "$here/$task.json"; exit 0; fi
 case "$*" in
-  *mergeCommit*) echo "feedface"; exit 0;;
+  *"--json mergeCommit --jq"*) echo "feedface"; exit 0;;
   "pr view"*) if [ -f "$here/$task.view" ]; then cat "$here/$task.view"; else echo '{"headRefOid":"abc123","mergeable":"MERGEABLE"}'; fi; exit 0;;
   "api "*) if [ -f "$here/$task.behind" ]; then cat "$here/$task.behind"; else echo 0; fi; exit 0;;
   "pr merge"*) exit 0;;

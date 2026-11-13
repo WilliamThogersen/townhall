@@ -152,7 +152,7 @@ impl Store {
         self.call(move |conn| {
             let tx = conn.transaction()?;
             let current = get(&tx, &repo, number)?
-                .ok_or_else(|| Error::missing("pull request", &format!("{repo}#{number}")))?;
+                .ok_or_else(|| Error::missing("pull request", format!("{repo}#{number}")))?;
             let old_pusher = current.pusher.clone();
             let next = TrackedPr {
                 repo: current.repo.clone(),
