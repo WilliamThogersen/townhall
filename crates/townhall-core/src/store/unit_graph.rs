@@ -44,6 +44,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "1055_default_landing_rules",
         sql: include_str!("migrations/1055_default_landing_rules.sql"),
     },
+    Migration {
+        id: 1056,
+        name: "1056_verdict_last_line",
+        sql: include_str!("migrations/1056_verdict_last_line.sql"),
+    },
 ];
 
 const API_ERROR: &str = "api-error";
