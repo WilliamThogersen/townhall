@@ -85,6 +85,7 @@ async fn without_a_name_every_task_shows_its_last_three_entries() {
             agent: first.clone(),
             question: "go? [y/n]".into(),
             choices: vec!["y".into(), "n".into()],
+            advice: None,
         },
         EntryBody::Townhall { text: "ok".into() },
         agent_line(&first, AgentEvent::Sent, "y"),

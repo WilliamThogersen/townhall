@@ -465,6 +465,24 @@ button.th-msg-quote:focus-visible {
   color: var(--th-fg-muted);
 }
 
+.th-ask-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1ch;
+  margin: 0;
+  color: var(--th-fg-muted);
+  font-size: var(--th-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.th-ask-who {
+  color: var(--th-fg-faint);
+}
+
+.th-ask-advice {
+  min-width: 0;
+}
+
 .th-ask-answer {
   margin: 0;
   color: var(--th-fg-faint);
