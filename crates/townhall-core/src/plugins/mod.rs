@@ -16,6 +16,7 @@ pub(crate) mod pipelines;
 pub mod prompts;
 pub mod schema;
 mod sha256;
+pub mod skills;
 pub mod storage;
 pub mod theme;
 pub mod tokens;

@@ -40,6 +40,25 @@ describe("groupPermissions", () => {
     expect(groups[2]?.items.map((i) => i.raw)).toEqual(["api:tasks:read", "claude.api:tasks:create"]);
   });
 
+  it("lists the skills and slash commands a plugin adds in their own group after the agents group", () => {
+    const groups = groupPermissions([
+      "claude.skill:modern-web-guidance",
+      "claude.skill:chrome-extensions",
+      "claude.command:deploy",
+      "api:tasks:read",
+      "claude.hooks:Stop",
+    ]);
+    expect(groups.map((g) => g.id)).toEqual(["agents", "skills", "api"]);
+    expect(groups[1]).toMatchObject({
+      title: "adds skills and slash commands to agents of the types you choose",
+      items: [
+        { raw: "claude.skill:modern-web-guidance", text: "skill modern-web-guidance" },
+        { raw: "claude.skill:chrome-extensions", text: "skill chrome-extensions" },
+        { raw: "claude.command:deploy", text: "slash command /deploy" },
+      ],
+    });
+  });
+
   it("leaves out groups with nothing in them", () => {
     expect(groupPermissions(["ui:sidebar"]).map((g) => g.id)).toEqual(["ui"]);
     expect(groupPermissions([])).toEqual([]);

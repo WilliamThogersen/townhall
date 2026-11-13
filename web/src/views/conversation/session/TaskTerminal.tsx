@@ -5,7 +5,7 @@ import { Button } from "../../../ui/Button";
 import { EmptyState } from "../../../ui/EmptyState";
 import { Loading } from "../../../ui/Loading";
 import { TaskGlyph } from "./TaskGlyph";
-import { taskView } from "./taskRows";
+import { reasonOf, taskView } from "./taskRows";
 import { findTaskAgent, noTerminalText } from "./terminalModel";
 import { useCloseKey } from "./useCloseKey";
 
@@ -56,9 +56,15 @@ export function TaskTerminal({ task, onClose }: TaskTerminalProps) {
   const { detail } = useConversation(task.conversationId);
   const agent = findTaskAgent(agents, task);
   useCloseKey(onClose);
+  const reason = reasonOf(task);
 
   return (
-    <div className="th-panes">
+    <div className="th-panes" data-reason={reason === null ? undefined : "true"}>
+      {reason === null ? null : (
+        <p className="th-pane-reason" role="status">
+          <b>needs you</b> {reason}
+        </p>
+      )}
       {agent?.alive ? (
         <AgentPane key={agent.name} agent={agent} onClose={onClose} onStopped={onClose} focused />
       ) : (

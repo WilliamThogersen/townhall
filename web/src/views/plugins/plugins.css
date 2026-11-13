@@ -193,6 +193,35 @@
   gap: var(--th-space-2);
 }
 
+.th-agent-plugins {
+  display: flex;
+  flex-direction: column;
+  gap: var(--th-space-2);
+  margin: 0 0 var(--th-space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.th-agent-plugin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--th-space-1) var(--th-space-3);
+  min-width: 0;
+}
+
+.th-agent-plugin label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--th-space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.th-plugin-add .th-plugin-known {
+  flex: none;
+}
+
 @media (max-width: 1023px) {
   .th-plugin-row {
     grid-template-columns: minmax(0, 1fr);

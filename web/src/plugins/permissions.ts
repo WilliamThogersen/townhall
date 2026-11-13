@@ -1,4 +1,4 @@
-export type PermissionGroupId = "runs" | "agents" | "api" | "ui" | "env" | "other";
+export type PermissionGroupId = "runs" | "agents" | "skills" | "api" | "ui" | "env" | "other";
 
 export interface PermissionItem {
   readonly raw: string;
@@ -15,13 +15,14 @@ export interface PermissionGroup {
 const TITLES: Readonly<Record<PermissionGroupId, string>> = {
   runs: "runs programs on this machine, as you",
   agents: "changes what agents do",
+  skills: "adds skills and slash commands to agents of the types you choose",
   api: "reads or writes townhall data",
   ui: "shows UI in these places",
   env: "reads these environment variables",
   other: "other",
 };
 
-const ORDER: readonly PermissionGroupId[] = ["runs", "agents", "api", "ui", "env", "other"];
+const ORDER: readonly PermissionGroupId[] = ["runs", "agents", "skills", "api", "ui", "env", "other"];
 
 const GROUP_OF: Readonly<Record<string, PermissionGroupId>> = {
   hook: "runs",
@@ -33,6 +34,8 @@ const GROUP_OF: Readonly<Record<string, PermissionGroupId>> = {
   "claude.mcp": "agents",
   "claude.mcp.read-only": "agents",
   "claude.planner": "agents",
+  "claude.skill": "skills",
+  "claude.command": "skills",
   prompt: "agents",
   api: "api",
   "claude.api": "api",
@@ -81,6 +84,10 @@ export function describePermission(raw: string): PermissionItem {
       return item(`mcp server ${first}, ${mcpTools(second, true)}`);
     case "claude.planner":
       return item("changes townhall's planner");
+    case "claude.skill":
+      return item(`skill ${rest}`);
+    case "claude.command":
+      return item(`slash command /${rest}`);
     case "claude.api":
       return item(`${rest}, for agents`, AGENT_API_FLAG);
     case "prompt":
