@@ -52,6 +52,30 @@ pub fn unrequirable(agent_type: &str) -> Option<String> {
     ))
 }
 
+const ERROR_MARKERS: [&str; 4] = [
+    "api error",
+    "please run /login",
+    "connection lost",
+    "went to sleep",
+];
+
+const MAX_ERROR_CHARS: usize = 300;
+
+/// Why a final message is a failure of the agent's own session (API, login or connection)
+/// and not a report: the message, with a hint when the login expired, or `None`.
+pub fn agent_error(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    if !ERROR_MARKERS.iter().any(|m| lower.contains(m)) {
+        return None;
+    }
+    let said: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let said: String = said.chars().take(MAX_ERROR_CHARS).collect();
+    Some(match lower.contains("/login") {
+        true => format!("claude login expired: run /login ({said})"),
+        false => said,
+    })
+}
+
 /// What a report says. Each field is `Err` with the reason when its lines cannot be trusted
 /// and `Ok(None)` when there is no such line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +132,34 @@ fn single<'a>(key: &str, found: &[&'a str]) -> Result<Option<&'a str>, String> {
     }
 }
 
+const ALL_VERDICTS: [Verdict; 4] = [
+    Verdict::Pass,
+    Verdict::Fail,
+    Verdict::Approve,
+    Verdict::Reject,
+];
+
+const MARKDOWN_EMPHASIS: [char; 2] = ['*', '_'];
+
+fn verdict_word(line: &str) -> Option<&'static str> {
+    let unheaded = line.trim_start_matches('#');
+    let body = match unheaded.len() == line.len() {
+        true => line,
+        false => unheaded.trim_start(),
+    };
+    let body = body.trim_start_matches(MARKDOWN_EMPHASIS);
+    let (key, rest) = (body.get(..8)?, body.get(8..)?);
+    if !key.eq_ignore_ascii_case("VERDICT:") {
+        return None;
+    }
+    let rest = rest.trim_start_matches(MARKDOWN_EMPHASIS).trim_start();
+    let first = rest.split(|c: char| !c.is_ascii_alphabetic()).next()?;
+    ALL_VERDICTS
+        .iter()
+        .map(|v| v.as_str())
+        .find(|word| word.eq_ignore_ascii_case(first))
+}
+
 fn verdict_of(word: &str, allowed: &[Verdict]) -> Result<Verdict, String> {
     match allowed.iter().find(|v| v.as_str() == word) {
         Some(v) => Ok(*v),
@@ -122,8 +174,10 @@ fn verdict_of(word: &str, allowed: &[Verdict]) -> Result<Verdict, String> {
 }
 
 /// The verdict and commit of the report's `VERDICT: <WORD>` and `COMMIT: <sha>` lines,
-/// scanned over the whole text. A line counts only when it starts at the first column, holds
-/// nothing after the value but whitespace, and is neither inside a fenced code block nor in a
+/// scanned over the whole text. A `VERDICT:` line counts when it starts at the first column
+/// (after optional `#` heading marks and `*`/`_` emphasis, in any case), its first word is
+/// PASS, FAIL, APPROVE or REJECT and whatever follows is ignored; a `COMMIT:` line holds
+/// nothing after the sha but whitespace. Neither counts inside a fenced code block or in a
 /// blockquote; any other line is ignored. A fence opens with three or more backticks or
 /// tildes and closes only with the same character, at least as many, and nothing else on the
 /// line; one never closed runs to the end. A line right after a `>` line, with no blank line
@@ -156,10 +210,8 @@ pub fn parse(text: &str, agent_type: &str) -> Report {
             continue;
         }
         let line = line.trim_end();
-        if let Some(word) = line.strip_prefix("VERDICT: ") {
-            if !word.is_empty() && !word.contains(char::is_whitespace) {
-                verdicts.push(word);
-            }
+        if let Some(word) = verdict_word(line) {
+            verdicts.push(word);
         } else if let Some(sha) = line.strip_prefix("COMMIT: ") {
             if is_sha(sha) {
                 commits.push(sha);
@@ -223,10 +275,33 @@ mod tests {
             "{wrong}"
         );
         assert!(verdict("VERDICT: PASS", "reviewer").is_err());
-        assert!(verdict("VERDICT: MAYBE", "tester").is_err());
-        assert!(verdict("VERDICT: approve", "reviewer").is_err());
+        assert!(verdict("VERDICT: approve", "tester").is_err());
+        assert_eq!(
+            verdict("VERDICT: approve", "reviewer"),
+            Ok(Some(Verdict::Approve))
+        );
         assert!(Verdict::Approve.clears() && Verdict::Pass.clears());
         assert!(!Verdict::Reject.clears() && !Verdict::Fail.clears());
+    }
+
+    #[test]
+    fn an_agent_error_is_told_from_a_report() {
+        let login = agent_error("Please run /login · API Error: 403 forbidden").unwrap();
+        assert!(
+            login.starts_with("claude login expired: run /login"),
+            "{login}"
+        );
+        assert!(login.contains("API Error: 403"), "{login}");
+        assert_eq!(
+            agent_error("API Error: 529 overloaded").as_deref(),
+            Some("API Error: 529 overloaded")
+        );
+        assert!(agent_error("The connection lost its way").is_some());
+        assert!(agent_error("the machine went to sleep").is_some());
+        assert!(agent_error("VERDICT: PASS\nall good").is_none());
+        assert!(agent_error("").is_none());
+        let long = agent_error(&format!("API Error {}", "x".repeat(900))).unwrap();
+        assert!(long.chars().count() <= 300, "{}", long.len());
     }
 
     #[test]
@@ -254,21 +329,43 @@ mod tests {
     }
 
     #[test]
-    fn trailing_whitespace_is_fine_but_nothing_else_around_the_line() {
+    fn the_first_word_counts_whatever_comes_after() {
+        for text in [
+            "VERDICT: PASS  \t\r\n",
+            "VERDICT: PASS for all three criteria, with a note",
+            "VERDICT: PASS but flaky",
+            "**VERDICT: PASS**",
+            "**VERDICT:** PASS",
+            "## VERDICT: PASS",
+            "# **VERDICT: PASS** (all green)",
+            "verdict: pass",
+            "Verdict: Pass.",
+            "VERDICT:PASS",
+            "VERDICT:  PASS",
+        ] {
+            assert_eq!(verdict(text, "tester"), Ok(Some(Verdict::Pass)), "{text:?}");
+        }
         assert_eq!(
-            verdict("VERDICT: PASS  \t\r\n", "tester"),
-            Ok(Some(Verdict::Pass))
+            verdict("VERDICT: FAIL - two tests broke", "tester"),
+            Ok(Some(Verdict::Fail))
         );
+        assert_eq!(
+            verdict("**VERDICT: REJECT** see findings", "reviewer"),
+            Ok(Some(Verdict::Reject))
+        );
+    }
+
+    #[test]
+    fn a_line_that_does_not_start_with_the_verdict_or_whose_first_word_is_not_one_is_ignored() {
         for text in [
             " VERDICT: PASS",
             "\tVERDICT: PASS",
             "- VERDICT: PASS",
-            "**VERDICT: PASS**",
-            "VERDICT: PASS but flaky",
-            "VERDICT:PASS",
-            "VERDICT:  PASS",
-            "verdict: PASS",
+            "The VERDICT: PASS",
             "VERDICT: ",
+            "VERDICT: MAYBE",
+            "VERDICT: looks good, PASS",
+            "VERDICT PASS",
         ] {
             assert_eq!(verdict(text, "tester"), Ok(None), "{text:?}");
         }

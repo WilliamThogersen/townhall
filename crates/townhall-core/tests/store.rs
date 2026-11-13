@@ -147,6 +147,53 @@ fn source_of(conn: &Connection, name: &str) -> Option<String> {
     .ok()
 }
 
+const TESTER_TYPE: &str =
+    "name = \"tester\"\nadapter = \"claude\"\nprompt = \"\"\"\nYou test the change.\n\"\"\"\n";
+const REVIEWER_TYPE: &str =
+    "name = \"reviewer\"\nadapter = \"claude\"\nprompt = \"\"\"\nYou review the change.\n\"\"\"\n";
+
+fn save_type(conn: &Connection, name: &str, source: &str) {
+    conn.execute(
+        "insert into agents (name, description, source, updated_at) values (?1, '', ?2, 'then')",
+        [name, source],
+    )
+    .unwrap();
+}
+
+#[test]
+fn saved_tester_and_reviewer_types_gain_the_verdict_rule() {
+    let mut conn = at(1055);
+    save_type(&conn, "tester", TESTER_TYPE);
+    save_type(&conn, "reviewer", REVIEWER_TYPE);
+    upgrade(&mut conn);
+    let tester = source_of(&conn, "tester").unwrap();
+    let reviewer = source_of(&conn, "reviewer").unwrap();
+    assert!(
+        tester.contains(
+            "last line of your final message must be exactly VERDICT: PASS or VERDICT: FAIL"
+        ),
+        "{tester}"
+    );
+    assert!(
+        reviewer.contains(
+            "last line of your final message must be exactly VERDICT: APPROVE or VERDICT: REJECT"
+        ),
+        "{reviewer}"
+    );
+    assert!(tester.contains("You test the change."), "{tester}");
+    assert!(tester.starts_with("name = \"tester\"\nadapter = \"claude\"\nprompt = \"\"\"\n"));
+}
+
+#[test]
+fn a_type_that_already_names_the_verdict_or_is_missing_is_left_alone() {
+    let own = "name = \"tester\"\nadapter = \"claude\"\nprompt = \"\"\"\nEnd with VERDICT: PASS or VERDICT: FAIL.\n\"\"\"\n";
+    let mut conn = at(1055);
+    save_type(&conn, "tester", own);
+    upgrade(&mut conn);
+    assert_eq!(source_of(&conn, "tester").unwrap(), own);
+    assert_eq!(source_of(&conn, "reviewer"), None);
+}
+
 fn count_of(conn: &Connection, name: &str) -> i64 {
     conn.query_row(
         "select count(*) from agents where name = ?1 collate nocase",
