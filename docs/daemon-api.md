@@ -58,6 +58,7 @@ Agents come only from tasks: the scheduler starts one when a conversation's task
 | GET | `/settings` | | `Settings` | 503 | 2.1 (was 2.0) |
 | PUT | `/settings/{key}` | `{ value }` | `Settings` after the change | 400 unknown key or invalid value | 2.1 (was 2.0) |
 | GET | `/permissions` | | `{ decisions, suggestions }` of adviser-answered permission prompts (Permission prompts, below) | 503 | |
+| POST | `/permissions/suggestions/accept` | `{ agentType, tool }` | `{ agentType, tool, added }`: the tool is saved on the type's `tools` like `POST /agents/{name}/allow` does (`added: false` when it was there already) | 400 a tool that does not validate; 404 unknown agent type | |
 | GET | `/profile` | | `{ text }`: the user's profile, `""` when none | 503 | 2.14 |
 | PUT | `/profile` | `{ text }` (at most 20 000 characters, counted as Unicode chars; the settings textarea counts UTF-16 units, so it stops a little earlier for emoji) | `{ text }` as stored; replaces the whole profile | 400 too long, not a string, unknown field | 2.14 |
 | DELETE | `/profile` | | `{ text: "" }`: resets the profile to empty, also when it was empty | | 2.14 |
