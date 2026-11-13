@@ -4,6 +4,7 @@ import { DataProvider } from "./data";
 import { useRoute } from "./router";
 import { useLoadSettings } from "./settings/useSettings";
 import { Shell } from "./shell/Shell";
+import { TaskNotifier } from "./tasks/TaskNotifier";
 import { PluginTheme } from "./theme/pluginTheme";
 import { ToastProvider } from "./ui/Toasts";
 import { AgentsPage } from "./views/agents/AgentsPage";
@@ -48,6 +49,7 @@ export function App({ sidebarFoot }: { readonly sidebarFoot?: ReactNode }) {
   return (
     <DataProvider>
       <PluginTheme />
+      <TaskNotifier />
       <AgentsProvider>
         <ToastProvider>
           <Shell sidebarFoot={sidebarFoot}>

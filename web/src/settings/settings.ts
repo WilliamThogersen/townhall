@@ -1,5 +1,5 @@
 export type RepoUnclear = "ask" | "guess";
-export type NotifyWhen = "needsYou" | "failed" | "everything";
+export type NotifyWhen = "off" | "needsYou" | "failed" | "everything";
 
 export type ForgeKind = "github" | "gitlab";
 
@@ -26,7 +26,7 @@ export interface Settings {
 }
 
 export const REPO_UNCLEAR_VALUES: readonly RepoUnclear[] = ["ask", "guess"];
-export const NOTIFY_VALUES: readonly NotifyWhen[] = ["needsYou", "failed", "everything"];
+export const NOTIFY_VALUES: readonly NotifyWhen[] = ["off", "needsYou", "failed", "everything"];
 export const FORGE_KINDS: readonly ForgeKind[] = ["github", "gitlab"];
 export const FORGE_ACCOUNTS_MAX = 50;
 
@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   agentsAtOnce: 6,
   repoUnclear: "ask",
   sessionPanelOpen: true,
-  notifyWhen: "needsYou",
+  notifyWhen: "everything",
   minFreeDiskGb: 5,
   learnAboutMe: false,
   githubAccount: "",

@@ -155,7 +155,7 @@ async fn settings_are_read_and_put_one_key_at_a_time() {
         v["data"],
         json!({
             "agentsAtOnce": 6,
-            "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "needsYou",
+            "repoUnclear": "ask", "sessionPanelOpen": true, "notifyWhen": "everything",
             "minFreeDiskGb": 5, "learnAboutMe": false,
             "githubAccount": "WilliamThogersen", "forgeAccounts": [],
             "reflectAfterTasks": false, "clonesDir": "",

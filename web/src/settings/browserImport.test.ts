@@ -36,10 +36,10 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("readStoredSettings", () => {
   it("keeps the known keys with valid values, in key order", () => {
-    const raw = JSON.stringify({ notifyWhen: "everything", agentsAtOnce: 9, theme: "light" });
+    const raw = JSON.stringify({ notifyWhen: "off", agentsAtOnce: 9, theme: "light" });
     expect(readStoredSettings(raw)).toEqual([
       { key: "agentsAtOnce", value: 9 },
-      { key: "notifyWhen", value: "everything" },
+      { key: "notifyWhen", value: "off" },
     ]);
   });
 
@@ -86,7 +86,7 @@ describe("importBrowserSettings", () => {
       agentsAtOnce: 9,
       repoUnclear: "ask",
       sessionPanelOpen: true,
-      notifyWhen: "needsYou",
+      notifyWhen: "everything",
     });
     const put = fakePut();
     const d = deps(put);
@@ -108,10 +108,10 @@ describe("importBrowserSettings", () => {
   });
 
   it("drops unknown keys and invalid values and sends the rest", async () => {
-    store({ permissionMode: "yolo", agentsAtOnce: 99, theme: "light", notifyWhen: "everything" });
+    store({ permissionMode: "yolo", agentsAtOnce: 99, theme: "light", notifyWhen: "off" });
     const put = fakePut();
     await importBrowserSettings(DEFAULT_SETTINGS, deps(put));
-    expect(put.mock.calls).toEqual([["notifyWhen", "everything"]]);
+    expect(put.mock.calls).toEqual([["notifyWhen", "off"]]);
     expect(stored()).toBeNull();
   });
 
@@ -124,18 +124,18 @@ describe("importBrowserSettings", () => {
   });
 
   it("keeps the values that failed and retries only them on the next load", async () => {
-    store({ agentsAtOnce: 9, notifyWhen: "everything", theme: "light" });
+    store({ agentsAtOnce: 9, notifyWhen: "off", theme: "light" });
     const failing = fakePut(["agentsAtOnce"]);
     const outcome = await importBrowserSettings(DEFAULT_SETTINGS, deps(failing));
     expect(failing.mock.calls).toEqual([
       ["agentsAtOnce", 9],
-      ["notifyWhen", "everything"],
+      ["notifyWhen", "off"],
     ]);
     expect(outcome).toEqual({ sent: 2, failed: 1, message: "cannot reach the daemon: boom" });
     expect(JSON.parse(stored() ?? "null")).toEqual({ agentsAtOnce: 9 });
 
     const put = fakePut();
-    const next = await importBrowserSettings({ ...DEFAULT_SETTINGS, notifyWhen: "everything" }, deps(put));
+    const next = await importBrowserSettings({ ...DEFAULT_SETTINGS, notifyWhen: "off" }, deps(put));
     expect(put.mock.calls).toEqual([["agentsAtOnce", 9]]);
     expect(next).toEqual({ sent: 1, failed: 0, message: null });
     expect(stored()).toBeNull();
@@ -166,9 +166,9 @@ describe("importBrowserSettings", () => {
 
 describe("forgetStoredSetting", () => {
   it("drops one key from what is still waiting to be imported", () => {
-    store({ agentsAtOnce: 9, notifyWhen: "everything" });
+    store({ agentsAtOnce: 9, notifyWhen: "off" });
     forgetStoredSetting(localStorage, "agentsAtOnce");
-    expect(JSON.parse(stored() ?? "null")).toEqual({ notifyWhen: "everything" });
+    expect(JSON.parse(stored() ?? "null")).toEqual({ notifyWhen: "off" });
   });
 
   it("clears th-settings when nothing is left", () => {
