@@ -74,6 +74,32 @@ async fn every_claude_type_allows_hand_back_without_a_prompt() {
 }
 
 #[tokio::test]
+async fn hand_back_and_the_standard_commands_are_pre_allowed_and_the_mode_is_not_loosened() {
+    let s = Sched::new().await;
+    s.store().save_agent_type(PICKY).await.unwrap();
+    let name = unique("picky");
+    create_as(&s, &name, "picky").await;
+    run_once(s.ctx()).await.unwrap();
+    let args = s.args(&name).await;
+    let allowed = args
+        .lines()
+        .find_map(|l| l.strip_prefix("--allowedTools="))
+        .unwrap_or_else(|| panic!("{args}"));
+    let rules: Vec<&str> = allowed.split(',').collect();
+    for rule in [
+        "mcp__townhall__hand_back",
+        "Bash(git *)",
+        "Bash(gh *)",
+        "Bash(cargo *)",
+        "Bash(npm *)",
+    ] {
+        assert!(rules.contains(&rule), "{rule}: {allowed}");
+    }
+    assert!(!args.contains("--dangerously-skip-permissions"), "{args}");
+    assert!(!args.contains("--permission-mode=bypassPermissions"), "{args}");
+}
+
+#[tokio::test]
 async fn a_shell_type_gets_no_mcp_server() {
     let s = Sched::new().await;
     s.store().save_agent_type(SHELL).await.unwrap();

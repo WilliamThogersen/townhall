@@ -121,15 +121,21 @@ pub(super) async fn launcher(ctx: &Context, task: &Task) -> Result<Launcher> {
 /// Rules every claude agent gets besides its type's: `cd` into its own worktree (and
 /// `pwd`), and reading the plan files claude keeps under `~/.claude/plans`. Read only:
 /// nothing here writes, runs another program or reaches outside those two places.
-pub(super) fn own_rules(worktree: &Path) -> Vec<String> {
+pub(super) fn own_rules(worktree: &Path, listed: bool) -> Vec<String> {
     let dir = worktree.display();
-    vec![
+    let mut rules = vec![
         format!("Bash(cd {dir})"),
         format!("Bash(cd {dir}/*)"),
         "Bash(pwd)".into(),
         "Read(~/.claude/plans/*)".into(),
-    ]
+    ];
+    if !listed {
+        rules.extend(STANDARD_COMMANDS.map(|program| format!("Bash({program} *)")));
+    }
+    rules
 }
+
+const STANDARD_COMMANDS: [&str; 4] = ["git", "gh", "cargo", "npm"];
 
 const ASK_ADVISER_RULE: &str = "before you stop to ask the user, ask the adviser: call the ask_adviser tool with your question and what it needs to know. ask the user only when the adviser's answer says it needs the user (needsUser is true).";
 
@@ -160,7 +166,7 @@ mod tests {
 
     #[test]
     fn every_agent_may_cd_in_its_worktree_and_read_its_plans_and_no_more() {
-        let rules = own_rules(Path::new("/h/worktrees/t1/fix"));
+        let rules = own_rules(Path::new("/h/worktrees/t1/fix"), true);
         assert_eq!(
             rules,
             [
@@ -177,6 +183,16 @@ mod tests {
             assert!(!wide.iter().any(|w| rule.starts_with(w)), "{rule}");
             assert!(!rule.contains("rm") && !rule.contains("git"), "{rule}");
         }
+    }
+
+    #[test]
+    fn a_type_with_no_tool_list_also_runs_git_gh_cargo_and_npm_without_a_prompt() {
+        let rules = own_rules(Path::new("/h/worktrees/t1/fix"), false);
+        for rule in ["Bash(git *)", "Bash(gh *)", "Bash(cargo *)", "Bash(npm *)"] {
+            assert!(rules.contains(&rule.to_string()), "{rule}: {rules:?}");
+        }
+        assert!(rules.iter().all(|r| !r.starts_with("Bash(*")), "{rules:?}");
+        assert!(rules.len() > own_rules(Path::new("/h"), true).len());
     }
 
     #[test]
