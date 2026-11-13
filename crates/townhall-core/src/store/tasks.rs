@@ -102,7 +102,21 @@ pub(super) fn select(conn: &Connection, filter: &str, args: &[&dyn ToSql]) -> Re
     let rows = stmt
         .query_map(args, row)?
         .collect::<rusqlite::Result<Vec<Row>>>()?;
-    rows.into_iter().map(build).collect()
+    let mut tasks = rows.into_iter().map(build).collect::<Result<Vec<Task>>>()?;
+    let prs = super::prs::all(conn)?;
+    for task in &mut tasks {
+        task.prs = prs
+            .iter()
+            .filter(|p| {
+                p.owner.eq_ignore_ascii_case(&task.name)
+                    || p.pusher
+                        .as_deref()
+                        .is_some_and(|x| x.eq_ignore_ascii_case(&task.name))
+            })
+            .cloned()
+            .collect();
+    }
+    Ok(tasks)
 }
 
 pub(super) fn find(conn: &Connection, name: &str) -> Result<Option<Task>> {
