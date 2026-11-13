@@ -291,7 +291,7 @@ mod tests {
         apply(&mut conn, &before).unwrap();
         assert!(user_version(&conn).unwrap() < 950);
         assert!(conn.prepare("select name from marketplaces").is_err());
-        assert_eq!(apply(&mut conn, &all()).unwrap(), 9);
+        assert_eq!(apply(&mut conn, &all()).unwrap(), 10);
         assert!(conn
             .prepare("select name, source from marketplaces")
             .is_ok());
