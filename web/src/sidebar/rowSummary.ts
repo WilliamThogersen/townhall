@@ -42,7 +42,7 @@ export function summarizeRow(conversation: Conversation, tasks: readonly Task[])
   if (waiting.length > 0) {
     return { glyph: "waiting", state: "waiting", status: about(waiting, "needs you", "need you"), needsYou: true };
   }
-  const failed = tasks.filter((task) => task.state === "error");
+  const failed = conversation.ended ? [] : tasks.filter((task) => task.state === "error");
   if (failed.length > 0) {
     return { glyph: "error", state: "error", status: about(failed, "failed", "failed"), needsYou: false };
   }
