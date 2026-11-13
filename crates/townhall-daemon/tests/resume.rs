@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use townhall_core::model::{Conversation, ConversationStatus};
-use townhall_core::runner::{notify, RESUME_NOTE};
+use townhall_core::runner::{notify, RESUMED_MARKER, RESUME_NOTE};
 use townhall_core::ContextOptions;
 use townhall_daemon::{router, start_background, AppState};
 
@@ -53,6 +53,9 @@ async fn an_interrupted_reply_resumes_by_itself_and_only_once() {
     assert!(fake.argv(2).iter().any(|a| a.starts_with("--resume=")));
     assert_eq!(entries_of(&d, "you").len(), 1, "the note is not a message");
     assert_eq!(kinds(&d).last().map(String::as_str), Some("townhall"));
+    let markers = entries_of(&d, "event");
+    assert_eq!(markers.len(), 1, "{d}");
+    assert_eq!(markers[0]["text"], RESUMED_MARKER);
 
     mark_thinking(&second, &id).await;
     let third = restart(&env, &fake, &second, Duration::from_secs(60));
