@@ -29,6 +29,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "1052_graph_landing",
         sql: include_str!("migrations/1052_graph_landing.sql"),
     },
+    Migration {
+        id: 1053,
+        name: "1053_default_acts_by_default",
+        sql: include_str!("migrations/1053_default_acts_by_default.sql"),
+    },
 ];
 
 const API_ERROR: &str = "api-error";

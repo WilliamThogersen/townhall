@@ -77,7 +77,7 @@ async fn the_agent_reads_its_brief_in_accept_edits_when_its_type_sets_no_mode() 
     assert_eq!(
         lines[5],
         format!(
-            "--allowedTools=mcp__townhall__hand_back,mcp__townhall__open_pr,mcp__townhall__add_artifact,mcp__townhall__list_artifacts,mcp__townhall__search_history,mcp__townhall__read_conversation,mcp__townhall__history_graph,mcp__townhall__agent_stats,mcp__townhall__ask_adviser,Bash(cd {tree}),Bash(cd {tree}/*),Bash(pwd),Read(~/.claude/plans/*)"
+            "--allowedTools=mcp__townhall__hand_back,mcp__townhall__open_pr,mcp__townhall__add_artifact,mcp__townhall__list_artifacts,mcp__townhall__search_history,mcp__townhall__read_conversation,mcp__townhall__history_graph,mcp__townhall__agent_stats,mcp__townhall__ask_adviser,Bash(cd {tree}),Bash(cd {tree}/*),Bash(pwd),Read(~/.claude/plans/*),Bash(git *),Bash(gh *),Bash(cargo *),Bash(npm *)"
         )
     );
     assert!(

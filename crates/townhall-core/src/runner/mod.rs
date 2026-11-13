@@ -39,7 +39,7 @@ pub use args::{allowed_tools, DENIED_TOOLS, ISOLATION, READ_ONLY_TOOLS};
 pub use content::user_content;
 pub use notify::{notify, redeliver, Notes};
 pub use process::{EXIT_GRACE, KILL_WAIT, STOP_GRACE};
-pub use resume::RESUME_NOTE;
+pub use resume::{RESUMED_MARKER, RESUME_NOTE};
 pub use session::DEFAULT_CONTEXT_LIMIT;
 pub use turn::LOST_SESSION;
 pub use turns::{TurnGuard, Turns, BUSY};
@@ -83,18 +83,28 @@ pub async fn recover(ctx: &Context) -> Result<usize> {
             continue;
         }
         let entries = store.entries(&c.id).await?;
-        if let Plan::Resume(entry) = resume::plan(&c, &entries) {
-            if store.claim_resume(&c.id, entry).await? {
+        let why = match resume::plan(&c, &entries) {
+            Plan::Resume(entry) if store.claim_resume(&c.id, entry).await? => {
                 if let Ok(guard) = ctx.turns().begin(&c.id) {
+                    let marker = EntryBody::Event {
+                        text: RESUMED_MARKER.into(),
+                    };
+                    store.append_entry(&c.id, marker).await?;
                     actions::resume_turn(ctx, &c.id, guard);
                     fixed += 1;
                 }
                 continue;
             }
-        }
+            Plan::Resume(_) => "this message was already resumed once",
+            Plan::Restarted(reason) => reason,
+        };
         if !actions::unstick(ctx, &c.id).await? {
             continue;
         }
+        tracing::warn!(
+            target: "townhall::runner", event = "resume.skipped", conversation = %c.id,
+            reason = why, "interrupted reply not resumed"
+        );
         let note = EntryBody::Error {
             message: RESTARTED.into(),
         };
