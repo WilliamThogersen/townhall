@@ -37,7 +37,7 @@ files_at() {
 }
 
 cmd_next() {
-  local start=$1 pair lo hi max numbers ref name
+  local start=$1 pair lo hi max numbers ref name path n
   pair=$(range_for "$start")
   if [ -z "$pair" ]; then
     echo "no migration range starts at $start; ranges: $(ranges | tr '\n' ' ' | sed 's/ $//')" >&2
@@ -48,7 +48,11 @@ cmd_next() {
   git fetch --quiet origin >/dev/null 2>&1 || true
   numbers=$(
     {
-      ls "$dir" 2>/dev/null | grep -E '^[0-9]{4}_.*\.sql$' || true
+      for path in "$dir"/[0-9][0-9][0-9][0-9]_*.sql; do
+        if [ -e "$path" ]; then
+          echo "${path##*/}"
+        fi
+      done
       files_at HEAD
       for ref in $(git for-each-ref --format='%(refname)' refs/remotes/); do
         files_at "$ref"
@@ -72,7 +76,7 @@ cmd_next() {
 
 cmd_check() {
   local base=$1 head=${2:-HEAD} failed=0
-  local head_files base_files mergebase prev name num other status path rest
+  local head_files base_files mergebase prev name num other status path
   head_files=$(files_at "$head")
   base_files=$(files_at "$base")
 
@@ -105,7 +109,7 @@ $head_files
 EOF
 
   mergebase=$(git merge-base "$base" "$head")
-  while IFS=$'\t' read -r status path rest; do
+  while IFS=$'\t' read -r status path _; do
     [ -n "$status" ] || continue
     case "$status" in
       M | D | R*)
