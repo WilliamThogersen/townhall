@@ -22,7 +22,7 @@ use crate::{Error, Result};
 pub const DEFAULT_CLAUDE_BIN: &str = "claude";
 const END_OF_OPTIONS: &str = "--";
 
-pub const FOREGROUND_RULE: &str = "run tests and builds in the foreground and wait for them. never use run_in_background, Monitor or sleep-and-poll, and never end your turn while a command you started is still running. commit your work before you end.";
+pub const FOREGROUND_RULE: &str = "run tests and builds in the foreground and wait for them. never use run_in_background, Monitor or sleep-and-poll, and never end your turn while a command you started is still running. commit your work before you end. do not stop to ask the user questions you can answer yourself. act, pick the safe default and say what you chose in your last message. defaults: when a command is denied, use a dedicated tool (Read, Grep, Glob, Edit, Write) or a plainer command instead of asking, and never retry a denied command in a loop. if your branch depends on work that is not merged yet, merge origin/main or that branch in and continue; do not wait. if the brief leaves scope or the look of something open, do the smallest change that meets the stated goal and list the alternatives in your last message. do not ask whether to continue with the rest of the brief: continue. do not ask for confirmation of a step the brief already asks for. a failing gate is for you to fix, never to ask the user to waive. ask the user only when the choice cannot be undone, spends money, publishes outside the repo or needs a secret you do not have.";
 const BASH_TIMEOUT_ENVS: [(&str, std::time::Duration); 2] = [
     (
         "BASH_DEFAULT_TIMEOUT_MS",

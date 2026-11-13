@@ -96,7 +96,10 @@ async fn hand_back_and_the_standard_commands_are_pre_allowed_and_the_mode_is_not
         assert!(rules.contains(&rule), "{rule}: {allowed}");
     }
     assert!(!args.contains("--dangerously-skip-permissions"), "{args}");
-    assert!(!args.contains("--permission-mode=bypassPermissions"), "{args}");
+    assert!(
+        !args.contains("--permission-mode=bypassPermissions"),
+        "{args}"
+    );
 }
 
 #[tokio::test]
