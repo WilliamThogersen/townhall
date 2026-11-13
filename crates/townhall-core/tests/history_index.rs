@@ -5,7 +5,14 @@ use townhall_core::store::migrate;
 mod common;
 use common::{new_task, store_env, you};
 
-const FIRST_HISTORY_MIGRATION: u32 = 1000;
+fn first_history_migration() -> u32 {
+    let m = migrate::all()
+        .into_iter()
+        .find(|m| m.name == "1000_history_index")
+        .unwrap();
+    assert_eq!(m.id, 1000);
+    m.id
+}
 
 fn count(conn: &Connection, kind: &str) -> i64 {
     conn.query_row(
@@ -32,10 +39,11 @@ fn event_text(task: &str, last: &str) -> EntryBody {
 
 #[test]
 fn the_migration_indexes_the_rows_that_exist_before_it() {
+    let first = first_history_migration();
     let mut conn = Connection::open_in_memory().unwrap();
     let before: Vec<_> = migrate::all()
         .into_iter()
-        .filter(|m| m.id < FIRST_HISTORY_MIGRATION)
+        .filter(|m| m.id < first)
         .collect();
     migrate::apply(&mut conn, &before).unwrap();
     conn.execute_batch(
@@ -55,7 +63,7 @@ fn the_migration_indexes_the_rows_that_exist_before_it() {
     .unwrap();
     let expected = migrate::all()
         .iter()
-        .filter(|m| m.id >= FIRST_HISTORY_MIGRATION)
+        .filter(|m| m.id >= first)
         .count();
     assert_eq!(
         migrate::apply(&mut conn, &migrate::all()).unwrap(),
