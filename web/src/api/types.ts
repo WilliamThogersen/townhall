@@ -82,6 +82,7 @@ export interface Settings {
   readonly forgeAccounts: readonly ForgeAccount[];
   readonly reflectAfterTasks: boolean;
   readonly clonesDir: string;
+  readonly flakyChecks: readonly string[];
 }
 
 export type SettingKey = keyof Settings;

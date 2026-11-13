@@ -24,6 +24,7 @@ const custom: Settings = {
   ],
   reflectAfterTasks: true,
   clonesDir: "~/Developer",
+  flakyChecks: ["secret-detection", "lint"],
 };
 
 describe("DEFAULT_SETTINGS", () => {
@@ -39,6 +40,7 @@ describe("DEFAULT_SETTINGS", () => {
       forgeAccounts: [],
       reflectAfterTasks: false,
       clonesDir: "",
+      flakyChecks: ["secret-detection"],
     });
   });
 
@@ -155,6 +157,16 @@ describe("isSettingValue", () => {
     expect(isSettingValue("forgeAccounts", [{ ...one, token: "ghp_x" }])).toBe(false);
     expect(isSettingValue("forgeAccounts", [one, null])).toBe(false);
     expect(isSettingValue("forgeAccounts", Array.from({ length: FORGE_ACCOUNTS_MAX + 1 }, () => one))).toBe(false);
+  });
+
+  it("accepts up to 50 non-empty check names of at most 100 characters", () => {
+    expect(isSettingValue("flakyChecks", [])).toBe(true);
+    expect(isSettingValue("flakyChecks", ["x".repeat(100)])).toBe(true);
+    expect(isSettingValue("flakyChecks", Array.from({ length: 50 }, (_, i) => `c${i}`))).toBe(true);
+    [[""], ["x".repeat(101)], [1], "lint", null, Array.from({ length: 51 }, (_, i) => `c${i}`)].forEach((value) => {
+      expect(isSettingValue("flakyChecks", value)).toBe(false);
+    });
+    expect(parseSettings({ flakyChecks: "lint" }).flakyChecks).toEqual(["secret-detection"]);
   });
 
   it("falls back to no accounts when the stored list is invalid", () => {
